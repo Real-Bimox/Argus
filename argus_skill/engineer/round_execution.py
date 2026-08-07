@@ -66,6 +66,7 @@ class RoundExecutionMixin:
         workdir: Path,
         supervised_config: "SupervisedConfig",
         checkpoint_path: Path | None,
+        resume_thread_id: str | None,
         on_event: Callable[[dict], None] | None,
         state: RoundLoopState,
     ) -> EngineerTurnOutcome:
@@ -74,7 +75,7 @@ class RoundExecutionMixin:
             prompt=engineer_prompt,
             workdir=workdir,
             run_label=f"engineer-r{round_index}",
-            resume_thread_id=None,
+            resume_thread_id=resume_thread_id,
             reasoning_effort=(
                 self.engineer_config.initial_reasoning_effort
                 if round_index == 1
@@ -98,6 +99,32 @@ class RoundExecutionMixin:
             raw_engineer_message,
             known_values=known_secret_values(),
         )
+        assert state.engineer_session is not None
+        state.engineer_session.complete(
+            engineer_result,
+            decisive_output=engineer_message,
+        )
+        if on_event:
+            on_event({
+                "type": EventType.ROLE_SESSION_TURN,
+                "role": "engineer",
+                "policy": state.engineer_session.policy,
+                "action": state.engineer_session.action,
+                "rotation_reason": state.engineer_session.rotation_reason,
+                "round_index": round_index,
+                "session_id": str(new_tid or ""),
+                "turns_on_session": state.engineer_session.turns,
+                "input_tokens": int(
+                    getattr(engineer_result, "input_tokens", 0) or 0
+                ),
+                "cached_input_tokens": int(
+                    getattr(engineer_result, "cached_input_tokens", 0) or 0
+                ),
+                "duration_ms": int((time.time() - round_started_at) * 1000),
+                "prompt_chars": len(engineer_prompt),
+                "prompt_estimated_tokens": (len(engineer_prompt) + 3) // 4,
+                "capsule_path": str(state.engineer_session.path or ""),
+            })
         if supervised_config.context_packet_path:
             try:
                 from ..life.context_packet import record_engineer_handoff
@@ -276,6 +303,8 @@ class RoundExecutionMixin:
             ))
 
         if fatal_error_looks_like_model_configuration(fatal_error):
+            assert state.engineer_session is not None
+            state.engineer_session.rotate("model_configuration")
             review = model_configuration_review_decision(
                 fatal_error=fatal_error,
                 exit_code=getattr(engineer_result, "exit_code", 0),
@@ -345,6 +374,8 @@ class RoundExecutionMixin:
             ))
 
         if stop_kind == "permanent_error":
+            assert state.engineer_session is not None
+            state.engineer_session.rotate("permanent_error")
             review = backend_failure_review_decision(
                 fatal_error=fatal_error,
                 exit_code=getattr(engineer_result, "exit_code", 0),
@@ -368,6 +399,8 @@ class RoundExecutionMixin:
             ))
 
         if runner_result_is_backend_failure(engineer_result):
+            assert state.engineer_session is not None
+            state.engineer_session.rotate("backend_failure")
             state.backend_failure_streak += 1
             state.no_progress_streak = 0
             configured_threshold = max(

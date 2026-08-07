@@ -13,6 +13,7 @@ from ..core.models import (
     RunnerResult,
 )
 from ..core.ports import RunnerBackend
+from ..core.role_session import RoleSessionCapsule, objective_revision
 from ..core.run_gateway import run_exec as gateway_run_exec
 from ..core.secret_guard import (
     known_secret_values,
@@ -107,10 +108,10 @@ class SupervisedEngineer(
         """Run the supervised loop.
 
         ``engineer_prompt_builder(next_action, include_static)`` is called once
-        per round. Round 1 receives the static task/skill contract; continuation
-        rounds default to a compact Reviewer delta plus CHECKPOINT.md. Engineer
-        and Reviewer both start fresh provider sessions every round; raw model
-        threads are never carried across a round or mission boundary.
+        per round. Round 1 receives the static task/Skill contract; continuation
+        rounds default to a compact Reviewer delta plus CHECKPOINT.md. The default
+        session policy is fresh; opt-in mission and rolling policies resume only
+        the same role inside this mission and persist a bounded role capsule.
 
         Returns ``(status, rounds, final_message, reason, last_thread_id)``.
 
@@ -136,11 +137,43 @@ class SupervisedEngineer(
 
             on_event = _redacted_on_event
         state = RoundLoopState()
-        # ``seed_thread_id`` is intentionally ignored: autonomous role calls are
-        # one turn per provider session. The checkpoint file is the baton.
-        _ = seed_thread_id
         checkpoint_path = ensure_shared_checkpoint(supervised_config.checkpoint_path)
+        capsule_dir = supervised_config.role_session_dir
+        persist_capsules = supervised_config.role_session_policy != "fresh"
+        revision = objective_revision(objective)
+        state.engineer_session = RoleSessionCapsule.open(
+            role="engineer",
+            policy=supervised_config.role_session_policy,
+            objective_revision=revision,
+            workdir=workdir.resolve(),
+            backend=str(
+                getattr(self.engineer_runner, "backend", type(self.engineer_runner).__name__)
+            ),
+            model=str(self.engineer_config.model or ""),
+            checkpoint_path=checkpoint_path,
+            path=(capsule_dir / "engineer.json" if capsule_dir and persist_capsules else None),
+            seed_thread_id=seed_thread_id,
+            mission_context_path=supervised_config.context_packet_path,
+        )
+        reviewer_runner = getattr(self.reviewer, "runner", self.reviewer)
+        state.reviewer_session = RoleSessionCapsule.open(
+            role="reviewer",
+            policy=supervised_config.role_session_policy,
+            objective_revision=revision,
+            workdir=workdir.resolve(),
+            backend=str(
+                getattr(reviewer_runner, "backend", type(reviewer_runner).__name__)
+            ),
+            model=str(self.reviewer_config.model or ""),
+            checkpoint_path=checkpoint_path,
+            path=(capsule_dir / "reviewer.json" if capsule_dir and persist_capsules else None),
+            mission_context_path=supervised_config.context_packet_path,
+        )
         for round_index in range(1, supervised_config.max_rounds + 1):
+            engineer_resume_id = state.engineer_session.prepare(
+                max_turns=supervised_config.role_session_max_turns,
+                max_input_tokens=supervised_config.role_session_max_input_tokens,
+            )
             engineer_prompt = self._assemble_round_prompt(
                 round_index=round_index,
                 supervised_config=supervised_config,
@@ -148,6 +181,7 @@ class SupervisedEngineer(
                 reviewer_next_action=state.reviewer_next_action,
                 checkpoint_path=checkpoint_path,
                 workdir=workdir,
+                role_session=state.engineer_session,
                 on_event=on_event,
             )
 
@@ -157,6 +191,7 @@ class SupervisedEngineer(
                 workdir=workdir,
                 supervised_config=supervised_config,
                 checkpoint_path=checkpoint_path,
+                resume_thread_id=engineer_resume_id,
                 on_event=on_event,
                 state=state,
             )

@@ -102,7 +102,7 @@ def build_mission_prompt(
     if role_banner.strip():
         sections.append("## Active vertical role\n" + role_banner.strip())
     if skill_text:
-        sections.append("## Skill library paths\n" + skill_text)
+        sections.append(skill_text)
     if original_request.strip():
         sections.append(
             "## Original operator request\n"

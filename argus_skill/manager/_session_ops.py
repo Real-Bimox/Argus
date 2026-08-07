@@ -18,6 +18,7 @@ import os
 import time
 import uuid
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -218,6 +219,7 @@ class _ManagerSession:
         self.project_root = Path(project_root)
         self._session_path = self.project_root / _SESSION_FILE
         self._lock_path = self.project_root / _SESSION_LOCK
+        self.skill_paths: list[str] = []
 
     # --- persistent thread_id IO (corrupt/missing → None, never raises) ---
     def _read_tid(self) -> str | None:
@@ -271,6 +273,9 @@ class _ManagerSession:
         compatibility shim. The fallback runs AFTER the lock is released, never
         nested under it.
         """
+        if self.skill_paths:
+            options = replace(options, skill_paths=list(self.skill_paths))
+
         def _no_session() -> Any:
             return gateway_run_exec(
                 self.runner,

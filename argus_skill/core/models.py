@@ -195,6 +195,7 @@ class ReviewDecision:
     premium_requests: float = 0.0
     thread_id: str | None = None
     static_fingerprint: str = ""
+    session_resumed: bool = False
     backend_unavailable: bool = False
     backend_fatal_error: str = ""
     backend_exit_code: int | None = None

@@ -16,6 +16,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..core.role_session import (
+    ROLE_SESSION_POLICIES,
+    configured_role_session_policy,
+)
+
 _RUNNER_HARD_IDLE_ENV = "ARGUS_SKILL_RUNNER_HARD_IDLE_SECONDS"
 _SHIFT_ROUND_LIMIT_ENV = "ARGUS_SKILL_SHIFT_ROUND_LIMIT"
 _THREAD_TOKEN_LIMIT_ENV = "ARGUS_SKILL_THREAD_TOKEN_LIMIT"
@@ -25,6 +30,8 @@ _DECISION_PROGRESS_TIMEOUT_ENV = "ARGUS_SKILL_DECISION_PROGRESS_TIMEOUT_SECONDS"
 # does not babysit a self-watched run. Set to 0 to disable (e.g. tests).
 _BG_SUBAGENT_ADVISORY_ENV = "ARGUS_SKILL_BG_SUBAGENT_ADVISORY"
 _COMPACT_CONTINUATION_PROMPTS_ENV = "ARGUS_SKILL_COMPACT_CONTINUATION_PROMPTS"
+_ROLE_SESSION_MAX_TURNS_ENV = "ARGUS_SKILL_ROLE_SESSION_MAX_TURNS"
+_ROLE_SESSION_MAX_INPUT_TOKENS_ENV = "ARGUS_SKILL_ROLE_SESSION_MAX_INPUT_TOKENS"
 _CONTINUE_WORK_SENTINEL = "CONTINUE_WORK:"
 _CONTINUE_WORK_MAX_CHARS = 500
 # Compatibility defaults for the retired resumed-thread policy. Autonomous
@@ -182,6 +189,19 @@ class SupervisedConfig:
     backend_failure_threshold: int = 2
     backend_failure_backoff_seconds: float = 15.0
     session_id: str | None = None
+    # Experimental A/B policy. Production stays fresh unless explicitly set to
+    # mission or rolling.
+    role_session_policy: str = field(default_factory=configured_role_session_policy)
+    role_session_max_turns: int = field(
+        default_factory=lambda: _env_int(_ROLE_SESSION_MAX_TURNS_ENV, 6)
+    )
+    role_session_max_input_tokens: int = field(
+        default_factory=lambda: _env_int(
+            _ROLE_SESSION_MAX_INPUT_TOKENS_ENV,
+            120_000,
+        )
+    )
+    role_session_dir: Path | None = None
     # Absolute path to THIS mission's engineer execution log (the per-project
     # ``<life_dir>/events.jsonl``). The reviewer runs in the project work-tree
     # and only sees the engineer's final summary, so it cannot otherwise tell
@@ -273,6 +293,8 @@ class SupervisedConfig:
         large enough for the configured values is left byte-for-byte
         unchanged.
         """
+        if self.role_session_policy not in ROLE_SESSION_POLICIES:
+            raise ValueError("role_session_policy must be fresh, mission, or rolling")
         budget = int(self.max_rounds)
         if budget <= 0:
             return

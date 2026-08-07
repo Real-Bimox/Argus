@@ -76,7 +76,7 @@ def _engineer_log_audit_block(
 
 
 class Reviewer:
-    """One reviewer call per round. Stateless across rounds."""
+    """One independent verdict per round, with optional same-role resume."""
 
     def __init__(
         self,
@@ -132,9 +132,8 @@ class Reviewer:
         native_skill_paths = [
             str(path) for path in getattr(review_libraries, "native_paths", [])
         ]
-        # Split the prompt into a byte-stable STATIC preamble and per-round DELTA
-        # for provider prefix caching. Every call still sends both into a fresh
-        # Reviewer session.
+        # Split the prompt into a byte-stable STATIC preamble and per-round DELTA.
+        # A matching same-role session receives only the new delta.
         common = dict(
             objective=objective,
             original_objective=original_objective or objective,
@@ -165,18 +164,25 @@ class Reviewer:
         }
         fingerprint_input = bytearray(static.encode("utf-8"))
         new_fp = hashlib.sha256(fingerprint_input).hexdigest()
-        # Autonomous reviews are deliberately one turn per provider session.
-        # ``resume_thread_id`` / ``prior_static_fingerprint`` remain accepted for
-        # source compatibility but are never used.
-        _ = (resume_thread_id, prior_static_fingerprint)
-        from ..roles.prompts.reviewer import assemble_reviewer_prompt
+        resume = (
+            resume_thread_id
+            if resume_thread_id and prior_static_fingerprint == new_fp
+            else None
+        )
+        from ..roles.prompts.reviewer import (
+            _REEVALUATE_HEADER,
+            assemble_reviewer_prompt,
+        )
 
-        prompt = assemble_reviewer_prompt(static, delta_base)
+        prompt = assemble_reviewer_prompt(
+            "" if resume else static,
+            (_REEVALUATE_HEADER + delta_base) if resume else delta_base,
+        )
         try:
             result = gateway_run_exec(
                 self.runner,
                 prompt=prompt,
-                resume_thread_id=None,
+                resume_thread_id=resume,
                 options=RunnerOptions(
                     model=config.model,
                     reasoning_effort=config.reasoning_effort,
@@ -213,8 +219,8 @@ class Reviewer:
         # Copilot premium-request delta for this reviewer turn (0.0 off copilot).
         # copilot 下本轮 reviewer 的高级请求增量（非 copilot 时为 0.0）。
         rev_premium = float(getattr(result, "premium_requests", 0.0) or 0.0)
-        # Preserve transport metadata for observability only; the supervised
-        # loop never resumes this Reviewer thread.
+        # Preserve transport metadata for observability and an opt-in same-role
+        # continuation.
         rev_tid = getattr(result, "thread_id", None)
         fatal = str(getattr(result, "fatal_error", "") or "").strip()
         backend_stop_kind = (
@@ -287,10 +293,9 @@ class Reviewer:
         parsed.reasoning_output_tokens = rev_reasoning_output_tokens
         parsed.premium_requests = rev_premium
         parsed.prompt_block_stats = prompt_block_stats
-        # Transport metadata remains useful in events even though the next
-        # Reviewer call is always fresh.
         parsed.thread_id = rev_tid
         parsed.static_fingerprint = new_fp
+        parsed.session_resumed = bool(resume)
         # The L2 reviewer's verdict is authoritative — the harness must not
         # second-guess its scientific judgment from structured result labels or
         # keyword heuristics on the engineer's summary.
@@ -329,8 +334,8 @@ class Reviewer:
         """F7: render the reviewer prompt as ``(static_preamble, round_delta)``.
 
         ``static_preamble`` is a byte-stable role/rubric prefix suitable for
-        provider prefix caching. Every Reviewer call is nevertheless a fresh
-        session and receives ``static + delta`` in full.
+        provider caching and same-role resume. Fresh calls receive both parts;
+        resumed calls receive only the round delta.
         """
         from ..roles.prompts.reviewer import render_reviewer_prompt
 

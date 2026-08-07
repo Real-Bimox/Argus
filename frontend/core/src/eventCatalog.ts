@@ -28,6 +28,7 @@ export const EVENT_TYPES = {
   ROUND_ESCALATED: 'round.escalated',
   ROUND_STALL: 'round.stall',
   ROUND_REVIEWER_BACKEND_FAILURE: 'round.reviewer_backend_failure',
+  ROLE_SESSION_TURN: 'role.session.turn',
   ENGINEER_PROGRESS: 'engineer.progress',
   ENGINEER_SELF_REVIEW_ACCEPTED: 'engineer.self_review.accepted',
   ENGINEER_SELF_REVIEW_REJECTED: 'engineer.self_review.rejected',

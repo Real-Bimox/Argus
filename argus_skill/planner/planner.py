@@ -10,12 +10,19 @@ from __future__ import annotations
 
 import hashlib
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..core.event_catalog import EventType
 from ..core.models import RunnerOptions
 from ..core.ports import RunnerBackend
+from ..core.role_session import (
+    RoleSessionCapsule,
+    configured_role_session_policy,
+    objective_revision,
+)
 from ..core.run_gateway import run_exec as gateway_run_exec
 
 TASK_SCOPE_BOUNDED = "bounded"
@@ -44,6 +51,12 @@ class PlannerConfig:
     dangerous_yolo: bool = True
     open_ended: bool = False
     external_interrupt_reason_provider: Any = None
+    role_session_policy: str = field(default_factory=configured_role_session_policy)
+    role_session_max_turns: int = 6
+    role_session_max_input_tokens: int = 120_000
+    role_session_path: Path | None = None
+    objective_revision: str = ""
+    on_event: Any = None
 
 
 @dataclass(frozen=True)
@@ -159,6 +172,27 @@ class Planner:
     ) -> PlannerVerdict:
         """Inspect the active objective and delegate the next concrete work."""
         cfg = config or PlannerConfig()
+        workdir = Path(cfg.working_dir).resolve() if cfg.working_dir else Path.cwd()
+        session = RoleSessionCapsule.open(
+            role="planner",
+            policy=cfg.role_session_policy,
+            objective_revision=(
+                cfg.objective_revision or objective_revision(continuous_objective)
+            ),
+            workdir=workdir,
+            backend=str(getattr(self.runner, "backend", type(self.runner).__name__)),
+            model=str(cfg.model or ""),
+            checkpoint_path=None,
+            path=(
+                cfg.role_session_path
+                if cfg.role_session_policy != "fresh"
+                else None
+            ),
+        )
+        resume_thread_id = session.prepare(
+            max_turns=cfg.role_session_max_turns,
+            max_input_tokens=cfg.role_session_max_input_tokens,
+        )
         prompt = self._build_planner_prompt(
             continuous_objective=continuous_objective,
             journal_tail=journal_tail,
@@ -168,6 +202,8 @@ class Planner:
             open_ended=cfg.open_ended,
             memory_maintenance_enabled=self.memory_maintenance_enabled,
         )
+        if session.prompt_block():
+            prompt = session.prompt_block() + "\n\n" + prompt
         dangerous_yolo = bool(cfg.dangerous_yolo)
         planner_options = RunnerOptions(
             model=cfg.model,
@@ -192,15 +228,17 @@ class Planner:
             external_interrupt_reason_provider=cfg.external_interrupt_reason_provider,
             watchdog_hard_idle_seconds=0,
         )
+        started_at = time.monotonic()
         try:
             result = gateway_run_exec(
                 self.runner,
                 prompt=prompt,
-                resume_thread_id=None,
+                resume_thread_id=resume_thread_id,
                 options=planner_options,
                 run_label=f"planner.cycle{planning_cycle}",
             )
         except Exception as exc:  # noqa: BLE001
+            session.rotate("backend_exception")
             exc_text = f"{type(exc).__name__}: {exc}"
             return PlannerVerdict(
                 project_done=False,
@@ -210,9 +248,32 @@ class Planner:
                 error=exc_text,
             )
         text = "\n".join(getattr(result, "agent_messages", None) or [])
-        if int(getattr(result, "exit_code", 0) or 0) != 0 or bool(
+        session.complete(result, decisive_output=text)
+        failed = int(getattr(result, "exit_code", 0) or 0) != 0 or bool(
             getattr(result, "fatal_error", None)
-        ):
+        )
+        if failed:
+            session.rotate("backend_failure")
+        if callable(cfg.on_event):
+            cfg.on_event({
+                "type": EventType.ROLE_SESSION_TURN,
+                "role": "planner",
+                "policy": session.policy,
+                "action": session.action,
+                "rotation_reason": session.rotation_reason,
+                "planning_cycle": planning_cycle,
+                "session_id": str(getattr(result, "thread_id", "") or ""),
+                "turns_on_session": session.turns,
+                "input_tokens": int(getattr(result, "input_tokens", 0) or 0),
+                "cached_input_tokens": int(
+                    getattr(result, "cached_input_tokens", 0) or 0
+                ),
+                "duration_ms": int((time.monotonic() - started_at) * 1000),
+                "prompt_chars": len(prompt),
+                "prompt_estimated_tokens": (len(prompt) + 3) // 4,
+                "capsule_path": str(session.path or ""),
+            })
+        if failed:
             stderr_tail = "\n".join(
                 str(line) for line in (getattr(result, "stderr_lines", None) or [])[-20:]
             )
@@ -246,6 +307,7 @@ class Planner:
             or repairable_metadata_error
             or open_ended_done
         ):
+            session.rotate("planner_repair")
             return self._repair_no_task_verdict(
                 original_prompt=prompt,
                 previous_raw_text=text,

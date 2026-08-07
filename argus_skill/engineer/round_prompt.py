@@ -18,6 +18,7 @@ from .checkpoint import shared_checkpoint_instructions
 from .external_work import render_external_work_advisory
 
 if TYPE_CHECKING:
+    from ..core.role_session import RoleSessionCapsule
     from .runner import SupervisedConfig
 
 
@@ -33,6 +34,7 @@ class RoundPromptMixin:
         reviewer_next_action: str | None,
         checkpoint_path: Path | None,
         workdir: Path,
+        role_session: "RoleSessionCapsule",
         on_event: Callable[[dict], None] | None,
     ) -> str:
         # Cross-round role context comes from CHECKPOINT.md, not duplicated
@@ -45,9 +47,16 @@ class RoundPromptMixin:
             reviewer_next_action,
             include_static,
         )
-        checkpoint_block = shared_checkpoint_instructions(
-            checkpoint_path,
-            role="engineer",
+        checkpoint_block = "\n\n".join(
+            block
+            for block in (
+                role_session.prompt_block(),
+                shared_checkpoint_instructions(
+                    checkpoint_path,
+                    role="engineer",
+                ),
+            )
+            if block
         )
         external_work_advisory = render_external_work_advisory(
             workdir,
@@ -69,6 +78,11 @@ class RoundPromptMixin:
                     "prompt_mode": "full" if include_static else "compact",
                     "prompt_chars": len(engineer_prompt),
                     "prompt_estimated_tokens": (len(engineer_prompt) + 3) // 4,
-                    "text": f"engineer round {round_index} (fresh session)",
+                    "role_session_policy": role_session.policy,
+                    "role_session_action": role_session.action,
+                    "text": (
+                        f"engineer round {round_index} "
+                        f"({role_session.action} session)"
+                    ),
             })
         return engineer_prompt

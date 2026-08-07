@@ -102,7 +102,7 @@ def test_reviewer_runner_receives_configured_working_dir(tmp_path: Path) -> None
     assert options.working_dir == str(tmp_path)
 
 
-def test_resume_request_is_ignored_and_full_prompt_is_sent() -> None:
+def test_matching_resume_request_sends_delta_only() -> None:
     backend = MemoryBackend()
     backend.queue("reviewer", CannedResponse(message=_review_json(), thread_id="rv1"))
     backend.queue("reviewer", CannedResponse(message=_review_json("done"), thread_id="rv1"))
@@ -114,12 +114,12 @@ def test_resume_request_is_ignored_and_full_prompt_is_sent() -> None:
     )
     prompts = [p for label, p, _ in backend.history if label == "reviewer"]
     r2 = prompts[1]
-    assert _STATIC_MARKER in r2                # fresh call receives full rubric
-    assert _REEVALUATE not in r2
-    assert _DELTA_HEADER in r2                 # this round's evidence re-attached
-    assert "ROUND TWO WORK" in r2              # this round's summary re-attached
+    assert _STATIC_MARKER not in r2
+    assert _REEVALUATE in r2
+    assert _DELTA_HEADER in r2
+    assert "ROUND TWO WORK" in r2
     resumes = [t for label, t in backend.resume_history if label == "reviewer"]
-    assert resumes == [None, None]
+    assert resumes == [None, "rv1"]
 
 
 def test_stage_change_still_uses_a_fresh_full_prompt() -> None:

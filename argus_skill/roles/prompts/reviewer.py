@@ -319,19 +319,11 @@ def render_reviewer_prompt(
     matched_review_skill_block = ""
     if preselected_skill_block is not None:
         if preselected_skill_block.strip():
-            matched_review_skill_block = (
-                "Skill-library paths shared with the mission. Search them "
-                "independently when prior knowledge may help:\n"
-                f"{preselected_skill_block.strip()}\n\n"
-            )
+            matched_review_skill_block = preselected_skill_block.strip() + "\n\n"
     elif owner.skill_store is not None:
         review_libraries = owner.mission.libraries()
         if review_libraries.block:
-            matched_review_skill_block = (
-                "Reviewer-accessible Skill-library paths. Search and read them "
-                "independently as needed:\n"
-                f"{review_libraries.block}\n\n"
-            )
+            matched_review_skill_block = review_libraries.block + "\n\n"
     stage = prompt_context.stage
     _measured = not _requires_engineering_audit and os.environ.get(
         "ARGUS_SKILL_MEASURED_MODE", ""

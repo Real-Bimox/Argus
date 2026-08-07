@@ -1,0 +1,287 @@
+"""Bounded, role-isolated coding-agent sessions.
+
+The production default remains ``fresh``. ``mission`` and ``rolling`` are
+opt-in policies used to compare resumable sessions against fresh-only backends.
+Each role owns one small durable capsule; no transcript or other role's private
+context is copied into it.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import subprocess
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .secret_guard import known_secret_values, redact_secrets_text
+
+ROLE_SESSION_POLICIES = frozenset({"fresh", "mission", "rolling"})
+ROLE_SESSION_SCHEMA_VERSION = 1
+
+
+def configured_role_session_policy() -> str:
+    policy = os.environ.get("ARGUS_SKILL_ROLE_SESSION_POLICY", "fresh").strip().lower()
+    if policy not in ROLE_SESSION_POLICIES:
+        raise ValueError(
+            "ARGUS_SKILL_ROLE_SESSION_POLICY must be fresh, mission, or rolling"
+        )
+    return policy
+
+
+def objective_revision(objective: str) -> str:
+    return hashlib.sha256(objective.strip().encode("utf-8")).hexdigest()[:16]
+
+
+def _worktree_branch(workdir: Path) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(workdir), "symbolic-ref", "--short", "HEAD"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def _repository_map(workdir: Path) -> list[str]:
+    if not workdir.is_dir():
+        return []
+    return [
+        path.name + ("/" if path.is_dir() else "")
+        for path in sorted(workdir.iterdir(), key=lambda item: item.name)[:80]
+    ]
+
+
+def _checkpoint_open_items(path: str) -> list[str]:
+    if not path:
+        return []
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    items: list[str] = []
+    active = False
+    for line in lines:
+        if line.startswith("#"):
+            active = line.lstrip("# ").strip() == "Open Questions / Blockers"
+            continue
+        if active and line.strip():
+            items.append(line.strip())
+    return items[:20]
+
+
+@dataclass
+class RoleSessionCapsule:
+    role: str
+    policy: str
+    objective_revision: str
+    workdir: str
+    branch: str
+    backend: str
+    model: str
+    checkpoint_path: str = ""
+    thread_id: str = ""
+    turns: int = 0
+    input_tokens: int = 0
+    repository_map: list[str] = field(default_factory=list)
+    inspected_paths: list[str] = field(default_factory=list)
+    decisive_output: str = ""
+    open_hypotheses: list[str] = field(default_factory=list)
+    static_fingerprint: str = ""
+    updated_at: float = 0.0
+    path: Path | None = field(default=None, repr=False)
+    action: str = field(default="fresh", repr=False)
+    rotation_reason: str = field(default="", repr=False)
+
+    @classmethod
+    def open(
+        cls,
+        *,
+        role: str,
+        policy: str,
+        objective_revision: str,
+        workdir: Path,
+        backend: str,
+        model: str,
+        checkpoint_path: Path | None,
+        path: Path | None,
+        seed_thread_id: str | None = None,
+        mission_context_path: str = "",
+    ) -> "RoleSessionCapsule":
+        if policy not in ROLE_SESSION_POLICIES:
+            raise ValueError("role session policy must be fresh, mission, or rolling")
+        branch = "" if policy == "fresh" else _worktree_branch(workdir)
+        payload: dict[str, Any] = {}
+        if policy != "fresh" and path is not None and path.is_file():
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    payload = loaded
+            except (OSError, ValueError):
+                payload = {}
+        expected = {
+            "role": role,
+            "policy": policy,
+            "objective_revision": objective_revision,
+            "workdir": str(workdir),
+            "branch": branch,
+            "backend": backend,
+            "model": model,
+        }
+        changed = next(
+            (name for name, value in expected.items() if payload.get(name) != value),
+            "",
+        )
+        capsule = cls(
+            **expected,
+            checkpoint_path=str(checkpoint_path or ""),
+            path=path,
+        )
+        if payload and not changed:
+            capsule.thread_id = str(payload.get("thread_id") or "")
+            capsule.turns = int(payload.get("turns") or 0)
+            capsule.input_tokens = int(payload.get("input_tokens") or 0)
+            capsule.repository_map = list(payload.get("repository_map") or [])
+            capsule.inspected_paths = list(payload.get("inspected_paths") or [])
+            capsule.decisive_output = str(payload.get("decisive_output") or "")
+            capsule.open_hypotheses = list(payload.get("open_hypotheses") or [])
+            capsule.static_fingerprint = str(payload.get("static_fingerprint") or "")
+        elif payload:
+            capsule.action = "rotated"
+            capsule.rotation_reason = f"{changed}_changed"
+        if not capsule.thread_id and seed_thread_id and policy != "fresh":
+            capsule.thread_id = seed_thread_id
+        if policy == "fresh":
+            return capsule
+        capsule.repository_map = _repository_map(workdir)
+        if mission_context_path:
+            try:
+                mission = json.loads(
+                    Path(mission_context_path).read_text(encoding="utf-8")
+                )
+                capsule.inspected_paths = [
+                    str(ref.get("ref"))
+                    for ref in mission.get("context_refs", [])
+                    if isinstance(ref, dict) and ref.get("ref")
+                ]
+            except (OSError, ValueError, AttributeError):
+                pass
+        capsule.save()
+        return capsule
+
+    def prepare(self, *, max_turns: int, max_input_tokens: int) -> str | None:
+        if self.policy == "fresh":
+            self.thread_id = ""
+            self.action = "fresh"
+            self.rotation_reason = ""
+            return None
+        branch = _worktree_branch(Path(self.workdir))
+        if branch != self.branch:
+            self.branch = branch
+            self.rotate("branch_changed")
+        if self.policy == "rolling" and self.thread_id:
+            if max_turns > 0 and self.turns >= max_turns:
+                self.rotate("turn_limit")
+            elif max_input_tokens > 0 and self.input_tokens >= max_input_tokens:
+                self.rotate("context_limit")
+            else:
+                self.action = "resumed"
+                self.rotation_reason = ""
+        elif self.thread_id:
+            self.action = "resumed"
+            self.rotation_reason = ""
+        elif self.action != "rotated":
+            self.action = "fresh"
+            self.rotation_reason = ""
+        self.save()
+        return self.thread_id or None
+
+    def complete(
+        self,
+        result: Any,
+        *,
+        decisive_output: str = "",
+        static_fingerprint: str = "",
+    ) -> None:
+        if self.action != "resumed":
+            self.turns = 0
+            self.input_tokens = 0
+        self.turns += 1
+        self.input_tokens += int(getattr(result, "input_tokens", 0) or 0)
+        self.thread_id = (
+            ""
+            if self.policy == "fresh"
+            else str(getattr(result, "thread_id", "") or "")
+        )
+        if self.policy == "fresh":
+            return
+        self.decisive_output = redact_secrets_text(
+            decisive_output[:2000], known_values=known_secret_values()
+        )
+        self.open_hypotheses = _checkpoint_open_items(self.checkpoint_path)
+        if static_fingerprint:
+            self.static_fingerprint = static_fingerprint
+        self.repository_map = _repository_map(Path(self.workdir))
+        self.save()
+
+    def rotate(self, reason: str) -> None:
+        self.thread_id = ""
+        self.turns = 0
+        self.input_tokens = 0
+        self.action = "rotated"
+        self.rotation_reason = reason
+        self.save()
+
+    def prompt_block(self) -> str:
+        if self.path is None:
+            return ""
+        return (
+            "## Your role-session capsule\n"
+            f"Path: `{self.path}`\n"
+            "This runtime-owned file contains only your role's compact repository "
+            "map, inspected paths, latest decisive output, open hypotheses, and "
+            "checkpoint pointer. Read it but do not edit it. Use it before broad "
+            "exploration after a fresh or rotated "
+            "backend session. Current mission files and evidence remain "
+            "authoritative; never infer another role's private reasoning."
+        )
+
+    def save(self) -> None:
+        if self.path is None:
+            return
+        self.updated_at = time.time()
+        payload = {
+            "schema_version": ROLE_SESSION_SCHEMA_VERSION,
+            "role": self.role,
+            "policy": self.policy,
+            "objective_revision": self.objective_revision,
+            "workdir": self.workdir,
+            "branch": self.branch,
+            "backend": self.backend,
+            "model": self.model,
+            "checkpoint_path": self.checkpoint_path,
+            "thread_id": self.thread_id,
+            "turns": self.turns,
+            "input_tokens": self.input_tokens,
+            "repository_map": self.repository_map,
+            "inspected_paths": self.inspected_paths,
+            "decisive_output": self.decisive_output,
+            "open_hypotheses": self.open_hypotheses,
+            "static_fingerprint": self.static_fingerprint,
+            "updated_at": self.updated_at,
+        }
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_suffix(".tmp")
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
+
+
+__all__ = [
+    "ROLE_SESSION_POLICIES",
+    "RoleSessionCapsule",
+    "configured_role_session_policy",
+    "objective_revision",
+]

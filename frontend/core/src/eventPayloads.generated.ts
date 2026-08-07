@@ -355,6 +355,25 @@ export interface LifeOperatorQuestionAnsweredEvent extends EventMsg {
   "stopped"?: boolean;
 }
 
+export interface RoleSessionTurnEvent extends EventMsg {
+  type: "role.session.turn";
+  payload_schema_version?: 1;
+  "role": "planner" | "engineer" | "reviewer";
+  "policy": "fresh" | "mission" | "rolling";
+  "action": "fresh" | "resumed" | "rotated";
+  "rotation_reason"?: string;
+  "round_index"?: number;
+  "planning_cycle"?: number;
+  "session_id"?: string;
+  "turns_on_session"?: number;
+  "input_tokens"?: number;
+  "cached_input_tokens"?: number;
+  "duration_ms"?: number;
+  "prompt_chars"?: number;
+  "prompt_estimated_tokens"?: number;
+  "capsule_path"?: string;
+}
+
 export interface EngineerProgressEvent extends EventMsg {
   type: "engineer.progress";
   payload_schema_version?: 1;
@@ -822,6 +841,7 @@ export interface EventPayloadByType {
   "life.inbox.drained": LifeInboxDrainedEvent;
   "life.operator_question.pending": LifeOperatorQuestionPendingEvent;
   "life.operator_question.answered": LifeOperatorQuestionAnsweredEvent;
+  "role.session.turn": RoleSessionTurnEvent;
   "engineer.progress": EngineerProgressEvent;
   "skill.created": SkillCreatedEvent;
   "skill.updated": SkillUpdatedEvent;

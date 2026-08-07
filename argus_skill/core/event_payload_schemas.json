@@ -491,6 +491,26 @@
         "stopped": {"type": "boolean"}
       }
     },
+    "role.session.turn": {
+      "version": 1,
+      "required": ["role", "policy", "action"],
+      "properties": {
+        "role": {"type": "string", "enum": ["planner", "engineer", "reviewer"]},
+        "policy": {"type": "string", "enum": ["fresh", "mission", "rolling"]},
+        "action": {"type": "string", "enum": ["fresh", "resumed", "rotated"]},
+        "rotation_reason": {"type": "string"},
+        "round_index": {"type": "integer", "minimum": 0},
+        "planning_cycle": {"type": "integer", "minimum": 0},
+        "session_id": {"type": "string"},
+        "turns_on_session": {"type": "integer", "minimum": 0},
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "cached_input_tokens": {"type": "integer", "minimum": 0},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "prompt_chars": {"type": "integer", "minimum": 0},
+        "prompt_estimated_tokens": {"type": "integer", "minimum": 0},
+        "capsule_path": {"type": "string"}
+      }
+    },
     "engineer.progress": {
       "version": 1,
       "required": ["kind"],

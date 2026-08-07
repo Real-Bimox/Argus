@@ -109,8 +109,23 @@ class RoundReviewerMixin:
                 )
             except Exception:  # noqa: BLE001 — advisory is non-critical context
                 log.debug("reviewer subagent advisory refresh failed", exc_info=True)
+        reviewer_session = state.reviewer_session
+        reviewer_resume_id = (
+            reviewer_session.prepare(
+                max_turns=supervised_config.role_session_max_turns,
+                max_input_tokens=supervised_config.role_session_max_input_tokens,
+            )
+            if reviewer_session is not None
+            else None
+        )
+        capsule_block = reviewer_session.prompt_block() if reviewer_session else ""
+        if capsule_block:
+            reviewer_background_context = "\n\n".join(
+                part for part in (capsule_block, reviewer_background_context) if part
+            )
+        started_at = time.monotonic()
         try:
-            return self.reviewer.evaluate(
+            review = self.reviewer.evaluate(
                 objective=objective,
                 original_objective=original_objective or objective,
                 operator_messages=_active_manager_directive_for_reviewer(
@@ -146,10 +161,14 @@ class RoundReviewerMixin:
                     else ""
                 ),
                 preselected_skill_block=reviewer_skill_block,
-                resume_thread_id=None,
-                prior_static_fingerprint="",
+                resume_thread_id=reviewer_resume_id,
+                prior_static_fingerprint=(
+                    reviewer_session.static_fingerprint if reviewer_session else ""
+                ),
             )
         except Exception as exc:  # noqa: BLE001
+            if reviewer_session is not None:
+                reviewer_session.rotate("backend_exception")
             msg = f"reviewer raised {type(exc).__name__}: {exc}"
             log.exception("reviewer raised during supervised round")
             return ReviewDecision(
@@ -159,6 +178,44 @@ class RoundReviewerMixin:
                 backend_unavailable=True,
                 backend_stop_kind="backend_unavailable",
             )
+        if reviewer_session is not None:
+            if reviewer_resume_id and not review.session_resumed:
+                reviewer_session.rotate("static_context_changed")
+            reviewer_session.complete(
+                review,
+                decisive_output="\n".join(
+                    part for part in (review.reason, review.next_action) if part
+                ),
+                static_fingerprint=review.static_fingerprint,
+            )
+            if review.backend_unavailable:
+                reviewer_session.rotate("backend_failure")
+        prompt_stats = review.prompt_block_stats or {}
+        prompt_chars = int(
+            (prompt_stats.get("delta_total") or {}).get("chars", 0) or 0
+        )
+        if not review.session_resumed:
+            prompt_chars += int(
+                (prompt_stats.get("static_total") or {}).get("chars", 0) or 0
+            )
+        if on_event and reviewer_session is not None:
+            on_event({
+                "type": EventType.ROLE_SESSION_TURN,
+                "role": "reviewer",
+                "policy": reviewer_session.policy,
+                "action": reviewer_session.action,
+                "rotation_reason": reviewer_session.rotation_reason,
+                "round_index": round_index,
+                "session_id": str(review.thread_id or ""),
+                "turns_on_session": reviewer_session.turns,
+                "input_tokens": int(review.input_tokens or 0),
+                "cached_input_tokens": int(review.cached_input_tokens or 0),
+                "duration_ms": int((time.monotonic() - started_at) * 1000),
+                "prompt_chars": prompt_chars,
+                "prompt_estimated_tokens": (prompt_chars + 3) // 4,
+                "capsule_path": str(reviewer_session.path or ""),
+            })
+        return review
 
     def _invoke_reviewer_with_retry(
         self,

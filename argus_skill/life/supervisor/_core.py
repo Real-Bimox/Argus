@@ -374,6 +374,8 @@ class LifeSupervisor(
                 return "planner superseded by newer continuous generation"
             return None
 
+        from ...core.role_session import objective_revision
+
         workdir = self._planner_workdir()
         state_root = Path(self.memory.root)
         return PlannerConfig(
@@ -389,6 +391,12 @@ class LifeSupervisor(
             dangerous_yolo=not safe_mode,
             open_ended=bool(getattr(self.config, "open_ended", False)),
             external_interrupt_reason_provider=_semantic_interrupt,
+            role_session_path=state_root / "role-sessions" / "planner.json",
+            objective_revision=(
+                f"{expected.generation}:"
+                f"{objective_revision(expected.objective)}"
+            ),
+            on_event=getattr(self.sink, "handle_event", None),
         )
 
     # ------------------------------------------------------------------

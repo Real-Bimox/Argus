@@ -353,6 +353,10 @@ class _RunnerConstructionMixin:
         from ..skills.missions import ManagerMission
 
         self.manager.mission = ManagerMission(store)
+        if self.manager._session is not None:
+            self.manager._session.skill_paths = [
+                str(path) for path in self.manager.mission.libraries().native_paths
+            ]
 
     def stream_to(self, sink: EventSink):
         """Context manager: temporarily route stream lines to *sink*.

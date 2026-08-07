@@ -49,6 +49,7 @@ def test_compatibility_session_knobs_reflect_fresh_policy(monkeypatch) -> None:
     monkeypatch.delenv("ARGUS_SKILL_SHIFT_ROUND_LIMIT", raising=False)
     monkeypatch.delenv("ARGUS_SKILL_THREAD_TOKEN_LIMIT", raising=False)
     config = SupervisedConfig()
+    assert config.role_session_policy == "fresh"
     assert config.shift_round_limit == 1
     assert config.thread_token_limit == 0
 

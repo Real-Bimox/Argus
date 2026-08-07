@@ -766,7 +766,9 @@ class SelfReplyMixin:
         if lean:
             prompt = build_quick_reply_prompt(objective=objective)
             read_dirs = None
+            native_skill_paths: list[str] = []
         else:
+            libraries = self.manager.mission.libraries()
             prompt = build_simple_prompt(
                 objective=objective,
                 identity_card="",
@@ -774,6 +776,9 @@ class SelfReplyMixin:
                 runtime_context=self._manager_reply_runtime_context("simple-1"),
                 operator_workspace=str(workdir),
             )
+            if libraries.block:
+                prompt = libraries.block + "\n\n" + prompt
+            native_skill_paths = [str(path) for path in libraries.native_paths]
             session_root = getattr(self, "_manager_session_root", None)
             read_dirs = (
                 [str(Path(session_root).expanduser())]
@@ -831,6 +836,7 @@ class SelfReplyMixin:
             sandbox_mode=None,
             working_dir=str(workdir),
             add_dirs=read_dirs,
+            skill_paths=native_skill_paths,
             watchdog_hard_idle_seconds=env_int(
                 "ARGUS_SKILL_SELF_HARD_IDLE_SECONDS", 120
             ),

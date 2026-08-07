@@ -138,6 +138,10 @@ class Manager(
         from ..skills.missions import ManagerMission
 
         self.mission = ManagerMission(skill_store)
+        if self._session is not None:
+            self._session.skill_paths = [
+                str(path) for path in self.mission.libraries().native_paths
+            ]
 
     def _task_usage_scope(self, root_task_id: str | None):
         if not root_task_id or self._usage_context_factory is None:
