@@ -88,7 +88,7 @@ Fixed digests are not blindly deleted. Release identity, artifact provenance, im
 - Web: 150 passed; TypeScript and production build passed.
 - TUI: 224 passed; TypeScript and bundled production build passed.
 - Ruff on every changed Python file: passed.
-- Release artifact consistency: `0.1.1+ab8964b18c0862cc` passed.
+- Release artifact consistency: `0.1.1+0c75a0ea6d24a714` passed.
 - Architecture audit report validation: passed.
 
 ## Known follow-up debt

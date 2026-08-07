@@ -359,7 +359,8 @@ def render_markdown(report: dict) -> str:
         symbol = f" `{finding['symbol']}`" if finding["symbol"] else ""
         lines.append(f"- **{finding['severity']}** `{location}`{symbol}: {finding['reason']}")
         if finding["evidence"]:
-            lines.append(f"  - Evidence: `{finding['evidence'].replace('`', "'")}`")
+            evidence = finding["evidence"].replace("`", "'")
+            lines.append(f"  - Evidence: `{evidence}`")
     return "\n".join(lines).rstrip() + "\n"
 
 
