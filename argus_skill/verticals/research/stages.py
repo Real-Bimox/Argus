@@ -83,12 +83,17 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "turning it into a mechanical routing decision; the Planner reads it "
                 "and decides what it changes. A passed wiring-only smoke does not prove "
                 "the thesis. "
+                "Record what the probe established — untested / inconclusive / "
+                "supported / refuted — separately from whether it ran; infrastructure "
+                "failures and under-powered runs leave it unresolved, never negative. "
                 "`argus_skill.skills.signal_derisk validate` is available only for "
                 "the default scalar-comparison shape and never decides quality."
             ),
             evidence_hint=(
                 "Planner-authored research.signal_derisk evidence paths; for the "
-                "default scalar shape use research/SIGNAL_DERISK.json + raw log"
+                "default scalar shape use research/SIGNAL_DERISK.json + raw log; "
+                "verdict in research/ideas/<id>/EVIDENCE.json, checked by "
+                "`...verticals.research.idea_evidence check`"
             ),
         ),
     ),
