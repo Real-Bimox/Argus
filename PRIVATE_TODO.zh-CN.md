@@ -39,8 +39,8 @@
 | ARGUS-P0-03 | P0 | 严重 | 立即 | Manager/contract | 无 |
 | ARGUS-P0-04 | P0 | 高 | 立即 | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | 高 | 下一阶段 | Mission progress/evaluation | P0-02、P0-03、P0-04 |
-| ARGUS-P1-02 | P1 | 高 | 下一阶段 | Agent/session integration | 无；可并行 |
-| ARGUS-P1-03 | P1 | 中 | 下一阶段 | Skill system | 已部分实现 |
+| ARGUS-P1-02 | P1 | 高 | 实验中 | Agent/session integration | 无；可并行 |
+| ARGUS-P1-03 | P1 | 中 | 部分完成 | Skill system | 已部分实现 |
 | ARGUS-P1-04 | P1 | 中 | 下一阶段 | Architecture/verticals | 先建立行为基线 |
 | ARGUS-P1-05 | P1 | 高 | 下一阶段 | Role prompts/UX | P0-03、P0-04 |
 | ARGUS-P1-06 | P1 | 高 | 下一阶段 | Runtime/architecture | 先建立行为基线 |
@@ -239,57 +239,69 @@ invariant 可能暂时破坏已经通过的 obligations；一次完整重构可�
 
 ## ARGUS-P1-02 — 设计有边界的角色会话生命周期
 
+**状态：实验中，基础设施已完成，真实项目评估未完成。** `60060c38` 实现了
+`fresh`、`mission` 和 `rolling` 三种策略；生产默认仍是 `fresh`。确定性回放已证明
+Reviewer resume 只发送 round delta，并在 verdict 不变时减少 prompt 字节。设计、开关、
+回滚和观测字段见 `docs/ROLE_SESSIONS_AND_SKILLS.md`。
+
 **问题。** Manager 会复用 session，而 Planner、Engineer 和 Reviewer 通常每次启动新
 session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增长的 session 又会累积
 过期上下文，降低输出质量。
 
 **工作项**
 
-- [ ] 按角色衡量当前重复探索成本：重复读文件、重复建立仓库地图、prompt Tokens、
-      墙钟时间和纠错率。
-- [ ] 在匹配任务上评估至少三种策略：每轮新 session；每个 mission+role 持久 session；
-      带明确压缩/轮换的滚动 session。
-- [ ] 试做一个小型角色 session capsule，只保存目标版本、仓库地图、已检查路径、关键
-      输出、开放假设和 checkpoint 指针，不复制完整对话。
-- [ ] 定义轮换触发条件：上下文占用、目标/分支变化、重复矛盾、过期路径地图、Reviewer
-      发现的混乱，或模型质量下降。
-- [ ] 保持角色隔离：Reviewer 不继承 Engineer 的私有推理；Planner/Engineer session
-      不能悄悄修改 Manager 管理的状态。
-- [ ] backend 无法恢复 session 时，仍要保证重启行为和 provider 可移植性。
+- [ ] 按角色衡量当前重复探索成本。`role.session.turn` 已记录策略、resume/rotation、
+      prompt 大小、Tokens 和墙钟时间，`agent.io.*` 可还原文件读取；仍需在真实轨迹上统计
+      重复读文件、重复仓库建图和纠错率基线。
+- [ ] 在真实匹配任务上完成三策略配对评估。三种策略和确定性 A/B 回放已经实现，但还没
+      完成可披露的真实项目 replay、人工正确性评审和 ship/revise/stop 决定。
+- [x] 实现小型、按角色隔离的 session capsule：只保存目标版本、仓库地图、已检查路径、
+      最新关键输出、开放问题、checkpoint 指针和会话计数，不保存完整对话。
+- [ ] 完成全部轮换触发。已实现 turn/Token 上限、目标/分支/model/backend 变化、resume
+      失败和 backend 故障轮换，并刷新路径地图；仍需把“重复矛盾、Reviewer 发现混乱、
+      模型质量下降”变成显式角色信号，而不是关键词推断。
+- [x] 保持角色隔离：Planner、Engineer、Reviewer 使用不同 capsule/thread；Reviewer
+      不继承 Engineer 私有推理，角色 session 不写 Manager 管理的 pipeline 状态。
+- [x] backend 无法恢复时丢弃对应 thread，并从持久 capsule、mission packet 和
+      checkpoint 进入新 session；同一设计兼容可恢复和只能新建 session 的 provider。
 
 **验收标准**
 
-- 选定策略在匹配任务上减少重复探索、时间或 Tokens。
-- 正确性和 Reviewer 接受率不下降。
-- 上下文轮换明确、可观测，并能从持久化状态恢复。
-- 设计同时支持可恢复和只能新建 session 的 coding-agent backend。
+- [ ] 选定策略在真实匹配任务上减少重复探索、时间或 Tokens。
+- [ ] 真实项目配对评估确认正确性和 Reviewer 接受率不下降。
+- [x] 上下文轮换明确、可观测，并能从持久化状态和进程重启中恢复。
+- [x] 设计同时支持可恢复和只能新建 session 的 coding-agent backend。
 
 ---
 
 ## ARGUS-P1-03 — 完成 coding-agent 原生、按需使用 Skill 的方案
 
-**状态：已部分实现。** 当前公有基线把 Skill 库路径交给各角色，并明确 runtime 不解析、
-匹配、改写或注入 Skill。coding agent 应在需要时自行发现和读取 Markdown。仍需确认
-所有角色和 backend 都遵循这一约定，并清理 prompt 中重复的大段旧内容。
+**状态：已部分完成。** `43a76917` 完成主要路径审计和按角色发现约定，`60060c38`
+补齐 backend 原生加载/可移植 fallback、Manager wiring 和回归测试。runtime 仍不匹配、
+评分、改写或注入 Skill 正文。尚未完成真实任务上的按需复用质量评估和旧字段迁移删除。
 
 **工作项**
 
-- [ ] 审计四个角色的 prompt 和 backend adapter，找出仍直接注入 Skill 正文或重复
-      固定角色内容的地方。
-- [ ] 定义最小的 coding-agent Skill 发现约定：根目录、角色归属、优先级和何时读取；
-      避免由 harness 做 matcher/scorer。
-- [ ] 测试每个受支持 coding agent 的原生 loader；原生 Skill API 不一致时提供可移植的
-      路径/索引 fallback。
-- [ ] 衡量按需行为：打开了哪些 skills、读取字节/Tokens、有用复用、错误复用、任务
-      成功率和延迟。
-- [ ] Agent 新建的角色 Skill 应立即可发现，不需要重建巨大 prompt 或重启 daemon。
-- [ ] 只有在事件/session 迁移测试确认旧运行仍可读取后，才删除旧兼容字段。
+- [x] 审计 Manager、Planner、Engineer、Reviewer prompt 和 backend adapter；删除 Manager
+      固定角色 Skill、software-grounding Skill 正文的直接注入，并去掉重复路径包装。
+- [x] 定义最小发现约定：project → active vertical/domain → global；同层 OWN 优先、
+      cross-role 仅 REFERENCE；只有 description 明确高匹配时才读取正文，不设 harness
+      matcher/scorer。
+- [x] 覆盖 Codex、Claude、Copilot、OpenCode、Pi adapter：Pi 使用显式 `--skill` 且关闭
+      ambient discovery，其余 backend 使用同一 role-path fallback；已有参数化 contract
+      tests。
+- [ ] 衡量真实按需行为。`skill.library.available` 已记录 roots、OWN/REFERENCE 路径和
+      discovery mode，`agent.io.*` 保留实际文件访问；仍需汇总打开的 Skills、读取字节/
+      Tokens、有用/错误复用、任务成功率和延迟，并做人工相关性判定。
+- [x] Agent 新建的角色 Skill 可从稳定 library root 立即发现；prompt 只持有路径，
+      不需要重建 Skill 正文列表或重启 daemon。
+- [ ] 尚未删除旧兼容字段；必须先增加旧 event/session fixture 的迁移回放并确认仍可读取。
 
 **验收标准**
 
-- 普通 mission prompt 默认不包含完整的非角色 Skill 正文。
-- Agent 能在需要时用工具找到并加载相关 Skill。
-- 按需使用降低 prompt 成本，同时不降低完成质量。
+- [x] 普通 mission prompt 默认不包含完整的非角色 Skill 正文。
+- [x] Agent 能通过原生 Pi loader 或可移植文件工具路径按需找到并加载相关 Skill。
+- [ ] 真实配对评估证明按需使用降低 prompt 成本，同时不降低完成质量。
 
 ---
 

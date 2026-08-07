@@ -45,8 +45,8 @@ not implementation convenience.
 | ARGUS-P0-03 | P0 | Critical | Immediate | Manager/contract | none |
 | ARGUS-P0-04 | P0 | High | Immediate | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | High | Next | Mission progress/evaluation | P0-02, P0-03, P0-04 |
-| ARGUS-P1-02 | P1 | High | Next | Agent/session integration | none; can run in parallel |
-| ARGUS-P1-03 | P1 | Medium | Next | Skill system | partially implemented |
+| ARGUS-P1-02 | P1 | High | Experimenting | Agent/session integration | none; can run in parallel |
+| ARGUS-P1-03 | P1 | Medium | Partially complete | Skill system | partially implemented |
 | ARGUS-P1-04 | P1 | Medium | Next | Architecture/verticals | behavior baseline first |
 | ARGUS-P1-05 | P1 | High | Next | Role prompts/UX | P0-03, P0-04 |
 | ARGUS-P1-06 | P1 | High | Next | Runtime/architecture | behavior baseline first |
@@ -282,65 +282,85 @@ exit conditions.
 
 ## ARGUS-P1-02 — Design a bounded role-session lifecycle
 
+**Status: experimenting; infrastructure is complete, real-project evaluation is
+not.** `60060c38` implements `fresh`, `mission`, and `rolling`; production still
+defaults to `fresh`. A deterministic replay shows that Reviewer resume sends only
+the round delta and reduces prompt bytes without changing the verdict. Design,
+configuration, rollback, and observability are documented in
+`docs/ROLE_SESSIONS_AND_SKILLS.md`.
+
 **Problem.** Manager reuses a session, while Planner, Engineer, and Reviewer normally
 start fresh sessions. Fresh sessions repeat repository exploration and spend time and
 Tokens; indefinitely long sessions accumulate stale context and reduce output quality.
 
 **Work packages**
 
-- [ ] Measure current repeated-exploration cost by role: duplicate file reads,
-      repeated repository mapping, prompt Tokens, wall time, and correction rate.
-- [ ] Evaluate at least three policies on matched tasks:
-      fresh every turn; persistent per mission+role; rolling session with explicit
-      compaction/rotation.
-- [ ] Prototype a small role session capsule containing objective revision,
-      repository map, inspected paths, decisive outputs, open hypotheses, and
-      checkpoint pointer—without copying the full transcript.
-- [ ] Define rotation triggers: context utilization, objective/branch change,
-      repeated contradiction, stale path map, Reviewer-detected confusion, or model
-      quality degradation.
-- [ ] Ensure role isolation: Reviewer never inherits Engineer private reasoning;
-      Planner/Engineer sessions cannot silently change Manager-owned state.
-- [ ] Preserve restart behavior and provider portability when a backend cannot
-      resume sessions.
+- [ ] Measure repeated-exploration cost by role. `role.session.turn` now records
+      policy, resume/rotation, prompt size, Tokens, and wall time, while `agent.io.*`
+      can reconstruct file reads; real traces still need duplicate-read, repository-
+      remapping, and correction-rate baselines.
+- [ ] Complete the three-policy paired evaluation on real matched tasks. All three
+      policies and a deterministic A/B replay exist, but disclosure-safe project
+      replays, blinded correctness review, and a ship/revise/stop decision remain.
+- [x] Implement a small role-isolated capsule containing only objective revision,
+      repository map, inspected paths, latest decisive output, open items,
+      checkpoint pointer, and session counters—not the transcript.
+- [ ] Complete every rotation trigger. Turn/Token limits, objective/branch/model/
+      backend changes, resume failure, backend failure, and path-map refresh are
+      implemented. Repeated contradiction, Reviewer-detected confusion, and model
+      quality degradation still need explicit role signals rather than keyword rules.
+- [x] Isolate Planner, Engineer, and Reviewer capsules/threads. Reviewer does not
+      inherit Engineer private reasoning, and role sessions do not write
+      Manager-owned pipeline state.
+- [x] Drop only the affected thread after resume/backend failure and restart from
+      the durable capsule, mission packet, and checkpoint; the same design supports
+      resumable and fresh-only providers.
 
 **Acceptance criteria**
 
-- A selected policy reduces repeated exploration/time/Tokens on matched tasks.
-- Correctness and Reviewer acceptance do not regress.
-- Context rotation is explicit, observable, and recoverable from durable state.
-- The design works with both resumable and fresh-only coding-agent backends.
+- [ ] A selected policy reduces repeated exploration/time/Tokens on real matched tasks.
+- [ ] Real-project paired evaluation confirms correctness and Reviewer acceptance do
+      not regress.
+- [x] Context rotation is explicit, observable, and recoverable across process restart.
+- [x] The design works with resumable and fresh-only coding-agent backends.
 
 ---
 
 ## ARGUS-P1-03 — Finish coding-agent-native, on-demand Skill use
 
-**Status: partially implemented.** Current public baseline passes Skill library paths
-to roles and states that no Skill is parsed, matched, adapted, or injected by the
-runtime. Coding agents are expected to discover/read Markdown on demand. We still
-need to verify that all roles and backends follow this contract and that no large
-legacy body remains duplicated in prompts.
+**Status: partially complete.** `43a76917` completed the main prompt audit and
+role-owned discovery contract; `60060c38` added native-loader/portable-fallback
+wiring, Manager integration, and regression tests. The runtime still does not match,
+score, rewrite, or inject Skill bodies. Real-task reuse-quality evaluation and legacy
+field migration/removal remain.
 
 **Work packages**
 
-- [ ] Audit all four role prompts and backend adapters for remaining direct Skill
-      body injection or duplicate fixed-role content.
-- [ ] Define a minimal coding-agent Skill discovery contract: roots, role ownership,
-      precedence, and when to read; avoid a harness-side matcher/scorer.
-- [ ] Test native loaders for each supported coding agent and provide a portable
-      path/index fallback where native Skill APIs differ.
-- [ ] Measure on-demand behavior: skills opened, bytes/Tokens read, useful reuse,
-      false reuse, task success, and latency.
-- [ ] Ensure Agent-created role Skills are immediately discoverable without
-      rebuilding a giant prompt or restarting the daemon.
-- [ ] Remove legacy compatibility fields only after event/session migration tests
-      confirm old runs remain readable.
+- [x] Audit Manager, Planner, Engineer, and Reviewer prompts and backend adapters;
+      remove direct Manager role-Skill and software-grounding Skill-body injection,
+      plus duplicate path wrappers.
+- [x] Define the minimal contract: project → active vertical/domain → global; OWN
+      guidance precedes cross-role REFERENCE guidance within a layer; read a body
+      only after a clearly high-fit description, with no harness matcher/scorer.
+- [x] Cover Codex, Claude, Copilot, OpenCode, and Pi adapters. Pi uses explicit
+      `--skill` with ambient discovery disabled; the other backends use the same
+      role-path fallback. Parameterized contract tests cover the matrix.
+- [ ] Measure real on-demand behavior. `skill.library.available` now records roots,
+      OWN/REFERENCE paths, and discovery mode, and `agent.io.*` retains actual file
+      access; aggregation of opened Skills, bytes/Tokens, useful/false reuse, task
+      success, and latency plus human relevance review remains.
+- [x] Make Agent-authored role Skills immediately discoverable from stable library
+      roots; prompts retain paths rather than a body snapshot, so no daemon restart
+      or giant-prompt rebuild is required.
+- [ ] Keep legacy compatibility fields until migration replays with old event/session
+      fixtures prove that existing runs remain readable; no fields were removed yet.
 
 **Acceptance criteria**
 
-- No ordinary mission prompt contains full non-role Skill bodies by default.
-- Agents can find and load relevant Skills with tools only when needed.
-- On-demand use lowers prompt cost without reducing completion quality.
+- [x] No ordinary mission prompt contains full non-role Skill bodies by default.
+- [x] Agents can load relevant Skills on demand through Pi's native loader or the
+      portable file-tool paths.
+- [ ] Real paired evaluation proves lower prompt cost without lower completion quality.
 
 ---
 
