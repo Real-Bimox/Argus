@@ -380,6 +380,8 @@ dependency direction and makes a new vertical inherit assumptions from another.
 **Problem.** Some Argus messages read like generated process notes: they repeat the
 request, pile up headings, use abstract language, and bury the result. Users should
 not have to decode the output to learn what happened or what Argus needs from them.
+A bare verdict such as `NO-GO` is a common example: it may be useful internally, but
+it tells the user neither what failed nor what happens next.
 
 Argus should write like a good teammate. Lead with the result, explain the important
 tradeoff in plain language, point to concrete evidence, and say when the answer is
@@ -393,6 +395,10 @@ adding a human persona or exposing a raw thought transcript.
       hard to read or obviously machine-written. Pair each with a short human rewrite.
 - [ ] Keep internal role traffic out of user-facing messages unless it helps the user
       make a decision or understand a failure.
+- [ ] Do not show bare internal verdicts such as `GO`, `NO-GO`, `REVISE`, or
+      `BLOCKED`. If a status is useful, follow it with a plain-language reason and the
+      next action. For example: “Cannot continue yet: the validator still fails on X.
+      Argus will try Y next; no user action is needed.”
 - [ ] Put the answer or current status first. Follow with the reason, evidence, and
       next action only when they add value.
 - [ ] Replace generic claims with concrete facts: the file changed, test that failed,
@@ -416,6 +422,8 @@ adding a human persona or exposing a raw thought transcript.
   accurately, with no drop in factual correctness.
 - Uncertainty and changes of mind are stated plainly rather than hidden behind a
   confident summary.
+- No user-facing message stops at a label such as `NO-GO`; it says what is blocked,
+  why, and what Argus or the user should do next.
 - Questions are understandable without knowing Argus’s internal role vocabulary.
 
 ---
