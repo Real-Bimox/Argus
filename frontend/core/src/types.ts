@@ -278,7 +278,7 @@ export interface MissionStorageView {
 }
 
 export interface MissionView {
-  schema_version: 2;
+  schema_version: 3;
   bootstrapped?: boolean;
   mission: {
     id: string;
@@ -304,6 +304,7 @@ export interface MissionView {
   storage: MissionStorageView;
   achievement: MissionAchievement | null;
   review: { status: string; reason: string; rejected_attempts: number };
+  frontier: { change: string; summary: string; updated_at: number };
   outcome: Partial<MissionOutcomeDimensions>;
   last_event_ts: number;
   updated_at: number;

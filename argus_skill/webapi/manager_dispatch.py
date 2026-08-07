@@ -4,9 +4,7 @@ Extracted from ``manager_bridge.py`` as part of a behavior-preserving
 decomposition. Owns the classify/control/config/SELF/TEAM phase helpers used
 by ``manager_message`` (handoff building, authorization/steer/pause/abort control,
 config-intent application, triage fallbacks, and mission dispatch), plus the
-execution/continuous/bounded handoff entry points. Public names are
-re-exported from ``manager_bridge`` unchanged so existing imports/monkeypatches
-keep working.
+execution/continuous/bounded handoff entry points.
 """
 
 from __future__ import annotations
@@ -20,22 +18,13 @@ from .manager_pending_question import (
     _emit_ui_turn,
     _resolve_pending_question_with_manager,
 )
-from .manager_state import _STATES, _chat_state_for, _rotate_after
+from .manager_state import _STATES, _chat_state_for, _lock_for, _rotate_after
 
 _NO_DISPATCH_FALLBACK = (
     "[not dispatched] The Manager kept this request inline as instructed, but "
     "could not complete the read-only reply. No task was queued and no daemon "
     "was started."
 )
-
-
-def _bridge():
-    """Lazily resolve ``manager_bridge`` so tests that monkeypatch
-    ``manager_bridge._lock_for`` / ``manager_bridge._authorization_workdir``
-    still take effect for calls made from this module."""
-    from . import manager_bridge
-
-    return manager_bridge
 
 
 def _authorization_workdir(
@@ -72,7 +61,7 @@ def manager_execution_handoff(
         fingerprint=sid,
         global_root=Path(global_root) if global_root else None,
     )
-    with _bridge()._lock_for(sid):
+    with _lock_for(sid):
         chat_state = _chat_state_for(sid)
         chat_state["session_id"] = sid
         chat_state["global_root"] = str(mem.global_root)
@@ -99,7 +88,7 @@ def manager_continuous_handoff(
         fingerprint=sid,
         global_root=Path(global_root) if global_root else None,
     )
-    with _bridge()._lock_for(sid):
+    with _lock_for(sid):
         chat_state = _chat_state_for(sid)
         chat_state["session_id"] = sid
         chat_state["global_root"] = str(mem.global_root)
@@ -122,7 +111,7 @@ def disable_manager_continuous(
     from ..daemon.state import disable_continuous_config
     from ..manager.front_door import ManagerHandoffError
 
-    with _bridge()._lock_for(sid):
+    with _lock_for(sid):
         persisted = disable_continuous_config(life_dir)
         if persisted.enabled:
             raise ManagerHandoffError("continuous stop could not be persisted")
@@ -151,7 +140,7 @@ def manager_bounded_handoff(
         fingerprint=sid,
         global_root=Path(global_root) if global_root else None,
     )
-    with _bridge()._lock_for(sid):
+    with _lock_for(sid):
         chat_state = _chat_state_for(sid)
         chat_state["session_id"] = sid
         chat_state["global_root"] = str(mem.global_root)
@@ -526,7 +515,7 @@ def _handle_authorization_control(
     try:
         control_store = CampaignControlStore(
             life_dir,
-            project_root=_bridge()._authorization_workdir(chat_state, life_dir),
+            project_root=_authorization_workdir(chat_state, life_dir),
         )
         head = control_store.read_head()
         snapshot = control_store.read_snapshot(head)

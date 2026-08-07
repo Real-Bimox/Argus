@@ -24,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from ...core.integrity_gate import IntegrityIssue, citation_integrity, scorer_integrity
+from .integrity_gate import IntegrityIssue, citation_integrity, scorer_integrity
 
 __all__ = ["check_citations", "check_scores", "main"]
 

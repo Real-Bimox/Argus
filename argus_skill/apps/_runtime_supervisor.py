@@ -57,7 +57,7 @@ def _paper_mission_for_project_root(project_root: Path | str) -> bool:
         if resolve_workflow_mode(root) == "direct":
             return False
         vertical = persisted
-        return vertical_completion_gate(load_vertical(vertical, project_root=root)) == "full_paper"
+        return vertical_completion_gate(load_vertical(vertical, project_root=root)) == "certified"
     except Exception:  # noqa: BLE001 — mission typing must fail safe
         return False
 
@@ -132,7 +132,7 @@ def _build_supervisor_config(
         continuous=continuous,
         continuous_objective=continuous_objective,
         open_ended=open_ended,
-        full_paper_gate=paper_mission and open_ended,
+        final_certification_gate=paper_mission and open_ended,
         paper_mission=paper_mission,
         project_state_dir=project_root,
         artifact_root=artifact_root or project_root,

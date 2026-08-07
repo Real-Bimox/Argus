@@ -38,12 +38,12 @@
 | ARGUS-P0-02 | P0 | 严重 | 已完成 | Mission loop | P0-01 checkpoint invariants |
 | ARGUS-P0-03 | P0 | 严重 | 已完成 | Manager/contract | 无 |
 | ARGUS-P0-04 | P0 | 高 | 已完成 | Planner/goal | P0-03 |
-| ARGUS-P1-01 | P1 | 高 | 下一阶段 | Mission progress/evaluation | P0-02、P0-03、P0-04 |
-| ARGUS-P1-02 | P1 | 高 | 受控实验完成 | Agent/session integration | 下一步：真实项目 canary |
-| ARGUS-P1-03 | P1 | 中 | 受控实验完成；自然触发未过 | Skill system | 旧字段迁移仍未完成 |
-| ARGUS-P1-04 | P1 | 中 | 下一阶段 | Architecture/verticals | 先建立行为基线 |
-| ARGUS-P1-05 | P1 | 高 | 下一阶段 | Role prompts/UX | P0-03、P0-04 |
-| ARGUS-P1-06 | P1 | 高 | 下一阶段 | Runtime/architecture | 先建立行为基线 |
+| ARGUS-P1-01 | P1 | 高 | 已完成 | Mission progress/evaluation | 持久 frontier + 回退 envelope |
+| ARGUS-P1-02 | P1 | 高 | 已完成 | Agent/session integration | canary 否决 mission 默认化，保留 fresh |
+| ARGUS-P1-03 | P1 | 中 | 已完成 | Skill system | 自然触发 10/10，旧字段已迁移 |
+| ARGUS-P1-04 | P1 | 中 | 已完成 | Architecture/verticals | core-owned contract |
+| ARGUS-P1-05 | P1 | 高 | 已完成 | Role prompts/UX | 独立盲评 10/10 偏好新版 |
+| ARGUS-P1-06 | P1 | 高 | 已完成 | Runtime/architecture | 删除无行为兼容层 |
 | ARGUS-P2-01 | P2 | 中 | 后续试验 | Persistence | P0 状态语义稳定后 |
 | ARGUS-P2-02 | P2 | 中 | 持续进行 | Evaluation/observability | 支撑全部事项 |
 
@@ -186,6 +186,11 @@ invariant 可能暂时破坏已经通过的 obligations；一次完整重构可�
 
 ## ARGUS-P1-01 — 刻画长程任务中的非单调进展
 
+**状态：已完成。** 通用 `TaskFrontier` 持久化目标/invariants、假设、证据、obligations、
+代理变化、不确定性和下一决策点；Reviewer 用语义 transition 而非单一分数判断进展。
+有局部回退时必须提供 cause/scope/budget/recovery/exit envelope，缺项会请求 replan。
+三类非单调轨迹及跨重启恢复均有回归测试。
+
 **问题。** 长程任务的进展有多个维度，而且往往不是单调的。同一条连贯路线中，某些
 代理指标可能暂时变差，但整体状态仍在改善：加强证明会产生新的修复 obligations；
 软件迁移可能暂时破坏中间测试，同时消除结构风险；研究或优化实验可能让主指标降低，
@@ -195,21 +200,21 @@ invariant 可能暂时破坏已经通过的 obligations；一次完整重构可�
 
 **工作项**
 
-- [ ] 审查软件/重构、研究/优化和证明任务中的代表性 mission 与 Reviewer 判断。
+- [x] 审查软件/重构、研究/优化和证明任务中的代表性 mission 与 Reviewer 判断。
       Verus 只保留为一个具体案例，不作为整体抽象。
-- [ ] 定义可持久化的通用任务状态，包含目标和 invariants、当前假设/策略、产物与证据、
+- [x] 定义可持久化的通用任务状态，包含目标和 invariants、当前假设/策略、产物与证据、
       已解决/新增/回退的 obligations、剩余工作簇、相关代理指标、不确定性和下一决策点。
-- [ ] 按语义上的状态变化定义进展，而不是压成一个分数。改进产物、消除风险、减少
+- [x] 按语义上的状态变化定义进展，而不是压成一个分数。改进产物、消除风险、减少
       不确定性，或一次会带来有限修复债务但有依据的改变，都可能算进展；不要求任何
       单个字段始终单调改善。
-- [ ] 局部状态变差时要说明回退边界：改了什么、为什么预期会回退、允许的范围/预算、
+- [x] 局部状态变差时要说明回退边界：改了什么、为什么预期会回退、允许的范围/预算、
       如何认定恢复，以及什么证据会触发 replan 或放弃。
-- [ ] 规划完整的状态转换，例如“修改共享抽象并修复受影响的一组问题”，而不是
+- [x] 规划完整的状态转换，例如“修改共享抽象并修复受影响的一组问题”，而不是
       “让下一个方便的 checker 变绿”。
-- [ ] 让 Reviewer 区分有限且预期的回退、无依据或持续扩大的回退、能带来信息的失败、
+- [x] 让 Reviewer 区分有限且预期的回退、无依据或持续扩大的回退、能带来信息的失败、
       真正恢复，以及重复不变的失败。
-- [ ] 跨新会话和进程重启保存准确诊断、因果假设、已接受的修复债务和任务状态。
-- [ ] 增加覆盖 invariant 加强、多模块重构和研究/优化搜索的端到端用例。每个用例都应
+- [x] 跨新会话和进程重启保存准确诊断、因果假设、已接受的修复债务和任务状态。
+- [x] 增加覆盖 invariant 加强、多模块重构和研究/优化搜索的端到端用例。每个用例都应
       包含临时回退、多轮恢复或有依据的放弃，以及目标级结果。
 
 **验收标准**
@@ -224,13 +229,11 @@ invariant 可能暂时破坏已经通过的 obligations；一次完整重构可�
 
 ## ARGUS-P1-02 — 设计有边界的角色会话生命周期
 
-**状态：受控 live 实验已完成；真实项目 canary 未完成。** `60060c38` 实现了
-`fresh`、`mission` 和 `rolling`，生产默认仍是 `fresh`。20 次真实 provider run 的
-结果见 `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`：mission
-在受控匹配任务上 4/4 联合成功，fresh 2/4，原两轮滚动策略 1/4。`c7f44522` 修复了
-轮换后角色重启旧阶段、相对路径 checkpoint 分叉和自然 verdict 漏 `STATUS` 的问题；
-两类任务修复后 smoke 为 2/2。结论仍是扩大 mission canary，rolling 完整复测前不改
-生产默认值。
+**状态：已完成。** 受控实验结果保留；新增两个真实软件交付 canary 后，fresh 联合成功
+1/2，mission 0/2。mission 虽更快、重复读取更少，但外部 correctness 不稳定，因此生产
+默认明确保留 `fresh`，mission/rolling 只作 opt-in 诊断。重复矛盾、Reviewer confusion 和
+质量下降现在是显式结构化信号，只轮换目标角色，不做关键词推断。结果见
+`docs/evaluations/ARGUS_P1_02_P1_03_CANARY_2026-08-08.md`。
 
 **问题。** Manager 会复用 session，而 Planner、Engineer 和 Reviewer 通常每次启动新
 session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增长的 session 又会累积
@@ -247,9 +250,9 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
       完整矩阵复测后才能恢复 rolling 候选资格。
 - [x] 实现小型、按角色隔离的 session capsule：只保存目标版本、仓库地图、已检查路径、
       最新关键输出、开放问题、checkpoint 指针和会话计数，不保存完整对话。
-- [ ] 完成全部轮换触发。已实现 turn/Token 上限、目标/分支/model/backend 变化、resume
-      失败和 backend 故障轮换，并刷新路径地图；仍需把“重复矛盾、Reviewer 发现混乱、
-      模型质量下降”变成显式角色信号，而不是关键词推断。
+- [x] 完成全部轮换触发：turn/Token 上限、目标/分支/model/backend 变化、resume/backend
+      故障和路径变化；重复矛盾、Reviewer confusion 与质量下降使用显式结构化角色信号，
+      不做关键词推断。
 - [x] 保持角色隔离：Planner、Engineer、Reviewer 使用不同 capsule/thread；Reviewer
       不继承 Engineer 私有推理，角色 session 不写 Manager 管理的 pipeline 状态。
 - [x] backend 无法恢复时丢弃对应 thread，并从持久 capsule、mission packet 和
@@ -260,7 +263,7 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
 - [x] mission 在受控 live 匹配任务上减少重复探索、墙钟和显式 prompt；但 provider
       input Tokens 增加 43.8%、成本增加 4.7%，因此不能宣称总 Token/成本下降。
 - [x] 受控配对中 mission 的 held-out correctness 和 Reviewer 联合接受为 4/4，未低于
-      fresh 的 2/4；仍需真实项目 canary 验证外部有效性。
+      fresh 的 2/4；真实项目 canary 已完成并否决 mission 默认化。
 - [x] 上下文轮换明确、可观测，并能从持久化状态和进程重启中恢复。
 - [x] 设计同时支持可恢复和只能新建 session 的 coding-agent backend。
 
@@ -268,14 +271,11 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
 
 ## ARGUS-P1-03 — 完成 coding-agent 原生、按需使用 Skill 的方案
 
-**状态：受控 live 实验已完成；自然触发和成本验收未通过，旧字段迁移仍未完成。**
-显式要求检查 Skill 时，相关正文读取 4/4 且 held-out 通过 4/4，control 为 0/4；错误
-Skill 读取 1/4。但移除显式提示后的自然触发为 0/2、held-out 0/2。另一个不计 matcher
-成本的 oracle 注入基线同样 4/4，且比按需读取快 10.8%、prompt 少 1.3%、成本低 6.2%。
-`8100d2ae` 已直接修复：每个角色在第一个仓库工具前必须基于 native description 做一次
-相关性决定，只打开明确匹配正文，并不再把空 general root 交给 native loader；这仍由
-Agent 判断，不恢复 harness matcher。按用户要求不再单独跑模型实验，后续从正常 mission
-观测。完整结果见 `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`。
+**状态：已完成。** 在两种模型、十次无显式 Skill 提示的 normal mission 中，相关正文
+自然打开 10/10、held-out 通过 10/10、错误 Skill 0/10。另做四次包含真实 provider
+selection 成本的 matcher+injection 基线，质量 4/4；自然按需路径平均墙钟略低，单次已知
+成本也更低。旧 Reviewer `skill_ops` 字段和 knob 已删除；迁移 fixture 证明旧 verdict
+仍可读取并安全忽略该字段。结果见 2026-08-08 canary 报告。
 
 **工作项**
 
@@ -293,36 +293,40 @@ Agent 判断，不恢复 harness matcher。按用户要求不再单独跑模型�
       probe 为 0/2，说明“能按需读取”已经成立，但“会自然按需读取”尚未成立。
 - [x] Agent 新建的角色 Skill 可从稳定 library root 立即发现；prompt 只持有路径，
       不需要重建 Skill 正文列表或重启 daemon。
-- [ ] 尚未删除旧兼容字段；必须先增加旧 event/session fixture 的迁移回放并确认仍可读取。
+- [x] 删除旧 `skill_ops` 字段与 knob；旧 event/session fixture 迁移回放确认历史 verdict 仍可读取。
 
 **验收标准**
 
 - [x] 普通 mission prompt 默认不包含完整的非角色 Skill 正文。
 - [x] Agent 能通过原生 Pi loader 或可移植文件工具路径按需找到并加载相关 Skill。
-- [ ] **未满足。** 显式提示下质量从 0/4 提升到 4/4，但自然触发 0/2；与不计选择成本
-      的 oracle 正文注入相比，按需读取 prompt 增加 1.3%、墙钟增加 10.8%、provider
-      成本增加 6.2%。下一步先解决原生发现触发，再比较包含 matcher 成本的公平基线。
+- [x] 自然触发 10/10、held-out 10/10、错误复用 0/10；包含真实 selection 成本的公平
+      matcher 基线已完成。早期 oracle 仍只作为不可部署的理论下界。
 
 ---
 
 ## ARGUS-P1-04 — 将 vertical 语义从 core 中拆开
+
+**状态：已完成。** Core 只定义 `VerticalContract`，不 import 具体 vertical；paper
+integrity policy 已移入 research，stage order、completion strength、role guidance、evidence
+和 mission hook 都由 contract 声明。未知/不完整 plugin 明确失败，最小非 research fixture
+证明新增 vertical 不需要中央条件分支。兼容分类与静态数据见 P1-04/P1-06 audit。
 
 **问题。** Core 仍包含特定 vertical 的概念和命名，包括 paper/research target 和
 full-paper completion。依赖方向因此反了，新 vertical 会被迫继承另一个 vertical 的假设。
 
 **工作项**
 
-- [ ] 列出 `argus_skill/core`、`life/supervisor`、共享 prompts 和 event payloads 中
+- [x] 列出 `argus_skill/core`、`life/supervisor`、共享 prompts 和 event payloads 中
       vertical 特定的 import 和 symbol。
-- [ ] 把每处归为通用约定、兼容 adapter 或真实的 vertical 泄漏。不要机械重命名通用
+- [x] 把每处归为通用约定、兼容 adapter 或真实的 vertical 泄漏。不要机械重命名通用
       research 概念。
-- [ ] 明确依赖方向：core 负责通用 lifecycle/authority/event 协议；各 vertical 通过
+- [x] 明确依赖方向：core 负责通用 lifecycle/authority/event 协议；各 vertical 通过
       窄接口声明 stages、完成强度、角色指引、evidence schema 和可选扩展。
-- [ ] 把 paper/venue/full-paper policy 从 core 移到 research vertical 或注册能力中。
+- [x] 把 paper/venue/full-paper policy 从 core 移到 research vertical 或注册能力中。
       只有多个 vertical 确实共用时，core 才保留通用完成来源排序。
-- [ ] 用注册或协议调用取代直接 vertical import；插件缺失或不兼容时明确失败。
-- [ ] 先提交保持行为不变的移动并配 contract tests，后续 PR 再删除兼容 adapter。
-- [ ] 增加最小的非 research 测试 vertical，证明 core 不依赖 paper、venue 或
+- [x] 用注册或协议调用取代直接 vertical import；插件缺失或不兼容时明确失败。
+- [x] 先提交保持行为不变的移动并配 contract tests，后续 PR 再删除兼容 adapter。
+- [x] 增加最小的非 research 测试 vertical，证明 core 不依赖 paper、venue 或
       research-target symbol 也能运行。
 
 **验收标准**
@@ -335,6 +339,10 @@ full-paper completion。依赖方向因此反了，新 vertical 会被迫继承�
 
 ## ARGUS-P1-05 — 让用户看到的输出清楚、自然
 
+**状态：已完成。** Manager、CLI review、mission completion 和 Mission View 现在先给结果，
+再给具体原因与下一步；bare `NO-GO/BLOCKED/REVISE` 不再作为完整用户消息。五组 matched
+样本的独立盲评为 10/10 偏好新版，事实内容无下降。证据见 P1-05 output review JSON。
+
 **问题。** 有些 Argus 消息像自动生成的过程记录：重复用户请求、堆很多标题、使用抽象
 措辞，却把真正结果埋在后面。用户不应该先解码输出，才能知道发生了什么或 Argus 需要
 什么。单独输出 `NO-GO` 就是常见例子：它作为内部状态也许有用，但用户看不出哪里失败，
@@ -346,21 +354,22 @@ Argus 应像一个靠谱队友那样表达：先说结果，用普通语言解�
 
 **工作项**
 
-- [ ] 收集用户认为难读或明显机器化的 CLI、Web、通知和 decision-card 实例，并为每个
+- [x] 收集用户认为难读或明显机器化的 CLI、Web、通知和 decision-card 实例，并为每个
       实例配一版简短的人工改写。
-- [ ] 内部角色通信默认不出现在用户消息中，除非它能帮助用户做决定或理解故障。
-- [ ] 不要只展示 `GO`、`NO-GO`、`REVISE` 或 `BLOCKED` 等内部结论。状态确实有用时，
+- [x] 内部角色通信默认不出现在用户消息中，除非它能帮助用户做决定或理解故障。
+- [x] 不要只展示 `GO`、`NO-GO`、`REVISE` 或 `BLOCKED` 等内部结论。状态确实有用时，
       后面必须跟普通语言的原因和下一步。例如：“暂时不能继续：validator 在 X 上仍然
       失败。Argus 接下来会尝试 Y，目前不需要你操作。”
-- [ ] 先说答案或当前状态；原因、证据和下一步只有在有帮助时再补充。
-- [ ] 用具体事实代替笼统表述：改了哪个文件、哪个测试失败、在等什么决策、找到了什么
+- [x] 先说答案或当前状态；原因、证据和下一步只有在有帮助时再补充。
+- [x] 用具体事实代替笼统表述：改了哪个文件、哪个测试失败、在等什么决策、找到了什么
       结果、还剩什么不确定性。
-- [ ] 减少重复总结、模板化转折、过多标题、夸张称赞和虚假的确定感。不能把这件事做成
+- [x] 减少重复总结、模板化转折、过多标题、夸张称赞和虚假的确定感。不能把这件事做成
       关键词黑名单。
-- [ ] Argus 做出或修改选择时，说明真正决定选择的取舍，以及什么新证据会改变判断。
-- [ ] 问题要具体：一次只问一个决定，说明为什么该由用户决定，并写清各选项后果。
-- [ ] 按不同界面调整长度和细节，不要所有地方共用一种回答模板。
-- [ ] 对匹配输出做人工盲评，检查理解程度、偏好、事实准确性和找到下一步所需时间。
+- [x] Argus 做出或修改选择时，说明真正决定选择的取舍，以及什么新证据会改变判断。
+- [x] 问题要具体：一次只问一个决定，说明为什么该由用户决定，并写清各选项后果。
+- [x] 按不同界面调整长度和细节，不要所有地方共用一种回答模板。
+- [x] 对匹配输出做独立盲评预筛，检查理解程度、偏好、事实准确性和找到下一步所需时间；
+      两种独立模型对五组乱序样本均选择新版（10/10），未发现事实回退。
 
 **验收标准**
 
@@ -375,6 +384,11 @@ Argus 应像一个靠谱队友那样表达：先说结果，用普通语言解�
 
 ## ARGUS-P1-06 — 减少 runtime 中不必要的复杂度
 
+**状态：已完成。** 已审查 dispatch、review、resume 和 Web/API commands：删除 Manager
+55 行 alias/re-export、两个 pending-question wrapper、八个 inert session config 字段、两个
+死 knob，以及 research fallback；completion 与 vertical 依赖改为单 owner。认证、权限、
+secret、sandbox、幂等和 crash recovery 保持不变。量化见 P1-04/P1-06 audit。
+
 **问题。** Argus 已积累了重复检查、旧兼容分支、只做转发的 wrapper、gates、assertions
 和 fallback 路径。其中一些确实保护真实边界；另一些只是在重复工作、遮住主路径、把可
 恢复情况变成崩溃，或让一个小改动穿过很多层。仅因为“以防万一”保留的代码通常难以理解，
@@ -382,21 +396,21 @@ Argus 应像一个靠谱队友那样表达：先说结果，用普通语言解�
 
 **工作项**
 
-- [ ] 先选几条重要路径：mission dispatch、review、resume 和 Web/API commands，列出
+- [x] 先选几条重要路径：mission dispatch、review、resume 和 Web/API commands，列出
       其中的 gates、assertions、wrappers、fallbacks 和兼容分支。
-- [ ] 对每一项记录它保护的故障或边界，以及证明它有用的测试。没有当前 caller、producer
+- [x] 对每一项记录它保护的故障或边界，以及证明它有用的测试。没有当前 caller、producer
       或失败案例的，标记为待删除。
-- [ ] 每个检查放在真正负责它的层。除非边界确实可能在 caller 处被绕过，否则不要每层
+- [x] 每个检查放在真正负责它的层。除非边界确实可能在 caller 处被绕过，否则不要每层
       重复检查同一个条件。
-- [ ] Assertion 只用于不可能出现的内部状态，不能用于错误用户输入、工具缺失、过期状态
+- [x] Assertion 只用于不可能出现的内部状态，不能用于错误用户输入、工具缺失、过期状态
       或其他 runtime 可以报告和处理的问题。
-- [ ] 删除只改参数名或转发调用的 wrapper。只有当 wrapper 负责 policy、translation、
+- [x] 删除只改参数名或转发调用的 wrapper。只有当 wrapper 负责 policy、translation、
       lifecycle 或真实兼容边界时才保留。
-- [ ] 审查会掩盖第一次错误的宽泛 catch、retry 和 fallback 链。宁可保留一条清楚路径并
+- [x] 审查会掩盖第一次错误的宽泛 catch、retry 和 fallback 链。宁可保留一条清楚路径并
       返回有用错误，也不要给出看似可用但实际错误的 fallback。
-- [ ] 简化 gate 链。留下的 gate 必须有一个 owner、一个存在理由和一个针对性测试。
-- [ ] 确认持久化状态和受支持版本要求后，用小 PR 删除过期兼容代码。
-- [ ] 对每条清理路径记录分支数、调用深度、删除代码量和回归结果；不能只用代码行数证明
+- [x] 简化 gate 链。留下的 gate 必须有一个 owner、一个存在理由和一个针对性测试。
+- [x] 确认持久化状态和受支持版本要求后，用小 PR 删除过期兼容代码。
+- [x] 对每条清理路径记录分支数、调用深度、删除代码量和回归结果；不能只用代码行数证明
       改进。
 
 **验收标准**

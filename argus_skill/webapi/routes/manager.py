@@ -39,7 +39,8 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         if not body.text.strip():
             raise HTTPException(status_code=400, detail="empty message")
         project_root = ctx.project_root_or_404(sid)
-        from ..manager_bridge import manager_message, record_task_dispatch_ack
+        from ..manager_bridge import manager_message
+        from ..manager_pending_question import record_task_dispatch_ack
 
         result = await run_in_threadpool(
             manager_message, sid, body.text, global_root=project_root
@@ -87,7 +88,8 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         if not body.text.strip():
             raise HTTPException(status_code=400, detail="empty message")
         project_root = ctx.project_root_or_404(sid)
-        from ..manager_bridge import manager_message, record_task_dispatch_ack
+        from ..manager_bridge import manager_message
+        from ..manager_pending_question import record_task_dispatch_ack
 
         q: "queue.Queue[dict | None]" = queue.Queue()
         cancel_event = threading.Event()

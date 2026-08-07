@@ -453,28 +453,18 @@ class _VerticalDecisionMixin:
     def plan_stages(self, vertical: str) -> list[str]:
         """The vertical's Stage list (research → the 8-stage paper pipeline).
 
-        Reuses ``verticals/<v>/stages.py``. A vertical whose module loads fine
-        but does not define ``STAGE_ORDER`` gets the canonical 8-stage
-        template (that vertical simply opted out of a custom stage list — not
-        a failure). A vertical that fails to resolve/import PROPAGATES the
-        error: this matches :meth:`divide`'s documented FAIL-HARD contract
-        ("no silent fallback to the research default") and
-        ``LifeSupervisor._resolve_vertical_once``'s own FAIL-HARD contract —
-        silently substituting the canonical/paper stage list for a broken or
-        unresolvable vertical would turn e.g. a kernelbench mission into the
-        paper pipeline with no visible error.
+        Reads the validated vertical contract. Missing stages or a broken
+        provider fail visibly; substituting another vertical would change the
+        task and is never a recovery strategy.
         """
-        from ..verticals._base import load_vertical
+        from ..verticals._base import load_vertical_contract
 
-        order = getattr(
-            load_vertical(vertical, project_root=self.project_root),
-            "STAGE_ORDER", None,
+        return list(
+            load_vertical_contract(
+                vertical,
+                project_root=self.project_root,
+            ).stage_order
         )
-        if order:
-            return list(order)
-        from ..verticals.research.stages import CANONICAL_STAGE_ORDER
-
-        return list(CANONICAL_STAGE_ORDER)
 
     # ---- the user-facing division step ----
     def divide(

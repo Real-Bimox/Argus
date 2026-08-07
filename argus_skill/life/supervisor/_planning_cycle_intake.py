@@ -213,7 +213,7 @@ class PlanningCycleIntakeMixin:
 
         # Only skip the planner on an operator-only external blocker when the
         # full EMNLP gate is active. A ``--bounded`` mission
-        # (``full_paper_gate=False``) does not require the external benchmark
+        # (``final_certification_gate=False``) does not require the external benchmark
         # targets, so it must fall through to the planner and reach its own
         # ``project_done`` instead of waiting forever on artifacts it never
         # needs. Mirrors the gating in
@@ -221,7 +221,7 @@ class PlanningCycleIntakeMixin:
         short_circuit = None
         if (
             revision_request is None
-            and self._effective_full_paper_gate(self._artifact_root())
+            and self._effective_final_certification_gate(self._artifact_root())
         ):
             short_circuit = self._operator_external_blocker_short_circuit_decision(
                 project_root=self._project_workdir(),
@@ -249,7 +249,7 @@ class PlanningCycleIntakeMixin:
             revision_request is None
             and
             not getattr(self.config, "open_ended", False)
-            and not self._effective_full_paper_gate(artifact_root)
+            and not self._effective_final_certification_gate(artifact_root)
             and vertical_has_current_completion_certificate(artifact_root, vertical)
             and not external_completion_gate_issue(artifact_root)
             and not _research_project_done_issue(

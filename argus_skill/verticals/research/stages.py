@@ -768,7 +768,7 @@ CHECKLIST_STAGE_ORDER = CANONICAL_STAGE_ORDER
 CHECKLIST_ITEMS = STAGE_CHECKLISTS
 
 #: Research missions complete on the selected venue's full-paper submission gate.
-completion_gate = "full_paper"
+completion_gate = "certified"
 
 # Research proceeds through strict stage gates, but evidence reuse within those
 # stages is proportional: once a Reviewer certifies a source or artifact, later

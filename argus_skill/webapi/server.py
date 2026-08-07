@@ -256,7 +256,13 @@ def _iter_manager_stream_items(
 # backlog/inbox files directly. Each returns None if the project is unknown.
 # ---------------------------------------------------------------------------
 
-from . import daemon_lifecycle, daemon_upgrade, mission_items, project_crud
+from . import (
+    daemon_lifecycle,
+    daemon_upgrade,
+    manager_pending_question,
+    mission_items,
+    project_crud,
+)
 
 _SCHEDULED_DAEMON_UPGRADES = daemon_upgrade._SCHEDULED_DAEMON_UPGRADES
 _SCHEDULED_DAEMON_UPGRADES_LOCK = daemon_upgrade._SCHEDULED_DAEMON_UPGRADES_LOCK
@@ -292,8 +298,8 @@ _enqueue_task_unlocked = mission_items._enqueue_task_unlocked
 enqueue_task = mission_items.enqueue_task
 enqueue_task_command = mission_items.enqueue_task_command
 enqueue_nudge = mission_items.enqueue_nudge
-answer_pending_question = mission_items.answer_pending_question
-resolve_operator_decision = mission_items.resolve_operator_decision
+answer_pending_question = manager_pending_question.manager_answer_pending_question
+resolve_operator_decision = manager_pending_question.manager_resolve_operator_decision
 get_status = mission_items.get_status
 get_journal = mission_items.get_journal
 add_project_note = mission_items.add_project_note
@@ -511,7 +517,7 @@ def create_app(
         # old Web process can remain resident after Uvicorn shuts down, leaving
         # stale Copilot processes alive across repeated cockpit launches.
         try:
-            from .manager_bridge import shutdown_manager_bridge
+            from .manager_state import shutdown_manager_bridge
 
             shutdown_manager_bridge()
         except Exception:  # noqa: BLE001

@@ -19,7 +19,12 @@ from typing import Any
 from .secret_guard import known_secret_values, redact_secrets_text
 
 ROLE_SESSION_POLICIES = frozenset({"fresh", "mission", "rolling"})
-ROLE_SESSION_SCHEMA_VERSION = 1
+ROLE_SESSION_SIGNALS = frozenset({
+    "repeated_contradiction",
+    "reviewer_confusion",
+    "quality_degradation",
+})
+ROLE_SESSION_SCHEMA_VERSION = 2
 
 
 def configured_role_session_policy() -> str:
@@ -80,6 +85,7 @@ class RoleSessionCapsule:
     backend: str
     model: str
     checkpoint_path: str = ""
+    mission_context_path: str = ""
     thread_id: str = ""
     turns: int = 0
     input_tokens: int = 0
@@ -88,6 +94,8 @@ class RoleSessionCapsule:
     decisive_output: str = ""
     open_hypotheses: list[str] = field(default_factory=list)
     static_fingerprint: str = ""
+    signal_kind: str = ""
+    signal_detail: str = ""
     updated_at: float = 0.0
     path: Path | None = field(default=None, repr=False)
     action: str = field(default="fresh", repr=False)
@@ -135,6 +143,7 @@ class RoleSessionCapsule:
         capsule = cls(
             **expected,
             checkpoint_path=str(checkpoint_path or ""),
+            mission_context_path=str(mission_context_path or ""),
             path=path,
         )
         if payload and not changed:
@@ -146,6 +155,8 @@ class RoleSessionCapsule:
             capsule.decisive_output = str(payload.get("decisive_output") or "")
             capsule.open_hypotheses = list(payload.get("open_hypotheses") or [])
             capsule.static_fingerprint = str(payload.get("static_fingerprint") or "")
+            capsule.signal_kind = str(payload.get("signal_kind") or "")
+            capsule.signal_detail = str(payload.get("signal_detail") or "")
         elif payload:
             capsule.action = "rotated"
             capsule.rotation_reason = f"{changed}_changed"
@@ -222,7 +233,20 @@ class RoleSessionCapsule:
         if static_fingerprint:
             self.static_fingerprint = static_fingerprint
         self.repository_map = _repository_map(Path(self.workdir))
+        if self.action in {"fresh", "rotated"}:
+            self.signal_kind = ""
+            self.signal_detail = ""
         self.save()
+
+    def signal(self, kind: str, detail: str = "") -> None:
+        normalized = str(kind or "").strip().lower()
+        if normalized not in ROLE_SESSION_SIGNALS:
+            raise ValueError(f"unknown role session signal: {kind!r}")
+        self.signal_kind = normalized
+        self.signal_detail = redact_secrets_text(
+            str(detail or "")[:1000], known_values=known_secret_values()
+        )
+        self.rotate(f"signal:{normalized}")
 
     def rotate(self, reason: str) -> None:
         self.thread_id = ""
@@ -235,15 +259,23 @@ class RoleSessionCapsule:
     def prompt_block(self) -> str:
         if self.path is None:
             return ""
+        mission_lines = ""
+        if self.mission_context_path:
+            root = Path(self.mission_context_path).parent
+            mission_lines = (
+                f"\nMission contract: `{self.mission_context_path}`"
+                f"\nLatest reviewed handoff: `{root / 'latest.json'}`"
+                f"\nSemantic task frontier: `{root / 'frontier.json'}`"
+            )
         return (
             "## Your role-session capsule\n"
-            f"Path: `{self.path}`\n"
-            "This runtime-owned file contains only your role's compact repository "
-            "map, inspected paths, latest decisive output, open hypotheses, and "
-            "checkpoint pointer. Read it but do not edit it. Use it before broad "
-            "exploration after a fresh or rotated "
-            "backend session. Current mission files and evidence remain "
-            "authoritative; never infer another role's private reasoning."
+            f"Path: `{self.path}`"
+            f"{mission_lines}\n"
+            "These runtime-owned files contain only compact shared state, not another "
+            "role's private reasoning. Read the mission contract, frontier, and "
+            "capsule before broad exploration after a fresh or rotated session. "
+            "Current artifacts and evidence remain authoritative; do not edit the "
+            "capsule or frontier directly."
         )
 
     def save(self) -> None:
@@ -260,6 +292,7 @@ class RoleSessionCapsule:
             "backend": self.backend,
             "model": self.model,
             "checkpoint_path": self.checkpoint_path,
+            "mission_context_path": self.mission_context_path,
             "thread_id": self.thread_id,
             "turns": self.turns,
             "input_tokens": self.input_tokens,
@@ -268,6 +301,8 @@ class RoleSessionCapsule:
             "decisive_output": self.decisive_output,
             "open_hypotheses": self.open_hypotheses,
             "static_fingerprint": self.static_fingerprint,
+            "signal_kind": self.signal_kind,
+            "signal_detail": self.signal_detail,
             "updated_at": self.updated_at,
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -279,9 +314,43 @@ class RoleSessionCapsule:
         os.replace(temporary, self.path)
 
 
+def signal_role_session_file(path: Path | str, kind: str, detail: str = "") -> bool:
+    """Rotate an existing role capsule from an explicit cross-role signal."""
+    target = Path(path)
+    normalized = str(kind or "").strip().lower()
+    if normalized not in ROLE_SESSION_SIGNALS:
+        raise ValueError(f"unknown role session signal: {kind!r}")
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    payload.update({
+        "schema_version": ROLE_SESSION_SCHEMA_VERSION,
+        "thread_id": "",
+        "turns": 0,
+        "input_tokens": 0,
+        "signal_kind": normalized,
+        "signal_detail": redact_secrets_text(
+            str(detail or "")[:1000], known_values=known_secret_values()
+        ),
+        "updated_at": time.time(),
+    })
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, target)
+    return True
+
+
 __all__ = [
     "ROLE_SESSION_POLICIES",
+    "ROLE_SESSION_SIGNALS",
     "RoleSessionCapsule",
     "configured_role_session_policy",
+    "signal_role_session_file",
     "objective_revision",
 ]

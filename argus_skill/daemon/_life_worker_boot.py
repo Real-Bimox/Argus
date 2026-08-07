@@ -548,7 +548,7 @@ class LifeWorkerBootMixin:
         """Construct the ``LifeSupervisor`` after Manager vertical selection."""
         # Build supervisor policy only AFTER Manager.divide() has persisted the
         # vertical.  Mission typing is fail-safe (non-paper until a
-        # ``full_paper`` vertical is positively resolved), so constructing this
+        # ``certified`` vertical is positively resolved), so constructing this
         # before divide would incorrectly leave a brand-new paper campaign in
         # bounded mode for its whole daemon lifetime.
         sup_cfg = _build_supervisor_config(

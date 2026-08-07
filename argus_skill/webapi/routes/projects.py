@@ -184,7 +184,7 @@ def register_project_routes(app, ctx: ServerContext, server_mod) -> None:
         def _build_snapshot() -> dict[str, Any] | None:
             if compact:
                 try:
-                    from ..manager_bridge import schedule_manager_prewarm
+                    from ..manager_state import schedule_manager_prewarm
 
                     schedule_manager_prewarm(
                         sid,

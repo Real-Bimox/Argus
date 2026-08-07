@@ -444,7 +444,7 @@ def _mission_scope_can_complete(mission_scope: str, vertical: str) -> bool:
         gate = vertical_completion_gate(load_vertical(vertical or ""))
     except Exception:  # noqa: BLE001 — an unreadable vertical keeps the strict rule
         return False
-    return gate != "full_paper"
+    return gate != "certified"
 
 
 __all__ = [

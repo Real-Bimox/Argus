@@ -60,7 +60,6 @@ def test_continue_work_text_does_not_skip_reviewer(tmp_path: Path) -> None:
         engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
         supervised_config=SupervisedConfig(
             max_rounds=2,
-            review_deferral_limit=99,
         ),
         workdir=tmp_path,
         on_event=events.append,

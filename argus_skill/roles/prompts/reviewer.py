@@ -290,7 +290,6 @@ def render_reviewer_prompt(
     from ...core.research_contract import resolve_research_target_level
     from ...engineer.checkpoint import shared_checkpoint_instructions
     from ...skills.vertical_select import _persisted_vertical
-    from ...verticals.research.stages import CANONICAL_STAGE_ORDER
     from ..task_contract import EFFECTIVE_TASK_CONTRACT
     from .registry import resolve_role_prompt
 
@@ -331,10 +330,10 @@ def render_reviewer_prompt(
     # Vertical-native prompt framing: resolve the active vertical and let it
     # supply the top-of-prompt role banner. The rollback / final-submission
     # framing below applies ONLY to a paper vertical (completion_gate ==
-    # "full_paper"); for any other vertical (e.g. speedrun) those blocks are
+    # final certification; for any other vertical (e.g. speedrun) those blocks are
     # suppressed and the vertical's banner is prepended so the reviewer judges
     # only that vertical's metric instead of paper-pipeline artifacts.
-    _full_paper = prompt_context.full_paper
+    _final_certification = prompt_context.requires_final_certification
     optimize_banner = prompt_context.role_banner
     if prompt_context.requires_independent_review and not _requires_engineering_audit:
         optimize_banner = ""
@@ -418,7 +417,10 @@ def render_reviewer_prompt(
     # for tokens like "main.pdf". `draft` is excluded so mid-production
     # drafting isn't held to final peer-review standards prematurely.
     paper_review_skill_block = _format_academic_paper_review_skill_block(
-        include=(is_final_submission or (_full_paper and stage in {"review", "submission"})),
+        include=(
+            is_final_submission
+            or (_final_certification and stage in {"review", "submission"})
+        ),
     )
     wiki_curator_text = _load_wiki_curator_skill_if_present(working_dir)
     wiki_curator_skill_block = (
@@ -444,8 +446,9 @@ def render_reviewer_prompt(
     # the stage back — the reviewer does NOT edit the pipeline state machine
     # itself (stage authority is the Manager's). The instruction lives here
     # (not in the individual checklist items) so it applies uniformly.
-    stage_idx = CANONICAL_STAGE_ORDER.index(stage) if stage in CANONICAL_STAGE_ORDER else 0
-    earlier_stages = ", ".join(CANONICAL_STAGE_ORDER[:stage_idx]) or "(none)"
+    stage_order = prompt_context.stage_order
+    stage_idx = stage_order.index(stage) if stage in stage_order else 0
+    earlier_stages = ", ".join(stage_order[:stage_idx]) or "(none)"
     rollback_block = (
         "## Upstream defects\n"
         f"Current stage: `{stage}`. Earlier stages: {earlier_stages}.\n"
@@ -552,7 +555,7 @@ def render_reviewer_prompt(
             "Do not require or manufacture an assurance memo, reviewer-question "
             "bundle, or other certification packet.\n\n"
         )
-    if not _full_paper:
+    if not _final_certification:
         # non-paper vertical: no paper stages to roll back to, and no
         # final-submission certification — judge only the vertical's metric.
         rollback_block = ""
@@ -584,6 +587,13 @@ def render_reviewer_prompt(
         "PLAN_CHALLENGE=<invalidated plan assumption, or none>\n"
         "PLAN_ALTERNATIVE=<better technical route, or none>\n"
         "AUTHORITY_IMPACT=technical|manager_contract|operator\n"
+        "FRONTIER_CHANGE=artifact_improved|risk_reduced|uncertainty_reduced|information_gain|bounded_regression|recovered|unchanged_failure|expanding_regression\n"
+        "FRONTIER_SUMMARY=<semantic change, not a score>\n"
+        "FRONTIER_OBLIGATIONS=resolved::<a; b>|new::<c>|regressed::<d>|remaining::<e>\n"
+        "FRONTIER_EVIDENCE=hypothesis::<h>|artifacts::<a>|evidence::<e>|proxies::<p>|uncertainty::<u>\n"
+        "NEXT_DECISION_POINT=<next evidence-based decision>\n"
+        "REGRESSION_ENVELOPE=none, or cause::<c>|scope::<s>|budget::<b>|recovery::<r>|exit::<e>\n"
+        "SESSION_SIGNAL=none, or kind::<repeated_contradiction|reviewer_confusion|quality_degradation>|target::<planner|engineer|reviewer>|detail::<evidence>\n"
         "Judge FORWARD_PROGRESS against the operator objective, separately from "
         "whether this bounded implementation is correctly done.\n"
         "Edit CHECKPOINT.md first as instructed.\n\n"
@@ -597,55 +607,25 @@ def render_reviewer_prompt(
         + rollback_block
         + "\n\n"
         + venv_skill_block
-        + "\n\n## Final handoff fields\n"
-        "Use the fields above. REASON is the verdict; NEXT_ACTION is the Engineer "
-        "instruction. FORWARD_PROGRESS is explicit. On PLAN_SIGNAL=continue, set "
-        "PLAN_CHALLENGE/PLAN_ALTERNATIVE to none. On reconsider, name the refuted "
-        "working assumption and better route. AUTHORITY_IMPACT=operator requires "
-        "an OPERATOR_QUESTION; technical changes do not.\n"
-        "- Put measured surprises, open questions, and alternative directions "
-        "in CHECKPOINT.md once, not in extra fields.\n"
-        "- Every valid measured result must identify the strongest supported "
-        "finding in `reason`. Preserve clean negative, null, "
-        "boundary, and diagnostic evidence, but integrity is a hard constraint, "
-        "not scientific value by itself. Do not automatically turn an honest result "
-        "into a paper or project completion. First audit implementation adequacy, "
-        "construct fidelity, and plausible repairs. An agent-designed weak proxy is "
-        "not evidence about the claimed online agent or system. "
-        "Recommend publication work only when the result supports a standalone, "
-        "venue-relevant thesis beyond 'we tried and it failed'; otherwise return "
-        "`replan_requested`. "
-        "There is no fixed retry count: judge further engineering by the diagnosed "
-        "cause, expected information gain, and remaining resources.\n"
-        "- When failure experience is preserved, verify that factual outcome, "
-        "claim boundaries, and retry conditions stay distinct. Reject any inference "
-        "that turns timeout, incomplete coverage, or one failed mechanism into a "
-        "general impossibility claim. Artifact references may remain lazy unless a "
-        "material contradiction requires opening them.\n"
-        "- `operator_question` is only for an operator-only blocker.\n\n"
+        + "\n\n## Handoff policy\n"
         "Decision rules:\n"
-        "- `done` requires concrete evidence and exact adherence to material "
-        "operator constraints. A generic acknowledgment is never enough.\n"
-        "- Default to `continue` whenever the agent's claims are not backed by "
-        "shown/checkable evidence; once sufficient evidence is present, do not "
-        "burn another round re-running it.\n"
-        "- On `continue`, name the missing outcome/evidence and the specific "
-        "NEXT work or unexplored direction; leave implementation freedom unless "
-        "a deterministic failure identifies the repair.\n"
-        "- `continue` is ONLY for a repair that remains inside the current "
-        "mission objective, acceptance check, non-goals, stage, and resource "
-        "contract. If the next work needs a new/separate/scoped mission, a "
-        "replacement plan, or any boundary change, return `replan_requested`. If "
-        "local work is done but the plan is refuted, use STATUS=done with "
-        "PLAN_SIGNAL=reconsider. Preserve evidence; never authorize scope expansion.\n"
-        "- `blocked` is only for credentials, inaccessible resources, or a "
-        "decision/specification only the operator can provide.\n"
-        "- New measured evidence or a measured failed mechanism can be forward "
-        "progress; setup, bookkeeping, repeated re-scoring, and near-identical "
-        "unproductive tweaks are not. A smoke run proves wiring, not final "
-        "evidence. Do not declare a method dead from a misconfigured run.\n"
-        "- Final-submission `done` means you independently judge the whole project "
-        "ready; bounded scope uses only its objective and relevant stage evidence.\n\n"
+        "- `done` requires concrete evidence and exact adherence to material operator constraints.\n"
+        "- Default to `continue` whenever the agent's claims are not backed by shown evidence.\n"
+        "- Preserve useful negative evidence, but integrity is a hard constraint, not scientific value by itself. "
+        "Do not automatically turn an honest result into completion. An agent-designed weak proxy is not evidence for the claimed system; otherwise return `replan_requested`.\n"
+        "REASON states the strongest supported finding; NEXT_ACTION names only "
+        "missing evidence or the next decision. Record surprises once in CHECKPOINT.md. "
+        "Keep factual outcome, claim boundary, and retry condition distinct: timeout, "
+        "incomplete coverage, or one failed mechanism is not impossibility.\n"
+        "Use done only for checkable evidence satisfying the current scope; use continue "
+        "for an agent-fixable in-scope gap; use replan_requested for a new mission, "
+        "replacement route, or boundary change; use blocked only for operator/external "
+        "dependencies. Local work may be done while PLAN_SIGNAL=reconsider.\n"
+        "FORWARD_PROGRESS tracks artifact/risk/uncertainty change, not activity or one "
+        "proxy. Bounded regressions need all envelope parts. SESSION_SIGNAL needs "
+        "explicit cross-turn evidence. AUTHORITY_IMPACT=operator requires one concrete "
+        "OPERATOR_QUESTION. Final-submission done certifies the project; bounded done "
+        "certifies only the mission.\n\n"
         + objective_block
         + "Operator messages:\n"
         f"{operator_text}\n\n"

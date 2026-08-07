@@ -594,8 +594,8 @@ class LifeSupervisor(
             if (
                 self.config.continuous
                 and self.config.continuous_objective
-                and self._effective_full_paper_gate(self._artifact_root())
-                and self._journal_has_full_paper_gate_success()
+                and self._effective_final_certification_gate(self._artifact_root())
+                and self._journal_has_final_certification()
             ):
                 self._emit_status(
                     "auto-stop: EMNLP gate passes, project complete"
@@ -661,8 +661,8 @@ class LifeSupervisor(
                     # project is done — don't ask the planner to invent
                     # more work.
                     if (
-                        self.config.full_paper_gate
-                        and self._journal_has_full_paper_gate_success()
+                        self.config.final_certification_gate
+                        and self._journal_has_final_certification()
                     ):
                         self._emit_status(
                             "planner: project done — EMNLP gate passes"
@@ -977,7 +977,7 @@ class LifeSupervisor(
         """Retire stale paper-final tasks when the active vertical is bounded.
 
         ``scope:final_submission`` only has meaning when the active vertical's
-        completion gate is ``full_paper``. If a stale default ``research`` state
+        completion gate requires final certification. If a stale default ``research`` state
         caused the planner to enqueue a final-submission proof for a
         Manager-authored bounded domain (for example ``perf_tuning``), do not
         spend another engineer/reviewer round proving the paper pipeline is
@@ -986,12 +986,12 @@ class LifeSupervisor(
         """
         if self._planner_scope_from_item(item) != _PLANNER_SCOPE_FINAL_SUBMISSION:
             return None
-        if self._effective_full_paper_gate(self._artifact_root()):
+        if self._effective_final_certification_gate(self._artifact_root()):
             return None
 
         reason = (
             "skipped stale final_submission task: active vertical completion "
-            "gate is not full_paper"
+            "gate is not certified"
         )
         self.memory.backlog.update(
             item.id,
@@ -1226,7 +1226,10 @@ class LifeSupervisor(
     def _publish_mission_completion_message(self, event: dict[str, Any]) -> None:
         """Tell the operator a Team mission ended without another model call."""
         try:
-            from ...core.operator_messages import publish_operator_message
+            from ...core.operator_messages import (
+                publish_operator_message,
+                render_operator_update,
+            )
 
             project = getattr(self.memory, "project", None)
             life_dir = getattr(project, "root", None) or getattr(self.memory, "root", None)
@@ -1254,7 +1257,29 @@ class LifeSupervisor(
                     result += f" · review={review}"
             else:
                 status = str(event.get("status") or event.get("outcome_class") or "ended")
-                result = f"Team ended · {title} · {status}"
+                reason = str(
+                    event.get("stop_reason")
+                    or event.get("failure_reason")
+                    or "The mission ended without a verified result."
+                ).strip()
+                text = render_operator_update(
+                    title=title,
+                    status=status,
+                    reason=reason,
+                    next_action=str(event.get("next_action") or "").strip(),
+                    user_action_required=status in {"blocked", "paused_operator"},
+                )
+                publish_operator_message(
+                    life_dir,
+                    text=text,
+                    message_id=f"mission-result-{item_id}-{status}",
+                    event_fields={
+                        "mission_result": True,
+                        "item_id": item_id,
+                        "success": False,
+                    },
+                )
+                return
             if final_submission_certified:
                 continuation = (
                     "The final submission passed independent review."

@@ -126,6 +126,14 @@ export function MissionControl({
             {outcome.map((row) => <span key={row}>{row}</span>)}
           </div>
         ) : null}
+        {view.frontier.change ? (
+          <div className="mt-3 rounded border border-blue/25 bg-blue/5 px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-sky">
+              Task frontier · {view.frontier.change.replaceAll('_', ' ')}
+            </div>
+            {view.frontier.summary ? <p className="mt-1 text-xs text-ink-dim">{view.frontier.summary}</p> : null}
+          </div>
+        ) : null}
       </header>
 
       <Achievement view={view} />

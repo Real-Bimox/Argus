@@ -26,7 +26,13 @@ from argus_skill.core.session import (
 from argus_skill.life.memory import BacklogItem, LifeMemory
 from argus_skill.manager import Manager, config_intent, dispatch, front_door
 from argus_skill.manager.domain_author import VerticalDecision
-from argus_skill.webapi import manager_bridge, project_state, server
+from argus_skill.webapi import (
+    manager_bridge,
+    manager_dispatch,
+    manager_state,
+    project_state,
+    server,
+)
 
 fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -55,7 +61,7 @@ def _identity_manager_handoff(monkeypatch) -> None:
 
 
 def _install_manager(monkeypatch, execution_for) -> None:
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     class _Manager:
         def decide_vertical(self, text, **kwargs):
@@ -102,7 +108,7 @@ def test_queued_manager_message_cannot_resurrect_deleted_project(
     trash.parent.mkdir(parents=True)
 
     with ThreadPoolExecutor(max_workers=1) as pool:
-        with manager_bridge.manager_context_lock(sid):
+        with manager_state.manager_context_lock(sid):
             waiting.clear()
             future = pool.submit(
                 manager_bridge.manager_message,
@@ -124,7 +130,7 @@ def test_pure_greeting_uses_one_frontdoor_model_call(
 ) -> None:
     sid = "s-one-call-greeting"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     def classify(mem, text, chat_state, **kwargs):
         chat_state["_frontdoor_greeting_reply"] = "你好，我是 Argus Manager。"
@@ -151,7 +157,7 @@ def test_message_only_fast_reply_uses_only_frontdoor_call(
 ) -> None:
     sid = "s-one-call-fast-reply"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     def classify(mem, text, chat_state, **kwargs):
         chat_state["_frontdoor_self_mode"] = "reply"
@@ -214,7 +220,7 @@ def test_explicit_authorization_persists_current_blocker_and_never_dispatches(
         recheck_token="validator-v1",
         watched_paths=["research/RESULT.json"],
     )
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     def classify(mem, text, chat_state, **kwargs):
         chat_state["_frontdoor_authorization"] = [
@@ -225,7 +231,7 @@ def test_explicit_authorization_persists_current_blocker_and_never_dispatches(
 
     monkeypatch.setattr(config_intent, "_front_door_classify", classify)
     monkeypatch.setattr(
-        manager_bridge,
+        manager_dispatch,
         "_authorization_workdir",
         lambda *_args, **_kwargs: workdir,
     )
@@ -288,7 +294,7 @@ def test_validator_authorization_allows_exact_repair_under_watched_parent(
         recheck_token="validator-v1",
         watched_paths=["tests"],
     )
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     def classify(mem, text, chat_state, **kwargs):
         chat_state["_frontdoor_authorization"] = ["validator_repair"]
@@ -296,7 +302,7 @@ def test_validator_authorization_allows_exact_repair_under_watched_parent(
 
     monkeypatch.setattr(config_intent, "_front_door_classify", classify)
     monkeypatch.setattr(
-        manager_bridge,
+        manager_dispatch,
         "_authorization_workdir",
         lambda *_args, **_kwargs: workdir,
     )
@@ -319,7 +325,7 @@ def test_authorization_without_current_blocker_fails_closed(
 ) -> None:
     sid = "s-auth-no-blocker"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     def classify(mem, text, chat_state, **kwargs):
         chat_state["_frontdoor_authorization"] = ["resume_blocked_work"]
@@ -343,7 +349,7 @@ def test_repeated_greeting_calls_frontdoor_every_time_without_cache(
 ) -> None:
     sid = "s-greeting-no-cache"
     _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     classify_calls = 0
 
     def classify(mem, text, chat_state, **kwargs):
@@ -375,7 +381,7 @@ def test_contextual_greeting_calls_real_manager(
 ) -> None:
     sid = "s-context-greeting"
     _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     triage_calls: list[str] = []
 
     monkeypatch.setattr(
@@ -405,7 +411,7 @@ def test_advertised_what_are_you_doing_query_never_starts_manager_tool_loop(
 ) -> None:
     sid = "s-status-no-loop"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     monkeypatch.setattr(
         config_intent,
         "_front_door_classify",
@@ -422,7 +428,7 @@ def test_advertised_what_are_you_doing_query_never_starts_manager_tool_loop(
     )
 
     with ThreadPoolExecutor(max_workers=1) as pool:
-        with manager_bridge.manager_context_lock(sid):
+        with manager_state.manager_context_lock(sid):
             future = pool.submit(
                 manager_bridge.manager_message,
                 sid,
@@ -481,7 +487,7 @@ def test_natural_pause_does_not_wait_for_busy_manager_session_lock(
     _make_project(tmp_path, sid)
 
     with ThreadPoolExecutor(max_workers=1) as pool:
-        with manager_bridge.manager_context_lock(sid):
+        with manager_state.manager_context_lock(sid):
             future = pool.submit(
                 manager_bridge.manager_message,
                 sid,
@@ -535,7 +541,7 @@ def test_classifier_explanation_cannot_escape_as_manager_reply(
 ) -> None:
     sid = "s-fast-leak"
     _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     triage_calls: list[str] = []
 
     def classify(mem, text, chat_state, **kwargs):
@@ -571,7 +577,7 @@ def test_frontdoor_classifier_failure_never_dispatches_unclassified_message(
 ) -> None:
     sid = "s-classify-fail"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     def failed_classify(mem, text, chat_state, **kwargs):
         chat_state["_frontdoor_failure"] = "classifier failed"
@@ -664,7 +670,7 @@ def test_manager_steer_persists_high_priority_live_directive(
 ) -> None:
     sid = "s-manager-steer"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     def classify(_mem, _text, chat_state, **_kwargs):
         chat_state["_frontdoor_steering_directive"] = (
             "暂停当前形式化路线；先检索最接近的前人研究，再由 Planner "
@@ -735,7 +741,7 @@ def test_manager_handoff_failure_persists_and_streams_error_reply(
 ) -> None:
     sid = "s-handoff-failure"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     class _FailingManager:
         def decide_vertical(self, text, **kwargs):
@@ -795,7 +801,7 @@ def test_active_mission_team_message_uses_continuous_dispatch(
         objective="finish current work",
     ))
     assert memory.backlog.claim_next() is not None
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     seen = {"classify": 0}
 
     def classify(*args, **kwargs):
@@ -838,7 +844,7 @@ def test_mission_claimed_during_classification_still_uses_continuous_dispatch(
     sid = "s-active-race"
     life = _make_project(tmp_path, sid)
     memory = LifeMemory.open(life)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     def classify(*args, **kwargs):
         item = memory.backlog.add(
@@ -882,7 +888,7 @@ def test_no_dispatch_control_stays_inline_even_if_route_says_team(
 ) -> None:
     sid = "s-no-dispatch"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
@@ -921,7 +927,7 @@ def test_no_dispatch_control_fails_closed_when_inline_reply_fails(
 ) -> None:
     sid = "s-no-dispatch-fail"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     monkeypatch.setattr(
         config_intent,
         "_front_door_classify",
@@ -953,7 +959,7 @@ def test_simple_route_reply_failure_never_falls_through_to_task_dispatch(
 ) -> None:
     sid = "s-simple-fail"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     monkeypatch.setattr(
         config_intent,
         "_front_door_classify",
@@ -985,8 +991,8 @@ def test_team_message_validates_lifecycle_before_workflow_and_enqueue(
 ) -> None:
     sid = "s-standing-front-door"
     _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
-    manager_bridge._chat_state_for(sid).setdefault("config", {})["continuous"] = True
+    manager_state._STATES.clear()
+    manager_state._chat_state_for(sid).setdefault("config", {})["continuous"] = True
     seen: dict[str, object] = {}
 
     monkeypatch.setattr(
@@ -1041,7 +1047,7 @@ def test_finite_staged_paper_request_does_not_enter_bounded_dag(
 ) -> None:
     sid = "s-staged-paper"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     decisions: list[str] = []
 
     class _StagedResearchManager:
@@ -1109,7 +1115,7 @@ def test_manager_decided_math_vertical_web_enqueue_enters_backlog(
 ) -> None:
     sid = "s-explicit-math"
     life = _make_project(tmp_path, sid)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     objective = "prove the bounded integer lemma"
     manager = Manager(project_root=life)
     monkeypatch.setattr(
@@ -1692,7 +1698,7 @@ def test_create_daemon_preserves_manual_rename_during_manager_handoff(
         assert renamed is not None
         return "Manager-authored objective"
 
-    monkeypatch.setattr(manager_bridge, "manager_continuous_handoff", _handoff)
+    monkeypatch.setattr(manager_dispatch, "manager_continuous_handoff", _handoff)
 
     result = server.create_daemon(
         objective="raw operator objective",

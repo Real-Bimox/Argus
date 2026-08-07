@@ -135,7 +135,7 @@ def test_repeated_compact_snapshot_polls_reuse_one_manager_prewarm(
         prewarms.append((sid, Path(global_root) if global_root is not None else None))
 
     monkeypatch.setattr(
-        "argus_skill.webapi.manager_bridge.schedule_manager_prewarm",
+        "argus_skill.webapi.manager_state.schedule_manager_prewarm",
         counting_prewarm,
     )
     client = TestClient(server.create_app(global_root=home))

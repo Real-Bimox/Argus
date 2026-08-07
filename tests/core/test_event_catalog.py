@@ -124,7 +124,7 @@ def test_project_completion_events_are_typed_cross_component_signals() -> None:
         EventType.PROJECT_COMPLETION_REFUSED,
         vertical="research",
         source="planner_verdict",
-        required_gate="full_paper",
+        required_gate="certified",
         reason="source is weaker than the declared gate",
     )
     assert refused["type"] == "project.completion_refused"

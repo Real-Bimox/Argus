@@ -583,7 +583,7 @@ class SkillLoopExecuteMixin:
         config_kwargs["open_ended"] = bool(getattr(args, "open_ended", False))
         config_kwargs["continuous_objective"] = str(getattr(args, "continuous_objective", "") or "")
         # A paper contract is enabled only by a positively resolved
-        # ``full_paper`` vertical.  An explicit False from a specialized caller
+        # ``certified`` vertical.  An explicit False from a specialized caller
         # may still opt out; True cannot turn a non-paper vertical into a paper.
         _paper_override = getattr(args, "paper_mission", None)
         _paper_allowed = True if _paper_override is None else bool(_paper_override)

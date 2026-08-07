@@ -208,7 +208,7 @@ def test_planner_tasks_are_tagged_with_the_current_stage() -> None:
             return "bounded"
 
         @staticmethod
-        def _effective_full_paper_gate(_root) -> bool:
+        def _effective_final_certification_gate(_root) -> bool:
             return False
 
         @staticmethod

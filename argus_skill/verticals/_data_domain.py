@@ -102,15 +102,15 @@ class DataDomain:
             str(s).strip().lower() for s in order if str(s).strip()
         ]
         gate = str(payload.get("completion_gate") or DEFAULT_COMPLETION_GATE).strip().lower()
-        # Back-compat: the paper/report completion gate was historically keyed
-        # "full_emnlp"; accept that legacy value from persisted data-domain
-        # payloads and normalize to the venue-neutral "full_paper".
-        if gate == "full_emnlp":
-            gate = "full_paper"
+        # Persisted data-domain adapter. New framework code uses the generic
+        # certification strength; historical paper-specific names stay here.
+        if gate in {"full_emnlp", "full_paper"}:
+            gate = "certified"
 
         self.name = name
         self.STAGE_ORDER = stages
         self.CHECKLIST_STAGE_ORDER = tuple(checklist_stage_order)
+        self.CHECKLIST_OPTIONAL_STAGES = tuple(checklist_stage_order)
         self.completion_gate = gate or DEFAULT_COMPLETION_GATE
         self._role_banner = str(payload.get("role_banner") or "")
 

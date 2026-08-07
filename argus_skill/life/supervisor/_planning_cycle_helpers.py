@@ -76,11 +76,23 @@ def _research_project_done_issue(
 ) -> str:
     """Require a current-target final Reviewer ``done`` before Planner success."""
     from ...core.research_contract import (
-        resolve_research_target_contract,
+        research_target_contract,
+        resolve_research_target_level,
         resolve_research_target_set_at,
     )
+    from ...skills.vertical_select import resolve_checklist_vertical
+    from ...verticals._base import load_vertical_contract
 
-    target_contract = resolve_research_target_contract(project_root)
+    vertical = resolve_checklist_vertical(project_root)
+    supported = (
+        load_vertical_contract(vertical, project_root=project_root).research_target_levels
+        if vertical is not None
+        else ()
+    )
+    target_contract = research_target_contract(
+        supported_levels=supported,
+        selected_level=resolve_research_target_level(project_root),
+    )
     target_level = target_contract.selected_level
     if target_contract.required and target_level is None:
         return "missing_research_target_level"

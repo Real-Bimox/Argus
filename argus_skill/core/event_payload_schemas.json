@@ -320,6 +320,9 @@
         "plan_challenge": {"type": "string"},
         "plan_alternative": {"type": "string"},
         "authority_impact": {"type": "string"},
+        "frontier_change": {"type": "string"},
+        "frontier_summary": {"type": "string"},
+        "session_signal": {"type": "object"},
         "text": {"type": "string"},
         "review_skipped": {"type": "boolean"},
         "prompt_block_stats": {"type": "object"},
@@ -527,7 +530,9 @@
         "duration_ms": {"type": "integer", "minimum": 0},
         "prompt_chars": {"type": "integer", "minimum": 0},
         "prompt_estimated_tokens": {"type": "integer", "minimum": 0},
-        "capsule_path": {"type": "string"}
+        "capsule_path": {"type": "string"},
+        "signal_kind": {"type": "string", "enum": ["repeated_contradiction", "reviewer_confusion", "quality_degradation"]},
+        "signal_detail": {"type": "string"}
       }
     },
     "engineer.progress": {

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from argus_skill.core.integrity_gate import (
+from argus_skill.verticals.research.integrity_gate import (
     bib_entries,
     citation_integrity,
     cited_keys,

@@ -76,7 +76,7 @@ def _enqueue_task_unlocked(
     )
     objective = cleaned or text.strip()
     item_id = BacklogItem.new_id()
-    from .manager_bridge import manager_bounded_handoff
+    from .manager_dispatch import manager_bounded_handoff
 
     mem = LifeMemory.open(life_dir)
 
@@ -168,45 +168,6 @@ def enqueue_nudge(
         return None
     queue_inbox_message(life_dir, text.strip(), source=source)
     return True
-
-
-def answer_pending_question(
-    sid: str,
-    item_id: str,
-    text: str,
-    *,
-    global_root: Path | str | None = None,
-) -> dict[str, Any] | None:
-    """Route one blocked-item answer through the Manager authority boundary."""
-    from .manager_bridge import manager_answer_pending_question
-
-    return manager_answer_pending_question(
-        sid,
-        item_id,
-        text,
-        global_root=global_root,
-    )
-
-
-def resolve_operator_decision(
-    sid: str,
-    decision_id: str,
-    option_id: str,
-    note: str = "",
-    *,
-    expected_revision: int | None = None,
-    global_root: Path | str | None = None,
-) -> dict[str, Any] | None:
-    from .manager_bridge import manager_resolve_operator_decision
-
-    return manager_resolve_operator_decision(
-        sid,
-        decision_id,
-        option_id,
-        note,
-        expected_revision=expected_revision,
-        global_root=global_root,
-    )
 
 
 def get_status(sid: str, *, global_root: Path | str | None = None) -> dict[str, Any] | None:

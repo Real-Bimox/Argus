@@ -24,10 +24,10 @@ from ._reduce_helpers import (
 
 _MISSION_OUTCOME_PRESENTATIONS = {
     "completed": ("complete", "done", "Task completed", "success"),
-    "incomplete": ("incomplete", "done", "Mission incomplete", "info"),
-    "stalled": ("stalled", "done", "Mission stalled", "info"),
-    "blocked": ("blocked", "error", "Mission blocked", "error"),
-    "failed": ("failed", "error", "Mission failed", "error"),
+    "incomplete": ("incomplete", "done", "Work remains", "info"),
+    "stalled": ("stalled", "done", "No useful progress", "info"),
+    "blocked": ("blocked", "error", "Cannot continue yet", "error"),
+    "failed": ("failed", "error", "Task failed", "error"),
     "ended": ("ended", "done", "Mission ended", "info"),
 }
 
@@ -126,12 +126,18 @@ def reduce_mission_lifecycle_event(
                 resumable=bool(event.get("resumable")),
             )
         _set_role(view, "engineer", role_status, label, ts)
+        detail = (
+            _text(event, "stop_reason", 2000)
+            or _text(event, "failure_reason", 2000)
+            or _text(event, "title", 500)
+            or _text(event, "status", 500)
+        )
         _timeline(
             view,
             event,
             role="engineer",
             title=label,
-            detail=_text(event, "title") or _text(event, "status"),
+            detail=detail,
             tone=tone,
         )
         _role_work(
@@ -140,8 +146,7 @@ def reduce_mission_lifecycle_event(
             role="engineer",
             kind="completion",
             title=label,
-            detail=_text(event, "title", 500)
-            or _text(event, "status", 500),
+            detail=detail,
             status=mission_status,
         )
 
@@ -296,6 +301,13 @@ def reduce_round_event(
             "rejected_attempts": int(view.get("review", {}).get("rejected_attempts") or 0)
             + (1 if status in {"continue", "blocked"} else 0),
         }
+        frontier_change = _text(event, "frontier_change")
+        if frontier_change:
+            view["frontier"] = {
+                "change": frontier_change,
+                "summary": _text(event, "frontier_summary", 2000),
+                "updated_at": ts,
+            }
         _set_role(view, "reviewer", "done" if status == "done" else "rejected", "Accepted evidence" if status == "done" else "Requested another attempt", ts)
         _timeline(
             view,

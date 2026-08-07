@@ -235,6 +235,46 @@ class RoundReviewerMixin:
                 "prompt_estimated_tokens": (prompt_chars + 3) // 4,
                 "capsule_path": str(reviewer_session.path or ""),
             })
+        signal = review.session_signal if isinstance(review.session_signal, dict) else {}
+        signal_kind = str(signal.get("kind") or "").strip()
+        signal_target = str(signal.get("target") or "").strip()
+        signal_detail = str(signal.get("detail") or "").strip()
+        if signal_kind and signal_target and supervised_config.role_session_policy != "fresh":
+            target_session = {
+                "engineer": state.engineer_session,
+                "reviewer": reviewer_session,
+            }.get(signal_target)
+            applied = False
+            if target_session is not None:
+                target_session.signal(signal_kind, signal_detail)
+                applied = True
+            elif signal_target == "planner" and supervised_config.role_session_dir:
+                from ..core.role_session import signal_role_session_file
+
+                applied = signal_role_session_file(
+                    supervised_config.role_session_dir / "planner.json",
+                    signal_kind,
+                    signal_detail,
+                )
+            if applied and on_event:
+                on_event({
+                    "type": EventType.ROLE_SESSION_TURN,
+                    "role": signal_target,
+                    "policy": supervised_config.role_session_policy,
+                    "action": "rotated",
+                    "rotation_reason": f"signal:{signal_kind}",
+                    "round_index": round_index,
+                    "signal_kind": signal_kind,
+                    "signal_detail": signal_detail,
+                    "capsule_path": str(
+                        getattr(target_session, "path", "")
+                        or (
+                            supervised_config.role_session_dir / f"{signal_target}.json"
+                            if supervised_config.role_session_dir
+                            else ""
+                        )
+                    ),
+                })
         return review
 
     def _invoke_reviewer_with_retry(

@@ -26,55 +26,33 @@ OPERATIONS = frozenset(
 
 _PLANNER_CORE_CONTRACT = """
 ## Planner read-only delegation contract
-You are the L4 Planner. Inspect current reality read-only, choose the next
-highest-value legal work, and delegate implementation to Engineer through
-concrete `TASK_*` blocks. Do not edit project files, run implementation work,
-or claim that you implemented a change yourself. The sole write exception is
-the shared declarative knowledge wiki under `.autors/*/wiki`: you may directly
-create or refine those knowledge pages under its own evidence rules.
+Inspect current reality read-only, choose the highest-value legal next work, and
+delegate implementation to Engineer through concrete `TASK_*` blocks. Do not edit project files; Engineer owns edits,
+state-changing commands, builds, tests, and implementation evidence;
+Planner may write only the shared declarative wiki under `.autors/*/wiki`.
 
-- Use read-only project tools to inspect relevant state, source, tests,
-  artifacts, Reviewer briefings, and CHECKPOINT.md. Engineer owns edits,
-  commands that change project state, builds, tests, and implementation evidence.
-- Work the active vertical's current stage. The Manager alone changes
-  `current_stage`; Planner and Engineer never edit it.
-- Report `PROJECT_DONE=true` only when the operator objective and its hard success
-  criteria are actually satisfied and no independent high-impact work remains.
-  Integrity and reproducibility are admission constraints, not value by themselves;
-  opaque checksum/digest values are never evidence or blockers.
-  Empty backlog, an honestly reported negative result, or a failed approach is not
-  automatically completion. A failed thesis is project evidence, not a routing command;
-  inspect implementation adequacy, construct fidelity, and what the result changes,
-  then delegate the next high-value move. When the Reviewer returns
-  `replan_requested`, do not report completion; repair or replace the direction unless
-  a later Reviewer explicitly certifies a valuable project thesis with `done`.
-- Credentials, paid access, irreversible actions, or scope expansion require
-  operator authority.
-- Failure capsules are analogies; timeout is not impossibility.
-- If `PROJECT_DONE=false`, do not leave an empty plan. Either report an
-  intentional live wait with `WAITING=true` and a durable recheck contract, or
-  emit concrete `TASK_*` blocks for legal next work. Alongside title/objective,
-  include `TASK_HYPOTHESIS`, `TASK_GOAL_CONTRIBUTION`,
-  `TASK_EXPECTED_REGRESSIONS`, `TASK_DECISION_RULE`, and a decisive acceptance
-  check. Always include `TASK_WORKDIR=.` when the current campaign root is the
-  real target repository; if the project cloned the real target into one nested
-  Git repository, name that project-relative repository root instead. Do not
-  keep source work in a parent harness and evidence in the child repository. If
-  one DAG node creates the repository, that setup node uses `TASK_WORKDIR=.`;
-  dependent nodes may name the future child root but must not cite files inside
-  it until it exists. Refs are relative to `TASK_WORKDIR` and use
-  `TASK_CONTEXT_REFS=kind::project/relative/path::why|...` (existing project
-  files; omit if none). `TASK_SKIP_STAGE_TRANSITION=true` requires bounded +
-  reviewed + `TASK_STAGE_CLOSING=false`. For a known blocker, keep one stable
-  `TASK_BLOCKER_FINGERPRINT` across retries; blank otherwise. Use
-  `item:<item_id>` for a failed non-resumable backlog item.
-  Never fabricate work merely to satisfy this shape.
-- Natural-language progress and a final summary are allowed. End the final response
-  with plain key-value lines, not JSON or a Markdown fence. Always include:
-  `PROJECT_DONE=true|false`
-  `REASON=<concise implementation and verification summary or blocker>`
-  When `PROJECT_DONE=false`, include the required `WAITING_*` or `TASK_*` lines
-  described above.
+- Use current source, tests, artifacts, Reviewer evidence, and CHECKPOINT.md. Work
+  only the active stage; Manager alone changes `current_stage`.
+- `PROJECT_DONE=true` requires the operator objective and hard success criteria,
+  with no independent high-impact work left. Integrity and reproducibility are admission constraints,
+  not value by themselves; opaque digests are not evidence.
+  Empty backlog or one failed thesis is project evidence, not a routing command.
+  A `replan_requested` verdict requires repair/replacement, not completion.
+- Credentials, paid access, irreversible action, and scope expansion require the
+  operator. Timeout is not impossibility.
+- With `PROJECT_DONE=false`, either emit a real `WAITING=true` recheck contract or
+  executable `TASK_*` blocks; never fabricate work or return an empty plan. Each
+  task includes title/objective, hypothesis, goal contribution, expected
+  regressions, decision rule, decisive acceptance check, non-goals, and control
+  booleans. Use `TASK_WORKDIR=.` for the campaign repository, or one project-relative
+  nested target root. Context refs are existing paths relative to that workdir:
+  `kind::path::why`. A setup node may create a future child repository, but dependent
+  nodes cannot cite its not-yet-existing files. Skip-stage-transition requires a
+  bounded reviewed non-stage-closing node. Reuse one blocker fingerprint across
+  retries; use `item:<id>` for a failed non-resumable item.
+- End natural prose with named lines, not JSON: `PROJECT_DONE=true|false` and
+  `REASON=<evidence or blocker>`, followed by the required WAITING or TASK fields
+  when not done.
 """
 
 _EXTERNAL_TARGET_CONTRACT = (
@@ -230,7 +208,6 @@ def build_continuous_prompt(
     from ...core.research_contract import resolve_research_target_level
     from ...skills.ground_truth import ground_truth_mandate
     from ...skills.vertical_select import resolve_evidence_mode
-    from ...verticals.research.stages import CANONICAL_STAGE_ORDER
     from .registry import resolve_role_prompt
 
     cycle_line = f"This is planning cycle #{planning_cycle + 1}."
@@ -238,17 +215,18 @@ def build_continuous_prompt(
     prompt_context = resolve_role_prompt(continuous_request(_proot))
     stage = prompt_context.stage
     stage_checklist = prompt_context.stage_checklist
-    stage_idx = CANONICAL_STAGE_ORDER.index(stage) if stage in CANONICAL_STAGE_ORDER else 0
-    earlier_stages = ", ".join(CANONICAL_STAGE_ORDER[:stage_idx]) or "(none)"
+    stage_order = prompt_context.stage_order
+    stage_idx = stage_order.index(stage) if stage in stage_order else 0
+    earlier_stages = ", ".join(stage_order[:stage_idx]) or "(none)"
 
     # Vertical-native prompt framing: resolve the active vertical and let it
     # supply the top-of-prompt role banner. The paper-pipeline framing below
     # (research gate, parallel paper-drafting, upstream rollback) applies
-    # ONLY to a paper vertical (completion_gate == "full_paper"); for any
+    # ONLY to a vertical requiring final certification; for any
     # other vertical (e.g. speedrun) those blocks are suppressed and the
     # vertical's banner is prepended so the planner runs that vertical's loop
     # instead of demanding/rebuilding a research gate.
-    _full_paper = prompt_context.full_paper
+    _final_certification = prompt_context.requires_final_certification
     optimize_banner = prompt_context.role_banner
 
     research_target_block = ""
@@ -280,7 +258,7 @@ def build_continuous_prompt(
         )
 
     standing_research_block = ""
-    if open_ended and _full_paper:
+    if open_ended and _final_certification:
         standing_research_block = (
             "## Standing research objective\n"
             "A failed hypothesis, negative experiment, or rejected direction is "
@@ -350,7 +328,7 @@ def build_continuous_prompt(
     # productive instead of babysitting the run. Prose-only, never advances
     # the stage pointer; final-number integrity is preserved via placeholders.
     parallel_drafting_block = ""
-    if stage in ("run", "analysis") and _full_paper:
+    if stage in ("run", "analysis") and _final_certification:
         draft_checklist = resolve_role_prompt(
             continuous_request(
                 _proot,
@@ -451,7 +429,7 @@ def build_continuous_prompt(
         "   model APIs to verify scoring backends, …) — NOT a blind\n"
         "   regenerate or a template fill-in.\n"
     )
-    if not _full_paper:
+    if not _final_certification:
         # non-paper verticals have no upstream paper stages to roll back into.
         upstream_rollback_block = ""
 
@@ -543,7 +521,7 @@ def build_continuous_prompt(
         "`python -m argus_skill ...` or `ARGUS_SKILL_PYTHON`; do not copy stale "
         "host paths from history."
     )
-    if _full_paper:
+    if _final_certification:
         planner_hygiene_block += (
             " For paper infrastructure, trust the fresh model-backed "
             "`paper/PAPER_INFRASTRUCTURE_REVIEW.json`; if missing or stale, "

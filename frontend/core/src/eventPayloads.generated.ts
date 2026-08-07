@@ -235,6 +235,9 @@ export interface RoundReviewCompletedEvent extends EventMsg {
   "plan_challenge"?: string;
   "plan_alternative"?: string;
   "authority_impact"?: string;
+  "frontier_change"?: string;
+  "frontier_summary"?: string;
+  "session_signal"?: Record<string, unknown>;
   "text"?: string;
   "review_skipped"?: boolean;
   "prompt_block_stats"?: Record<string, unknown>;
@@ -390,6 +393,8 @@ export interface RoleSessionTurnEvent extends EventMsg {
   "prompt_chars"?: number;
   "prompt_estimated_tokens"?: number;
   "capsule_path"?: string;
+  "signal_kind"?: "repeated_contradiction" | "reviewer_confusion" | "quality_degradation";
+  "signal_detail"?: string;
 }
 
 export interface EngineerProgressEvent extends EventMsg {

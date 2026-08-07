@@ -8,11 +8,9 @@ or a vertical; only TEAM/complex work is enqueued as a mission.
 The classify/control/config/SELF/TEAM phase helpers, the pending-question
 resolver, and the per-project chat-state/lock bookkeeping live in
 ``manager_dispatch.py`` / ``manager_pending_question.py`` / ``manager_state.py``
-respectively (extracted as part of a behavior-preserving decomposition); this
-module keeps only the top-level ``manager_message`` / ``manager_plan`` request
-pipeline. The re-exports below keep every previously-importable
-``manager_bridge.*`` name (including ones exercised via ``monkeypatch``)
-resolvable exactly as before.
+respectively; this module keeps only the top-level ``manager_message``,
+``manager_plan``, and prompt-rewrite request pipeline. Callers import state,
+dispatch, and pending-question operations from their owning modules.
 """
 
 from __future__ import annotations
@@ -22,7 +20,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import manager_dispatch, manager_pending_question, manager_state
 from .manager_dispatch import (
     _build_handoff,
     _cancelled_result,
@@ -621,53 +618,3 @@ def manager_rewrite(
         "questions": list(rewrite.questions),
         "error": rewrite.error,
     }
-
-
-# --- Re-exports -------------------------------------------------------------
-# Everything below moved out of this module into manager_state.py /
-# manager_pending_question.py / manager_dispatch.py as part of a
-# behavior-preserving decomposition. These plain attribute assignments keep
-# every previously-importable ``manager_bridge.X`` name (including names
-# exercised via ``monkeypatch.setattr(manager_bridge, "X", ...)`` in tests)
-# resolvable exactly as before.
-
-# manager_state.py
-_STATES = manager_state._STATES
-_LOCKS = manager_state._LOCKS
-_REGISTRY_LOCK = manager_state._REGISTRY_LOCK
-_MANAGER_PREWARMING = manager_state._MANAGER_PREWARMING
-_MANAGER_PREWARMING_LOCK = manager_state._MANAGER_PREWARMING_LOCK
-manager_context_lock = manager_state.manager_context_lock
-_release_manager_state = manager_state._release_manager_state
-release_manager_context = manager_state.release_manager_context
-_prewarm_manager_context = manager_state._prewarm_manager_context
-schedule_manager_prewarm = manager_state.schedule_manager_prewarm
-_rotate_after = manager_state._rotate_after
-reset_manager_context = manager_state.reset_manager_context
-shutdown_manager_bridge = manager_state.shutdown_manager_bridge
-
-# manager_pending_question.py
-_parse_pending_question_decision = (
-    manager_pending_question._parse_pending_question_decision
-)
-_resolve_pending_question_with_manager = (
-    manager_pending_question._resolve_pending_question_with_manager
-)
-manager_answer_pending_question = (
-    manager_pending_question.manager_answer_pending_question
-)
-manager_resolve_operator_decision = (
-    manager_pending_question.manager_resolve_operator_decision
-)
-record_task_dispatch_ack = manager_pending_question.record_task_dispatch_ack
-
-# manager_dispatch.py
-_NO_DISPATCH_FALLBACK = manager_dispatch._NO_DISPATCH_FALLBACK
-_authorization_workdir = manager_dispatch._authorization_workdir
-_project_paths_overlap = manager_dispatch._project_paths_overlap
-manager_execution_handoff = manager_dispatch.manager_execution_handoff
-manager_continuous_handoff = manager_dispatch.manager_continuous_handoff
-disable_manager_continuous = manager_dispatch.disable_manager_continuous
-manager_bounded_handoff = manager_dispatch.manager_bounded_handoff
-_journal_argus_reply = manager_dispatch._journal_argus_reply
-_ClassifyResult = manager_dispatch._ClassifyResult

@@ -62,8 +62,8 @@ class ResolvedRolePrompt:
     fragment_ids: tuple[str, ...]
 
     @property
-    def full_paper(self) -> bool:
-        return self.completion_gate == "full_paper"
+    def requires_final_certification(self) -> bool:
+        return self.completion_gate == "certified"
 
     def prepend_role_banner(
         self,

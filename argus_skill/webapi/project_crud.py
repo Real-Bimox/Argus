@@ -79,7 +79,7 @@ def delete_project(
     lifecycle_root: Path | str | None = None,
 ) -> dict[str, Any] | None:
     """Reversibly remove a stopped session by moving it to projects_trash."""
-    from .manager_bridge import manager_context_lock, release_manager_context
+    from .manager_state import manager_context_lock, release_manager_context
 
     root = _global_root(global_root)
     lock_root = _global_root(lifecycle_root) if lifecycle_root is not None else root
@@ -225,11 +225,11 @@ def set_continuous(
     if life_dir is None:
         return None
     if not enabled:
-        from .manager_bridge import disable_manager_continuous
+        from .manager_dispatch import disable_manager_continuous
 
         disable_manager_continuous(sid, life_dir=life_dir)
         return True
-    from .manager_bridge import manager_continuous_handoff
+    from .manager_dispatch import manager_continuous_handoff
 
     manager_continuous_handoff(
         sid,

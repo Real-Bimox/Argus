@@ -69,13 +69,15 @@ def render_skill_library_paths(skill_store: object | None, *, role: str) -> str:
         "## Skill libraries (on-demand)\n"
         f"Role: {role}. Order: project → vertical/domain → global; OWN > REFERENCE.\n"
         + "\n".join(lines)
-        + "\n\nBefore the first repository tool, make one Skill relevance decision from "
-        "native-loader descriptions. Read every clearly matching body first. If "
-        "descriptions are unavailable, do one targeted filename/frontmatter search "
-        "in OWN paths. On a miss, open no body. Never scan all bodies or open a "
-        "neighbor because another matched. A wrong Skill is worse than none. Task, evidence, "
-        "and role boundaries override Skills. These paths are the portable fallback; "
-        "bodies are not injected. Re-probe mutable facts before use."
+        + "\n\nYour first action, before any repository tool, is one native Skill decision: "
+        "inspect the available descriptions (not every body), and immediately open "
+        "only the body whose description clearly names this task's operation or "
+        "artifact. Do not postpone this decision until after repository exploration. "
+        "If native descriptions are unavailable, do one targeted filename/frontmatter "
+        "search in OWN paths; on a miss, open nothing. Never scan all bodies or open "
+        "adjacent Skills. Task, evidence, and role boundaries override Skills. These "
+        "paths are the portable fallback; bodies are not injected. Re-probe mutable "
+        "facts before use."
     )
 
 

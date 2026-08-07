@@ -162,8 +162,8 @@ class PlanningCycleCompletionMixin:
 
         if (
             verdict.project_done
-            and self._effective_full_paper_gate(self._artifact_root())
-            and not self._journal_has_full_paper_gate_success()
+            and self._effective_final_certification_gate(self._artifact_root())
+            and not self._journal_has_final_certification()
         ):
             from ...planner import TaskSpec
 

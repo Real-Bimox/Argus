@@ -127,7 +127,7 @@ def register_meta_routes(app, ctx: ServerContext, server_mod) -> None:
     @app.post("/api/projects/{sid}/reset", dependencies=[Depends(ctx.require_auth)])
     def _manager_reset(sid: str) -> dict[str, Any]:
         project_root = ctx.project_root_or_404(sid)
-        from ..manager_bridge import reset_manager_context
+        from ..manager_state import reset_manager_context
 
         return {"ok": reset_manager_context(sid, global_root=project_root)}
 

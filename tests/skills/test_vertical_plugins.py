@@ -35,6 +35,8 @@ def module(tmp_path: Path, *, version: int = 1, purpose: str = "Plugin work") ->
     result.ARGUS_VERTICAL_API_VERSION = version
     result.VERTICAL_PURPOSE = purpose
     result.CHECKLIST_STAGE_ORDER = ("work", "deliver")
+    result.CHECKLIST_ITEMS = {"work": (), "deliver": ()}
+    result.completion_gate = "none"
     skills = tmp_path / "skills" / "engineer"
     skills.mkdir(parents=True)
     (skills / "plugin.md").write_text("---\nname: Plugin\ndescription: Plugin\n---\n", encoding="utf-8")

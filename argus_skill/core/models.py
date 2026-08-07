@@ -182,10 +182,10 @@ class ReviewDecision:
     # A round may be correctly ``done`` yet still fail to move the operator's
     # objective; LifeSupervisor uses this signal to surface repeated hollow work.
     planner_report: dict[str, Any] = field(default_factory=dict)
-    # Read-only compatibility for Reviewer verdicts already in flight against
-    # the retired JSON schema. New prompts do not request skill_ops; when an old
-    # verdict supplies them, the opt-in legacy replay path may still apply them.
-    skill_ops: list[dict[str, Any]] = field(default_factory=list)
+    # Runtime-owned semantic transition and explicit role-session signal. The
+    # model states these on tolerant named lines; no JSON schema is required.
+    frontier_report: dict[str, Any] = field(default_factory=dict)
+    session_signal: dict[str, str] = field(default_factory=dict)
     review_source: str = "reviewer"
     prompt_block_stats: dict[str, dict[str, int]] = field(default_factory=dict)
     input_tokens: int = 0
@@ -247,6 +247,14 @@ class ReviewDecision:
             value = str(report.get(source_key) or "").strip()
             if value:
                 payload[event_key] = value
+        frontier = self.frontier_report if isinstance(self.frontier_report, dict) else {}
+        frontier_change = str(frontier.get("change") or "").strip()
+        if frontier_change:
+            payload["frontier_change"] = frontier_change
+            payload["frontier_summary"] = str(frontier.get("summary") or "")[:2000]
+        signal = self.session_signal if isinstance(self.session_signal, dict) else {}
+        if str(signal.get("kind") or "").strip():
+            payload["session_signal"] = dict(signal)
         payload.update(extras)
         return payload
 

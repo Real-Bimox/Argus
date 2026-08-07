@@ -63,7 +63,7 @@ def test_planner_context_resolves_banner_stage_and_checklist(tmp_path) -> None:
         role="planner",
         project_root=tmp_path,
     )
-    assert context.completion_gate != "full_paper"
+    assert context.completion_gate != "certified"
     assert "vertical:speedrun:checklist:planner:stage:optimize" in (
         context.fragment_ids
     )

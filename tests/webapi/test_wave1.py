@@ -16,7 +16,13 @@ import pytest
 from argus_skill.core.session import SessionMeta, read_session_meta, write_session_meta
 from argus_skill.life.memory import LifeMemory
 from argus_skill.manager import front_door
-from argus_skill.webapi import artifacts, manager_bridge, server
+from argus_skill.webapi import (
+    artifacts,
+    manager_bridge,
+    manager_pending_question,
+    manager_state,
+    server,
+)
 
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -401,7 +407,7 @@ def test_project_picker_uses_campaign_objective_before_greeting(
     monkeypatch,
 ) -> None:
     root, sid, _, client = ctx
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     class _Manager:
         def decide_vertical(self, text, **kwargs):
@@ -1157,7 +1163,7 @@ class TestManagerMessageLifecycleErrors:
         monkeypatch.setattr(fd, "mission_is_running", lambda mem: False)
 
         # Clear per-session state cache so this test starts clean.
-        manager_bridge._STATES.pop(sid, None)
+        manager_state._STATES.pop(sid, None)
 
         result = manager_bridge.manager_message(sid, "add a new feature", global_root=tmp_path)
 
@@ -1285,7 +1291,7 @@ def test_dispatch_ack_stream_persists_truthful_text(
 ) -> None:
     """Streaming endpoint: returned reply, transcript turn, and SSE delta agree."""
     from argus_skill.core.transcript import read_turns
-    from argus_skill.webapi.manager_bridge import record_task_dispatch_ack
+    from argus_skill.webapi.manager_pending_question import record_task_dispatch_ack
 
     life_dir = tmp_path / "projects" / "s-ack"
     life_dir.mkdir(parents=True)
@@ -1328,7 +1334,7 @@ def test_dispatch_ack_blocking_persists_truthful_text(
 ) -> None:
     """Blocking endpoint: returned reply and transcript turn agree (no SSE)."""
     from argus_skill.core.transcript import read_turns
-    from argus_skill.webapi.manager_bridge import record_task_dispatch_ack
+    from argus_skill.webapi.manager_pending_question import record_task_dispatch_ack
 
     life_dir = tmp_path / "projects" / "s-ack"
     life_dir.mkdir(parents=True)
@@ -1358,8 +1364,6 @@ def test_dispatch_ack_raises_on_transcript_write_failure(
     monkeypatch,
 ) -> None:
     """Transcript persistence failure must NOT be swallowed."""
-    from argus_skill.webapi import manager_bridge
-
     life_dir = tmp_path / "projects" / "s-ack-fail"
     life_dir.mkdir(parents=True)
     # Make transcript file unwritable
@@ -1375,7 +1379,7 @@ def test_dispatch_ack_raises_on_transcript_write_failure(
     }
     try:
         with pytest.raises(PermissionError):
-            manager_bridge.record_task_dispatch_ack(
+            manager_pending_question.record_task_dispatch_ack(
                 "s-ack-fail",
                 result,
                 global_root=tmp_path,

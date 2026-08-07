@@ -7,7 +7,10 @@ from pathlib import Path
 from argus_skill import SkillLoop, SkillLoopConfig
 from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
 from argus_skill.core.models import RunnerResult
-from argus_skill.core.role_session import RoleSessionCapsule
+from argus_skill.core.role_session import (
+    RoleSessionCapsule,
+    signal_role_session_file,
+)
 from argus_skill.planner import Planner, PlannerConfig
 
 
@@ -287,3 +290,82 @@ def test_planner_mission_session_survives_new_planner_instance(tmp_path: Path) -
         thread for label, thread in backend.resume_history if label.startswith("planner.")
     ] == [None, "p1"]
     assert json.loads(capsule_path.read_text(encoding="utf-8"))["role"] == "planner"
+
+
+def test_explicit_reviewer_quality_signal_rotates_only_target_role(tmp_path: Path) -> None:
+    context, checkpoint = _context(tmp_path)
+    backend = MemoryBackend()
+    backend.queue("engineer-r1", CannedResponse(message="first", thread_id="e1"))
+    backend.queue(
+        "reviewer",
+        CannedResponse(
+            message=json.dumps({
+                "status": "continue",
+                "reason": "The Engineer repeated an obsolete repair.",
+                "next_action": "Use the current frontier and repair the active cluster.",
+                "session_signal": {
+                    "kind": "quality_degradation",
+                    "target": "engineer",
+                    "detail": "Repeated the obsolete repair after a current handoff.",
+                },
+            }),
+            thread_id="v1",
+        ),
+    )
+    backend.queue("engineer-r2", CannedResponse(message="second", thread_id="e2"))
+    backend.queue("reviewer", CannedResponse(message=_review("done"), thread_id="v1"))
+    events: list[dict] = []
+
+    outcome = _loop(
+        backend,
+        tmp_path,
+        context,
+        checkpoint,
+        policy="mission",
+        events=events,
+    ).run("repair the current cluster", workdir=tmp_path)
+
+    assert outcome.successful
+    assert [
+        (label, thread)
+        for label, thread in backend.resume_history
+        if label.startswith("engineer-") or label == "reviewer"
+    ] == [
+        ("engineer-r1", None),
+        ("reviewer", None),
+        ("engineer-r2", None),
+        ("reviewer", "v1"),
+    ]
+    signal = next(
+        event
+        for event in events
+        if event.get("rotation_reason") == "signal:quality_degradation"
+    )
+    assert signal["role"] == "engineer"
+    assert signal["signal_detail"].startswith("Repeated the obsolete")
+
+
+def test_cross_role_signal_file_migrates_old_capsule_and_forces_fresh_thread(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "planner.json"
+    path.write_text(json.dumps({
+        "schema_version": 1,
+        "role": "planner",
+        "policy": "mission",
+        "thread_id": "old-thread",
+        "turns": 4,
+        "input_tokens": 100,
+    }), encoding="utf-8")
+
+    assert signal_role_session_file(
+        path,
+        "repeated_contradiction",
+        "Two turns asserted incompatible stage facts.",
+    )
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 2
+    assert payload["thread_id"] == ""
+    assert payload["turns"] == 0
+    assert payload["signal_kind"] == "repeated_contradiction"

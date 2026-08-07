@@ -134,15 +134,12 @@ KNOBS: tuple[Knob, ...] = (
     Knob("ARGUS_SKILL_RUNNER_SOFT_IDLE_SECONDS", "600", "model stream inactivity before a diagnostic warning (0=off)", "mission"),
     Knob("ARGUS_SKILL_RUNNER_STALLED_IDLE_SECONDS", "1800", "model stream inactivity before likely-stalled alerting (0=off)", "mission"),
     Knob("ARGUS_SKILL_RUNNER_HARD_IDLE_SECONDS", "2700", "model stream inactivity before terminating only the current provider process group (0=off)", "mission"),
-    Knob("ARGUS_SKILL_SHIFT_ROUND_LIMIT", "1", "compatibility knob; autonomous Engineer/Reviewer sessions are always fresh", "mission"),
-    Knob("ARGUS_SKILL_THREAD_TOKEN_LIMIT", "0", "compatibility knob; autonomous role threads are never resumed", "mission"),
     Knob("ARGUS_SKILL_DECISION_PROGRESS_TIMEOUT_SECONDS", "1800", "safe round-boundary seconds without reviewer-classified decision/evidence progress (0=off)", "mission"),
     Knob("ARGUS_SKILL_MANAGER_LOCK_TIMEOUT_S", "120", "bounded wait for the shared Manager session lock before failing open to a no-session call", "mission"),
     Knob("ARGUS_SKILL_CHECKPOINT_PERSIST", "true", "persist the reviewer checkpoint across missions/restarts", "mission"),
     Knob("ARGUS_SKILL_COMPACT_CONTINUATION_PROMPTS", "true", "send the full Engineer task/skill contract only on round 1; later rounds use reviewer guidance plus CHECKPOINT.md", "mission"),
     Knob("ARGUS_SKILL_AUTOCOMMIT_SKILLS", "off", "compatibility gate for explicitly operator-approved source promotions such as generated data-domain verticals", "lifecycle"),
     Knob("ARGUS_SKILL_CROSS_PROJECT_PROPAGATION", "on", "Manager-promote changed reviewed Skills into shared global/vertical runtime layers after each successful mission", "lifecycle"),
-    Knob("ARGUS_SKILL_SKILL_OPS", "on", "compatibility replay for legacy reviewer skill_ops; current roles edit the project layer directly", "lifecycle"),
     Knob("ARGUS_SKILL_WIKI", "on", "enable the shared direct-edit project knowledge wiki", "lifecycle"),
     Knob("ARGUS_SKILL_AUTO_INIT_WIKI", "on", "bootstrap a project wiki before the first SkillLoop mission", "lifecycle"),
     Knob("ARGUS_SKILL_AUTO_COMPACT", "off", "run LLM skill/wiki compaction after every mission (default OFF; use explicit maintenance)", "lifecycle"),
@@ -197,7 +194,6 @@ _EFFORT_KNOBS = frozenset(
 _TOGGLE_KNOBS = frozenset(
     {
         "ARGUS_SKILL_COST_CONTROL",
-        "ARGUS_SKILL_SKILL_OPS",
         "ARGUS_SKILL_WIKI",
         "ARGUS_SKILL_AUTO_INIT_WIKI",
         "ARGUS_SKILL_CROSS_PROJECT_PROPAGATION",

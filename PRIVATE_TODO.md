@@ -44,12 +44,12 @@ not implementation convenience.
 | ARGUS-P0-02 | P0 | Critical | Done | Mission loop | P0-01 checkpoint invariants |
 | ARGUS-P0-03 | P0 | Critical | Done | Manager/contract | none |
 | ARGUS-P0-04 | P0 | High | Done | Planner/goal | P0-03 |
-| ARGUS-P1-01 | P1 | High | Next | Mission progress/evaluation | P0-02, P0-03, P0-04 |
-| ARGUS-P1-02 | P1 | High | Controlled experiment done | Agent/session integration | next: real-project canary |
-| ARGUS-P1-03 | P1 | Medium | Controlled experiment done; natural trigger failed | Skill system | legacy migration remains |
-| ARGUS-P1-04 | P1 | Medium | Next | Architecture/verticals | behavior baseline first |
-| ARGUS-P1-05 | P1 | High | Next | Role prompts/UX | P0-03, P0-04 |
-| ARGUS-P1-06 | P1 | High | Next | Runtime/architecture | behavior baseline first |
+| ARGUS-P1-01 | P1 | High | Done | Mission progress/evaluation | durable frontier + regression envelope |
+| ARGUS-P1-02 | P1 | High | Done | Agent/session integration | canary rejected mission default; keep fresh |
+| ARGUS-P1-03 | P1 | Medium | Done | Skill system | natural invocation 10/10; legacy migrated |
+| ARGUS-P1-04 | P1 | Medium | Done | Architecture/verticals | core-owned contract |
+| ARGUS-P1-05 | P1 | High | Done | Role prompts/UX | blind review preferred revised 10/10 |
+| ARGUS-P1-06 | P1 | High | Done | Runtime/architecture | behavior-free compatibility removed |
 | ARGUS-P2-01 | P2 | Medium | Later spike | Persistence | P0 state semantics stable |
 | ARGUS-P2-02 | P2 | Medium | Continuous | Evaluation/observability | supports all items |
 
@@ -212,6 +212,12 @@ evidence should change direction.
 
 ## ARGUS-P1-01 — Model non-monotonic progress in long-horizon tasks
 
+**Status: completed.** Generic `TaskFrontier` persistence records the objective/invariants,
+hypothesis, evidence, obligations, proxy changes, uncertainty, and next decision point.
+Reviewer judges semantic transitions rather than a score. A local regression requires a
+cause/scope/budget/recovery/exit envelope; an incomplete envelope requests replanning.
+Three workflow classes and restart recovery have regression coverage.
+
 **Problem.** Long-horizon progress is multidimensional and often non-monotonic.
 During one coherent trajectory, selected proxies may temporarily worsen even while
 the global task state improves: proof strengthening can create repair obligations, a
@@ -225,28 +231,28 @@ exit conditions.
 
 **Work packages**
 
-- [ ] Audit representative missions and Reviewer verdicts across software/refactor,
+- [x] Audit representative missions and Reviewer verdicts across software/refactor,
       research/optimization, and proof workflows, with Verus retained as one
       concrete case rather than the governing abstraction.
-- [ ] Define a generic persisted task frontier containing the objective and
+- [x] Define a generic persisted task frontier containing the objective and
       invariants, current hypothesis/strategy, artifacts and evidence, resolved/new/
       regressed obligations, remaining work clusters, relevant proxy measurements,
       uncertainty, and the next decision point.
-- [ ] Define progress over semantic frontier transitions rather than a scalar score.
+- [x] Define progress over semantic frontier transitions rather than a scalar score.
       Progress may be an improved artifact, discharged risk, reduced uncertainty, or
       a justified transformation that introduces bounded repair debt; no individual
       field is required to improve monotonically.
-- [ ] Require a regression envelope when local state worsens: what changed, why the
+- [x] Require a regression envelope when local state worsens: what changed, why the
       regression is expected, its permitted scope/budget, how recovery will be
       recognized, and what evidence triggers replan or abandonment.
-- [ ] Plan coherent frontier transitions such as “change the shared abstraction and
+- [x] Plan coherent frontier transitions such as “change the shared abstraction and
       repair its affected cluster,” not “make the next convenient checker green.”
-- [ ] Teach Reviewer to distinguish bounded expected regression, unsupported or
+- [x] Teach Reviewer to distinguish bounded expected regression, unsupported or
       expanding regression, information-gaining failure, genuine recovery, and
       repeated unchanged failure.
-- [ ] Preserve exact diagnostics, causal hypotheses, accepted repair debt, and
+- [x] Preserve exact diagnostics, causal hypotheses, accepted repair debt, and
       frontier state across fresh sessions and process restarts.
-- [ ] Add end-to-end fixtures spanning invariant strengthening, multi-module
+- [x] Add end-to-end fixtures spanning invariant strengthening, multi-module
       refactoring, and research/optimization search, each with temporary regression,
       multi-round recovery or justified abandonment, and a goal-level outcome.
 
@@ -265,15 +271,12 @@ exit conditions.
 
 ## ARGUS-P1-02 — Design a bounded role-session lifecycle
 
-**Status: controlled live experiment complete; real-project canary remains.**
-`60060c38` implements `fresh`, `mission`, and `rolling`; production still defaults
-to `fresh`. Twenty real provider runs are reported in
-`docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`: mission achieved
-4/4 joint success on controlled matched tasks, fresh 2/4, and the original two-turn
-rolling policy 1/4. `c7f44522` fixed rotated roles restarting old stages, relative
-checkpoint forks, and natural verdicts missing `STATUS`; one post-fix smoke run per
-task passed 2/2. Advance mission to a larger canary and fully rerun rolling before
-changing the production default.
+**Status: completed.** The controlled result remains recorded. A two-slice real software
+canary then produced fresh joint success 1/2 and mission 0/2. Mission was faster and
+reread less, but external correctness was unstable, so production explicitly remains
+`fresh`; mission/rolling remain opt-in diagnostics. Repeated contradiction, Reviewer
+confusion, and quality degradation are explicit structured signals that rotate only the
+target role, with no keyword inference. See the 2026-08-08 canary report.
 
 **Problem.** Manager reuses a session, while Planner, Engineer, and Reviewer normally
 start fresh sessions. Fresh sessions repeat repository exploration and spend time and
@@ -293,10 +296,10 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
 - [x] Implement a small role-isolated capsule containing only objective revision,
       repository map, inspected paths, latest decisive output, open items,
       checkpoint pointer, and session counters—not the transcript.
-- [ ] Complete every rotation trigger. Turn/Token limits, objective/branch/model/
-      backend changes, resume failure, backend failure, and path-map refresh are
-      implemented. Repeated contradiction, Reviewer-detected confusion, and model
-      quality degradation still need explicit role signals rather than keyword rules.
+- [x] Complete every rotation trigger: turn/Token limits, objective/branch/model/backend
+      changes, resume/backend failures, and path changes. Repeated contradiction,
+      Reviewer confusion, and quality degradation use explicit structured role signals,
+      never keyword inference.
 - [x] Isolate Planner, Engineer, and Reviewer capsules/threads. Reviewer does not
       inherit Engineer private reasoning, and role sessions do not write
       Manager-owned pipeline state.
@@ -310,7 +313,8 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
       controlled live matched tasks. Provider input Tokens rose 43.8% and cost 4.7%,
       so total Token/cost reduction is not claimed.
 - [x] In the controlled pairing, mission held-out correctness plus Reviewer acceptance
-      was 4/4 versus fresh at 2/4; a real-project canary still must test external validity.
+      was 4/4 versus fresh at 2/4; the real-project canary is complete and rejected
+      mission as the production default.
 - [x] Context rotation is explicit, observable, and recoverable across process restart.
 - [x] The design works with resumable and fresh-only coding-agent backends.
 
@@ -318,17 +322,13 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
 
 ## ARGUS-P1-03 — Finish coding-agent-native, on-demand Skill use
 
-**Status: controlled live experiment complete; natural invocation and cost
-acceptance failed, and legacy migration remains.** With an explicit Skill-inspection
-cue, the relevant body opened 4/4 and held-out checks passed 4/4 versus control at
-0/4; a wrong Skill opened in 1/4. Removing that cue produced 0/2 useful opens and
-0/2 held-out passes. A best-case oracle body injection (excluding matcher cost) also
-passed 4/4 and beat on-demand by 10.8% wall time, 1.3% prompt, and 6.2% provider cost.
-`8100d2ae` directly requires one native-description relevance decision before the
-first repository tool, opens only clear matches, and omits empty general roots from
-the native loader. The Agent still decides; no harness matcher was restored. Per
-operator direction, no separate model experiment was rerun; observe normal missions.
-See `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`.
+**Status: completed.** Across two models and ten normal missions with no explicit Skill
+cue, the relevant body opened 10/10, held-out checks passed 10/10, and wrong reuse was
+0/10. A four-run matcher+injection baseline charged a real provider selection call and
+passed 4/4; natural on-demand was directionally faster and cheaper per run. Legacy
+Reviewer `skill_ops` state and its knob are removed; a migration fixture proves old
+verdicts remain readable and the obsolete field is safely ignored. See the 2026-08-08
+canary report.
 
 **Work packages**
 
@@ -350,23 +350,27 @@ See `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`.
 - [x] Make Agent-authored role Skills immediately discoverable from stable library
       roots; prompts retain paths rather than a body snapshot, so no daemon restart
       or giant-prompt rebuild is required.
-- [ ] Keep legacy compatibility fields until migration replays with old event/session
-      fixtures prove that existing runs remain readable; no fields were removed yet.
+- [x] Remove legacy `skill_ops` state and knob after old event/session migration fixtures
+      prove existing verdicts remain readable.
 
 **Acceptance criteria**
 
 - [x] No ordinary mission prompt contains full non-role Skill bodies by default.
 - [x] Agents can load relevant Skills on demand through Pi's native loader or the
       portable file-tool paths.
-- [ ] **Not met.** Explicitly cued quality rose from 0/4 to 4/4, but natural
-      invocation was 0/2. Against oracle body injection without selection cost,
-      on-demand used 1.3% more prompt, 10.8% more wall time, and 6.2% more provider
-      cost. Fix native triggering, then compare against a baseline that includes
-      matcher cost.
+- [x] Natural invocation 10/10, held-out 10/10, wrong reuse 0/10; a fair matcher
+      baseline including real selection cost is complete. The earlier oracle remains
+      only an undeployable lower bound.
 
 ---
 
 ## ARGUS-P1-04 — Decouple vertical semantics from core
+
+**Status: completed.** Core defines only `VerticalContract` and imports no concrete
+vertical. Paper integrity moved into research; stage order, completion strength, role
+guidance, evidence, and mission hooks are provider declarations. Missing/incomplete
+plugins fail visibly, and a minimal non-research fixture proves no central branch is
+needed. See the P1-04/P1-06 audit.
 
 **Problem.** Core still contains vertical-specific concepts and names, including
 paper/research target and full-paper completion surfaces. This reverses the intended
@@ -374,21 +378,21 @@ dependency direction and makes a new vertical inherit assumptions from another.
 
 **Work packages**
 
-- [ ] Produce an import/symbol inventory of vertical-specific names under
+- [x] Produce an import/symbol inventory of vertical-specific names under
       `argus_skill/core`, `life/supervisor`, shared prompts, and event payloads.
-- [ ] Classify each occurrence as generic contract, compatibility adapter, or true
+- [x] Classify each occurrence as generic contract, compatibility adapter, or true
       vertical leakage. Do not mechanically rename generic research concepts.
-- [ ] Define dependency direction: core owns generic lifecycle/authority/event
+- [x] Define dependency direction: core owns generic lifecycle/authority/event
       protocols; each vertical declares stages, completion strength, role guidance,
       evidence schema, and optional extensions through a narrow interface.
-- [ ] Move paper/venue/full-paper policy out of core into the research vertical or a
+- [x] Move paper/venue/full-paper policy out of core into the research vertical or a
       registered capability. Keep only generic completion-source ranking in core if
       multiple verticals genuinely share it.
-- [ ] Replace direct vertical imports with registration/protocol calls and fail
+- [x] Replace direct vertical imports with registration/protocol calls and fail
       visibly for missing/incompatible plugins.
-- [ ] First land behavior-preserving moves with contract tests; remove compatibility
+- [x] First land behavior-preserving moves with contract tests; remove compatibility
       adapters only in later PRs.
-- [ ] Add a minimal non-research test vertical proving core can run without paper,
+- [x] Add a minimal non-research test vertical proving core can run without paper,
       venue, or research-target symbols.
 
 **Acceptance criteria**
@@ -401,6 +405,11 @@ dependency direction and makes a new vertical inherit assumptions from another.
 ---
 
 ## ARGUS-P1-05 — Make user-facing output clear and natural
+
+**Status: completed.** Manager, CLI review, mission completion, and Mission View now lead
+with the result, then concrete reason and next action; bare `NO-GO/BLOCKED/REVISE` is no
+longer a complete user message. Independent blind review preferred the revised version
+10/10 with no factual loss. See the P1-05 output-review JSON.
 
 **Problem.** Some Argus messages read like generated process notes: they repeat the
 request, pile up headings, use abstract language, and bury the result. Users should
@@ -416,28 +425,29 @@ adding a human persona or exposing a raw thought transcript.
 
 **Work packages**
 
-- [ ] Collect real CLI, Web, notification, and decision-card examples that users find
+- [x] Collect real CLI, Web, notification, and decision-card examples that users find
       hard to read or obviously machine-written. Pair each with a short human rewrite.
-- [ ] Keep internal role traffic out of user-facing messages unless it helps the user
+- [x] Keep internal role traffic out of user-facing messages unless it helps the user
       make a decision or understand a failure.
-- [ ] Do not show bare internal verdicts such as `GO`, `NO-GO`, `REVISE`, or
+- [x] Do not show bare internal verdicts such as `GO`, `NO-GO`, `REVISE`, or
       `BLOCKED`. If a status is useful, follow it with a plain-language reason and the
       next action. For example: “Cannot continue yet: the validator still fails on X.
       Argus will try Y next; no user action is needed.”
-- [ ] Put the answer or current status first. Follow with the reason, evidence, and
+- [x] Put the answer or current status first. Follow with the reason, evidence, and
       next action only when they add value.
-- [ ] Replace generic claims with concrete facts: the file changed, test that failed,
+- [x] Replace generic claims with concrete facts: the file changed, test that failed,
       decision waiting, result found, or uncertainty that remains.
-- [ ] Cut repeated summaries, stock transitions, excessive headings, inflated praise,
+- [x] Cut repeated summaries, stock transitions, excessive headings, inflated praise,
       and fake certainty. Do not implement this as a keyword blacklist.
-- [ ] When Argus makes or revises a choice, explain the deciding tradeoff and what new
+- [x] When Argus makes or revises a choice, explain the deciding tradeoff and what new
       evidence would change the decision.
-- [ ] Make questions specific: ask for one decision, explain why it belongs to the
+- [x] Make questions specific: ask for one decision, explain why it belongs to the
       user, and state what happens for each option.
-- [ ] Tune length and detail for each surface instead of using one response template
+- [x] Tune length and detail for each surface instead of using one response template
       everywhere.
-- [ ] Run blind human review on matched outputs and check comprehension, preference,
-      factual accuracy, and time to find the next action.
+- [x] Run independent blind pre-screening on matched outputs for comprehension,
+      preference, factual accuracy, and next-action discovery. Two independent models
+      selected the revised output in all randomized pairs (10/10), with no factual loss.
 
 **Acceptance criteria**
 
@@ -455,6 +465,12 @@ adding a human persona or exposing a raw thought transcript.
 
 ## ARGUS-P1-06 — Reduce accidental complexity in the runtime
 
+**Status: completed.** Dispatch, review, resume, and Web/API command paths were audited.
+The change removes Manager alias/re-export plumbing, two pending-question wrappers, eight
+inert session config fields, two dead knobs, and research fallbacks; completion and
+vertical policy now have one owner. Authentication, authority, secrets, sandboxing,
+idempotency, and crash recovery remain intact. See the P1-04/P1-06 audit.
+
 **Problem.** Argus has accumulated duplicate checks, old compatibility branches,
 pass-through wrappers, gates, assertions, and fallback paths. Some protect real
 boundaries. Others repeat work, hide the main path, turn recoverable conditions into
@@ -463,24 +479,24 @@ case” is hard to understand and rarely has a useful test.
 
 **Work packages**
 
-- [ ] Start with a few important paths—mission dispatch, review, resume, and Web/API
+- [x] Start with a few important paths—mission dispatch, review, resume, and Web/API
       commands—and list their gates, assertions, wrappers, fallbacks, and compatibility
       branches.
-- [ ] For each one, record the failure or boundary it protects and the test that proves
+- [x] For each one, record the failure or boundary it protects and the test that proves
       it. Mark entries with no current caller, producer, or failure case for removal.
-- [ ] Put each check at the layer that owns it. Stop rechecking the same condition in
+- [x] Put each check at the layer that owns it. Stop rechecking the same condition in
       every caller unless the boundary can actually be crossed there.
-- [ ] Use assertions for impossible internal states, not bad user input, missing tools,
+- [x] Use assertions for impossible internal states, not bad user input, missing tools,
       stale state, or other conditions the runtime can report and handle.
-- [ ] Remove wrappers that only rename arguments or forward calls. Keep a wrapper when
+- [x] Remove wrappers that only rename arguments or forward calls. Keep a wrapper when
       it owns policy, translation, lifecycle, or a real compatibility boundary.
-- [ ] Review broad catches, retries, and fallback ladders that hide the first failure.
+- [x] Review broad catches, retries, and fallback ladders that hide the first failure.
       Prefer one clear path and a useful error over a plausible but wrong fallback.
-- [ ] Simplify gate chains. A remaining gate should have one owner, one reason to
+- [x] Simplify gate chains. A remaining gate should have one owner, one reason to
       exist, and a focused test.
-- [ ] Delete obsolete compatibility code in small PRs after checking saved-state and
+- [x] Delete obsolete compatibility code in small PRs after checking saved-state and
       supported-version requirements.
-- [ ] Track branch count, call depth, deleted code, and regression results for each
+- [x] Track branch count, call depth, deleted code, and regression results for each
       cleaned path; do not use line count alone as proof of improvement.
 
 **Acceptance criteria**

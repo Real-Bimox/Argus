@@ -16,6 +16,23 @@ from ..core.models import ReviewDecision
 _STATUSES = {"done", "continue", "blocked", "replan_requested"}
 _PLAN_SIGNALS = {"continue", "reconsider"}
 _AUTHORITY_IMPACTS = {"technical", "manager_contract", "operator"}
+_FRONTIER_CHANGES = {
+    "artifact_improved",
+    "risk_reduced",
+    "uncertainty_reduced",
+    "information_gain",
+    "bounded_regression",
+    "recovered",
+    "unchanged_failure",
+    "expanding_regression",
+    "unexplained_regression",
+}
+_SESSION_SIGNALS = {
+    "repeated_contradiction",
+    "reviewer_confusion",
+    "quality_degradation",
+}
+_SESSION_SIGNAL_ROLES = {"planner", "engineer", "reviewer"}
 
 
 def _planner_report(
@@ -44,6 +61,76 @@ def _planner_report(
     return report
 
 
+def _frontier_report(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    change = str(value.get("change") or "").strip().lower()
+    if change not in _FRONTIER_CHANGES:
+        return {}
+    report: dict[str, Any] = {
+        "change": change,
+        "summary": str(value.get("summary") or "").strip()[:2000],
+    }
+    for key in (
+        "resolved_obligations",
+        "new_obligations",
+        "regressed_obligations",
+        "remaining_work",
+        "proxy_changes",
+        "artifacts",
+        "evidence",
+    ):
+        raw = value.get(key)
+        if isinstance(raw, list):
+            report[key] = [
+                text for item in raw[:40] if (text := str(item or "").strip())
+            ]
+    for key in ("hypothesis", "uncertainty", "next_decision_point"):
+        text = str(value.get(key) or "").strip()
+        if text:
+            report[key] = text[:2000]
+    regression = value.get("regression")
+    if isinstance(regression, dict):
+        report["regression"] = {}
+        for key in ("cause", "scope", "budget", "recovery_test", "exit_trigger"):
+            text = str(regression.get(key) or "").strip()
+            report["regression"][key] = (
+                "" if text.casefold() in {"none", "null", "n/a", "na", "-"} else text[:1000]
+            )
+    return report
+
+
+def _tagged_values(raw: str) -> dict[str, str]:
+    """Parse compact ``name::value|name::value`` handoff fields."""
+    tagged: dict[str, str] = {}
+    for part in str(raw or "").split("|"):
+        name, separator, value = part.partition("::")
+        if separator and name.strip() and value.strip():
+            tagged[name.strip().lower()] = value.strip()
+    return tagged
+
+
+def _tagged_items(value: str) -> list[str]:
+    text = str(value or "").strip()
+    if text.casefold() in {"", "none", "null", "n/a", "na", "-"}:
+        return []
+    return [item.strip() for item in text.split(";") if item.strip()]
+
+
+def _session_signal(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    kind = str(value.get("kind") or "").strip().lower()
+    target = str(value.get("target") or "").strip().lower()
+    if kind not in _SESSION_SIGNALS or target not in _SESSION_SIGNAL_ROLES:
+        return {}
+    return {
+        "kind": kind,
+        "target": target,
+        "detail": str(value.get("detail") or "").strip()[:1000],
+    }
+
+
 def _apply_model_judgment_policy(decision: ReviewDecision) -> ReviewDecision:
     """Ensure opaque integrity identifiers cannot become Reviewer blockers."""
     original_reason = str(decision.reason or "")
@@ -68,6 +155,37 @@ def _apply_model_judgment_policy(decision: ReviewDecision) -> ReviewDecision:
             "The Reviewer cited only machine-only integrity metadata and did not "
             "identify a semantic blocker."
         )
+    frontier = decision.frontier_report
+    if isinstance(frontier, dict):
+        change = str(frontier.get("change") or "")
+        regression = frontier.get("regression")
+        regression = regression if isinstance(regression, dict) else {}
+        envelope_complete = all(
+            str(regression.get(key) or "").strip()
+            for key in ("cause", "scope", "budget", "recovery_test", "exit_trigger")
+        )
+        if change == "bounded_regression" and not envelope_complete:
+            decision.status = "replan_requested"
+            decision.reason += (
+                " The reported regression has no complete cause, scope, budget, "
+                "recovery test, and exit trigger, so it cannot be accepted as bounded."
+            )
+            decision.next_action = (
+                "Replan with a complete regression envelope or restore the prior frontier."
+            )
+            decision.planner_report.update({
+                "forward_progress": False,
+                "plan_signal": "reconsider",
+                "challenge": "The proposed regression was not bounded.",
+                "alternative": "Bound the repair debt or choose a route without it.",
+                "authority_impact": "technical",
+            })
+        elif change == "expanding_regression" and decision.status == "done":
+            decision.status = "replan_requested"
+            decision.next_action = (
+                decision.next_action
+                or "Diagnose the expanding regression and revise or abandon the route."
+            )
     return decision
 
 
@@ -131,7 +249,6 @@ def parse_decision_text(
         reason = parsed.get("reason")
         next_action = parsed.get("next_action")
         operator_question = parsed.get("operator_question")
-        raw_skill_ops = parsed.get("skill_ops")
         raw_planner_report = parsed.get("planner_report")
         if status not in _STATUSES:
             continue
@@ -141,11 +258,6 @@ def parse_decision_text(
             continue
         if operator_question is not None and not isinstance(operator_question, str):
             continue
-        skill_ops = (
-            [dict(op) for op in raw_skill_ops if isinstance(op, dict)]
-            if isinstance(raw_skill_ops, list)
-            else []
-        )
         return _apply_model_judgment_policy(
             ReviewDecision(
                 status=status,
@@ -164,7 +276,8 @@ def parse_decision_text(
                     if isinstance(raw_planner_report, dict)
                     else {}
                 ),
-                skill_ops=skill_ops,
+                frontier_report=_frontier_report(parsed.get("frontier_report")),
+                session_signal=_session_signal(parsed.get("session_signal")),
             )
         )
     return None
@@ -181,6 +294,13 @@ _VERDICT_KEYS = (
     "PLAN_CHALLENGE",
     "PLAN_ALTERNATIVE",
     "AUTHORITY_IMPACT",
+    "FRONTIER_CHANGE",
+    "FRONTIER_SUMMARY",
+    "FRONTIER_OBLIGATIONS",
+    "FRONTIER_EVIDENCE",
+    "NEXT_DECISION_POINT",
+    "REGRESSION_ENVELOPE",
+    "SESSION_SIGNAL",
 )
 
 
@@ -192,7 +312,11 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
     ``None`` as "the Reviewer did not rule", which is the safe reading of an
     answer we could not understand.
     """
-    from ..core.role_reply import read_block, read_key_values, read_optional
+    from ..core.role_reply import (
+        read_block,
+        read_key_values,
+        read_optional,
+    )
 
     values = read_key_values(text, _VERDICT_KEYS)
     status = str(values.get("STATUS") or "").strip().lower()
@@ -208,6 +332,10 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
     reason = read_block(text, "REASON", _VERDICT_KEYS)
     if not reason.strip():
         return None
+    obligations = _tagged_values(read_optional(values, "FRONTIER_OBLIGATIONS"))
+    evidence = _tagged_values(read_optional(values, "FRONTIER_EVIDENCE"))
+    regression = _tagged_values(read_optional(values, "REGRESSION_ENVELOPE"))
+    signal = _tagged_values(read_optional(values, "SESSION_SIGNAL"))
     return _apply_model_judgment_policy(
         ReviewDecision(
             status=status,
@@ -230,6 +358,30 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
                 alternative=read_block(text, "PLAN_ALTERNATIVE", _VERDICT_KEYS),
                 authority_impact=read_optional(values, "AUTHORITY_IMPACT"),
             ),
+            frontier_report=_frontier_report({
+                "change": read_optional(values, "FRONTIER_CHANGE"),
+                "summary": read_block(text, "FRONTIER_SUMMARY", _VERDICT_KEYS),
+                "hypothesis": evidence.get("hypothesis", ""),
+                "resolved_obligations": _tagged_items(obligations.get("resolved", "")),
+                "new_obligations": _tagged_items(obligations.get("new", "")),
+                "regressed_obligations": _tagged_items(obligations.get("regressed", "")),
+                "remaining_work": _tagged_items(obligations.get("remaining", "")),
+                "artifacts": _tagged_items(evidence.get("artifacts", "")),
+                "evidence": _tagged_items(evidence.get("evidence", "")),
+                "proxy_changes": _tagged_items(evidence.get("proxies", "")),
+                "uncertainty": evidence.get("uncertainty", ""),
+                "next_decision_point": read_block(
+                    text, "NEXT_DECISION_POINT", _VERDICT_KEYS
+                ),
+                "regression": {
+                    "cause": regression.get("cause", ""),
+                    "scope": regression.get("scope", ""),
+                    "budget": regression.get("budget", ""),
+                    "recovery_test": regression.get("recovery", ""),
+                    "exit_trigger": regression.get("exit", ""),
+                },
+            }),
+            session_signal=_session_signal(signal),
         )
     )
 

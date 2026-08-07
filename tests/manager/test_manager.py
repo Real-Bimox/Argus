@@ -189,20 +189,17 @@ def test_plan_stages_propagates_vertical_load_failure(monkeypatch):
         Manager().plan_stages("kernelbench")
 
 
-def test_plan_stages_defaults_when_vertical_has_no_stage_order(monkeypatch):
-    """A vertical module that loads successfully but simply does not define
-    STAGE_ORDER (an optional hook, not a failure) still gets the canonical
-    template — this is NOT the guessing anti-pattern, it's the documented
-    optional-hook default used throughout verticals/_base.py."""
+def test_plan_stages_rejects_incomplete_vertical_contract(monkeypatch):
+    """Missing stages fail visibly instead of becoming another vertical."""
+    from argus_skill.core.vertical_contract import VerticalContractError
     from argus_skill.verticals import _base
-    from argus_skill.verticals.research.stages import CANONICAL_STAGE_ORDER
 
     class _BareModule:
         pass
 
     monkeypatch.setattr(_base, "load_vertical", lambda name, project_root=None: _BareModule())
-    stages = Manager().plan_stages("some-vertical")
-    assert stages == list(CANONICAL_STAGE_ORDER)
+    with pytest.raises(VerticalContractError, match="declares no stage order"):
+        Manager().plan_stages("some-vertical")
 
 
 def test_divide_commits_vertical_so_supervisor_trusts_it(tmp_path):
@@ -287,6 +284,9 @@ def test_vertical_commit_persists_generic_research_target_contract(
         "load_vertical",
         lambda name, project_root=None: SimpleNamespace(
             STAGE_ORDER=("scope", "review"),
+            CHECKLIST_STAGE_ORDER=("scope", "review"),
+            CHECKLIST_ITEMS={"scope": (), "review": ()},
+            completion_gate="none",
             RESEARCH_TARGET_LEVELS=("exploratory", "publishable", "doctoral"),
         ),
     )

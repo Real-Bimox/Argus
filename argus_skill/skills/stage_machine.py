@@ -906,7 +906,7 @@ def _full_pipeline_title(project_root) -> str:
             return "## Full pipeline checklist (final submission gate)\n"
         if vertical_completion_gate(
             load_vertical(vertical, project_root=project_root)
-        ) != "full_paper":
+        ) != "certified":
             return f"## Full pipeline checklist ({vertical})\n"
     except Exception:  # noqa: BLE001 — title must never break prompt building
         pass

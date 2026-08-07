@@ -13,8 +13,9 @@ import time
 from pathlib import Path
 from typing import Any, Mapping
 
-CONTEXT_PACKET_VERSION = 2
+CONTEXT_PACKET_VERSION = 3
 HANDOFF_DIRNAME = "handoffs"
+FRONTIER_FILENAME = "frontier.json"
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -112,6 +113,23 @@ def create_mission_context(
         existing_created_at = float(existing.get("created_at") or existing_created_at)
     except (OSError, ValueError, TypeError):
         pass
+    frontier_path = root / FRONTIER_FILENAME
+    from ..core.task_frontier import (
+        TaskFrontier,
+        load_task_frontier,
+        save_task_frontier,
+    )
+
+    frontier = load_task_frontier(frontier_path) or TaskFrontier.initial(
+        mission_id=str(mission_id),
+        objective=objective,
+        invariants=[acceptance_check, *(non_goals or [])],
+        hypothesis=plan_hypothesis,
+        remaining_work=[acceptance_check] if acceptance_check else [],
+        uncertainty="Unresolved until reviewed evidence narrows it.",
+        next_decision_point=decision_rule,
+    )
+    save_task_frontier(frontier_path, frontier)
     payload = {
         "schema_version": CONTEXT_PACKET_VERSION,
         "kind": "mission_context",
@@ -136,6 +154,7 @@ def create_mission_context(
         "node_key": str(node_key or ""),
         "deps": [str(dep) for dep in (deps or [])],
         "tags": [str(tag) for tag in (tags or [])],
+        "frontier": _file_reference(frontier_path),
         "created_at": existing_created_at,
         "updated_at": time.time(),
     }
@@ -172,6 +191,7 @@ def record_engineer_handoff(
         "producer_role": "engineer",
         "session_id": str(thread_id or ""),
         "checkpoint": _file_reference(checkpoint_path),
+        "frontier": _file_reference(root / FRONTIER_FILENAME),
         "created_at": time.time(),
     }
     path = root / f"round-{max(1, int(round_index)):04d}-engineer.json"
@@ -205,6 +225,19 @@ def record_reviewed_handoff(
         "next_action": str(getattr(review, "next_action", "") or "")[:4000],
         "operator_question": str(getattr(review, "operator_question", "") or "")[:1000],
     }
+    frontier_path = root / FRONTIER_FILENAME
+    from ..core.task_frontier import load_task_frontier, save_task_frontier
+
+    frontier = load_task_frontier(frontier_path)
+    frontier_transition: dict[str, Any] = {}
+    if frontier is not None:
+        report = getattr(review, "frontier_report", {})
+        if isinstance(report, dict):
+            frontier_transition = frontier.apply(report, round_index=round_index)
+            if frontier_transition:
+                save_task_frontier(frontier_path, frontier)
+                review_payload["frontier_transition"] = frontier_transition
+                review_payload["frontier_disposition"] = frontier.disposition
     payload = {
         "schema_version": CONTEXT_PACKET_VERSION,
         "kind": "round_reviewed_handoff",
@@ -214,6 +247,7 @@ def record_reviewed_handoff(
         "producer_role": "reviewer",
         "review": review_payload,
         "checkpoint": _file_reference(checkpoint_path),
+        "frontier": _file_reference(frontier_path),
         "created_at": time.time(),
     }
     path = root / f"round-{max(1, int(round_index)):04d}.json"
@@ -230,6 +264,7 @@ def record_reviewed_handoff(
 
 __all__ = [
     "CONTEXT_PACKET_VERSION",
+    "FRONTIER_FILENAME",
     "create_mission_context",
     "mission_context_dir",
     "record_engineer_handoff",

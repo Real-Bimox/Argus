@@ -31,7 +31,7 @@ def _supervisor(project: Path, life: Path) -> LifeSupervisor:
         continuous=True,
         continuous_objective="keep improving",
         open_ended=True,
-        full_paper_gate=False,
+        final_certification_gate=False,
         project_worktree=project,
         artifact_root=project,
     )

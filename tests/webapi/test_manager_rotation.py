@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from argus_skill.life.memory import BacklogItem, LifeMemory
-from argus_skill.webapi import manager_bridge, manager_state
+from argus_skill.webapi import manager_bridge, manager_dispatch, manager_state
 
 
 def _make_project(root: Path, sid: str = "s-rot00001") -> Path:
@@ -33,13 +33,13 @@ def test_manager_prewarm_schedule_is_one_shot_after_success(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    manager_bridge._STATES.clear()
-    manager_bridge._MANAGER_PREWARMING.clear()
+    manager_state._STATES.clear()
+    manager_state._MANAGER_PREWARMING.clear()
     calls: list[tuple[str, Path | None]] = []
 
     def fake_prewarm(sid: str, *, global_root=None) -> None:
         calls.append((sid, Path(global_root) if global_root is not None else None))
-        manager_bridge._STATES.setdefault(sid, {})["_manager_acp_prewarmed"] = True
+        manager_state._STATES.setdefault(sid, {})["_manager_acp_prewarmed"] = True
 
     class InlineThread:
         def __init__(self, *, target, name: str, daemon: bool) -> None:  # noqa: ANN001
@@ -57,13 +57,13 @@ def test_manager_prewarm_schedule_is_one_shot_after_success(
     manager_state.schedule_manager_prewarm("s-prewarm01", global_root=tmp_path)
 
     assert calls == [("s-prewarm01", tmp_path)]
-    assert manager_bridge._MANAGER_PREWARMING == set()
+    assert manager_state._MANAGER_PREWARMING == set()
 
 
 def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
     monkeypatch,
 ) -> None:
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_WARM_CONTEXT_LIMIT", "2")
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_WARM_CONTEXT_IDLE_SECONDS", "99999")
     closed: list[str] = []
@@ -83,7 +83,7 @@ def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
             pass
 
     now = time.monotonic()
-    manager_bridge._STATES.update({
+    manager_state._STATES.update({
         "s-old": {
             "manager_runner": Runner("s-old"),
             "last_access_monotonic": now - 2,
@@ -96,15 +96,15 @@ def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
 
     manager_state._chat_state_for("s-third")
 
-    assert "s-old" not in manager_bridge._STATES
-    assert {"s-new", "s-third"} <= set(manager_bridge._STATES)
+    assert "s-old" not in manager_state._STATES
+    assert {"s-new", "s-third"} <= set(manager_state._STATES)
     assert closed == ["s-old"]
 
 
 def test_manager_session_rotates_with_structured_handoff(tmp_path: Path, monkeypatch) -> None:
     _make_project(tmp_path)
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_ROTATE_TURNS", "4")
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     seen: list[str] = []
 
@@ -138,7 +138,7 @@ def test_manager_session_rotates_with_structured_handoff(tmp_path: Path, monkeyp
         for event_type in ("ui.operator", "ui.argus")
     ]
     assert all("SESSION HANDOFF" not in b for b in seen)
-    st = manager_bridge._STATES["s-rot00001"]
+    st = manager_state._STATES["s-rot00001"]
     assert st["last_thread_id"] == "thread-xyz"
 
     # Turn 5 crosses the threshold → rotate: fresh thread + handoff prepended.
@@ -160,7 +160,7 @@ def test_rotation_resets_cached_runner_seed(tmp_path: Path, monkeypatch) -> None
     """
     _make_project(tmp_path, sid="s-rot00003")
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_ROTATE_TURNS", "4")
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     class _FakeRunner:
         def __init__(self) -> None:
@@ -205,7 +205,7 @@ def test_rotation_resets_cached_runner_seed(tmp_path: Path, monkeypatch) -> None
 
 def test_handoff_names_identity_and_path(tmp_path: Path) -> None:
     life = _make_project(tmp_path, "s-rot00002")
-    ho = manager_bridge._build_handoff(life)
+    ho = manager_dispatch._build_handoff(life)
     assert "Argus Manager" in ho
     assert str(life) in ho
     assert "events.jsonl" in ho  # tells it where to self-serve state
@@ -217,7 +217,7 @@ def test_manager_stream_announces_classification_before_model_call(
 ) -> None:
     """A silent classifier still leaves the TUI on a truthful concrete phase."""
     _make_project(tmp_path, "s-phase001")
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     fragments: list[tuple[str, dict]] = []
 
     def _classify(mem, text, chat_state, *, root_task_id=None):
@@ -250,7 +250,7 @@ def test_manager_stream_and_persisted_reply_share_message_id(
     monkeypatch,
 ) -> None:
     life = _make_project(tmp_path, "s-stream001")
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     fragments: list[tuple[str, dict]] = []
 
     monkeypatch.setattr(
@@ -296,7 +296,7 @@ def test_natural_language_abort_is_control_not_backlog_work(
         BacklogItem.new(title="long task", objective="run a long task")
     )
     memory.backlog.mark_running(item.id)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     monkeypatch.setattr(
         "argus_skill.manager.config_intent._front_door_classify",
@@ -339,7 +339,7 @@ def test_web_process_restart_seeds_one_startup_handoff(
 
     append_turn(life, "operator", "old question")
     append_turn(life, "argus", "old answer")
-    manager_bridge._STATES.clear()  # model a fresh web process
+    manager_state._STATES.clear()  # model a fresh web process
     seen: list[str] = []
     classified: list[str] = []
 
@@ -365,7 +365,7 @@ def test_web_process_restart_seeds_one_startup_handoff(
     assert "old question" in seen[0] and "old answer" in seen[0]
     assert seen[0].count("new question") == 1
     assert classified == ["new question"]
-    assert manager_bridge._STATES["s-restart01"]["startup_handoffs"] == 1
+    assert manager_state._STATES["s-restart01"]["startup_handoffs"] == 1
 
     manager_bridge.manager_message(
         "s-restart01",
@@ -381,8 +381,8 @@ def test_status_snapshot_preserves_warm_session_and_pending_handoff(
     monkeypatch,
 ) -> None:
     _make_project(tmp_path, "s-status001")
-    manager_bridge._STATES.clear()
-    state = manager_bridge._chat_state_for("s-status001")
+    manager_state._STATES.clear()
+    state = manager_state._chat_state_for("s-status001")
     state.update({
         "turns": 4,
         "last_thread_id": "warm-thread",
@@ -420,7 +420,7 @@ def test_natural_language_config_change_is_applied_inline(tmp_path: Path, monkey
     front-door classify (``_front_door_classify`` → intent + route) + explicit
     ``_apply_config_intent``."""
     _make_project(tmp_path, "s-cfg00001")
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     triaged: list[str] = []
 
@@ -465,7 +465,7 @@ def test_active_mission_config_change_is_still_applied_inline(
         BacklogItem.new(title="active", objective="work")
     )
     memory.backlog.mark_running(item.id)
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     applied: list[object] = []
 
     intent = object()

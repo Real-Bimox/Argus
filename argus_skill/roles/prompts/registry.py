@@ -69,18 +69,10 @@ class RolePromptCatalog:
                 fragment_ids=(),
             )
 
-        from ...verticals._base import (
-            load_vertical,
-            vertical_checklist_stage_order,
-            vertical_completion_gate,
-            vertical_requires_independent_review,
-            vertical_role_banner,
-            vertical_search_altitude,
-            vertical_workflow_mode,
-        )
+        from ...verticals._base import load_vertical_contract
 
-        vertical_module = load_vertical(vertical, project_root=root)
-        vertical_banner = vertical_role_banner(vertical_module, banner_role)
+        contract = load_vertical_contract(vertical, project_root=root)
+        vertical_banner = contract.banner(banner_role)
         # A controller-owned external gate is a stronger objective contract than
         # a generic vertical's optimization style. Keep the stage/checklist state,
         # but suppress a vertical banner that can otherwise redefine the task
@@ -101,7 +93,7 @@ class RolePromptCatalog:
             role_banner = "\n\n".join(
                 part for part in (role_banner.strip(), domain_banner.strip()) if part
             )
-        stage_order = tuple(vertical_checklist_stage_order(vertical_module))
+        stage_order = contract.stage_order
         stage = str(request.stage or "").strip()
         if not stage and request.checklist_mode is not ChecklistMode.NONE:
             from ...skills.stage_machine import current_stage
@@ -137,7 +129,7 @@ class RolePromptCatalog:
             )
 
         search_altitude = (
-            vertical_search_altitude(vertical_module, root)
+            contract.altitude(root)
             if request.include_search_altitude and root is not None
             else ""
         )
@@ -168,11 +160,9 @@ class RolePromptCatalog:
             role_banner=role_banner,
             stage_checklist=checklist,
             stage_order=stage_order,
-            completion_gate=vertical_completion_gate(vertical_module),
-            workflow_mode=vertical_workflow_mode(vertical_module),
-            requires_independent_review=vertical_requires_independent_review(
-                vertical_module
-            ),
+            completion_gate=contract.completion_gate,
+            workflow_mode=contract.workflow_mode,
+            requires_independent_review=contract.requires_independent_review,
             search_altitude=search_altitude,
             fragment_ids=tuple(fragment_ids),
         )

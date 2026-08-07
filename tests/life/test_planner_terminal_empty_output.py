@@ -274,7 +274,7 @@ def _make_supervisor(
             continuous=True,
             continuous_objective="finish the private framework repair",
             paper_mission=False,
-            full_paper_gate=False,
+            final_certification_gate=False,
             open_ended=True,
             project_worktree=project,
             artifact_root=project,
@@ -288,7 +288,7 @@ def _make_supervisor(
     monkeypatch.setattr(supervisor, "_render_journal_for_planner", lambda: "")
     monkeypatch.setattr(supervisor, "_recent_no_progress_failures", lambda: {})
     monkeypatch.setattr(supervisor, "_recent_subagent_family_failures", lambda: {})
-    monkeypatch.setattr(supervisor, "_effective_full_paper_gate", lambda *_a, **_k: False)
+    monkeypatch.setattr(supervisor, "_effective_final_certification_gate", lambda *_a, **_k: False)
     monkeypatch.setattr(supervisor, "_planner_runtime_with_idle_note", lambda: "")
     return supervisor, backend, sink
 

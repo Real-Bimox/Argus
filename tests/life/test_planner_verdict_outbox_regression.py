@@ -180,7 +180,7 @@ def test_all_filtered_planned_verdict_replays_plan_retry_not_false(
         continuous=True,
         continuous_objective="keep improving the project",
         paper_mission=False,
-        full_paper_gate=False,
+        final_certification_gate=False,
         open_ended=False,
     )
     failing_sink = _FailingSink()
@@ -200,7 +200,7 @@ def test_all_filtered_planned_verdict_replays_plan_retry_not_false(
     monkeypatch.setattr(sup, "_render_journal_for_planner", lambda: "")
     monkeypatch.setattr(sup, "_recent_no_progress_failures", lambda: {})
     monkeypatch.setattr(sup, "_recent_subagent_family_failures", lambda: {})
-    monkeypatch.setattr(sup, "_effective_full_paper_gate", lambda *_a, **_k: False)
+    monkeypatch.setattr(sup, "_effective_final_certification_gate", lambda *_a, **_k: False)
     monkeypatch.setattr(sup, "_planner_runtime_with_idle_note", lambda: "")
 
     # ── first pass ──────────────────────────────────────────────────────────
@@ -425,7 +425,7 @@ def test_stale_outbox_discard_resumes_planning_and_enqueues_recovery_task(
             open_ended=True,
             project_worktree=project,
             artifact_root=project,
-            full_paper_gate=False,
+            final_certification_gate=False,
         ),
         planner_runner=planner_runner,
     )

@@ -90,32 +90,22 @@ class MissionExecutionRuntimeMixin:
         # Workdir adoption happens before stage/context resolution so the
         # mission, Reviewer, and Manager all see one canonical research tree.
         state.pipeline_stage_at_start = self._current_pipeline_stage() or ""
-        if (
-            state.pipeline_stage_at_start == "baseline"
-            and "framework_maintenance" not in {
-                str(tag or "").strip().lower() for tag in item.tags
-            }
-        ):
-            try:
-                from ...skills.vertical_select import resolve_vertical
-                from ...verticals.kernel_engineering.baseline_workspace import (
-                    prepare_baseline_workspace,
-                )
+        if "framework_maintenance" not in {
+            str(tag or "").strip().lower() for tag in item.tags
+        }:
+            from ...skills.vertical_select import resolve_vertical
+            from ...verticals._base import load_vertical_contract
 
-                if resolve_vertical(resolved_mission_workdir) == "kernel_engineering":
-                    baseline = prepare_baseline_workspace(
-                        resolved_mission_workdir,
-                        self.memory.root,
-                    )
-                    if baseline is not None:
-                        block = baseline.prompt_block()
-                        state.prelude = (
-                            block + "\n\n---\n" + state.prelude
-                            if state.prelude
-                            else block
-                        )
-            except Exception as exc:  # noqa: BLE001 - surface setup failure to agent
-                block = f"## Kernel baseline isolation unavailable\n- error: {exc}"
+            contract = load_vertical_contract(
+                resolve_vertical(resolved_mission_workdir),
+                project_root=resolved_mission_workdir,
+            )
+            block = contract.prepare_mission(
+                stage=state.pipeline_stage_at_start,
+                project_root=resolved_mission_workdir,
+                state_root=self.memory.root,
+            )
+            if block:
                 state.prelude = (
                     block + "\n\n---\n" + state.prelude
                     if state.prelude

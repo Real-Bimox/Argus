@@ -149,7 +149,7 @@ def test_planner_enqueued_goal_gate_keeps_the_standing_objective(tmp_path: Path)
         def _artifact_root(self) -> Path:
             return tmp_path
 
-        def _effective_full_paper_gate(self, _root: Path) -> bool:
+        def _effective_final_certification_gate(self, _root: Path) -> bool:
             return False
 
         def _normalize_planner_scope(self, scope: str) -> str:

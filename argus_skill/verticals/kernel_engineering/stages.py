@@ -32,6 +32,19 @@ STAGE_ALIASES = {
 WORKFLOW_MODE = "staged"
 completion_gate = "metric"
 
+
+def prepare_mission(stage: str, project_root, state_root) -> str:
+    """Prepare the immutable baseline workspace for the baseline stage."""
+    if stage != "baseline":
+        return ""
+    from .baseline_workspace import prepare_baseline_workspace
+
+    try:
+        baseline = prepare_baseline_workspace(project_root, state_root)
+    except Exception as exc:  # setup failure is actionable mission context
+        return f"## Baseline isolation unavailable\n- error: {exc}"
+    return baseline.prompt_block() if baseline is not None else ""
+
 _AUDIT = (
     "${ARGUS_SKILL_PYTHON:-python} -m argus_skill.verticals.kernel_engineering.environment_audit"
 )
@@ -387,5 +400,6 @@ __all__ = [
     "STAGE_ORDER",
     "WORKFLOW_MODE",
     "completion_gate",
+    "prepare_mission",
     "role_banner",
 ]

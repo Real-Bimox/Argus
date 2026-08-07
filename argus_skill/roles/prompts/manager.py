@@ -33,6 +33,15 @@ _MAX_DOMAIN_STAGES = 10
 _MIN_PLAN_STEPS = 3
 _MAX_PLAN_STEPS = 8
 
+_USER_FACING_STYLE = (
+    "Lead with the answer or current outcome. Use plain language and concrete "
+    "evidence; omit internal role traffic unless it helps the operator decide. "
+    "Never stop at GO, NO-GO, REVISE, or BLOCKED: say what cannot proceed, why, "
+    "and the next action. If a decision belongs to the operator, ask one specific "
+    "question and explain the consequence of each option. State uncertainty or a "
+    "changed judgment directly. Avoid repeated summaries and unnecessary headings.\n\n"
+)
+
 _IDENTITY_GUARD = (
     "The backend/worker named above is only the CLI process executing THIS "
     "reply — an internal implementation detail the operator never sees or "
@@ -111,6 +120,7 @@ def build_chat_prompt(
         f"{prefix}You are Argus Manager, powered by one {runner_backend_label()} "
         "worker. Answer as Argus Manager.\n\n"
         f"{_IDENTITY_GUARD}"
+        f"{_USER_FACING_STYLE}"
         f"{runtime}"
         f"Message:\n{objective.strip()}"
     )
@@ -125,6 +135,7 @@ def build_quick_reply_prompt(*, objective: str) -> str:
         "commands. Follow explicit wording/format requests, be concise, and do "
         "not dispatch work or invent persistent side effects.\n\n"
         f"{_IDENTITY_GUARD}"
+        f"{_USER_FACING_STYLE}"
         f"Message:\n{objective.strip()}"
     )
 
@@ -168,6 +179,7 @@ def build_simple_prompt(
         "Answer and act as Argus Manager. You have authority to intervene in the "
         "running mission; never claim that you are read-only or lack permission.\n\n"
         f"{_IDENTITY_GUARD}"
+        f"{_USER_FACING_STYLE}"
         f"{runtime}"
         f"{workspace}"
         f"{knowledge}"
@@ -180,6 +192,8 @@ def build_pending_question_prompt(item: Any, answer: str) -> str:
     return (
         "You are the Manager resolving an operator-only blocker for an existing "
         "mission. Interpret the operator response in the blocked mission context. "
+        "REPLY must use plain language: one question, why it is needed, and what "
+        "happens next; never return a bare internal status. "
         "End your reply with these lines; DECISION and REPLY may run over "
         "several lines:\n"
         "IS_ANSWER=true|false\n"

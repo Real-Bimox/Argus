@@ -21,7 +21,7 @@ Separating the two axes fixes that without loosening anything:
 A bolder posture must never mean a laxer conclusion, and a lighter profile must
 never mean weaker facts. What a profile changes is *what has to be delivered*,
 never *whether the evidence is real* — that floor is enforced in code by
-:mod:`argus_skill.core.integrity_gate` and
+:mod:`argus_skill.verticals.research.integrity_gate` and
 :mod:`argus_skill.core.evidence_status`, not by prose a relaxed profile could
 argue with.
 

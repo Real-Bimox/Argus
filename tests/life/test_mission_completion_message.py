@@ -111,6 +111,34 @@ def test_bounded_increment_does_not_claim_project_or_stage_completion(tmp_path) 
     )
 
 
+def test_failed_mission_explains_reason_and_next_action(tmp_path) -> None:
+    memory = LifeMemory.open(tmp_path)
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=_Runner(),
+        sink=JsonlEventSink(None, life_dir=memory.root, verbosity="full"),
+        config=LifeSupervisorConfig(continuous=False, open_ended=False),
+    )
+
+    supervisor._emit({
+        "type": "life.mission.completed",
+        "item_id": "task-failed",
+        "title": "Run the external validator",
+        "success": False,
+        "status": "blocked",
+        "stop_reason": "The required credentials are unavailable.",
+        "next_action": "Provide credentials or remove the external requirement.",
+    })
+
+    text = json.loads(
+        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+    )["text"]
+    assert text.startswith("Cannot continue yet: Run the external validator.")
+    assert "Reason: The required credentials are unavailable." in text
+    assert "Your decision: Provide credentials" in text
+    assert "Team ended" not in text
+
+
 def test_final_submission_completion_is_explicitly_certified(tmp_path) -> None:
     memory = LifeMemory.open(tmp_path)
     supervisor = LifeSupervisor(

@@ -101,7 +101,7 @@ def test_math_review_omits_paper_review_rubric(tmp_path) -> None:
     assert reviewer.last_prompt_block_stats["paper_review"]["chars"] == 0
 
 
-def test_full_paper_review_keeps_paper_review_rubric(tmp_path) -> None:
+def test_final_certification_review_keeps_paper_review_rubric(tmp_path) -> None:
     _persist_review_stage(tmp_path, "research")
 
     prompt, reviewer = _project_reviewer_prompt(tmp_path)

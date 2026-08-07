@@ -22,8 +22,6 @@ from ..core.role_session import (
 )
 
 _RUNNER_HARD_IDLE_ENV = "ARGUS_SKILL_RUNNER_HARD_IDLE_SECONDS"
-_SHIFT_ROUND_LIMIT_ENV = "ARGUS_SKILL_SHIFT_ROUND_LIMIT"
-_THREAD_TOKEN_LIMIT_ENV = "ARGUS_SKILL_THREAD_TOKEN_LIMIT"
 _DECISION_PROGRESS_TIMEOUT_ENV = "ARGUS_SKILL_DECISION_PROGRESS_TIMEOUT_SECONDS"
 # Toggle for the background-subagent advisory + agent-driven cadence wait. When
 # unset/true, each round surfaces in-flight supervised subagents so the engineer
@@ -34,9 +32,6 @@ _ROLE_SESSION_MAX_TURNS_ENV = "ARGUS_SKILL_ROLE_SESSION_MAX_TURNS"
 _ROLE_SESSION_MAX_INPUT_TOKENS_ENV = "ARGUS_SKILL_ROLE_SESSION_MAX_INPUT_TOKENS"
 _CONTINUE_WORK_SENTINEL = "CONTINUE_WORK:"
 _CONTINUE_WORK_MAX_CHARS = 500
-# Compatibility defaults for the retired resumed-thread policy. Autonomous
-# Engineer/Reviewer calls are always fresh, so no token roll is needed.
-_DEFAULT_THREAD_TOKEN_LIMIT = 0
 _DEFAULT_DECISION_PROGRESS_TIMEOUT_SECONDS = 30 * 60
 _RUNNER_DEFAULT_HARD_IDLE_SECONDS = 45 * 60
 
@@ -212,34 +207,17 @@ class SupervisedConfig:
     # byte-for-byte unchanged. The engineer's shell commands land in the
     # ``text`` field of each ``engineer.progress`` event in this file.
     engineer_log_path: str = ""
-    # Retained as a compatibility knob for callers that still construct the
-    # config explicitly. Autonomous Engineer/Reviewer calls now always start a
-    # fresh provider session, so the value is no longer consulted by the loop.
-    shift_round_limit: int = field(default_factory=lambda: _env_int(_SHIFT_ROUND_LIMIT_ENV, 1))
-    # Compatibility-only alongside ``shift_round_limit``; fresh-per-round calls
-    # do not carry a thread whose token count needs policing.
-    thread_token_limit: int = field(
-        default_factory=lambda: _env_int(_THREAD_TOKEN_LIMIT_ENV, _DEFAULT_THREAD_TOKEN_LIMIT)
-    )
     # Ordinary Markdown file edited directly by Engineer and Reviewer. None
     # disables the shared checkpoint for callers that intentionally opt out.
     checkpoint_path: Path | None = None
     # Mission-level canonical packet. Round handoffs are written beside it.
     context_packet_path: str = ""
-    # Constructor compatibility for older callers. Semantic progress is never
-    # inferred from provider-private session files or project mtimes.
-    effective_progress_warning_seconds: int = 0
-    effective_progress_stalled_seconds: int = 0
-    effective_progress_timeout_seconds: int = 0
-    effective_progress_check_interval_seconds: float = 0.0
     runner_hard_idle_seconds: int = field(
         default_factory=lambda: _env_int(
             _RUNNER_HARD_IDLE_ENV,
             _RUNNER_DEFAULT_HARD_IDLE_SECONDS,
         )
     )
-    # Constructor compatibility; provider-private compaction logs are not read.
-    round_compaction_limit: int = 0
     # Surface in-flight SUPERVISED subagents (read from
     # ``<workdir>/.argus_subagents``) in the engineer prompt each round so the
     # agent does not burn rounds babysitting a self-watched long job, and can
@@ -249,9 +227,6 @@ class SupervisedConfig:
     background_subagent_advisory: bool = field(
         default_factory=lambda: _env_bool(_BG_SUBAGENT_ADVISORY_ENV, True)
     )
-    # Retained only for source compatibility with older callers.
-    review_deferral_limit: int = 0
-
     def __post_init__(self) -> None:
         """Keep the round-budget guards reachable when ``max_rounds`` shrinks.
 

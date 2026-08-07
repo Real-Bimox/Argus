@@ -77,7 +77,7 @@ def test_round_review_completed_renders_verdict_and_next_action() -> None:
             "next_action": "ignored",
         }
     )
-    assert "✅ done" in done
+    assert "✅ verified" in done
     assert "next:" not in done
 
     continued = format_event_message(
@@ -89,7 +89,7 @@ def test_round_review_completed_renders_verdict_and_next_action() -> None:
             "next_action": "fix parser",
         }
     )
-    assert "↻ continue" in continued
+    assert "↻ more work is needed" in continued
     assert "fix parser" in continued
 
 

@@ -502,7 +502,7 @@ def create_daemon(
     start_result: dict[str, Any] | None = None
     obj = requested_objective
     if obj:
-        from .manager_bridge import manager_continuous_handoff
+        from .manager_dispatch import manager_continuous_handoff
 
         obj = manager_continuous_handoff(
             sid,

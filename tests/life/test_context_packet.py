@@ -72,6 +72,11 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
     ]
     assert mission_payload["context_refs"][0]["ref"] == "research/IDEA_CANDIDATES.md"
     assert "content_hash" not in mission_payload["context_refs"][0]
+    frontier_path = Path(mission_payload["frontier"]["path"])
+    frontier = json.loads(frontier_path.read_text(encoding="utf-8"))
+    assert frontier["objective"] == "Screen one candidate on public tasks."
+    assert frontier["current_hypothesis"].startswith("The candidate screen")
+    assert frontier["next_decision_point"].startswith("Replace the screen")
     assert (
         not {
             "stage",
@@ -101,6 +106,14 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
             reason="Artifact verified.",
             next_action="Planner may choose the next frontier.",
             operator_question="",
+            frontier_report={
+                "change": "uncertainty_reduced",
+                "summary": "The screen eliminated one weak direction.",
+                "resolved_obligations": ["screen candidate"],
+                "remaining_work": ["choose the next candidate"],
+                "uncertainty": "One candidate is now ruled out.",
+                "next_decision_point": "Choose or stop based on remaining candidates.",
+            },
         ),
         checkpoint_path=checkpoint,
     )
@@ -116,7 +129,12 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
         "reason",
         "next_action",
         "operator_question",
+        "frontier_transition",
+        "frontier_disposition",
     }
+    frontier = json.loads(frontier_path.read_text(encoding="utf-8"))
+    assert frontier["history"][-1]["change"] == "uncertainty_reduced"
+    assert reviewed_payload["review"]["frontier_disposition"] == "continue"
     assert "engineer_summary" not in reviewed_payload
     assert "text" not in reviewed_payload["checkpoint"]
 

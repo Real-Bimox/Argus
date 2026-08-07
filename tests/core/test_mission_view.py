@@ -420,10 +420,10 @@ def test_review_deferral_projects_as_engineer_activity(tmp_path: Path) -> None:
     [
         ("done", True, "complete", "done", "Task completed", "success"),
         ("completed", False, "complete", "done", "Task completed", "success"),
-        ("research_incomplete", False, "incomplete", "done", "Mission incomplete", "info"),
-        ("no_progress", False, "stalled", "done", "Mission stalled", "info"),
-        ("blocked", False, "blocked", "error", "Mission blocked", "error"),
-        ("failed", False, "failed", "error", "Mission failed", "error"),
+        ("research_incomplete", False, "incomplete", "done", "Work remains", "info"),
+        ("no_progress", False, "stalled", "done", "No useful progress", "info"),
+        ("blocked", False, "blocked", "error", "Cannot continue yet", "error"),
+        ("failed", False, "failed", "error", "Task failed", "error"),
         (
             "legacy_unknown_status",
             False,
@@ -475,7 +475,7 @@ def test_completed_mission_prefers_normalized_outcome_class(tmp_path: Path) -> N
     )
 
     assert view["mission"]["status"] == "incomplete"
-    assert view["timeline"][-1]["title"] == "Mission incomplete"
+    assert view["timeline"][-1]["title"] == "Work remains"
 
 
 def test_final_submission_projects_as_certified_not_merely_completed(

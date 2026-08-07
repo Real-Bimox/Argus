@@ -490,7 +490,7 @@ def test_quant_vertical_loads_and_exposes_contract() -> None:
     assert tuple(mod.STAGE_ORDER) == QUANT_STAGES
     # A factor report is certified on the full-report gate (like research),
     # NOT a numeric speedrun metric.
-    assert vertical_completion_gate(mod) == "full_paper"
+    assert vertical_completion_gate(mod) == "certified"
 
 
 def test_quant_is_a_report_vertical_not_optimize() -> None:
@@ -511,6 +511,6 @@ def test_quant_full_pipeline_checklist_is_finance_not_paper(tmp_path: Path) -> N
     assert "research.hypothesis_priors" in text
     assert "economic" in text  # economic-mechanism mandate
     assert "search ledger" in text  # search-breadth discipline
-    # It is a REPORT vertical (full_paper gate) -> keeps the submission-gate
+    # It is a REPORT vertical (certified gate) -> keeps the submission-gate
     # header, not the lean "(quant)" optimize header.
     assert "final submission gate" in text

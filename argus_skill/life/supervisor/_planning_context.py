@@ -43,7 +43,7 @@ class PlanningContextMixin:
 
     def _planner_task_tags(self, task: Any) -> list[str]:
         scope = self._normalize_planner_scope(getattr(task, "scope", ""))
-        if scope == PLANNER_SCOPE_FINAL_SUBMISSION and not self._effective_full_paper_gate(
+        if scope == PLANNER_SCOPE_FINAL_SUBMISSION and not self._effective_final_certification_gate(
             self._artifact_root()
         ):
             # ``final_submission`` is a paper-only transport scope. A Planner
@@ -276,7 +276,7 @@ class PlanningContextMixin:
                 lines.append(f"- [{kind}] {target}{suffix}")
         return "\n".join(lines)
 
-    def _journal_has_full_paper_gate_success(self) -> bool:
+    def _journal_has_final_certification(self) -> bool:
         """Decide whether the project-final completion gate has passed.
 
         Source of truth (post-validator-retirement): the event timeline. A
@@ -284,7 +284,7 @@ class PlanningContextMixin:
         reviewer returns a full-pipeline completion verdict, which the
         supervisor records as a ``life.mission.completed`` event carrying
         ``final_submission_certified = True``. We no longer call the
-        hardcoded ``validate_full_paper_readiness`` validator — the reviewer's
+        retired hardcoded paper-readiness validator — the reviewer's
         checklist verdict is the single source of truth.
 
         Fail-closed: only an explicit certified entry bound to the current
@@ -319,11 +319,11 @@ class PlanningContextMixin:
                     return True
         return False
 
-    def _effective_full_paper_gate(self, workdir: object) -> bool:
+    def _effective_final_certification_gate(self, workdir: object) -> bool:
         """Whether the full-pipeline final-submission gate applies here.
 
-        Returns ``self.config.full_paper_gate`` AND the active vertical's
-        completion gate being the paper gate (``"full_paper"``). The
+        Returns ``self.config.final_certification_gate`` AND the active vertical's
+        completion gate requiring independent final certification. The
         final-submission completion gate only makes sense for a *research*
         vertical: a ``speedrun`` mission runs just the optimize+measure stages
         and has no submission package to certify, so requiring the gate would
@@ -333,16 +333,13 @@ class PlanningContextMixin:
         The read side is deterministic and exception-free, so this never spends
         a token.
         """
-        if not self.config.full_paper_gate:
+        if not self.config.final_certification_gate:
             return False
         from ...skills.vertical_select import (
             VerticalResolutionError,
             resolve_vertical,
         )
-        from ...verticals._base import (
-            load_vertical,
-            vertical_completion_gate,
-        )
+        from ...verticals._base import load_vertical_contract
 
         try:
             vertical = resolve_vertical(workdir)
@@ -353,8 +350,9 @@ class PlanningContextMixin:
             # default to research — resolve_vertical still raised loudly, we just
             # treat "no vertical yet" as "gate not satisfied" for THIS check.
             return False
-        mod = load_vertical(vertical, project_root=workdir)
-        return vertical_completion_gate(mod) == "full_paper"
+        return load_vertical_contract(
+            vertical, project_root=workdir
+        ).completion_gate == "certified"
 
     def _final_submission_signature(self) -> str:
         from ..terminal_state import build_project_state_signature
@@ -432,8 +430,8 @@ class PlanningContextMixin:
     def _defer_project_done_for_operator_external_blocker(self, verdict: Any) -> Any:
         if not (
             getattr(verdict, "project_done", False)
-            and self._effective_full_paper_gate(self._artifact_root())
-            and not self._journal_has_full_paper_gate_success()
+            and self._effective_final_certification_gate(self._artifact_root())
+            and not self._journal_has_final_certification()
         ):
             return verdict
         wait_reason = self._operator_only_external_blocker_wait_reason()

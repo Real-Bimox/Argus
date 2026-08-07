@@ -266,7 +266,6 @@ def test_config_path_is_threaded_into_evaluate(tmp_path: Path) -> None:
     )
     config = SupervisedConfig(
         max_rounds=1,
-        effective_progress_timeout_seconds=0,
         background_subagent_advisory=False,
         engineer_log_path=_LOG_PATH,
     )
@@ -294,7 +293,6 @@ def test_gateway_synthesized_call_id_uses_legacy_unscoped_audit(
     )
     config = SupervisedConfig(
         max_rounds=1,
-        effective_progress_timeout_seconds=0,
         background_subagent_advisory=False,
         engineer_log_path=_LOG_PATH,
     )
@@ -320,7 +318,6 @@ def test_empty_config_path_threads_empty_string(tmp_path: Path) -> None:
     )
     config = SupervisedConfig(
         max_rounds=1,
-        effective_progress_timeout_seconds=0,
         background_subagent_advisory=False,
     )
     engine.run(

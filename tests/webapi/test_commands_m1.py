@@ -23,7 +23,12 @@ from argus_skill.manager.front_door import (
     ManagerHandoffSupersededError,
 )
 from argus_skill.skills.vertical_select import persist_vertical
-from argus_skill.webapi import manager_bridge, project_state, server
+from argus_skill.webapi import (
+    manager_dispatch,
+    manager_state,
+    project_state,
+    server,
+)
 
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
@@ -58,7 +63,7 @@ def _identity_manager_handoff(monkeypatch) -> None:
 
 
 def _install_manager(monkeypatch, execution_for) -> None:
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     class _Manager:
         def decide_vertical(self, text, **kwargs):
@@ -152,7 +157,7 @@ def test_post_task_preserves_active_continuous_campaign_governance(
             assert vertical == "math"
             return "research"
 
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
     monkeypatch.setattr(
         front_door,
         "_ensure_manager_runner",
@@ -193,7 +198,7 @@ def test_post_task_enqueues_only_manager_execution_handoff(ctx, monkeypatch) -> 
         captured.update(sid=call_sid, text=text, **kwargs)
         return persist("write the MRAM paper", None)
 
-    monkeypatch.setattr(manager_bridge, "manager_bounded_handoff", fake_handoff)
+    monkeypatch.setattr(manager_dispatch, "manager_bounded_handoff", fake_handoff)
     client = TestClient(server.create_app(global_root=root))
     raw = "write the MRAM paper; Manager owns the right sidebar"
     response = client.post(
@@ -219,7 +224,7 @@ def test_post_task_returns_503_instead_of_enqueuing_raw_on_handoff_failure(
     def fail_handoff(*args, **kwargs):
         raise ManagerHandoffError("safe handoff unavailable")
 
-    monkeypatch.setattr(manager_bridge, "manager_bounded_handoff", fail_handoff)
+    monkeypatch.setattr(manager_dispatch, "manager_bounded_handoff", fail_handoff)
     client = TestClient(server.create_app(global_root=root))
     response = client.post(
         f"/api/projects/{sid}/tasks",
@@ -524,7 +529,7 @@ def test_disable_continuous_is_immediate_and_ignores_submitted_objective(
         enabled=True,
         objective="clean current objective",
     )
-    bridge_state = manager_bridge._chat_state_for(sid)
+    bridge_state = manager_state._chat_state_for(sid)
     bridge_state["config"]["continuous"] = True
     bridge_state["continuous_objective"] = "clean current objective"
 
@@ -532,7 +537,7 @@ def test_disable_continuous_is_immediate_and_ignores_submitted_objective(
         raise AssertionError("disable must not wait for Manager")
 
     monkeypatch.setattr(
-        manager_bridge,
+        manager_dispatch,
         "manager_continuous_handoff",
         unexpected_handoff,
     )
@@ -558,7 +563,7 @@ def test_disable_continuous_surfaces_persistence_failure(
     monkeypatch,
 ) -> None:
     root, sid, _life = ctx
-    bridge_state = manager_bridge._chat_state_for(sid)
+    bridge_state = manager_state._chat_state_for(sid)
     bridge_state["config"]["continuous"] = True
     bridge_state["continuous_objective"] = "still active"
     monkeypatch.setattr(
@@ -630,7 +635,7 @@ def test_enable_continuous_does_not_overwrite_newer_same_value_stop(
         objective="paused objective",
     )
     commits = []
-    manager_bridge._STATES.clear()
+    manager_state._STATES.clear()
 
     class _Manager:
         def decide_vertical(self, text, **kwargs):
@@ -1330,7 +1335,7 @@ def test_project_delete_moves_stopped_session_to_trash(ctx, monkeypatch) -> None
 def test_project_delete_releases_warm_manager_runner(ctx, monkeypatch) -> None:
     root, sid, _life = ctx
     closed: list[str] = []
-    state = manager_bridge._chat_state_for(sid)
+    state = manager_state._chat_state_for(sid)
     state["manager_runner"] = SimpleNamespace(
         _backend=SimpleNamespace(
             close_acp_clients=lambda: closed.append("acp"),
@@ -1354,7 +1359,7 @@ def test_project_delete_releases_warm_manager_runner(ctx, monkeypatch) -> None:
 
     assert response.status_code == 200
     assert closed == ["acp", "session"]
-    assert sid not in manager_bridge._STATES
+    assert sid not in manager_state._STATES
 
 
 def test_project_trash_can_be_listed_and_restored(ctx, monkeypatch) -> None:
@@ -1612,7 +1617,7 @@ def test_identity_set_and_skills_and_reset(ctx, monkeypatch) -> None:
     root, sid, life = ctx
     monkeypatch.setattr(server, "run_skill_command", lambda tokens: "skills:" + " ".join(tokens))
     monkeypatch.setattr(
-        "argus_skill.webapi.manager_bridge.reset_manager_context",
+        "argus_skill.webapi.manager_state.reset_manager_context",
         lambda sid, *, global_root=None: True,
     )
     client = TestClient(server.create_app(global_root=root))

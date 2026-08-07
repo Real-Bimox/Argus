@@ -33,7 +33,7 @@ function copyView(view: MissionView): MissionView {
 
 export function emptyMissionView(): MissionView {
   return {
-    schema_version: 2,
+    schema_version: 3,
     bootstrapped: false,
     mission: {
       id: '',
@@ -69,6 +69,7 @@ export function emptyMissionView(): MissionView {
     },
     achievement: null,
     review: { status: '', reason: '', rejected_attempts: 0 },
+    frontier: { change: '', summary: '', updated_at: 0 },
     outcome: {},
     last_event_ts: 0,
     updated_at: 0,
@@ -318,6 +319,14 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
       reason,
       rejected_attempts: view.review.rejected_attempts + (['continue', 'blocked'].includes(status) ? 1 : 0),
     };
+    const frontierChange = S(event, 'frontier_change');
+    if (frontierChange) {
+      view.frontier = {
+        change: frontierChange,
+        summary: S(event, 'frontier_summary'),
+        updated_at: ts,
+      };
+    }
     setRole(view, 'reviewer', status === 'done' ? 'done' : 'rejected', status === 'done' ? 'Accepted evidence' : 'Requested another attempt', ts);
     addTimeline(view, event, 'reviewer', status === 'done' ? 'Evidence accepted' : 'Attempt rejected', reason, status === 'done' ? 'success' : 'error');
     const nextAction = S(event, 'next_action');

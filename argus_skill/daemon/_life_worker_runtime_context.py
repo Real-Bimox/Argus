@@ -199,7 +199,7 @@ def _build_supervisor_config(
         continuous_objective=init_objective,
         open_ended=cfg.continuous_open_ended,
         paper_mission=paper_mission,
-        full_paper_gate=paper_mission and cfg.continuous_open_ended,
+        final_certification_gate=paper_mission and cfg.continuous_open_ended,
         continuous_config_provider=continuous_provider,
         manager_pipeline_yield_provider=(lambda: manager_pipeline_yield_requested(runtime_root)),
         post_mission_hook=post_mission_hook,
