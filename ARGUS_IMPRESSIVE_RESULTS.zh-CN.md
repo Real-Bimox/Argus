@@ -15,6 +15,8 @@
 - **Argus 已有证据**：确由 Argus 运行产生，但结论范围不能超过明确写出的硬件、shape、
   重复次数和评审状态。
 - **Argus 目标 / 待做**：尚未完成的工作。
+- **可直接发给 Argus 的 Prompt**：每段都是独立 mission brief；复制完整代码块作为一条
+  新消息发送，Argus 即可直接开始执行。
 
 ### 重要证据更正
 
@@ -188,6 +190,46 @@ benchmark 由他个人完成，或者官方 3.97× 只属于他一人。H3 官�
 - 另一台机器能够复现；
 - 代码得到上游实质评审，或形成边界明确、可维护的独立 fork。
 
+### 可直接发给 Argus 的 Prompt
+
+复制下面整个代码块，作为一条新消息发送：
+
+```text
+请把“ARGUS-IR-01：优化 Sol-Engine / Sol-Attn”作为一个长期、证据驱动、允许修订计划的 mission 执行。不要只给我一份方案；请在现有权限和资源范围内持续行动，直到达到完成标准，或把无法继续的阻塞证据与最小下一步请求写清楚。
+
+【使命】
+在 NVLabs Sol-Engine 的冻结 baseline 之上，找到至少一项真正新增、可复现、可解释并适合上游的改进。重点关注 attention、kernel launch、HBM 往返、collective、layout/tiling、跨 step 复用与调度，但最终按端到端延迟、显存和音视频质量判断，不以单个 microbenchmark 代替真实收益。
+
+【不可越过的边界】
+1. Sol-Engine 团队已经公开的 3.97× 等数字只是外部参考，不得写成 Argus 成果。
+2. 先确认实际可用的 B200/H100、模型权重、许可证与运行权限；没有对应硬件时，不得用其他 GPU 冒充，只完成可执行协议并明确标记 blocked。
+3. 目标仓库、baseline workspace 与 candidate workspace 必须隔离；pin 仓库 commit、checkpoint、prompt/seed、尺寸、帧数、steps、精度、GPU topology、功耗模式、warm-up 和计时边界。不得污染或移动 baseline。
+4. 近似优化必须同时检查视频和音频质量；不得用更低分辨率、更短视频、更少 steps 或隐藏缓存制造“加速”。
+5. 不得把私有 technical_report 内容推到公共仓库。任何外部 push、PR、评论或大额 GPU 资源申请，先向 operator 请求明确批准。
+
+【执行路径】
+1. 阅读 Sol-Engine 官方仓库、论文、目标模型文档和已有 candidate，列出已经存在的优化，避免重复发明。
+2. 根据可用硬件与权重选择一个代表性模型/workload；说明选择理由，并冻结 baseline contract 与复现命令。
+3. 在同机 paired 条件下复现 baseline，分别记录 load、compile、cold、warm end-to-end、hot path、峰值内存和音视频有效性；稳定测量至少 N>=10。
+4. 使用 profiler 建立 bottleneck 排名，把每个候选机制写成可证伪假设：预期改变什么指标、可能造成什么局部回退、什么结果触发 keep/revise/retire。
+5. 每次只实现并测量一个最小改动；先过 correctness/quality/memory，再看性能。保留原始日志、失败尝试和环境指纹。
+6. 对有效改动做消融、组合复测、cleared-cache 复测和代表性 shape 扩展；解释收益为何成立，而不是只展示最好数字。
+7. 整理最小 patch、干净环境复现脚本与第二台机器复现计划；外部动作获批后再准备 upstream issue/PR。
+
+【决策规则】
+计划只是工作假设，可以根据 profiler 和实验结果修改。允许有解释且有边界的局部性能回退，只要它服务于更重要的端到端目标；但 correctness、用户目标、权限、安全与未披露质量损失不可让步。若连续证据显示某路线没有代表性端到端价值，就诚实 retire，并保留负面结果。
+
+【必须交付】
+- 冻结 baseline contract、环境清单与一键复现命令；
+- 实验账本：假设、改动、原始数据、噪声、质量、keep/revert/retire 决定；
+- N>=10 结果表、消融、内存与音视频质量报告；
+- 最小代码 patch 和已知限制；
+- technical_report/evidence/sol_engine_sol_attn/ 下的完整证据包；
+- 一段严格限定硬件、workload 和计时边界的 one-line claim。
+
+只有遇到会改变任务含义、需要新权限、需要昂贵资源或准备向外部发布时才询问我；其余可逆、低风险工作请自行推进。
+```
+
 ---
 
 ## ARGUS-IR-02 — FLA `chunk_kda`：保留有用修复，停止弱性能路线
@@ -272,6 +314,47 @@ H200 属于 Hopper 家族，但不等于 H100 实测。本文不作宽泛 H100 �
 
 D64 数字可以保留为边界明确的 case study，但不能宣传成 KDA 通用加速。
 
+### 可直接发给 Argus 的 Prompt
+
+复制下面整个代码块，作为一条新消息发送：
+
+```text
+请执行“ARGUS-IR-02：收口 FLA chunk_kda 的 SM100 正确性修复，并完整保存 D128 负面结论”。这是一个证据收口与上游闭环任务，不是重新追逐旧版约 30% 标题。
+
+【第一原则】
+开始前先实时核验 fla-org/flash-linear-attention 的 PR #1054、PR #1109、目标分支、CI 与 review 状态，不要假设本文记录仍是最新状态。根据事实选择分支：
+- 如果 #1109 已合并：定位 merge commit，检查最终 diff/CI，复现或审计后完成 externally-verified 证据包，不重复提交同一修复。
+- 如果 #1109 仍 open：在隔离 worktree 中 rebase，处理 review nit，运行相关测试并准备最小更新。
+- 如果 #1109 被关闭或取代：查明原因和 superseding commit/PR，再决定验证、修订或 retire；不得悄悄换成另一项性能任务。
+
+【事实边界】
+1. #1054 的 D64 测量可以作为“旧 commit + 单张 B200 + 单个 D64 shape”的 case study，但该性能栈已经因 D128 forward+backward 基本无收益而 retired；禁止复活同一 432 行 fusion，除非出现新的 profiler 证据和不同机制。
+2. H200 属于 Hopper 家族，但不等于 H100 实测；所有硬件结论必须按实际设备命名。
+3. #1109 的价值是避免 SM100 backward autotune illegal memory access，不得包装成 KDA 通用性能加速。
+4. 不修改或清理无关工作，不覆盖上游新提交；baseline 与 candidate 隔离。任何 external push、force-push、PR 评论或新 PR 都先取得 operator 明确批准。
+
+【执行步骤】
+1. 保存实时上游状态、commit SHA、review、CI URL 和时间戳。
+2. 在 B200 可用时，从干净环境复现 pre-fix failure 与 post-fix success；确保 CUDA context、测试选择和依赖版本可审计。若无法安全复现 crash，说明原因，不制造结果。
+3. 运行完整 KDA 相关测试以及上游要求的 dependent tests；记录 passed/skipped/failed 与基础设施 flake，不能把 cancelled CI 写成 PASS。
+4. 审查 guard 的精确作用域：SM100/SM10x、BK、num_warps、剩余 autotune candidates，以及 Hopper/SM120 是否保持不变。
+5. 更新 technical_report/evidence/fla_kernel_optimization/README.md：同时保留 D64 原始结果、D128 否定性数据、#1054 最终状态、#1109 最终状态和 claim 边界。
+6. 如果新 profiling 暗示另一条 D128 性能路线，先提交一页 hypothesis 与代表性 forward+backward 预实验；没有明确机制和实际训练收益，不进入大规模实现。
+
+【完成定义】
+首选成功是 #1109 已 merge，或同一修复被另一个上游 commit 采用并可独立验证。若上游最终不采用，也要给出完整、可复现的正确性报告和拒绝原因。不要用“仍在 review”结束一个其实已经变化的 PR，也不要因为合并未发生而隐藏负面结果。
+
+【交付物】
+- upstream_status.md：实时状态、SHA、review/CI 与链接；
+- reproduction.md 和原始测试日志；
+- pre-fix/post-fix 最小复现或无法复现说明；
+- 更新后的证据 README 与严格 one-line claim；
+- 如获准，对现有 PR 的最小 patch/回复草稿；
+- 明确结论：merged / externally reproduced / superseded / retired，以及下一步。
+
+除外部写操作、新权限或硬件资源请求外，请自行完成所有可逆的本地核验与文档更新。
+```
+
 ---
 
 ## ARGUS-IR-03 — 在 B200/H100 上建立 MiniMax-H3 Speedrun
@@ -328,6 +411,51 @@ H3-Context-IR 与 H3-Regenerate-2K 依赖 hosted/尚未完整开源模块，本�
 - 质量达标的收益在重复测量中成立；
 - 冠军栈能从干净环境重建；
 - 有公开或独立可审计排名，而不只是“更快”的描述。
+
+### 可直接发给 Argus 的 Prompt
+
+复制下面整个代码块，作为一条新消息发送：
+
+```text
+请创建并执行“ARGUS-IR-03：MiniMax-H3 Speedrun（B200/H100）”。这里的第一成果不是一个漂亮的加速数字，而是一套在优化开始前冻结、任何第三方都能审计的比赛协议；协议冻结后，再用 Argus 持续优化并产生质量达标的可复现成绩。
+
+【使命】
+建立 MiniMax-H3 的公开可审计 speedrun v1：同一 checkpoint、任务、输入、硬件类别、质量门槛与计时器下比较性能。B200 与 H100 必须分榜；本地 H3-Base 与依赖 hosted 模块的完整 2K workflow 必须分轨。
+
+【协议先于优化】
+在 baseline 或 candidate 优化前，先完成并 hash-lock protocol v1。协议至少固定：
+- 官方模型仓库与 checkpoint commit，FL2VA 或 Ref2VA 任务；
+- prompt/参考素材、seed、分辨率、帧数/时长、24 FPS、denoising steps、输出格式；
+- GPU 型号、数量、topology、功耗模式、driver/CUDA/PyTorch 与精度；
+- 允许和禁止的 quantization、cache、compile、offload、并行与预计算；
+- cold load、first compile、warm end-to-end、hot path 的独立计时边界；
+- 完整视频 decode、立体声音频、时长/帧数、质量阈值、显存和失败规则；
+- 原始日志 schema、环境指纹、反作弊检查与同分规则。
+协议一旦冻结，任何改变任务难度的修改都必须创建新版本，不能覆盖 v1。
+
+【执行路径】
+1. 核验官方 MiniMax-H3 模型卡、许可证和当前可用 checkpoint；明确公开 checkpoint 本身已经 CFG-distilled，不得称为“未经蒸馏”。
+2. 盘点可用 B200/H100。没有某个平台时保留该赛道为 blocked，不用另一平台数字代替。
+3. 实现独立 scorer 与 verifier；在候选代码之外保存，禁止 candidate 修改计时器或质量门槛。
+4. 在冻结 baseline commit 上完成 N>=10 paired 测量，分别报告 load、compile、warm E2E、hot path、吞吐、峰值显存与音视频质量。
+5. 建立 Argus 实验账本，按 graph、attention、GEMM、cache、quantization、kernel、collective、scheduler 分层提出假设；一次改变一个主要变量。
+6. 只有通过 correctness/quality/resource gate 的改动才能进入 champion stack；单项与组合都要复测、消融并从干净环境重建。
+7. 生成只读 leaderboard artifact；在获得 operator 批准后再公开或邀请独立机器运行同一 scorer。
+
+【诚实比较】
+不得通过降低分辨率、缩短视频、减少 steps、排除不利阶段、使用未披露缓存或只挑最好 seed 提升名次。近似方法可以参加，但必须单独标注并满足对应质量档。不存在外部榜单时，只能称为“auditable internal/public protocol result”，不能自称世界排名。
+
+【必须交付】
+- protocol_v1.md、protocol hash 与版本变更规则；
+- scorer、verifier、固定输入和基线复现脚本；
+- B200/H100 分轨 result schema 与 leaderboard 页面；
+- N>=10 原始 baseline/champion 数据、方差、质量与显存报告；
+- experiment_ledger.md、冠军栈 patch、消融和 clean-room rebuild；
+- technical_report/evidence/minimax_h3_speedrun/ 下的证据包；
+- 一段可公开但不夸大的结果说明。
+
+计划可根据证据修订，但 protocol v1、质量门槛、安全、权限和公平性不可在看到成绩后倒推修改。只有需要新权限、昂贵 GPU 配额或对外发布时再询问我。
+```
 
 ---
 
@@ -392,6 +520,44 @@ VAE。桌面结果必须说明哪些模块常驻、哪些被预计算后释放�
 - 质量与资源代价可见，包括近似/量化损失；
 - 干净机器能复现部署与输出验证；
 - 通过消融说明每项主要优化的贡献。
+
+### 可直接发给 Argus 的 Prompt
+
+复制下面整个代码块，作为一条新消息发送：
+
+```text
+请执行“ARGUS-IR-04：让 MiniMax-H3 从数据中心走到桌面”。目标是在至少一个真实桌面平台上完成可一键部署、可验证、可重复测量的 H3 路径，并相对该设备自己的冻结 baseline 取得稳定收益；不要拿 8×GB200 的 3.97× 当作桌面 baseline。
+
+【平台顺序】
+优先完成单台 DGX Spark 的端到端方法学与 packaging，再对单张 RTX 5090 做严格 feasibility gate。若 RTX 5090 因内存、算子或软件栈不可行，这个“不可行 + 证据 + 最小可行条件”本身是有效结论；不得偷偷换小模型、减少 checkpoint 组件或改成多卡后仍声称单卡成功。
+
+【两个结果档位必须分开】
+A. 保真档：官方发布 BF16 checkpoint 语义，不使用近似 cache 或 weight quantization，只允许 exact/lossless 工程改动。
+B. 实用档：可使用明确披露的 FP8/FP4/W2A4、cache 或 offload，但必须与同设备、同任务 baseline 比较，并通过音视频质量门槛。
+两档不能共用一个 speedup 标题。官方 NVLabs 数据与第三方 DGX Spark 仓库只能作为外部参考，不能写成 Argus 结果；未经证实的 3.92×/4.52× 不得重新出现。
+
+【执行路径】
+1. pin MiniMax 官方仓库、checkpoint commit、FL2VA/Ref2VA 任务、许可证、固定 prompt/seed、尺寸、时长、FPS 和 steps。
+2. 对 DGX Spark 与 RTX 5090 分别完成 preflight：device/host memory、模型各组件大小、常驻/预计算释放/offload 计划、算子支持、driver/CUDA/容器与磁盘需求。
+3. 为每个平台建立自己的 baseline；记录 cold load、first compile、warm E2E、hot path、FPS、峰值 device/host memory、swap、功耗、完整视频 decode 与立体声音频。
+4. 先形成可重复的安装、模型准备和一键运行流程，再逐项测试 architecture-compatible kernel、Sol-Attn、compile、cache、quantization 和 offload。一次只改变一个主要变量。
+5. 对近似/量化结果使用多 prompt、多 seed 的音视频质量套件；保留视觉差异、音频指标、失败样本和人工检查记录，不只展示最佳 clip。
+6. 对保留改动做 N>=10 重复测量、消融、组合复测、无隐藏 cache 的 clean-room 重建，并寻求第二台同类机器复现。
+
+【决策规则】
+同设备 baseline 是唯一合法 speedup 分母。允许为了“能在桌面可靠运行”接受解释清楚的启动时间、功耗或局部 latency 回退，但必须把 trade-off 暴露出来；OOM、输出损坏、音频丢失、未披露近似或质量下降不能被性能数字覆盖。若某档不可行，明确 retire 该档并继续评估另一档，而不是改变任务定义。
+
+【必须交付】
+- hardware_preflight.md 与每个平台的可行性结论；
+- 冻结 baseline contract、容器/环境 lock、模型准备和 one-command demo；
+- fidelity/practical 两档分开的原始数据、N>=10 统计、质量与资源报告；
+- verifier：模型身份、参数、输出音视频、计时边界和隐藏缓存检查；
+- 每项优化的 patch、消融和已知限制；
+- technical_report/evidence/minimax_h3_desktop/ 下的完整证据包；
+- 一段严格限定平台、档位、workload 和质量代价的结果说明。
+
+除下载许可、昂贵资源、外部发布或不可逆系统改动外，请自行推进所有安全、可逆步骤。
+```
 
 ---
 
@@ -463,6 +629,46 @@ MiniMax-H3 当前发布 BF16 checkpoint；Sol-Engine 文档中的低精度路径
 - 计入全部转换成本后，模型集成仍有重复可见的端到端收益；
 - 第二台机器能复现 correctness 与 performance。
 
+### 可直接发给 Argus 的 Prompt
+
+复制下面整个代码块，作为一条新消息发送：
+
+```text
+请执行“ARGUS-IR-05：设计、实现并验证一个真实可用的 W2A4 GEMM”。这是一个带强制 feasibility gate 的任务：先证明 W2A4 模型质量与硬件映射值得做，再进入 kernel 工程；不要先写一个漂亮但没有真实模型价值的 toy kernel。
+
+【精度定义】
+W2A4 只表示 2-bit 权重 × 4-bit activation，不能与 W4A4、NVFP4 或“平均 2.x bit”混用。开始实现前必须冻结：数值格式与 signedness、group size、scale/zero-point、layout/packing、rounding/saturation、accumulator、epilogue、误差容限，以及量化是 per-tensor/per-channel/per-group。任何语义变化都创建新版本。
+
+【Phase 0：可行性与退出条件】
+1. 根据当前可用模型、权重和硬件，选择一个真实 target model/layer；MiniMax-H3 只有在存在可审计量化 recipe 和音视频质量门槛时才可作为目标，否则选择独立、可公开复现的模型路径。
+2. 从真实执行 trace 收集 `(M,N,K)`、batch、concurrency、频次和总耗时占比，形成加权 shape suite；不得先挑方便 kernel 的尺寸。
+3. pin 并实测现有 framework、CUTLASS、Triton、BitBLAS 和相关论文实现；记录“原生不支持”而不是伪造 W2A4 baseline。
+4. 先生成 W2A4 checkpoint/reference，并相对 BF16 测质量。若质量未过预先声明门槛，或 roofline/转换成本表明不可能带来端到端价值，停止或 revise，并保留负面结论。
+
+【Phase 1：正确性优先】
+实现一个慢速、清晰、可审计的 reference。覆盖随机值、极值、zero-point、不同 group、非对齐 M/N/K、tail、溢出、确定性和跨设备 case。逐元素验证 dequantized semantics 与 accumulator，禁止用宽松容差掩盖 bit packing 错误。
+
+【Phase 2：候选映射】
+分别评估 upcast/padding、split/partial-product、bit-plane/bitwise 以及有硬件依据的其他方法。用 profiler/roofline 解释瓶颈，再优化 pack、dequant+GEMM fusion、tile、pipeline、Tensor Core、shared memory、register pressure 和 epilogue。若不同 shape 最优策略不同，建立离线 autotune 与轻量 dispatcher，而不是强迫一个 kernel 覆盖全部。
+
+【Phase 3：公平测量与集成】
+在适用的 B200/H100/RTX 5090 上做同机 paired N>=10 测量，报告 latency、有效吞吐、显存、workspace、packing、dequant、compile、transfer 与功耗。随后接入真实模型，按 shape 频次加权，并测端到端 latency/throughput 和质量；kernel 赢但 E2E 不赢时，不得宣称任务完成。
+
+【安全与决策边界】
+baseline 和 candidate 必须隔离；不修改 scorer 来偏袒 candidate。不把 W4A4 数字改名为 W2A4，不把单 shape 峰值写成通用性能。允许有解释的局部 shape 回退，只要 dispatcher 和真实 workload 加权结果更优；correctness、质量、权限与数据完整性不可妥协。外部 push、PR、下载受限权重或昂贵 GPU 运行先请求批准。
+
+【必须交付】
+- precision_contract.md、quantization recipe 与质量 gate；
+- real_shapes.json/说明、频次加权方法与 baseline inventory；
+- reference implementation、完整 correctness tests 与差分结果；
+- 各映射候选、profiler/roofline、N>=10 raw benchmark 和 dispatcher 规则；
+- 模型 integration、端到端结果、质量报告、失败路线和已知限制；
+- technical_report/evidence/w2a4_gemm/ 下的一键复现包；
+- 最终结论必须是 certified、needs-revision 或 retired 之一，并说明证据。
+
+请持续推进到通过 gate 的真实集成结果，或得到足以停止的可信负面结论；两者都比无边界的 microbenchmark 更有价值。
+```
+
 ---
 
 ## ARGUS-IR-06 — 证明或反证一个 Erdős 问题
@@ -518,6 +724,51 @@ MiniMax-H3 当前发布 BF16 checkpoint；Sol-Engine 文档中的低精度路径
 2. 精确反例由两套独立 verifier 复现，并且确实违反冻结的原始命题。
 
 有限范围检查、数值迹象、“模型认为成立”，或只证明了邻近变体，都不能进入正式结果清单。
+
+### 可直接发给 Argus 的 Prompt
+
+复制下面整个代码块，作为一条新消息发送：
+
+```text
+请启动“ARGUS-IR-06：证明或反证一个明确的 Erdős 问题”。这是一个长程数学研究 mission，但在我或指定数学 reviewer 批准精确命题之前，只执行选题、文献核验和可行性工作，不得擅自进入大规模证明搜索，也不得把网站上的一句话当作权威命题。
+
+【阶段一：选题与 statement lock】
+1. 从 UnsolvedMath 发现候选，但必须逐一对照 Erdős Problems 数据库、原始论文、最新论文/预印本和可信专家来源核验当前状态。
+2. 给出 3–5 个候选，每个包含：数据库 ID、完整 LaTeX statement、全部量词与参数域、已知 partial results、等价形式、奖金/状态、原始引用、最近状态更新时间、为何适合计算或形式化、主要风险。
+3. 排除已经解决、状态有争议、来源缺失、命题版本不一致或只能靠大规模浮点猜测的问题。
+4. 推荐一个候选，但在长期搜索前向我提交 statement packet。只有我或指定数学 reviewer 明确批准后，才生成 statement version/hash 并锁定；困难不能成为悄悄换题的理由。
+
+【阶段二：研究地图】
+对冻结命题建立可审计知识包：定义、已知定理、依赖图、经典失败路线、关键障碍、可计算小 case、可能的等价变换，以及 proof/counterexample 两条路线。每个事实标明 primary source；推测必须标为 conjectural，不得把模型记忆当引用。
+
+【阶段三：双轨推进】
+A. Proof track：把目标拆成可检查 lemma；逐项核验假设、量词、边界和依赖。适合的部分进入 Lean/Isabelle/Coq，并记录版本、imports、trusted axioms 与 `sorry`/未形式化缺口。
+B. Counterexample track：使用精确算术和可重放搜索；先定义独立 verifier，再搜索。记录完整搜索范围、剪枝证明、seed、代码 commit 和失败排除的区域。浮点结果只能产生候选，必须经精确验证。
+两条路线共享事实，但不得因一条困难就改变原命题。
+
+【证据与反幻觉规则】
+- 有限检查不是全称证明；没找到反例也不是证明。
+- proof sketch、数值拟合、图形直觉或“模型认为正确”不能升级为 solved。
+- 反例必须满足原命题全部前提并违反结论；“最小反例”只有在最小性被证明后才能声称。
+- 每个关键 lemma 至少有独立复核路径；计算结果使用第二实现或独立 verifier。
+- 在宣称 novelty 前重新检索最新文献并联系数据库编辑者/领域专家。
+- 对外发布、联系专家、提交预印本或消耗大规模算力前，先取得 operator 批准。
+
+【停止与转向规则】
+计划可以修订，但 statement、权限、安全和数学有效性是硬边界。每条失败路线都要记录它真正排除了什么。若证据显示问题不适合当前工具，提交一份可复用的 negative research report 和更合适候选，而不是伪造进展或静默换题。
+
+【必须交付】
+- candidate_shortlist.md 与逐项来源核验；
+- 获批后的 statement.tex、statement_hash.txt 与版本说明；
+- literature_map.md、依赖图和 proof/counterexample 双轨账本；
+- exact-search 代码、独立 verifier、完整日志与覆盖声明；
+- formal/ 目录中的 proof assistant 工程及 trusted-boundary 报告；
+- proof draft 或 counterexample certificate；
+- 至少两位独立数学 reviewer 的问题清单与处理记录；
+- technical_report/evidence/erdos_problem/ 下可从零复核的证据包。
+
+最终只有两种正向完成：完整证明通过独立专家核验，或精确反例被两条独立路径复现。否则请准确报告 partial progress、被排除路线与下一步，不使用“解决”一词。
+```
 
 ---
 
