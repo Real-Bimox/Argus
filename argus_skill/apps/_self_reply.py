@@ -769,7 +769,7 @@ class SelfReplyMixin:
         else:
             prompt = build_simple_prompt(
                 objective=objective,
-                identity_card=self.manager.role_context(),
+                identity_card="",
                 mission_status=self._live_mission_status_block(),
                 runtime_context=self._manager_reply_runtime_context("simple-1"),
                 operator_workspace=str(workdir),

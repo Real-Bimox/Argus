@@ -357,6 +357,10 @@ class AgentCliBackend:
             kwargs["live_search"] = getattr(options, "live_search", False)
         if "add_dirs" in option_fields:
             kwargs["add_dirs"] = list(options.add_dirs) if options.add_dirs else None
+        if "skill_paths" in option_fields:
+            kwargs["skill_paths"] = (
+                list(options.skill_paths) if options.skill_paths else None
+            )
         if "sandbox_mode" in option_fields:
             kwargs["sandbox_mode"] = getattr(options, "sandbox_mode", None)
         if "isolate_workdir" in getattr(cli_cls, "__dataclass_fields__", {}):

@@ -474,8 +474,8 @@ class CommandBuilderMixin:
         else:
             command.extend(["--session-dir", _pi_session_dir()])
         command.extend([
-            # Argus supplies the complete role prompt and owns tool policy. Do
-            # not let interactive Pi packages or project context alter it.
+            # Disable ambient resources. Explicit ``--skill`` paths below remain
+            # additive, so only the current Argus role libraries are visible.
             "--no-extensions",
             "--no-skills",
             "--no-prompt-templates",
@@ -483,6 +483,8 @@ class CommandBuilderMixin:
             "--no-context-files",
             "--no-approve",
         ])
+        for path in options.skill_paths or []:
+            command.extend(["--skill", path])
         if options.model:
             command.extend(["--model", _pi_model(options.model)])
         if options.reasoning_effort:

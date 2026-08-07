@@ -19,10 +19,10 @@ class SkillLibraryMixin:
         self._run_venue_research(mission)
         state = SkillLibraryState()
         state.skill_libraries = self.engineer_mission.libraries()
-        # ``block`` contains paths and discovery instructions only.  No Skill
+        # ``block`` contains paths and discovery instructions only. No Skill
         # document is parsed, selected, adapted, or copied into the prompt.
         state.skill_text = state.skill_libraries.block
-        state.reviewer_skill_block = state.skill_libraries.block
+        state.reviewer_skill_block = self.reviewer.mission.libraries().block
         self._maybe_seed_idea_candidates(mission)
         return state
 

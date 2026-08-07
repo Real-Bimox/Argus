@@ -51,6 +51,9 @@ class RunnerOptions:
     reasoning_effort: str | None = None
     working_dir: str | None = None
     add_dirs: list[str] | None = None
+    # Role-owned Skill paths for backends with an explicit native loader. Other
+    # backends use the path-only discovery block in the prompt.
+    skill_paths: list[str] | None = None
     extra_args: list[str] | None = None
     skip_git_repo_check: bool = False
     # Enable codex's native live web_search tool for this call (``codex exec

@@ -51,6 +51,18 @@ def test_pi_command_uses_json_stdin_and_exact_session(
     ]
 
 
+def test_pi_loads_only_explicit_role_skill_paths(tmp_path: Path) -> None:
+    skill_dir = tmp_path / "skills" / "reviewer"
+    skill_dir.mkdir(parents=True)
+    command = _runner()._build_pi_command(
+        resume_thread_id=None,
+        options=RunnerOptions(skill_paths=[str(skill_dir)]),
+    )
+
+    assert "--no-skills" in command
+    assert command[command.index("--skill") + 1] == str(skill_dir)
+
+
 def test_pi_bare_model_uses_configured_provider_prefix(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

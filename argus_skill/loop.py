@@ -218,6 +218,10 @@ class SkillLoop(
                     self.config.resolved_initial_engineer_effort()
                 ),
                 extra_args=self.config.extra_args,
+                skill_paths=[
+                    str(path)
+                    for path in self.engineer_mission.libraries().native_paths
+                ],
                 full_auto=self.config.full_auto,
                 skip_git_repo_check=self.config.skip_git_repo_check,
                 dangerous_yolo=self.config.dangerous_yolo,

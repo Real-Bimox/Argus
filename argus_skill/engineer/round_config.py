@@ -81,6 +81,7 @@ class EngineerConfig:
     reasoning_effort: str | None = None
     initial_reasoning_effort: str | None = None
     extra_args: list[str] | None = None
+    skill_paths: list[str] | None = None
     full_auto: bool = True
     skip_git_repo_check: bool = True
     dangerous_yolo: bool = False

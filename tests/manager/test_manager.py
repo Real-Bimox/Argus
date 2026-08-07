@@ -798,8 +798,8 @@ def test_role_skill_block_can_omit_libraries_for_classification(tmp_path):
     block = mgr._role_skill_block(
         "optimize a CUDA kernel", include_libraries=False
     )
-    assert block.strip()
-    assert "manager" in block.lower()
+    assert "Skill libraries" not in block
+    assert "Argus Manager Role" not in block
     assert mgr.mission.calls == 0
 
 

@@ -61,22 +61,20 @@ class _VerticalDecisionMixin:
         """Attach a bounded repository-grounding brief to software handoff."""
         from ..core.models import RunnerOptions
         from ..core.role_slots import role_call_slot
-        from ..skills.builtins import iter_vertical_skill_texts
         from .stage_decider import extract_answer
 
-        skill = dict(iter_vertical_skill_texts("software")).get(
-            "manager/software-project-grounding.md",
-            "",
-        )
-        if not skill or self.runner is None:
+        if self.runner is None:
             return task.strip()
+        manager_libraries = self.mission.libraries()
         prompt = (
-            f"{skill}\n\n"
-            "Apply this grounding skill now with repository tools. "
-            "The tool working directory is already the repository root: use "
-            "relative paths, never guess another checkout path, and never search "
-            "the filesystem root. Return only a compact human-readable grounding "
-            "brief with: "
+            f"{manager_libraries.block}\n\n" if manager_libraries.block else ""
+        ) + (
+            "Ground this software task with repository tools before handoff. "
+            "Search the Manager-owned Skill paths above first and read a clearly "
+            "relevant grounding Skill on demand if one exists. The tool working "
+            "directory is already the repository root: use relative paths, never "
+            "guess another checkout path, and never search the filesystem root. "
+            "Return only a compact human-readable grounding brief with: "
             "architecture/call path, closest unchanged analogue, affected "
             "callers and compatibility surfaces, exact build/test commands, "
             "held-back acceptance risks, and recommended decomposition for "
@@ -99,6 +97,9 @@ class _VerticalDecisionMixin:
                             "low",
                         ),
                         working_dir=str(self.project_root),
+                        skill_paths=[
+                            str(path) for path in manager_libraries.native_paths
+                        ],
                         dangerous_yolo=True,
                         skip_git_repo_check=True,
                     ),

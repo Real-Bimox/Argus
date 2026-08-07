@@ -75,6 +75,7 @@ class RunnerOptions:
     inactivity_callback: InactivityCallback | None = None
     external_interrupt_reason_provider: ExternalInterruptProvider | None = None
     add_dirs: list[str] | None = None
+    skill_paths: list[str] | None = None
     plugin_dirs: list[str] | None = None
     file_specs: list[str] | None = None
     worktree_name: str | None = None

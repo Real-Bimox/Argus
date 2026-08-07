@@ -184,6 +184,9 @@ class Planner:
             sandbox_mode=None if dangerous_yolo else "workspace-write",
             skip_git_repo_check=cfg.skip_git_repo_check,
             extra_args=list(cfg.extra_args) if cfg.extra_args else None,
+            skill_paths=[
+                str(path) for path in self.mission.libraries().native_paths
+            ],
             # No Planner-specific wall-clock deadline, but a newer operator
             # generation cancels this planning turn immediately.
             external_interrupt_reason_provider=cfg.external_interrupt_reason_provider,

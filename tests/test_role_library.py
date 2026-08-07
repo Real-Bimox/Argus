@@ -39,8 +39,34 @@ def test_layered_roots_are_exposed_in_order(tmp_path: Path) -> None:
 
 def test_each_role_searches_same_library_independently(tmp_path: Path) -> None:
     store = SkillStore(tmp_path / "skills")
+    (store.skills_dir / "engineer").mkdir()
+    (store.skills_dir / "reviewer").mkdir()
     engineer = EngineerMission(store).libraries()
     reviewer = ReviewerMission(store).libraries()
     assert engineer.block != ""
     assert reviewer.block != ""
     assert engineer.library_roots == reviewer.library_roots
+    assert "OWN: engineer, root" in engineer.block
+    assert "REFERENCE only: reviewer" in engineer.block
+    assert "OWN: reviewer" in reviewer.block
+    assert "REFERENCE only: engineer" in reviewer.block
+    assert engineer.native_paths == [
+        store.skills_dir.resolve() / "engineer",
+        store.skills_dir.resolve(),
+    ]
+    assert reviewer.native_paths == [store.skills_dir.resolve() / "reviewer"]
+
+
+def test_role_library_event_exposes_precedence_without_skill_content(
+    tmp_path: Path,
+) -> None:
+    store = SkillStore(tmp_path / "skills")
+    (store.skills_dir / "planner").mkdir()
+    events: list[dict] = []
+
+    result = role_skill_libraries(store, role="planner", on_event=events.append)
+
+    assert result.own_paths == [store.skills_dir.resolve() / "planner"]
+    assert events[0]["precedence"] == "project,vertical,global"
+    assert events[0]["discovery"] == "native-or-path-fallback"
+    assert "Skill body" not in str(events[0])

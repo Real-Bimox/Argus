@@ -124,6 +124,14 @@ class Reviewer:
         resume_thread_id: str | None = None,
         prior_static_fingerprint: str = "",
     ) -> ReviewDecision:
+        # Resolve the Reviewer's own library contract once for both the prompt
+        # fallback and a backend-native loader.
+        review_libraries = self.mission.libraries()
+        if preselected_skill_block is None:
+            preselected_skill_block = review_libraries.block
+        native_skill_paths = [
+            str(path) for path in getattr(review_libraries, "native_paths", [])
+        ]
         # Split the prompt into a byte-stable STATIC preamble and per-round DELTA
         # for provider prefix caching. Every call still sends both into a fresh
         # Reviewer session.
@@ -178,6 +186,7 @@ class Reviewer:
                     isolate_workdir=config.isolate_workdir,
                     skip_git_repo_check=config.skip_git_repo_check,
                     extra_args=list(config.extra_args) if config.extra_args else None,
+                    skill_paths=native_skill_paths,
                     working_dir=config.working_dir,
                     # Search is available for the rare turn that proposes a
                     # skill; ordinary review turns need not invoke it.
