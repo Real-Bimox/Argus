@@ -1,3 +1,4 @@
+import { isImeComposing } from '../lib/ime';
 import { useEffect, useState } from 'react';
 import { api, type MetricsSnapshot, type Snapshot, type TrashEntry } from '../api';
 import { Modal, ModalHeader } from './Modal';
@@ -219,7 +220,7 @@ export function OperationsModal({
         {tab === 'recovery' ? <section className="rounded-lg border border-line bg-panel p-4 lg:col-span-2">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="mr-auto text-xs font-semibold uppercase tracking-wide text-ink-dim">Recoverable trash · {trashTotal}</h3>
-            <input value={trashQuery} onChange={(event) => setTrashQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void searchTrash(); }} placeholder="Search trash" className="h-8 min-w-52 rounded border border-line bg-bg px-2 text-xs text-ink outline-none focus:border-blue" />
+            <input value={trashQuery} onChange={(event) => setTrashQuery(event.target.value)} onKeyDown={(event) => { if (!isImeComposing(event) && event.key === 'Enter') void searchTrash(); }} placeholder="Search trash" className="h-8 min-w-52 rounded border border-line bg-bg px-2 text-xs text-ink outline-none focus:border-blue" />
             <button type="button" disabled={!!busy} onClick={() => void searchTrash()} title="Search trash" aria-label="Search trash" className="flex h-8 w-8 items-center justify-center rounded border border-blue/50 text-xs text-blue disabled:opacity-40"><FontAwesomeIcon icon={faMagnifyingGlass} /></button>
           </div>
           {!trash.length ? <p className="mt-3 text-xs text-ink-faint">Trash is empty.</p> : (

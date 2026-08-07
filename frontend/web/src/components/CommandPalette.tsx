@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from './Modal';
 import { commandNeedsArgument, type SlashCommand } from '../../../core/src/commands';
+import { isImeComposing } from '../lib/ime';
 
 export interface PaletteItem {
   id: string;
@@ -83,6 +84,7 @@ export function CommandPalette({
   };
 
   const onKey = (e: React.KeyboardEvent) => {
+    if (isImeComposing(e)) return;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (filtered.length) setSel((s) => Math.min(filtered.length - 1, s + 1));

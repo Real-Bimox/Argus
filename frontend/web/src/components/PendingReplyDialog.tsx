@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import type { OperatorDecisionCard } from '../../../core/src/decisions';
 import { Modal, ModalHeader } from './Modal';
+import { isImeComposing } from '../lib/ime';
 
 export type PendingReply = OperatorDecisionCard;
 
@@ -38,6 +39,7 @@ export function PendingReplyDialog({
     if (!busy && canSubmit) onSubmit(optionId, note.trim());
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isImeComposing(event)) return;
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       submit();

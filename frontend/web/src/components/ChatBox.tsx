@@ -1,3 +1,4 @@
+import { isImeComposing } from '../lib/ime';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { spinnerFrame } from '../lib/soul';
 import { thinkingStatusLine } from '../../../core/src/thinking';
@@ -147,6 +148,9 @@ export function ChatBox({
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // While an IME is composing, Enter confirms a candidate and the arrows page
+    // through them. Acting here would send the message mid-word.
+    if (isImeComposing(e)) return;
     if (handlePromptRewriteShortcut(e, {
       value,
       disabled,

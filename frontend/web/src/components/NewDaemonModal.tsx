@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Modal } from './Modal';
+import { isImeComposing } from '../lib/ime';
 
 /** Deliberate project creation: blank means an idle conversation; objective starts now. */
 export function NewDaemonModal({
@@ -34,6 +35,7 @@ export function NewDaemonModal({
     if (await onCreate(name.trim(), objective.trim(), workdir.trim())) onClose();
   };
   const objectiveKey = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (isImeComposing(event)) return;
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       formRef.current?.requestSubmit();
