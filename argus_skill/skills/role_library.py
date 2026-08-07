@@ -40,6 +40,11 @@ def _pool_paths(roots: list[Path], pools: frozenset[str]) -> list[Path]:
     for root in roots:
         for pool in sorted(pools):
             path = root if pool == "general" else root / pool
+            if pool == "general" and not any(
+                item.is_file() and item.name.casefold() != "index.md"
+                for item in root.glob("*.md")
+            ):
+                continue
             if path.exists() and path not in paths:
                 paths.append(path)
     return paths
@@ -64,12 +69,11 @@ def render_skill_library_paths(skill_store: object | None, *, role: str) -> str:
         "## Skill libraries (on-demand)\n"
         f"Role: {role}. Order: project → vertical/domain → global; OWN > REFERENCE.\n"
         + "\n".join(lines)
-        + "\n\nNative-loader descriptions may already be visible. Before repository "
-        "work, read each clearly matching Skill body; otherwise inspect "
-        "names/frontmatter only when reusable procedure could help. Leave every "
-        "non-fitting body unopened; never "
-        "scan all bodies or open a neighbor because another matched. A wrong Skill "
-        "is worse than none. Task, evidence, "
+        + "\n\nBefore the first repository tool, make one Skill relevance decision from "
+        "native-loader descriptions. Read every clearly matching body first. If "
+        "descriptions are unavailable, do one targeted filename/frontmatter search "
+        "in OWN paths. On a miss, open no body. Never scan all bodies or open a "
+        "neighbor because another matched. A wrong Skill is worse than none. Task, evidence, "
         "and role boundaries override Skills. These paths are the portable fallback; "
         "bodies are not injected. Re-probe mutable facts before use."
     )

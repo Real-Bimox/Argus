@@ -23,7 +23,7 @@ def test_role_receives_path_without_matcher_call_or_content(tmp_path: Path) -> N
 
     assert str(root.resolve()) in result.block
     assert "PRIVATE BODY" not in result.block
-    assert "Leave every non-fitting body unopened" in result.block
+    assert "Before the first repository tool" in result.block
     assert backend.history == []
 
 
@@ -51,11 +51,19 @@ def test_each_role_searches_same_library_independently(tmp_path: Path) -> None:
     assert "REFERENCE only: reviewer" in engineer.block
     assert "OWN: reviewer" in reviewer.block
     assert "REFERENCE only: engineer" in reviewer.block
-    assert engineer.native_paths == [
-        store.skills_dir.resolve() / "engineer",
-        store.skills_dir.resolve(),
-    ]
+    assert engineer.native_paths == [store.skills_dir.resolve() / "engineer"]
     assert reviewer.native_paths == [store.skills_dir.resolve() / "reviewer"]
+
+
+def test_general_native_root_requires_a_direct_skill(tmp_path: Path) -> None:
+    store = SkillStore(tmp_path / "skills")
+    assert role_skill_libraries(store, role="engineer").native_paths == []
+
+    (store.skills_dir / "general-guidance.md").write_text("guidance", encoding="utf-8")
+
+    assert role_skill_libraries(store, role="engineer").native_paths == [
+        store.skills_dir.resolve()
+    ]
 
 
 def test_role_library_event_exposes_precedence_without_skill_content(
