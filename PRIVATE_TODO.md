@@ -26,9 +26,9 @@ not implementation convenience.
 - Do not require roles to emit strict JSON or conform to a model-facing output
   schema. Capture required semantics through tool calls, runtime-owned state, or
   tolerant extraction from the role's natural response.
-- Treat Planner-authored strategy as a falsifiable hypothesis by default. Writing it
-  into a mission must not silently promote it to an operator invariant, contract, or
-  hard harness.
+- Treat a Planner mission as a working plan, not a fixed contract. User goals and
+  safety/authority limits stay fixed; technical choices can change when later
+  evidence points to a better route.
 - Status labels: `unassigned`, `investigating`, `design-review`, `implementing`,
   `experimenting`, `blocked`, `done`.
 
@@ -128,95 +128,58 @@ productive local regression into an unrelated replacement mission.
 
 ---
 
-## ARGUS-P0-03 — Prevent endogenous harnessing and allow evidence-backed mission revision
+## ARGUS-P0-03 — Keep Planner missions revisable
 
-**Problem.** When the prompt or goal is underspecified, Argus sometimes makes a
-choice that should belong to the human. Conversely, a Planner-authored mission goal
-is often treated by Engineer and Reviewer as an immutable constraint even when new
-evidence shows that it should be refined.
+**Problem.** Planner has to choose a direction before most of the work has been
+done. That direction is useful, but today it can become too rigid once it is written
+into a mission. Engineer works toward it; Reviewer may later find a counterexample or
+a better route, but can usually only escalate instead of changing the mission. A
+decision made with less information then overrides a better-informed one.
 
-This second failure is **endogenous harnessing** (or **self-harnessing**): Planner
-forms a tentative strategy with relatively little information, but serializing that
-strategy as a mission makes it look like an externally imposed contract. Engineer
-then optimizes inside the local target, while Reviewer may discover a counterexample,
-a better alternative, or cascading effects but lack a path to change the mission
-boundary. An earlier, lower-information Agent decision thereby constrains later
-Agents that have stronger evidence.
+This is sometimes called endogenous harnessing, or self-harnessing: an internal plan
+starts acting like an external constraint. Planning is not the problem. The user’s
+goal, safety rules, and authority or trust limits are real constraints. A candidate,
+method, decomposition, or validator usually is not. The workflow should let later
+evidence change those technical choices.
 
-Planning itself is not the problem. The failure is promoting a plan from a
-falsifiable hypothesis into a hard harness. Hard harnesses should be reserved for the
-operator-owned objective and invariants, frozen authority and safety boundaries, and
-prohibitions on expanding trust, permissions, or resource commitments. A technical
-strategy must remain challengeable unless the responsible authority explicitly
-freezes it.
+This showed up in `0d-3`:
 
-This is primarily a workflow and methodology bottleneck, not necessarily a reasoning
-bottleneck: the Agents may already identify the relevant counterexample, validator
-alternative, or cascading invariant, yet the control flow prevents that knowledge
-from updating the task boundary in time.
-
-**Motivating trace — `0d-3`**
-
-1. Planner requires a `skip-zero` candidate as the mission target.
-2. Engineer completes work inside that local target.
-3. Reviewer identifies a `no-gap` validator alternative and evidence against the
-   original tactic.
-4. Reviewer can escalate a decision but cannot invalidate or redefine the mission.
-5. The early plan therefore suppresses a better judgment made with later evidence.
+1. Planner asked for a `skip-zero` candidate.
+2. Engineer worked inside that target.
+3. Reviewer found a `no-gap` validator alternative.
+4. Reviewer could escalate, but could not change the mission.
+5. Work continued under the earlier plan even though a better option was available.
 
 **Work packages**
 
-- [ ] Separate three contract layers in prompts and persisted state:
-      `operator invariants`, `Manager-approved operational contract`, and
-      `Planner mission hypothesis/next target`.
-- [ ] Preserve provenance and mutability when a plan becomes a mission. Serialization
-      must not promote a Planner hypothesis into a Manager/operator contract merely
-      because downstream roles receive it as mission text.
-- [ ] Define the hard-harness allowlist: operator-owned objective/invariants, frozen
-      authority and safety boundaries, and explicit trust/permission/resource limits.
-      Treat technical methods, decompositions, candidate choices, and intermediate
-      success checks as revisable by default.
-- [ ] Define which decisions require an operator question: irreversible actions,
-      material scope expansion/reduction, unsupported success criteria, credential
-      or resource commitments, and tradeoffs not authorized by the stated goal.
-- [ ] Let Engineer or Reviewer challenge the current mission hypothesis with evidence
-      such as a counterexample, a dominating alternative, or newly understood
-      cascading effects, and propose a revised boundary or next target without
-      requiring strict JSON output.
-- [ ] Let Manager explicitly adjudicate a challenge as `keep`, `revise`, or
-      `supersede`. Route decomposition and method changes back to Planner without
-      asking the human unless they touch an operator-owned invariant.
-- [ ] Do not require Engineer to finish, or Reviewer to accept, a stale local target
-      merely to satisfy its wording after the underlying hypothesis is materially
-      challenged.
-- [ ] Ensure Reviewer judges current evidence and the operator/Manager contract, not
-      merely conformance to stale Planner wording.
-- [ ] Instrument revision latency: rounds and work spent between the first recorded
-      contradictory evidence, the mission challenge, and the committed adjudication.
-- [ ] Replay `0d-3` and add related evidence-change tests where Argus must assess the
-      `no-gap` alternative and revise or explicitly retain the `skip-zero` hypothesis,
-      rather than continue blindly.
-- [ ] Add ambiguous-goal tests where Argus must ask the operator instead of silently
-      weakening or inventing an operator-owned constraint.
-- [ ] Improve prompt-rewrite UX so the user sees proposed assumptions and suggested
-      values before dispatch; do not require users to discover hidden assumptions
-      after a multi-day run.
+- [ ] Distinguish user constraints, Manager decisions, and Planner’s working plan in
+      prompts and saved state. Keep track of where each constraint came from.
+- [ ] Writing a plan into a mission must not make it harder to change.
+- [ ] Keep hard constraints to the user’s goal, safety rules, authority boundaries,
+      and explicit trust, permission, or resource limits. Treat technical choices as
+      revisable unless the user has explicitly fixed them.
+- [ ] Give Engineer and Reviewer a direct way to challenge the current plan, attach
+      the evidence, and suggest a replacement.
+- [ ] Let Manager decide whether to keep, revise, or replace the plan. Ask the user
+      only when the change affects a user-owned constraint.
+- [ ] Once a plan is challenged, do not make Engineer finish it or Reviewer approve
+      it just because it is still written in the mission.
+- [ ] Record when the conflicting evidence first appeared, when the challenge was
+      raised, and how much work happened before the mission changed.
+- [ ] Replay `0d-3`: compare the `no-gap` alternative with the original `skip-zero`
+      plan before requiring more work on `skip-zero`.
+- [ ] Add tests for underspecified goals, where Argus should ask the user rather than
+      silently making a product or scope decision.
 
 **Acceptance criteria**
 
-- No material operator-owned decision is silently selected in the test matrix.
-- Writing a Planner strategy into a mission does not change its authority,
-  provenance, or default revisability.
-- When Engineer or Reviewer materially challenges a mission hypothesis, the next
-  control transition records an explicit `keep`, `revise`, or `supersede` decision;
-  execution does not silently continue under stale wording.
-- In the `0d-3` replay, the `no-gap` alternative is evaluated against the operator
-  objective before the workflow requires further `skip-zero` work.
-- Operator invariants and frozen safety/trust boundaries cannot be weakened by
-  Planner, Engineer, or Reviewer.
-- Revision latency and post-challenge wasted work are observable and improve against
-  the recorded baseline.
-- Every operator question explains the missing authority and offers concrete choices.
+- A Planner strategy remains a working plan after it is written into a mission.
+- A challenge from Engineer or Reviewer gets an explicit keep, revise, or replace
+  decision before work quietly continues on the disputed plan.
+- In the `0d-3` replay, the `no-gap` alternative is considered against the user’s
+  actual goal before more `skip-zero` work is required.
+- User-owned goals and safety, authority, and trust boundaries remain enforced.
+- Time and work lost between new evidence and a mission change are measured.
 
 ---
 
@@ -236,10 +199,9 @@ bounded regressions or information-gaining failures.
 - [ ] Define a mission-quality rubric: goal alignment, authority correctness,
       dependency readiness, coherent scope, expected failure/regression model,
       revision freedom, decisive evidence, and contribution to project frontier.
-- [ ] Label failure modes: verifier chasing, stale-plan lock-in, endogenous
-      harnessing/hypothesis-to-contract promotion, duplicate mission, premature
-      polish, missing prerequisite, local-green/global-no-progress, overlarge
-      mission, and fragmented continuation.
+- [ ] Label failure modes: verifier chasing, early-plan lock-in, duplicate mission,
+      premature polish, missing prerequisite, local-green/global-no-progress,
+      overlarge mission, and fragmented continuation.
 - [ ] Change Planner guidance so acceptance checks measure a meaningful frontier
       increment, not only the easiest script/checker result.
 - [ ] Require missions to state what may temporarily regress and what evidence would
@@ -445,8 +407,8 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 
 - [ ] Create a versioned corpus of disclosure-safe failure traces covering
       approval/resume, non-monotonic proof, software-refactor, and research/
-      optimization trajectories, ambiguous goals, endogenous-harnessing traces such
-      as `0d-3`, stale Planner targets, repeated exploration, and Skill loading.
+      optimization trajectories, ambiguous goals, early-plan lock-in (including
+      `0d-3`), stale Planner targets, repeated exploration, and Skill loading.
 - [ ] Define common metrics and event fields once; avoid one bespoke dashboard per
       issue.
 - [ ] Run component A/B tests and end-to-end goal replays separately. Component
