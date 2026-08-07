@@ -31,10 +31,13 @@ and empirical figures in the Argus technical report.
 - `fla_kernel_optimization/` contains the certified GPU-kernel-optimization results
   (the `chunk_kda` op of `flash-linear-attention` on an NVIDIA B200) produced
   autonomously by the `kernel_engineering` vertical, together with the combined source
-  diff against the frozen baseline. Submitted upstream as fla-org#1054 and **not yet
-  accepted**; every number is measured at one shape on one GPU generation, which a
-  maintainer has questioned. This is a later, separate case from RWKV6 PR #1045.
-  See that directory's *Upstream status* before citing it.
+  diff against the frozen baseline. The performance route was **retired**: fla-org#1054
+  was closed without merge after a representative D128 follow-up showed no meaningful
+  training gain. The independently reproducible SM100 autotune crash was extracted
+  into fla-org#1109, which was maintainer-approved and awaiting merge on 2026-08-07.
+  The D64 measurement remains valid but is scoped to one shape on one GPU generation.
+  This is a later, separate case from RWKV6 PR #1045. See that directory's
+  *Upstream status* before citing it.
 
 The report build uses only the fields required by the published tables and
 figures. Credentials, private model reasoning, and raw runtime event streams are
