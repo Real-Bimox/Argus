@@ -23,6 +23,9 @@ not implementation convenience.
   focused tests, and the observable metric it should move.
 - Do not replace Agent judgment with keyword rules. Encode authority and state
   transitions explicitly, then let the responsible role make the semantic decision.
+- Do not require roles to emit strict JSON or conform to a model-facing output
+  schema. Capture required semantics through tool calls, runtime-owned state, or
+  tolerant extraction from the role's natural response.
 - Status labels: `unassigned`, `investigating`, `design-review`, `implementing`,
   `experimenting`, `blocked`, `done`.
 
