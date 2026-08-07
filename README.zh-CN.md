@@ -57,6 +57,22 @@
 - Node.js 22+
 - 至少一个已按官方方式安装并完成登录鉴权的 Agent CLI
 
+### Agent 一键接入
+
+将下面这句话发送给 Codex CLI、Claude Code、GitHub Copilot CLI、Pi 或
+OpenCode，Agent 会检查环境、安装 Argus、连接当前 backend，并运行
+`argus --doctor` 验收：
+
+```text
+请阅读 https://github.com/lbx154/Argus/blob/main/docs/agent-install.md，
+按照文档在我的机器上安装并配置 Argus。优先复用当前 Agent CLI 作为 Argus
+backend。请实际执行环境检查、安装、配置和 argus --doctor 验证；遇到需要登录
+账号、sudo、修改全局配置或其他人工授权的步骤时，先向我说明原因并等待确认。
+不要要求我在对话中粘贴密码、访问令牌或 API Key。
+```
+
+Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
+
 ### 安装
 
 ```bash

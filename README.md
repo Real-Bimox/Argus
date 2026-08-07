@@ -57,6 +57,24 @@ A project can stop, resume, survive a runtime replacement, and continue from its
 - Node.js 22+
 - One supported Agent CLI installed and authenticated through its official login flow
 
+### Agent-assisted installation
+
+Send this prompt to Codex CLI, Claude Code, GitHub Copilot CLI, Pi, or
+OpenCode. The agent will inspect the environment, install Argus, connect the
+current backend, and verify it with `argus --doctor`:
+
+```text
+Read https://github.com/lbx154/Argus/blob/main/docs/agent-install.md and follow
+it to install and configure Argus on my machine. Prefer the Agent CLI currently
+running this conversation as the Argus backend. Perform the environment checks,
+installation, configuration, and argus --doctor verification. Before account
+login, sudo, global configuration changes, or any other action requiring human
+authorization, explain why and wait for my approval. Never ask me to paste a
+password, access token, or API key into the conversation.
+```
+
+The agent will follow the **[installation execution contract](docs/agent-install.md)**.
+
 ### Install
 
 ```bash
