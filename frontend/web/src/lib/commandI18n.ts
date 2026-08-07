@@ -19,6 +19,7 @@ const DESCRIPTIONS: Record<CommandId, string> = {
   events: '搜索动态：all / watch / milestones / messages',
   find: '搜索当前事件缓冲区',
   cancel: '停止等待当前 Manager 回复',
+  ask: '直接回答，不排任务、不走 Planner/Engineer/Reviewer',
   task: '直接加入任务队列',
   plan: '预览 Planner 编写的执行计划',
   rewrite: '让 Manager 在发送前改写提示词',

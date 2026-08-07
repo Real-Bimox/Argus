@@ -38,6 +38,9 @@ __all__ = [
 ]
 
 
+from .backlog_guard import ensure_manager_decision
+
+
 class MissionExecutionMixin(
     MissionExecutionRuntimeMixin, MissionExecutionSettlementMixin,
 ):
@@ -58,6 +61,13 @@ class MissionExecutionMixin(
                     log.exception("life supervisor: claim rollback failed")
             return {"status": "claim_lost", "item_id": item.id}
         item = claimed
+
+        # An item written straight into backlog.jsonl never passed through the
+        # Manager, so no vertical, stage, or target level was chosen and the run
+        # silently proceeds under the default workflow — the Manager looks like
+        # it is doing nothing. Route it now rather than executing blind;
+        # already-routed items are untouched.
+        item = ensure_manager_decision(self.memory, item, getattr(self, "chat_state", None))
 
         state = self._prepare_mission_context(item, prelude)
         self._invoke_mission_runner(state)

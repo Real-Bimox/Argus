@@ -64,6 +64,7 @@ def add_backlog_item(
     priority: int = 100,
     iterate: bool = True,
     iteration_max_cycles: int = 6,
+    manager_decision: dict[str, Any] | None = None,
 ) -> BacklogItem:
     text = text.strip()
     title = text.splitlines()[0][:60].strip() or "(untitled)"
@@ -71,6 +72,7 @@ def add_backlog_item(
         item_id=item_id,
         title=title,
         objective=text,
+        manager_decision=dict(manager_decision or {}),
         priority=priority,
         tags=[],
         iterate=iterate,

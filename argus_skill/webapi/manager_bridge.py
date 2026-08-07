@@ -17,6 +17,7 @@ resolvable exactly as before.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -46,7 +47,48 @@ from .manager_state import (
     manager_control_generation,
 )
 
+log = logging.getLogger(__name__)
+
 _PLAN_PREVIEW_CACHE_TTL_S = 60.0
+
+
+def _answer_inline(sid: str, life_dir: Any, question: str) -> str:
+    """Answer *question* with the Manager alone — no classify, no backlog.
+
+    Uses the same front-door runner the classifier would have used, which
+    exists precisely to "reply in-band BEFORE anything reaches the backlog".
+    Any failure returns a plain message rather than falling through to task
+    dispatch: the operator said this was a question, and quietly turning it
+    into queued work is the behaviour `/ask` exists to prevent.
+    """
+    from ..core.models import RunnerOptions
+    from ..core.run_gateway import run_exec as gateway_run_exec
+    from ..life.memory import LifeMemory
+    from ..manager.front_door import _ensure_manager_runner
+    from ..roles.prompts.manager import build_chat_prompt
+
+    try:
+        mem = LifeMemory.open(Path(str(life_dir)))
+        chat_state = _chat_state_for(sid)
+        runner = _ensure_manager_runner(chat_state, mem)
+        if runner is None:
+            return (
+                "No conversational backend is available for this project, so "
+                "`/ask` cannot answer inline. Send the message without `/ask` "
+                "to queue it as work instead."
+            )
+        result = gateway_run_exec(
+            chat_state.get("manager_session") or runner,
+            prompt=build_chat_prompt(objective=question),
+            options=RunnerOptions(skip_git_repo_check=True),
+            run_label="manager-ask",
+        )
+    except Exception:  # noqa: BLE001 - never turn a question into a task
+        log.exception("ask: inline reply failed")
+        return "Could not answer inline just now; nothing was queued."
+
+    reply = str(getattr(result, "stdout", "") or "").strip()
+    return reply or "The Manager returned an empty reply; nothing was queued."
 
 
 def manager_message(
@@ -136,6 +178,7 @@ def manager_message(
         looks_like_status_query,
     )
     from ..life.router import looks_like_pause_request
+    from ..manager.ask_intent import strip_ask_prefix
 
     if looks_like_pause_request(body):
         interrupt_manager_turns(sid)
@@ -155,6 +198,20 @@ def manager_message(
                 pass
             _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
             return emitter.respond(reply, {"kind": "chat"})
+
+    # `/ask` states outright that this is a question. Skip classification —
+    # the guess is what we are removing — queue nothing, and involve no role
+    # beyond the Manager. This is what lets the automatic classifier stay
+    # biased toward "task": anyone who wants a plain answer can say so.
+    _question = strip_ask_prefix(body)
+    if _question is not None:
+        try:
+            append_turn(life_dir, "operator", body)
+        except Exception:  # noqa: BLE001
+            pass
+        _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
+        reply = _answer_inline(sid, life_dir, _question)
+        return emitter.respond(reply, {"kind": "chat"})
 
     lock = _lock_for(sid)
     with lock:

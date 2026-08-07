@@ -67,6 +67,7 @@ __all__ = ["CommandRouter", "COMMAND_MENU", "help_text"]
 COMMAND_MENU: tuple[tuple[str, str], ...] = (
     ("status", "查看守护进程 / 当前任务 / backlog / 花费"),
     ("add", "添加任务：/add 标题: 目标"),
+    ("ask", "直接回答，不排任务、不走四角色"),
     ("nudge", "向当前任务注入指令"),
     ("backlog", "查看待办任务（/backlog all 看全部）"),
     ("journal", "查看最近日志"),
@@ -108,6 +109,7 @@ def help_text(channel_name: str = "") -> str:
 /stop <id> — 关闭任务迭代；必要时会把待办项标记为已完成
 /start [目标] — 开启持续模式（/continuous start 的别名）
 /continuous start|stop [目标] — 持续模式控制
+/ask <code>问题</code> — 直接回答，不排任务、不走四角色
 /nudge <code>文本</code> — 向当前任务注入指令
 /help — 显示此帮助
 
@@ -182,6 +184,8 @@ class CommandRouter:
             "/journal": self._cmd_journal,
             "/note": self._cmd_note,
             "/run": self._cmd_run,
+            "/ask": self._cmd_ask,
+            "/chat": self._cmd_ask,
             "/nudge": self._cmd_nudge,
             "/help": self._cmd_help,
         }
@@ -623,6 +627,17 @@ class CommandRouter:
             f"💬 指令已注入 ({len(text)} 字)\n"
             "当前 LLM 调用无法中断；下一次工程师 round / 下一 mission prompt 会看到。"
         )
+
+    def _cmd_ask(self, arg: str) -> None:
+        """Answer inline. The operator said this is a question, so nothing is
+        queued and no role beyond the Manager is involved."""
+        question = arg.strip()
+        if not question:
+            self._reply("用法: /ask <问题>\n直接回答，不会排进任务队列")
+            return
+        from ...webapi.manager_bridge import _answer_inline
+
+        self._reply(_esc(_answer_inline(self.life_dir.name, self.life_dir, question)))
 
     def _cmd_help(self, _arg: str) -> None:
         self._reply(help_text(self.transport.display_name))

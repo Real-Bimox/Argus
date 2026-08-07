@@ -696,6 +696,13 @@ class BacklogItem:
     # — a non-empty value always means "still waiting on the operator".
     pending_question: str = ""
     operator_decision: dict[str, Any] = field(default_factory=dict)
+    # Evidence that the Manager routed this item: which vertical, stage, and
+    # target level it chose. Empty means the row reached the backlog without a
+    # Manager decision — almost always because something wrote backlog.jsonl
+    # directly instead of dispatching. The file is writable by design, so this
+    # is not a lock; it is what lets the supervisor notice and re-route rather
+    # than run the item blind under the default workflow.
+    manager_decision: dict[str, Any] = field(default_factory=dict)
     # --- iteration loop fields (Phase-7) -------------------------------
     # When ``iterate`` is True the supervisor, after a successful
     # ``done`` verdict, hands the produced artefacts to a L2 reviewer agent. The reviewer is the only verdict authority;
@@ -791,6 +798,7 @@ class BacklogItem:
         decision_rule: str = "",
         non_goals: list[str] | None = None,
         original_objective: str = "",
+        manager_decision: dict[str, Any] | None = None,
     ) -> "BacklogItem":
         objective = objective.strip()
         root_objective = str(original_objective or "").strip() or objective
@@ -805,6 +813,7 @@ class BacklogItem:
             iterate=bool(iterate),
             iteration_max_cycles=int(iteration_max_cycles),
             original_objective=root_objective,
+            manager_decision=dict(manager_decision or {}),
             deps=list(deps or []),
             plan_id=str(plan_id),
             plan_version=max(0, int(plan_version)),

@@ -1738,6 +1738,14 @@ def _cmd_status(args: argparse.Namespace) -> int:
             f"{_clean_follow_text(str(getattr(current_running, 'objective', '')), limit=120)}"
         )
     print(f"  inbox    : {count_pending_inbox_messages(bundle.project.root)} pending")
+    # Items written straight into backlog.jsonl bypass the Manager, so no
+    # vertical is chosen and the run merely looks like the Manager is idle.
+    # Nothing errors, so say it here or it stays invisible.
+    from ...life.supervisor.backlog_guard import describe_undecided
+
+    _undecided = describe_undecided(bundle.backlog.all())
+    if _undecided:
+        print(f"  manager  : {_undecided}")
     # The one thing an operator most needs from --status: a run that stopped
     # because it needs *them*. A blocked reviewer verdict carrying an
     # operator_question is persisted on the item precisely so this can list it,

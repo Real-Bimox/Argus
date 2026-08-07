@@ -625,7 +625,9 @@ describe('shared frontend core', () => {
 
   it('builds one palette row for every shared slash command', () => {
     const rows = commandPaletteRows(COMMANDS, vi.fn(), vi.fn());
-    expect(rows).toHaveLength(35);
+    // One row per command — asserting the relationship rather than a literal
+    // count, so adding a command does not fail a test about mapping.
+    expect(rows).toHaveLength(COMMANDS.length);
     expect(rows.map((row) => row.hint)).toContain('/status');
     expect(rows.map((row) => row.hint)).toContain('/quit');
   });
