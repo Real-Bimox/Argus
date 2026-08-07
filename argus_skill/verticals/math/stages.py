@@ -65,9 +65,16 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
             id="scope.success-criterion",
             statement=(
                 "It is clear whether success means a proof, counterexample, construction, "
-                "classification, estimate, or honest progress on an open problem."
+                "classification, estimate, or honest progress on an open problem. The "
+                "objective mode is recorded, not assumed: `targeted` names one goal to "
+                "prove or refute, `exploratory` names a direction whose deliverable is "
+                "substantive partial results. The two have different completion bars, so "
+                "an unset mode is a scope gap rather than a default."
             ),
-            evidence_hint="the requested outcome and completion bar",
+            evidence_hint=(
+                "the requested outcome and completion bar; math_objective_mode (and "
+                "math_goal when targeted) in research/PIPELINE_STATE.json"
+            ),
         ),
     ),
     "solve": (
@@ -95,6 +102,22 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
                 "evidence for a mistranslated statement."
             ),
             evidence_hint="the actual tested range or compiler run and the stated limitation",
+        ),
+        ChecklistItem(
+            id="solve.gap-reduced",
+            statement=(
+                "For a targeted project, the round moved the distance to the goal, not "
+                "merely produced something new. Extending a finite verification to a wider "
+                "range, more moduli, or more primes yields a fresh artifact and no gap "
+                "reduction; repeating it at a larger bound buys the same information. Say "
+                "which proposition changed status, or that none did. For an exploratory "
+                "project this item is satisfied by a substantive, correctly-scoped result."
+            ),
+            evidence_hint=(
+                "the proposition whose status changed; once a targeted route is settled, "
+                "research/PROOF_GRAPH.json checked with `python -m "
+                "argus_skill.verticals.math.proof_graph_check gap`"
+            ),
         ),
     ),
     "review": (

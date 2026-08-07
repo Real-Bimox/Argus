@@ -18,6 +18,33 @@ continued strengthening, compare the new result directly with the strongest
 prior one. A bounded subproblem can be done without claiming that the whole
 research goal is complete.
 
+## Say which layer failed
+
+When the round is incomplete, name where it failed. The verdict says whether
+to continue; this says what to change, and without it every failure gets
+patched locally.
+
+- `proof` — the plan holds and this argument has a gap. Fix the argument.
+- `plan` — the subgoal decomposition or its dependencies are wrong. Re-derive
+  the subgoals; the approach may still be sound.
+- `strategy` — the approach itself is not worth continuing. Say so plainly and
+  record the evidence that retires it, so the route is not proposed again
+  under a new name.
+
+A `targeted` project that has drifted into proving some method can never work
+is a `strategy` failure, however rigorous that work is. Ruling out a
+sufficient criterion does not settle the original question.
+
+## Local progress is not gap reduction
+
+Distinguish a result that shrinks the distance to the goal from one that is
+merely new. Extending a finite verification to a wider range, more moduli, or
+more primes produces a fresh artifact and no gap reduction; a finite
+computation is not a proof of a universal claim, and repeating it at a larger
+bound does not become one. Do not accept a round whose only increment is the
+same verification at a larger bound — say which proposition moved, or that
+none did.
+
 When Lean is used, inspect the source and a fresh real compiler run, and check
 that the encoded theorem means what the original problem says. Do not require
 particular filenames.

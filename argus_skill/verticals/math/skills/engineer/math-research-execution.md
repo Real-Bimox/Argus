@@ -13,9 +13,17 @@ Keep a short note about a failed route in the existing `CHECKPOINT.md` when it
 will help the next attempt, then change the mathematical approach.
 
 Use ordinary working files suited to the task. Do not create process-only
-planning, ledger, graph, audit, status, or evidence-packet files merely to
-satisfy the workflow. The theorem, proof, counterexample, code, or formal source
-is the evidence.
+planning, audit, status, or evidence-packet files merely to satisfy the
+workflow. The theorem, proof, counterexample, code, or formal source is the
+evidence.
+
+Two files are exceptions once a `targeted` project has settled on a route and
+reached `develop` or `certify`: `research/PROOF_GRAPH.json` records what still
+stands between the current state and the goal, and `research/ROUTE_LEDGER.json`
+records which routes were retired and why. They are not process paperwork —
+without them "how hard was this step" silently replaces "how much closer did
+this get us", and a retired route gets retried. Under `explore` neither is
+required.
 
 When continuing earlier work, compare the new result with the strongest prior
 result that matters. Explain the mathematical improvement directly; no special

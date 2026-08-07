@@ -110,9 +110,17 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
         if path.is_file() and "__pycache__" not in path.parts
     }
 
+    # Math stays light on machinery compared with kernel_engineering. The three
+    # modules below are the exception, and the reason is narrow: without a way
+    # to measure the distance to the goal, "how hard was this step" silently
+    # replaces "how much closer did this get us". They measure; they do not
+    # add stages, roles, or required paperwork.
     assert files == {
         "__init__.py",
         "stages.py",
+        "objective_mode.py",
+        "proof_graph.py",
+        "proof_graph_check.py",
         "skills/manager/math-research-manager.md",
         "skills/planner/math-research-planning.md",
         "skills/engineer/math-research-execution.md",
@@ -150,7 +158,10 @@ def test_math_engineer_uses_one_checkpoint_without_process_artifacts() -> None:
 
     assert "`CHECKPOINT.md`" in context
     assert "process-only" in context
-    assert "or formal source\nis the evidence" in context
+    # Collapsed so the assertion survives rewrapping.
+    assert "or formal source is the\n evidence".replace("\n ", " ") in " ".join(
+        context.split()
+    )
     for artifact in (
         "SCOPE.md",
         "SOLVE.md",
@@ -166,7 +177,7 @@ def test_math_checklist_is_small_and_judges_results_not_files() -> None:
     items = vertical_checklist_items(load_vertical("math"))
     assert {stage: len(stage_items) for stage, stage_items in items.items()} == {
         "scope": 2,
-        "solve": 3,
+        "solve": 4,
         "review": 4,
     }
     assert {stage: {item.id for item in stage_items} for stage, stage_items in items.items()} == {
@@ -175,6 +186,7 @@ def test_math_checklist_is_small_and_judges_results_not_files() -> None:
             "solve.substantive-result",
             "solve.witness-valid",
             "solve.support-matches-claim",
+            "solve.gap-reduced",
         },
         "review": {
             "review.goal-achieved",
@@ -201,6 +213,13 @@ def test_math_checklist_is_small_and_judges_results_not_files() -> None:
     assert "error-free attempt" in rendered
     assert "leave this item unsatisfied" in rendered
     assert "original Goal Gate is achieved" in rendered
+    # The gap item must be satisfied by a proposition changing status, not by a
+    # file existing — otherwise the graph becomes the paperwork it replaced.
+    gap_item = next(
+        item for item in items["solve"] if item.id == "solve.gap-reduced"
+    )
+    assert "which proposition changed status" in gap_item.statement
+    assert "exploratory project this item is satisfied by a substantive" in gap_item.statement
 
 
 def test_math_roles_keep_methods_optional_and_checks_real() -> None:

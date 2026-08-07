@@ -8,8 +8,14 @@ from argus_skill.life.supervisor import LifeSupervisor
 from argus_skill.planner import Planner
 from argus_skill.skills.vertical_select import persist_vertical
 
-MATH_SCOPE_BUDGET = 9_500
-MATURE_MATH_SCOPE_BUDGET = 15_000
+# Raised from 9_500 / 15_000 when the math vertical gained the objective mode
+# (targeted vs exploratory), the route ledger, and the proof-gap graph — three
+# blocks the planner has to see to choose a next step, deliberately added
+# rather than prose creep. The existing text was compressed first: the opening,
+# the failed-attempt paragraph, and the closing options list are all shorter
+# than they were. Compress again before raising these further.
+MATH_SCOPE_BUDGET = 9_700
+MATURE_MATH_SCOPE_BUDGET = 15_400
 
 
 def _build_math_scope_prompt(
