@@ -25,6 +25,27 @@ def test_parse_key_value_completion_after_freeform_progress() -> None:
     assert verdict.reason == "Updated the parser and verified the regression suite."
 
 
+def test_parse_task_workdir_for_nested_target_repository() -> None:
+    verdict = parse_planner_text(
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=work in the cloned target repository",
+            "TASK_KEY=target",
+            "TASK_TITLE=Repair target kernel",
+            "TASK_OBJECTIVE=Edit and test the target kernel.",
+            "TASK_HYPOTHESIS=The target kernel contains the defect.",
+            "TASK_GOAL_CONTRIBUTION=Fix the operator's target repository.",
+            "TASK_EXPECTED_REGRESSIONS=The focused test may stay red during repair.",
+            "TASK_DECISION_RULE=Replan if the defect is outside this repository.",
+            "TASK_WORKDIR=flash-linear-attention",
+            "TASK_ACCEPTANCE_CHECK=pytest tests/ops/test_attnres.py -q",
+        ])
+    )
+
+    assert verdict.error == ""
+    assert verdict.new_tasks[0].execution_workdir == "flash-linear-attention"
+
+
 def test_parse_status_summary_aliases() -> None:
     verdict = parse_planner_text(
         "STATUS=completed\nSUMMARY=Implementation and verification finished."

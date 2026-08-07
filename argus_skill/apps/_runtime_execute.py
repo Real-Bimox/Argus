@@ -491,7 +491,7 @@ class SkillLoopExecuteMixin:
         )
         _proot = (
             workdir
-            if maintenance_mission
+            if maintenance_mission or working_dir_override
             else Path(getattr(self, "_artifact_root", None) or workdir)
         )
         effective_require_independent_review = (

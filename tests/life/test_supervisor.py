@@ -149,6 +149,112 @@ def test_framework_maintenance_uses_private_worktree_and_review(
     assert runner.kwargs["require_independent_review"] is True
 
 
+def test_regular_task_adopts_nested_repository_as_campaign_root(tmp_path) -> None:
+    import json
+    import subprocess
+
+    memory = LifeMemory.open(tmp_path / "life")
+    sink = _RecordingSink(memory.root)
+    runner = _MaintenanceRunner()
+    workspace = tmp_path / "workspace"
+    target = workspace / "target-repo"
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q", str(target)], check=True)
+    pipeline = workspace / "research" / "PIPELINE_STATE.json"
+    pipeline.parent.mkdir(parents=True)
+    pipeline.write_text(
+        json.dumps({
+            "vertical": "software",
+            "current_stage": "delivery",
+        }),
+        encoding="utf-8",
+    )
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=runner,
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=workspace,
+            artifact_root=workspace,
+        ),
+    )
+    memory.backlog.add(BacklogItem.new(
+        title="work in cloned repository",
+        objective="make the bounded change",
+        tags=["planner", "review:required", "scope:bounded"],
+        execution_workdir="target-repo",
+    ))
+
+    result = supervisor.tick()
+
+    assert result is not None and result["status"] == "done"
+    assert runner.kwargs["working_dir_override"] == str(target.resolve())
+    assert runner.kwargs["maintenance_mission"] is False
+    assert supervisor._project_workdir() == target.resolve()
+    assert supervisor._artifact_root() == target.resolve()
+    copied = json.loads(
+        (target / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+    )
+    assert copied["current_stage"] == "delivery"
+
+
+def test_kernel_baseline_mission_receives_clean_reference_without_revert(
+    tmp_path,
+) -> None:
+    import json
+    import subprocess
+
+    memory = LifeMemory.open(tmp_path / "life")
+    sink = _RecordingSink(memory.root)
+    runner = _MaintenanceRunner()
+    project = tmp_path / "kernel-project"
+    project.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=project, check=True)
+    subprocess.run(["git", "config", "user.name", "test"], cwd=project, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"],
+        cwd=project,
+        check=True,
+    )
+    (project / "kernel.py").write_text("baseline\n", encoding="utf-8")
+    subprocess.run(["git", "add", "kernel.py"], cwd=project, check=True)
+    subprocess.run(["git", "commit", "-qm", "baseline"], cwd=project, check=True)
+    pipeline = project / "research" / "PIPELINE_STATE.json"
+    pipeline.parent.mkdir()
+    pipeline.write_text(
+        json.dumps({
+            "vertical": "kernel_engineering",
+            "current_stage": "baseline",
+        }),
+        encoding="utf-8",
+    )
+    (project / "kernel.py").write_text("candidate\n", encoding="utf-8")
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=runner,
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=project,
+            artifact_root=project,
+        ),
+    )
+    memory.backlog.add(BacklogItem.new(
+        title="capture baseline",
+        objective="measure the clean reference",
+        tags=["planner", "review:required", "scope:bounded"],
+    ))
+
+    result = supervisor.tick()
+
+    assert result is not None and result["status"] == "done"
+    prelude = runner.kwargs["prelude_context"]
+    assert "## Kernel baseline isolation" in prelude
+    assert "clean_reference_root" in prelude
+    assert (project / "kernel.py").read_text(encoding="utf-8") == "candidate\n"
+    reference = memory.root / "runtime-worktrees" / "kernel-baseline" / "kernel.py"
+    assert reference.read_text(encoding="utf-8") == "baseline\n"
+
+
 def _certified_research_result(result_class: str) -> dict[str, Any]:
     return {
         "result_class": result_class,

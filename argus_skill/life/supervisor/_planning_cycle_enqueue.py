@@ -14,6 +14,10 @@ import logging
 from dataclasses import replace
 from typing import Any
 
+from ...core.campaign_workdir import (
+    normalize_task_workdir,
+    resolve_task_workdir,
+)
 from ...core.event_catalog import EventType
 from ...core.planner_verdict import PlannerVerdictStatus
 from ...planner.planner import hydrate_task_context_refs
@@ -101,6 +105,7 @@ class PlanningCycleEnqueueMixin:
                     self._item_requires_independent_review(existing)
                 ),
                 skip_stage_transition=self._item_skips_stage_transition(existing),
+                execution_workdir=str(existing.execution_workdir or ""),
             )
             base_signature = signature
             if existing.status != "done" and not terminal_blocker:
@@ -118,6 +123,85 @@ class PlanningCycleEnqueueMixin:
             state.expected_plan_version + 1 if state.revision_request is not None else 1
         )
         return None
+
+    @staticmethod
+    def _item_pipeline_stage(item: Any) -> str:
+        """Stage tag persisted when a Planner task was enqueued."""
+        for raw in getattr(item, "tags", []) or []:
+            tag = str(raw or "").strip().lower()
+            if tag.startswith("stage:"):
+                return tag.split(":", 1)[1].strip()
+        return ""
+
+    def _stage_closing_reproposal_blocker(
+        self, task: Any,
+    ) -> tuple[Any, str] | None:
+        """Reject certification churn until substantive repair intervenes.
+
+        A completed independently reviewed stage-closing mission is one review
+        attempt.  If the Manager kept the same stage open, immediately asking a
+        fresh Engineer and Reviewer to package the same gate again cannot change
+        that decision.  The next accepted unit must be a non-stage-closing repair
+        on the same stage; after such a repair, one new certification attempt is
+        legal.
+
+        Older backlog rows have no ``stage:<name>`` tag and intentionally keep
+        their historical behaviour.  This makes the guard migration-safe.
+        """
+        if not bool(getattr(task, "stage_closing", False)):
+            return None
+        stage_reader = getattr(self, "_current_pipeline_stage", None)
+        if not callable(stage_reader):
+            return None
+        try:
+            current_stage = str(stage_reader() or "").strip().lower()
+            rows = list(self.memory.backlog.all())
+        except Exception:  # noqa: BLE001 - dedupe remains fail-open
+            return None
+        if not current_stage:
+            return None
+
+        def finished_at(item: Any) -> float:
+            return float(
+                getattr(item, "finished_ts", 0.0)
+                or getattr(item, "started_ts", 0.0)
+                or getattr(item, "ts", 0.0)
+                or 0.0
+            )
+
+        reviewed: list[Any] = []
+        for item in rows:
+            if self._item_pipeline_stage(item) != current_stage:
+                continue
+            if not self._item_is_stage_closing(item) or item.status != "done":
+                continue
+            outcome = getattr(item, "outcome", {}) or {}
+            if str(outcome.get("review_status") or "").strip().lower() != "done":
+                continue
+            reviewed.append(item)
+        if not reviewed:
+            return None
+        latest = max(reviewed, key=finished_at)
+        cutoff = finished_at(latest)
+
+        # A successful ordinary mission after the review is the evidence delta
+        # that unlocks one new stage-closing attempt.  Merely renaming or
+        # repackaging another certification does not.
+        for item in rows:
+            if self._item_pipeline_stage(item) != current_stage:
+                continue
+            if self._item_is_stage_closing(item) or item.status != "done":
+                continue
+            if finished_at(item) > cutoff:
+                return None
+
+        reason = (
+            f"stage {current_stage!r} already has a completed independent "
+            f"certification attempt ({latest.id}); run a non-stage-closing "
+            "repair that changes the stage evidence before requesting another "
+            "certification"
+        )
+        return latest, reason
 
     def _gate_reproposal_is_not_a_duplicate(self, task: Any, duplicate_item: Any) -> bool:
         """Whether a stage-closing proposal escapes the duplicate filter.
@@ -138,9 +222,11 @@ class PlanningCycleEnqueueMixin:
 
         If the Planner is asking for the gate again, the previous
         attempt evidently did not close it, or the campaign would
-        have completed. A still-pending or running duplicate is a
-        genuine duplicate and is still filtered, so concurrent copies
-        of in-flight work remain impossible.
+        have completed. The stage-level guard above now additionally requires an
+        intervening non-stage-closing repair before this signature exemption can
+        be reached. A still-pending or running duplicate is a genuine duplicate
+        and is still filtered, so concurrent copies of in-flight work remain
+        impossible.
         """
         stage_closing = bool(getattr(task, "stage_closing", False))
         requires_review = stage_closing or bool(
@@ -166,9 +252,32 @@ class PlanningCycleEnqueueMixin:
         pending_items: list[tuple[Any, Any]] = []  # (task, item)
         for task in state.verdict.new_tasks:
             try:
-                hydrated_context_refs = hydrate_task_context_refs(
-                    list(getattr(task, "context_refs", []) or []),
-                    self._project_workdir(),
+                execution_workdir = normalize_task_workdir(
+                    getattr(task, "execution_workdir", "")
+                )
+                raw_context_refs = list(
+                    getattr(task, "context_refs", []) or []
+                )
+                try:
+                    context_root = resolve_task_workdir(
+                        self._project_workdir(), execution_workdir
+                    )
+                except ValueError:
+                    # A dependent setup node may create the nested repository.
+                    # Defer existence/Git-root validation to claim time, after
+                    # dependencies are done; future files cannot be context refs.
+                    if (
+                        execution_workdir
+                        and list(getattr(task, "deps", []) or [])
+                        and not raw_context_refs
+                    ):
+                        context_root = None
+                    else:
+                        raise
+                hydrated_context_refs = (
+                    []
+                    if context_root is None
+                    else hydrate_task_context_refs(raw_context_refs, context_root)
                 )
             except ValueError as exc:
                 self._emit(
@@ -198,8 +307,16 @@ class PlanningCycleEnqueueMixin:
                         nonterminal_result=PLAN_ERROR,
                     )
                 return PLAN_ERROR
-            if hydrated_context_refs != list(getattr(task, "context_refs", []) or []):
-                task = replace(task, context_refs=hydrated_context_refs)
+            if (
+                hydrated_context_refs != list(getattr(task, "context_refs", []) or [])
+                or execution_workdir
+                != str(getattr(task, "execution_workdir", "") or "").strip()
+            ):
+                task = replace(
+                    task,
+                    context_refs=hydrated_context_refs,
+                    execution_workdir=execution_workdir,
+                )
             sanitized_title = _sanitize_planner_task_text(task.title)
             sanitized_objective = _sanitize_planner_task_text(task.objective)
             sanitized_evidence = _sanitize_planner_task_text(task.evidence)
@@ -260,6 +377,30 @@ class PlanningCycleEnqueueMixin:
                 ),
                 require_independent_review=canonical_require_review,
             )
+            certification_blocker = self._stage_closing_reproposal_blocker(task)
+            if certification_blocker is not None:
+                prior_item, blocker_reason = certification_blocker
+                state.skipped_certification_reproposal_titles.append(task.title)
+                state.skipped_certification_reproposal_reasons.append(blocker_reason)
+                self._emit(
+                    {
+                        "type": EventType.LIFE_PLANNER_TASK_SKIPPED,
+                        "cycle": self._planning_cycles,
+                        "title": task.title,
+                        "objective": task.objective,
+                        "impact_score": task.impact_score,
+                        "impact_area": task.impact_area,
+                        "evidence": task.evidence,
+                        "matched_item_id": prior_item.id,
+                        "matched_status": prior_item.status,
+                        "matched_stage": self._item_pipeline_stage(prior_item),
+                        "skip_category": (
+                            "stage_closing_requires_intervening_repair"
+                        ),
+                        "reason": blocker_reason,
+                    }
+                )
+                continue
             signature = _planner_task_signature(
                 task.title,
                 task.objective,
@@ -270,6 +411,9 @@ class PlanningCycleEnqueueMixin:
                 require_independent_review=canonical_require_review,
                 skip_stage_transition=bool(
                     getattr(task, "skip_stage_transition", False)
+                ),
+                execution_workdir=str(
+                    getattr(task, "execution_workdir", "") or ""
                 ),
             )
             base_signature = signature
@@ -421,6 +565,9 @@ class PlanningCycleEnqueueMixin:
                     getattr(task, "expected_regressions", "") or ""
                 ),
                 decision_rule=str(getattr(task, "decision_rule", "") or ""),
+                execution_workdir=str(
+                    getattr(task, "execution_workdir", "") or ""
+                ),
                 non_goals=list(getattr(task, "non_goals", []) or []),
                 original_objective=str(
                     getattr(self.config, "continuous_objective", "") or ""
@@ -667,11 +814,20 @@ class PlanningCycleEnqueueMixin:
             task_count=len(verdict.new_tasks),
             enqueued_tasks=len(state.added_titles),
             skipped_duplicate_tasks=len(state.skipped_duplicate_titles),
+            skipped_certification_reproposal_tasks=len(
+                state.skipped_certification_reproposal_titles
+            ),
             skipped_recent_failure_tasks=len(state.skipped_recent_failure_titles),
             skipped_subagent_family_failure_tasks=len(state.skipped_subagent_family_failure_titles),
             enqueued_titles=state.added_titles,
             enqueued_impact_scores=state.added_impact_scores,
             skipped_duplicate_titles=state.skipped_duplicate_titles,
+            skipped_certification_reproposal_titles=(
+                state.skipped_certification_reproposal_titles
+            ),
+            skipped_certification_reproposal_reasons=(
+                state.skipped_certification_reproposal_reasons
+            ),
             skipped_recent_failure_titles=state.skipped_recent_failure_titles,
             skipped_subagent_family_failure_titles=(state.skipped_subagent_family_failure_titles),
             stuck_subagent_families={
@@ -683,7 +839,15 @@ class PlanningCycleEnqueueMixin:
             return PLAN_RETRY
         if not state.added_titles:
             self._enter_idle_backoff()
-            self._emit_status("planner: all proposed tasks were filtered; retrying after backoff")
+            if state.skipped_certification_reproposal_reasons:
+                self._emit_status(
+                    "planner: repeated stage certification rejected; a substantive "
+                    "same-stage repair must complete before recertification"
+                )
+            else:
+                self._emit_status(
+                    "planner: all proposed tasks were filtered; retrying after backoff"
+                )
             return PLAN_RETRY
         self._clear_manager_planner_feedback()
         # Real new work was queued: clear the no-work backoff so the next cycle

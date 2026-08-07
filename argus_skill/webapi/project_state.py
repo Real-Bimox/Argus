@@ -378,6 +378,27 @@ def session_dict(meta: SessionMeta | None, sid: str) -> dict[str, Any]:
     }
 
 
+def apply_campaign_workdir(
+    session: dict[str, Any], life_dir: Path,
+) -> dict[str, Any]:
+    """Expose the repository Argus is actually using, not only launch root."""
+    raw_base = str(session.get("workdir") or session.get("cwd") or "").strip()
+    if not raw_base:
+        session["campaign_workdir"] = ""
+        return session
+    try:
+        from ..core.campaign_workdir import active_campaign_workdir
+
+        active = active_campaign_workdir(life_dir, raw_base)
+    except Exception:  # noqa: BLE001 - project picker remains best effort
+        active = None
+    session["session_workdir"] = raw_base
+    session["campaign_workdir"] = str(active or "")
+    if active is not None:
+        session["workdir"] = str(active)
+    return session
+
+
 def compact_backlog_item(item: Any) -> dict[str, Any]:
     objective = str(getattr(item, "objective", "") or "")
     title = str(getattr(item, "title", "") or "").strip()
@@ -582,7 +603,9 @@ def build_snapshot(
         diagnostics.append(diagnostic("recent_events", exc))
 
     try:
-        session = session_dict(read_session_meta(root, sid), sid)
+        session = apply_campaign_workdir(
+            session_dict(read_session_meta(root, sid), sid), life_dir
+        )
     except Exception as exc:  # noqa: BLE001
         session = session_dict(None, sid)
         diagnostics.append(diagnostic("session", exc))
@@ -701,6 +724,7 @@ def list_projects(
     for meta in list_sessions(root, include_empty=include_empty):
         item = session_dict(meta, meta.id)
         life_dir = core_paths.session_state_root(meta.id, root=root)
+        item = apply_campaign_workdir(item, life_dir)
         try:
             status = read_daemon_status(life_dir)
             daemon = daemon_dict(status, life_dir=life_dir)

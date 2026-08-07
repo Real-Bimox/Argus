@@ -54,6 +54,28 @@ class MissionExecutionRuntimeMixin:
             prelude = rt + "\n---\n\n" + prelude if prelude else rt
         return prelude
 
+    def _resolve_mission_workdir(self, item: BacklogItem) -> Path:
+        """Resolve/adopt an ordinary Planner-selected nested repository."""
+        requested = str(getattr(item, "execution_workdir", "") or "").strip()
+        tags = {str(tag or "").strip().lower() for tag in item.tags}
+        current = self._project_workdir().expanduser().resolve(strict=True)
+        if not requested or "framework_maintenance" in tags:
+            return current
+        configured_reader = getattr(self, "_configured_worktree", None)
+        base = configured_reader() if callable(configured_reader) else current
+        base = Path(base or current).expanduser().resolve(strict=True)
+        from ...core.campaign_workdir import adopt_campaign_workdir
+
+        adopted = adopt_campaign_workdir(
+            state_root=self.memory.root,
+            base_root=base,
+            current_root=current,
+            requested=requested,
+        )
+        if adopted != current:
+            self._emit_status(f"campaign workdir adopted: {adopted}")
+        return adopted
+
     def _prepare_mission_context(
         self, item: BacklogItem, prelude: str,
     ) -> _MissionRunState:
@@ -62,9 +84,43 @@ class MissionExecutionRuntimeMixin:
         Emits ``LIFE_MISSION_STARTED``. Returns the scratch state that the
         rest of the lifecycle phases read from and write to.
         """
+        resolved_mission_workdir = self._resolve_mission_workdir(item)
         state = _MissionRunState(item)
         state.prelude = prelude
+        # Workdir adoption happens before stage/context resolution so the
+        # mission, Reviewer, and Manager all see one canonical research tree.
         state.pipeline_stage_at_start = self._current_pipeline_stage() or ""
+        if (
+            state.pipeline_stage_at_start == "baseline"
+            and "framework_maintenance" not in {
+                str(tag or "").strip().lower() for tag in item.tags
+            }
+        ):
+            try:
+                from ...skills.vertical_select import resolve_vertical
+                from ...verticals.kernel_engineering.baseline_workspace import (
+                    prepare_baseline_workspace,
+                )
+
+                if resolve_vertical(resolved_mission_workdir) == "kernel_engineering":
+                    baseline = prepare_baseline_workspace(
+                        resolved_mission_workdir,
+                        self.memory.root,
+                    )
+                    if baseline is not None:
+                        block = baseline.prompt_block()
+                        state.prelude = (
+                            block + "\n\n---\n" + state.prelude
+                            if state.prelude
+                            else block
+                        )
+            except Exception as exc:  # noqa: BLE001 - surface setup failure to agent
+                block = f"## Kernel baseline isolation unavailable\n- error: {exc}"
+                state.prelude = (
+                    block + "\n\n---\n" + state.prelude
+                    if state.prelude
+                    else block
+                )
         state.usage_attempt_id = f"{item.id}:attempt:{max(1, int(item.attempt or 1))}"
         self._missions_started += 1
         state.item_scope = self._planner_scope_from_item(item)
@@ -117,6 +173,7 @@ class MissionExecutionRuntimeMixin:
                 goal_contribution=getattr(item, "goal_contribution", ""),
                 expected_regressions=getattr(item, "expected_regressions", ""),
                 decision_rule=getattr(item, "decision_rule", ""),
+                execution_workdir=str(resolved_mission_workdir),
                 non_goals=list(getattr(item, "non_goals", []) or []),
                 context_refs=list(getattr(item, "context_refs", []) or []),
                 plan_id=item.plan_id,
@@ -145,15 +202,14 @@ class MissionExecutionRuntimeMixin:
             str(tag).strip().lower()
             for tag in getattr(item, "tags", [])
         }
-        state.execution_workdir = self._project_workdir()
+        state.execution_workdir = resolved_mission_workdir
         state.configured_execution_workdir = str(
             getattr(item, "execution_workdir", "") or ""
         ).strip()
-        if state.configured_execution_workdir:
-            if "framework_maintenance" not in state.item_tags:
-                raise ValueError(
-                    "execution_workdir is reserved for framework maintenance"
-                )
+        if (
+            state.configured_execution_workdir
+            and "framework_maintenance" in state.item_tags
+        ):
             state.execution_workdir = Path(
                 state.configured_execution_workdir
             ).expanduser().resolve()

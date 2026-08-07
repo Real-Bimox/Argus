@@ -74,6 +74,9 @@ class TaskSpec:
     goal_contribution: str = ""
     expected_regressions: str = ""
     decision_rule: str = ""
+    # Project-relative repository root for this task. Empty means the current
+    # campaign root; a nested Git root is adopted for subsequent missions.
+    execution_workdir: str = ""
     # One decisive completion check plus explicit read-only inputs. These form
     # the canonical Planner→Engineer context packet instead of forcing every
     # fresh session to rediscover the whole project.
@@ -466,6 +469,7 @@ _KEY_VALUE_KEYS = (
     "TASK_GOAL_CONTRIBUTION",
     "TASK_EXPECTED_REGRESSIONS",
     "TASK_DECISION_RULE",
+    "TASK_WORKDIR",
     "TASK_ACCEPTANCE_CHECK",
     "TASK_BLOCKER_FINGERPRINT",
     "TASK_NON_GOALS",
@@ -673,7 +677,8 @@ def _build_no_task_repair_prompt(
         "`TASK_KEY=...`, `TASK_TITLE=...`, `TASK_OBJECTIVE=...`, "
         "`TASK_IMPACT_SCORE=1..5`, `TASK_IMPACT_AREA=...`, `TASK_EVIDENCE=...`, "
         "`TASK_HYPOTHESIS=...`, `TASK_GOAL_CONTRIBUTION=...`, "
-        "`TASK_EXPECTED_REGRESSIONS=...`, and `TASK_DECISION_RULE=...`; include "
+        "`TASK_EXPECTED_REGRESSIONS=...`, `TASK_DECISION_RULE=...`, and "
+        "`TASK_WORKDIR=.` (or the project-relative nested target Git root); include "
         "`TASK_ACCEPTANCE_CHECK=...` when a decisive check is known. For a task "
         "that targets a known blocking condition, also include a stable "
         "`TASK_BLOCKER_FINGERPRINT=...` and reuse it unchanged if the title or "
@@ -820,6 +825,7 @@ def parse_planner_text(text: str) -> PlannerVerdict:
                     "TASK_EXPECTED_REGRESSIONS", ""
                 ).strip(),
                 decision_rule=row.get("TASK_DECISION_RULE", "").strip(),
+                execution_workdir=row.get("TASK_WORKDIR", "").strip(),
                 acceptance_check=row.get("TASK_ACCEPTANCE_CHECK", "").strip(),
                 blocker_fingerprint=row.get(
                     "TASK_BLOCKER_FINGERPRINT", ""

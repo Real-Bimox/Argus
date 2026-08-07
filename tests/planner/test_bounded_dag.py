@@ -221,6 +221,31 @@ def test_bounded_planner_repairs_invalid_absolute_context_ref_once(tmp_path) -> 
     assert "project-relative file paths" in runner.calls[1]["prompt"]
 
 
+def test_bounded_planner_parses_nested_execution_workdir(tmp_path) -> None:
+    payload = (
+        "PLAN_REASON=work in cloned repository\n"
+        "TASK_KEY=fix\n"
+        "TASK_DEPS=\n"
+        "TASK_TITLE=Fix target repository\n"
+        "TASK_OBJECTIVE=repair the target code\n"
+        "TASK_HYPOTHESIS=The defect is in the nested repository.\n"
+        "TASK_GOAL_CONTRIBUTION=Fix the operator's requested project.\n"
+        "TASK_EXPECTED_REGRESSIONS=The focused test may remain red.\n"
+        "TASK_DECISION_RULE=Replan if the defect is outside the nested repo.\n"
+        "TASK_WORKDIR=target-repo\n"
+        "TASK_SCOPE=bounded\n"
+        "TASK_STAGE_CLOSING=false\n"
+        "TASK_REQUIRE_INDEPENDENT_REVIEW=false\n"
+        "TASK_SKIP_STAGE_TRANSITION=false\n"
+    )
+    runner = _SequenceRunner(payload)
+
+    plan = plan_bounded_dag(runner, "fix target", workdir=tmp_path)
+
+    assert not plan.error
+    assert plan.tasks[0].execution_workdir == "target-repo"
+
+
 def test_bounded_planner_repairs_invalid_stage_skip_contract_once(tmp_path) -> None:
     invalid = (
         "PLAN_REASON=draft a paper\n"

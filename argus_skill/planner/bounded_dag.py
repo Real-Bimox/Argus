@@ -26,6 +26,7 @@ class BoundedDagNode:
     goal_contribution: str = ""
     expected_regressions: str = ""
     decision_rule: str = ""
+    execution_workdir: str = ""
     acceptance_check: str = ""
     non_goals: tuple[str, ...] = ()
     context_refs: tuple[dict[str, str], ...] = ()
@@ -63,7 +64,7 @@ def _extract(result: Any) -> str:
 _PLAN_LINE = re.compile(
     r"^(?P<key>PLAN_REASON|TASK_KEY|TASK_DEPS|TASK_TITLE|TASK_OBJECTIVE|"
     r"TASK_HYPOTHESIS|TASK_GOAL_CONTRIBUTION|TASK_EXPECTED_REGRESSIONS|"
-    r"TASK_DECISION_RULE|TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS|"
+    r"TASK_DECISION_RULE|TASK_WORKDIR|TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS|"
     r"TASK_CONTEXT_REFS|TASK_SCOPE|"
     r"TASK_STAGE_CLOSING|TASK_REQUIRE_INDEPENDENT_REVIEW|"
     r"TASK_SKIP_STAGE_TRANSITION)"
@@ -93,6 +94,7 @@ def _parse_key_value_plan(text: str) -> dict[str, Any]:
         "TASK_GOAL_CONTRIBUTION": "goal_contribution",
         "TASK_EXPECTED_REGRESSIONS": "expected_regressions",
         "TASK_DECISION_RULE": "decision_rule",
+        "TASK_WORKDIR": "execution_workdir",
         "TASK_ACCEPTANCE_CHECK": "acceptance_check",
         "TASK_SCOPE": "scope",
     }
@@ -220,6 +222,9 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
                     row.get("expected_regressions") or ""
                 ).strip(),
                 decision_rule=str(row.get("decision_rule") or "").strip(),
+                execution_workdir=str(
+                    row.get("execution_workdir") or row.get("workdir") or ""
+                ).strip(),
                 acceptance_check=str(row.get("acceptance_check") or "").strip(),
                 non_goals=tuple(
                     str(item).strip()

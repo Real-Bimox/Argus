@@ -307,24 +307,47 @@ class LifeSupervisor(
     def _project_workdir(self) -> Path:
         configured = self._configured_worktree()
         if configured is not None:
-            return configured
-        env_workdir = os.environ.get("ARGUS_SKILL_WORKDIR", "").strip()
-        if env_workdir:
-            return Path(env_workdir).expanduser()
-        project_root = getattr(self.memory, "project_root", None)
-        if project_root:
-            return Path(project_root)
-        project = getattr(self.memory, "project", None)
-        if project is not None:
-            root = getattr(project, "root", None)
-            if root:
-                return Path(root)
-        root = getattr(self.memory, "root", None)
-        if root:
-            return Path(root)
-        return Path.cwd()
+            base = configured
+        else:
+            env_workdir = os.environ.get("ARGUS_SKILL_WORKDIR", "").strip()
+            if env_workdir:
+                base = Path(env_workdir).expanduser()
+            else:
+                project_root = getattr(self.memory, "project_root", None)
+                if project_root:
+                    base = Path(project_root)
+                else:
+                    project = getattr(self.memory, "project", None)
+                    project_root = (
+                        getattr(project, "root", None)
+                        if project is not None
+                        else None
+                    )
+                    base = Path(project_root) if project_root else Path(
+                        getattr(self.memory, "root", None) or Path.cwd()
+                    )
+        try:
+            from ...core.campaign_workdir import active_campaign_workdir
+
+            active = active_campaign_workdir(self.memory.root, base)
+            if active is not None:
+                return active
+        except Exception:  # noqa: BLE001 - invalid persisted adoption falls back
+            log.debug("campaign workdir resolution failed", exc_info=True)
+        return base
 
     def _artifact_root(self) -> Path:
+        # Once a campaign adopts a nested repository, stage state and evidence
+        # must resolve there too.  Keeping artifact_root at the parent is what
+        # creates duplicate outer/nested research trees.
+        configured_worktree = self._configured_worktree()
+        active_worktree = self._project_workdir()
+        if configured_worktree is not None:
+            try:
+                if active_worktree.resolve() != configured_worktree.resolve():
+                    return active_worktree
+            except OSError:
+                pass
         configured = getattr(self.config, "artifact_root", None)
         if configured is not None:
             return Path(configured).expanduser()

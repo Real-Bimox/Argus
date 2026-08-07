@@ -53,8 +53,16 @@ create or refine those knowledge pages under its own evidence rules.
 - Failure capsules are analogies; timeout is not impossibility.
 - If `PROJECT_DONE=false`, do not leave an empty plan. Either report an
   intentional live wait with `WAITING=true` and a durable recheck contract, or
-  emit concrete `TASK_*` blocks (`TASK_KEY`, `TASK_TITLE`, `TASK_OBJECTIVE`, and
-  when known `TASK_ACCEPTANCE_CHECK`) for legal next work. Refs use
+  emit concrete `TASK_*` blocks for legal next work. Alongside title/objective,
+  include `TASK_HYPOTHESIS`, `TASK_GOAL_CONTRIBUTION`,
+  `TASK_EXPECTED_REGRESSIONS`, `TASK_DECISION_RULE`, and a decisive acceptance
+  check. Always include `TASK_WORKDIR=.` when the current campaign root is the
+  real target repository; if the project cloned the real target into one nested
+  Git repository, name that project-relative repository root instead. Do not
+  keep source work in a parent harness and evidence in the child repository. If
+  one DAG node creates the repository, that setup node uses `TASK_WORKDIR=.`;
+  dependent nodes may name the future child root but must not cite files inside
+  it until it exists. Refs are relative to `TASK_WORKDIR` and use
   `TASK_CONTEXT_REFS=kind::project/relative/path::why|...` (existing project
   files; omit if none). `TASK_SKIP_STAGE_TRANSITION=true` requires bounded +
   reviewed + `TASK_STAGE_CLOSING=false`. For a known blocker, keep one stable
@@ -169,6 +177,9 @@ def build_bounded_dag_prompt(objective: str) -> str:
         "`TASK_DEPS=comma,separated,keys` (empty when none), `TASK_TITLE=...`, "
         "`TASK_OBJECTIVE=...`, `TASK_IMPACT_SCORE=1..5`, "
         "`TASK_IMPACT_AREA=...`, `TASK_EVIDENCE=...`, "
+        "`TASK_HYPOTHESIS=...`, `TASK_GOAL_CONTRIBUTION=...`, "
+        "`TASK_EXPECTED_REGRESSIONS=...`, `TASK_DECISION_RULE=...`, "
+        "`TASK_WORKDIR=.` (or the project-relative nested target Git root), "
         "`TASK_ACCEPTANCE_CHECK=...`, "
         "`TASK_NON_GOALS=item|item`, "
         "`TASK_CONTEXT_REFS=kind::project/relative/path::why|...`, "

@@ -862,6 +862,58 @@ def test_workspace_start_rejects_another_live_session_on_same_workdir(
     assert "already owned by active session s-owner" in error
 
 
+def test_workspace_start_rejects_another_session_on_adopted_child_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import subprocess
+
+    from argus_skill.core.campaign_workdir import adopt_campaign_workdir
+
+    root = tmp_path / "state"
+    target_life = root / "projects" / "s-target"
+    owner_life = root / "projects" / "s-owner"
+    workspace = tmp_path / "workspace"
+    child = workspace / "target-repo"
+    target_life.mkdir(parents=True)
+    owner_life.mkdir(parents=True)
+    workspace.mkdir()
+    subprocess.run(["git", "init", "-q", str(child)], check=True)
+    write_session_meta(
+        root,
+        SessionMeta(id="s-target", cwd=str(target_life), workdir=str(child)),
+    )
+    write_session_meta(
+        root,
+        SessionMeta(id="s-owner", cwd=str(owner_life), workdir=str(workspace)),
+    )
+    adopt_campaign_workdir(
+        state_root=owner_life,
+        base_root=workspace,
+        current_root=workspace,
+        requested="target-repo",
+    )
+
+    def status(path: Path) -> SimpleNamespace:
+        return SimpleNamespace(
+            alive=Path(path) == owner_life,
+            pid=654,
+            project_workdir=str(workspace) if Path(path) == owner_life else "",
+        )
+
+    monkeypatch.setattr(life_worker_mod, "read_daemon_status", status)
+    error = _workspace_start_error(
+        LifeWorkerConfig(
+            life_dir=target_life,
+            global_root=root,
+            project_workdir=child,
+            project_fingerprint="s-target",
+        )
+    )
+
+    assert "already owned by active session s-owner" in error
+
+
 def test_workspace_start_rejects_stale_config_after_workdir_change(
     tmp_path: Path,
 ) -> None:

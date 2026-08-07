@@ -63,6 +63,19 @@ class PlanningContextMixin:
             tags.append("review:required")
         if bool(getattr(task, "skip_stage_transition", False)):
             tags.append("stage_transition:skip")
+        # Bind Planner work to the stage in which it was proposed.  This is
+        # host-owned routing metadata, not a model judgement.  It lets the
+        # enqueue boundary distinguish "re-run the same certification" from
+        # "certify a later stage" even when the Planner rewords the title.
+        stage_reader = getattr(self, "_current_pipeline_stage", None)
+        stage = ""
+        if callable(stage_reader):
+            try:
+                stage = str(stage_reader() or "").strip().lower()
+            except Exception:  # noqa: BLE001 - a missing stage tag is legacy-safe
+                stage = ""
+        if stage:
+            tags.append(f"stage:{stage}")
         return tags
 
     @staticmethod
@@ -170,6 +183,9 @@ class PlanningContextMixin:
             getattr(item, "expected_regressions", "") or ""
         ).strip()
         decision_rule = str(getattr(item, "decision_rule", "") or "").strip()
+        execution_workdir = str(
+            getattr(item, "execution_workdir", "") or ""
+        ).strip()
         non_goals = [
             str(value).strip() for value in getattr(item, "non_goals", []) if str(value).strip()
         ]
@@ -183,6 +199,7 @@ class PlanningContextMixin:
             and not goal_contribution
             and not expected_regressions
             and not decision_rule
+            and not execution_workdir
             and not non_goals
         ):
             return ""
@@ -194,6 +211,10 @@ class PlanningContextMixin:
             lines.append(f"- node_key: {item.node_key}")
         if scope:
             lines.append(f"- planner_scope: {scope}")
+        if execution_workdir:
+            lines.append(
+                "- execution_repository_request: " + execution_workdir
+            )
         if self._item_requires_independent_review(item):
             lines.append(
                 "- independent_review: REQUIRED; this mission must close through "

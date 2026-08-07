@@ -753,8 +753,9 @@ class BacklogItem:
     replan_streak_tracked: bool = False
     authorization_id: str = ""
     authorization_action: str = ""
-    # Optional execution root selected by the Manager for framework maintenance.
-    # Ordinary research tasks leave this empty and execute in project_worktree.
+    # Optional execution root. Framework maintenance may use an isolated
+    # absolute worktree; ordinary Planner tasks use a project-relative nested
+    # Git root, which becomes the campaign root after host validation.
     execution_workdir: str = ""
     outcome: dict[str, Any] = field(default_factory=dict)
 

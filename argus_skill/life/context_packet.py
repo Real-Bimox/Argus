@@ -94,6 +94,7 @@ def create_mission_context(
     goal_contribution: str = "",
     expected_regressions: str = "",
     decision_rule: str = "",
+    execution_workdir: str = "",
     non_goals: list[str] | None = None,
     context_refs: list[dict[str, str]] | None = None,
     plan_id: str = "",
@@ -123,6 +124,7 @@ def create_mission_context(
         "goal_contribution": str(goal_contribution or "").strip(),
         "expected_regressions": str(expected_regressions or "").strip(),
         "decision_rule": str(decision_rule or "").strip(),
+        "execution_workdir": str(execution_workdir or "").strip(),
         "non_goals": [str(item).strip() for item in (non_goals or []) if str(item).strip()],
         "context_refs": [
             _model_visible_context_ref(ref)

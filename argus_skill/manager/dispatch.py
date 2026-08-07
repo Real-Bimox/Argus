@@ -24,11 +24,17 @@ def _resolve_manager_workdir(mem: Any) -> Path:
         str(getattr(meta, "workdir", "") or "").strip()
         or str(getattr(meta, "cwd", "") or "").strip()
     ):
-        return resolve_session_workdir(meta, state_dir=life_dir)
-    configured = getattr(mem, "project_worktree", None)
-    if configured is not None:
-        return Path(configured).expanduser().resolve()
-    return resolve_session_workdir(meta, state_dir=life_dir)
+        base = resolve_session_workdir(meta, state_dir=life_dir)
+    else:
+        configured = getattr(mem, "project_worktree", None)
+        base = (
+            Path(configured).expanduser().resolve()
+            if configured is not None
+            else resolve_session_workdir(meta, state_dir=life_dir)
+        )
+    from ..core.campaign_workdir import active_campaign_workdir
+
+    return active_campaign_workdir(life_dir, base) or base
 
 
 def _stable_topological_nodes(tasks: tuple[Any, ...]) -> list[Any]:
@@ -237,15 +243,32 @@ def enqueue_mission(
     planned: dict[str, Any] = {}
 
     def _hydrate_context_refs(nodes: list[Any]) -> dict[str, list[dict[str, Any]]]:
+        from ..core.campaign_workdir import resolve_task_workdir
         from ..planner.planner import hydrate_task_context_refs
 
         workdir = _resolve_manager_workdir(mem)
         hydrated_refs: dict[str, list[dict[str, Any]]] = {}
         for node in nodes:
             try:
-                hydrated_refs[node.key] = hydrate_task_context_refs(
-                    list(getattr(node, "context_refs", ()) or ()),
-                    workdir,
+                raw_refs = list(getattr(node, "context_refs", ()) or ())
+                try:
+                    context_root = resolve_task_workdir(
+                        workdir,
+                        getattr(node, "execution_workdir", ""),
+                    )
+                except ValueError:
+                    if (
+                        str(getattr(node, "execution_workdir", "") or "").strip()
+                        and list(getattr(node, "deps", ()) or ())
+                        and not raw_refs
+                    ):
+                        context_root = None
+                    else:
+                        raise
+                hydrated_refs[node.key] = (
+                    []
+                    if context_root is None
+                    else hydrate_task_context_refs(raw_refs, context_root)
                 )
             except ValueError as exc:
                 raise front_door.ManagerHandoffError(
@@ -316,6 +339,10 @@ def enqueue_mission(
         }
         items: list[BacklogItem] = []
         priority = min(head_priority - 1, -1)
+        from ..core.campaign_workdir import normalize_task_workdir
+        from ..skills.stage_machine import current_stage
+
+        stage = current_stage(_resolve_manager_workdir(mem))
         for index, node in enumerate(nodes):
             stage_closing = bool(getattr(node, "stage_closing", False))
             require_review = bool(
@@ -350,6 +377,7 @@ def enqueue_mission(
                         if skip_stage_transition
                         else []
                     ),
+                    *([f"stage:{stage}"] if stage else []),
                 ],
                 iterate=False,
                 iteration_max_cycles=1,
@@ -367,6 +395,9 @@ def enqueue_mission(
                     getattr(node, "expected_regressions", "") or ""
                 ),
                 decision_rule=str(getattr(node, "decision_rule", "") or ""),
+                execution_workdir=normalize_task_workdir(
+                    getattr(node, "execution_workdir", "")
+                ),
                 non_goals=list(getattr(node, "non_goals", ()) or ()),
             )
             item.original_objective = execution_body

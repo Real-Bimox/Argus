@@ -398,7 +398,15 @@ def _rewrite_project_context(mem: Any, sid: str) -> str:
         if meta is not None:
             workdir = (meta.workdir or meta.cwd or "").strip()
             if workdir:
-                lines.append(f"- working directory: {workdir}")
+                try:
+                    from ..core.campaign_workdir import active_campaign_workdir
+
+                    active = active_campaign_workdir(mem.root, workdir)
+                except Exception:  # noqa: BLE001 - advisory context only
+                    active = None
+                lines.append(f"- working directory: {active or workdir}")
+                if active is not None:
+                    lines.append(f"- session workspace: {workdir}")
             if (meta.display_name or "").strip():
                 lines.append(f"- session: {meta.display_name.strip()}")
             if (meta.objective or "").strip():

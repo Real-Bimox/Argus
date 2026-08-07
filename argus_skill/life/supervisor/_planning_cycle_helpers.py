@@ -202,6 +202,8 @@ class _PlanCycleState:
         self.added_titles: list[str] = []
         self.added_impact_scores: list[int] = []
         self.skipped_duplicate_titles: list[str] = []
+        self.skipped_certification_reproposal_titles: list[str] = []
+        self.skipped_certification_reproposal_reasons: list[str] = []
         self.skipped_recent_failure_titles: list[str] = []
         self.skipped_subagent_family_failure_titles: list[str] = []
         self.new_plan_id: str = ""

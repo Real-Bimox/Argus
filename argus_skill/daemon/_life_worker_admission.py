@@ -124,17 +124,27 @@ def _active_workspace_owner(
             if not status.alive:
                 continue
             if status.project_workdir:
-                owner_workdir = Path(status.project_workdir).expanduser().resolve(
+                owner_base = Path(status.project_workdir).expanduser().resolve(
                     strict=True
                 )
             else:
                 meta = read_session_meta(root, life_dir.name)
-                owner_workdir = resolve_session_workdir(meta, state_dir=life_dir)
-            if owner_workdir == target:
+                owner_base = resolve_session_workdir(meta, state_dir=life_dir)
+            from ..core.campaign_workdir import active_campaign_workdir
+
+            owner_workdir = (
+                active_campaign_workdir(life_dir, owner_base) or owner_base
+            )
+            overlaps = (
+                owner_workdir == target
+                or owner_workdir in target.parents
+                or target in owner_workdir.parents
+            )
+            if overlaps:
                 return {
                     "sid": life_dir.name,
                     "pid": status.pid,
-                    "workdir": str(target),
+                    "workdir": str(owner_workdir),
                 }
         except (OSError, RuntimeError, ValueError):
             continue

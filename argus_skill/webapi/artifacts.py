@@ -23,6 +23,12 @@ _INLINE_IMAGE_MIMES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 _GIT_DIFF_LIMIT = 128 * 1024
 
 
+def _effective_workspace(state_dir: Path, workspace: Path) -> Path:
+    from ..core.campaign_workdir import active_campaign_workdir
+
+    return active_campaign_workdir(state_dir, workspace) or workspace
+
+
 def project_workspace(
     sid: str,
     *,
@@ -34,7 +40,10 @@ def project_workspace(
     if state_dir is None:
         return None
     try:
-        workspace = resolve_session_workdir(meta, state_dir=state_dir)
+        workspace = _effective_workspace(
+            state_dir,
+            resolve_session_workdir(meta, state_dir=state_dir),
+        )
     except (OSError, RuntimeError):
         return None
     return workspace if workspace.is_dir() else None
@@ -45,17 +54,17 @@ def artifact_workspace(
     *,
     global_root: Path | str | None = None,
 ) -> Path | None:
-    """Return the workspace where this session's agent writes artifacts.
-
-    Artifact reads use the exact same persisted workdir as all agent roles.
-    """
+    """Return the repository where this campaign's agent writes artifacts."""
     root = resolve_global_root(global_root)
     meta = read_session_meta(root, sid)
     state_dir = project_life_dir(sid, global_root=root)
     if state_dir is None:
         return None
     try:
-        workspace = resolve_session_workdir(meta, state_dir=state_dir)
+        workspace = _effective_workspace(
+            state_dir,
+            resolve_session_workdir(meta, state_dir=state_dir),
+        )
     except (OSError, RuntimeError):
         return None
     return workspace if workspace.is_dir() else None

@@ -170,6 +170,7 @@ def _planner_task_signature(
     stage_closing: bool = False,
     require_independent_review: bool = False,
     skip_stage_transition: bool = False,
+    execution_workdir: str = "",
 ) -> tuple[str, ...]:
     """Identity for deduping work, including the evidence revision it reads.
 
@@ -204,6 +205,7 @@ def _planner_task_signature(
             else "independent_review_optional"
         ),
         "stage_transition_skipped" if skip_stage_transition else "stage_transition_allowed",
+        str(execution_workdir or "").strip(),
     )
 
 
