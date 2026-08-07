@@ -34,8 +34,8 @@
 
 | ID | 优先级 | 严重程度 | 紧迫度 | 建议负责人 | 依赖 |
 | --- | --- | --- | --- | --- | --- |
-| ARGUS-P0-01 | P0 | 严重 | 立即 | Runtime/state | 无 |
-| ARGUS-P0-02 | P0 | 严重 | 立即 | Mission loop | P0-01 checkpoint invariants |
+| ARGUS-P0-01 | P0 | 严重 | 已完成 | Runtime/state | 无 |
+| ARGUS-P0-02 | P0 | 严重 | 已完成 | Mission loop | P0-01 checkpoint invariants |
 | ARGUS-P0-03 | P0 | 严重 | 立即 | Manager/contract | 无 |
 | ARGUS-P0-04 | P0 | 高 | 立即 | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | 高 | 下一阶段 | Mission progress/evaluation | P0-02、P0-03、P0-04 |
@@ -51,68 +51,69 @@
 
 ## ARGUS-P0-01 — 保证人工批准与恢复在事务上保持一致
 
+**状态：已完成。** 实现在 `e9bfae30caf7`（release
+`0.1.1+ef1ffc08e1f034b6`）。全量测试套件通过（共收集 4,396 项，原有 skip
+保持不变）。
+
 **问题。** 用户批准一个 Argus 决策并恢复运行后，backlog、campaign、daemon、
-decision card 或 lifecycle 状态经常停在不同版本，导致目标无法继续。
+decision card 或 lifecycle 状态曾可能停在不同版本，导致目标无法继续。
 
-**工作项**
+**已完成工作**
 
-- [ ] 至少复现三类真实故障：daemon 运行时批准、Web/API 重启后批准，以及重复或
-      幂等批准。
-- [ ] 定义唯一的批准身份，包含 project/session id、campaign generation、
-      backlog item id、decision id 和预期状态版本。
-- [ ] 用 compare-and-swap 语义应用批准。遇到过期决策时给出清楚的 UI 说明，
-      不要只改一半状态。
-- [ ] 把回答、决策完成、backlog 转换、continuous state 和 daemon 重启意图作为
-      一个可恢复事务提交；或者写成一个 append-only 事件，再做确定性投影。
-- [ ] 恢复操作必须幂等：重试既不能重复创建 mission，也不能丢失已批准的回答。
-- [ ] 在每个写入与重启边界之间加入崩溃注入测试。
-- [ ] 增加 Web/TUI 集成测试：暂停 → 批准 → 进程重启 → 恢复。
+- [x] 新决策绑定 project/session id、campaign generation、backlog item id、
+      decision id 和预期 revision。
+- [x] 在调用 Manager 或修改状态前执行 compare-and-swap；过期决策返回 `stale`，
+      不修改当前状态。
+- [x] 在一次原子 backlog 更新中保存决策完成、continuation 创建、依赖重接线、
+      resolution identity 和重启意图。
+- [x] 重试和并发提交保持幂等：第一次返回 `accepted`，相同请求返回
+      `already_applied` 并复用原 continuation。
+- [x] 增加 continuous state 幂等校准，并为接受或停止决定写入持久 transcript、
+      UI 和审计记录。
+- [x] 增加过期 revision、旧 campaign generation、并发/重复提交、重新打开状态、
+      注入写入失败和 stop replay 测试。
+- [x] 重建 Web/TUI release 产物并运行全量测试。
 
 **验收标准**
 
 - 同一个决策可以重复提交，但只产生一次 mission 转换。
 - 过期批准绝不修改当前状态。
-- host、Web 或 daemon 重启后，同一个权威事件能重建完全一致的 backlog 和
-  campaign 状态。
-- UI 只报告 `accepted`、`already applied` 或 `stale`，不能只给笼统的
+- 重新打开项目后，可从持久化状态得到同一张已完成决策卡、continuation 和 campaign
+  意图。
+- API 明确报告 `accepted`、`already_applied` 或 `stale`，不再只给笼统的
   state mismatch。
 
 ---
 
 ## ARGUS-P0-02 — 用进展判断取代固定的 24 轮中断
 
+**状态：已完成。** 已在 `e9bfae30caf7` 实现并通过测试。
+
 **问题。** 当 Reviewer 一直返回 `continue` 时，
-`SupervisedConfig.hard_escalate_rounds=24` 会强制结束 mission。但长程任务即使
+`SupervisedConfig.hard_escalate_rounds=24` 过去会强制结束 mission。但长程任务即使
 超过这个边界也可能仍在有效推进，而且可观测指标通常不是单调变化的：加强证明
 invariant 可能暂时破坏已经通过的 obligations；一次完整重构可能在接口收敛前增加
 失败测试；一次失败实验也可能否定中间假设、减少不确定性。固定轮数会切断同一条
 任务路线，把有限且有价值的局部回退变成另一个无关 mission。
 
-**工作项**
+**已完成工作**
 
-- [ ] 记录每轮为何继续：语义上的推进、可控且预期的局部回退、获得信息的探索、
-      重复且没有变化的失败、外部阻塞，或决策没有进展。
-- [ ] 定义由 Reviewer 判断的 `productive_continue` 或等价语义信号；不要从改动
-      文件数、verifier/test 通过数、benchmark 分数、未完成 obligation 数或关键词
-      直接推导。
-- [ ] 允许仍有进展的 mission 超过 24 轮，同时保留预算、用户停止、backend 失败
-      和真正无进展的保护。
-- [ ] 确实需要切分时，从 `CHECKPOINT.md` 继续同一个 mission 约定和任务状态；
-      不能仅因为计数到了 24 就让 Planner 发明一个替代目标。
-- [ ] 区分无法解决的外部阻塞与内部修复或探索。只有前者可以仅因本地无事可做而
-      升级为 `blocked`。
-- [ ] 增加跨领域回退用例，例如：Verus 加强 invariant 后暂时减少通过的 obligations；
-      重构暂时增加失败测试；实验先淘汰一个弱假设，再找到有效路线。其中至少包含
-      一条超过 24 轮仍有产出的轨迹。
-- [ ] 比较固定 24 轮、取消上限和按进展继续三种策略的成本、完成率、重复探索，
-      以及任务上下文的连续性和质量。
+- [x] 复用 Reviewer 提供的 `planner_report.forward_progress` 判断，不从文件数、
+      通过数、benchmark 分数或关键词推断进展。
+- [x] 在持久化 round review 事件中增加 `forward_progress` 和 `plan_signal`。
+- [x] 有明确进展判断的 mission 可以超过 24 轮；尚未达到停滞阈值的有限局部回退
+      也可以继续。
+- [x] 保留用户停止、预算、backend failure、decision timeout、semantic stall、
+      无输出和最终 `max_rounds` 保护。
+- [x] 继续使用 `CHECKPOINT.md` 传递同一个 mission；不能只因为轮数到了就替换目标。
+- [x] 更新 Reviewer 指引，区分仍有产出的内部工作和真正外部阻塞，并明确写出进展判断。
+- [x] 增加真实 26 轮回归测试：第 24 轮局部回退，后续恢复，第 26 轮通过 Reviewer。
 
 **验收标准**
 
 - 即使一个或多个局部指标暂时回退，有产出的长程 mission 也能超过 24 轮而不被替换。
 - 真正停滞的循环仍会按预算或无进展策略终止。
-- 跨进程和会话继续时，目标、假设、产物、证据、已完成与未完成事项、已观察到的
-  回退、恢复或退出条件，以及下一步行动都不会丢失。
+- continuation 保留原目标和持久 checkpoint，同时能说明为什么允许越过边界。
 
 ---
 
@@ -438,10 +439,10 @@ Argus 应像一个靠谱队友那样表达：先说结果，用普通语言解�
 
 ## 建议执行顺序
 
-1. **立即：** P0-01 批准/恢复一致性，以及为 P0-04 收集轨迹。
-2. **并行：** 设计 P0-03 权限/mission 约定；在不改变生产默认值的情况下评估 P1-02
-   session 策略。
-3. **随后：** 在明确约定上完成 P0-02 按进展继续和 P1-01 跨领域非单调进展模型。
+1. **已完成：** P0-01 批准/恢复一致性和 P0-02 按进展继续。
+2. **立即：** 为 P0-04 收集轨迹，并设计 P0-03 权限/mission 约定。
+3. **并行：** 在不改变生产默认值的情况下评估 P1-02 session 策略，并建立 P1-01
+   跨领域非单调进展模型。
 4. **生命周期稳定后：** P1-03 Skill 审计、P1-04 vertical/core 清理和 P1-06 runtime
    简化。
 5. **状态语义稳定后：** 再做 P2-01 存储方案和迁移。

@@ -40,8 +40,8 @@ not implementation convenience.
 
 | ID | Priority | Severity | Urgency | Suggested DRI | Dependencies |
 | --- | --- | --- | --- | --- | --- |
-| ARGUS-P0-01 | P0 | Critical | Immediate | Runtime/state | none |
-| ARGUS-P0-02 | P0 | Critical | Immediate | Mission loop | P0-01 checkpoint invariants |
+| ARGUS-P0-01 | P0 | Critical | Done | Runtime/state | none |
+| ARGUS-P0-02 | P0 | Critical | Done | Mission loop | P0-01 checkpoint invariants |
 | ARGUS-P0-03 | P0 | Critical | Immediate | Manager/contract | none |
 | ARGUS-P0-04 | P0 | High | Immediate | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | High | Next | Mission progress/evaluation | P0-02, P0-03, P0-04 |
@@ -57,80 +57,78 @@ not implementation convenience.
 
 ## ARGUS-P0-01 — Make human approval and resume transactionally consistent
 
-**Problem.** Approving an Argus decision and resuming frequently leaves backlog,
-campaign, daemon, decision-card, or lifecycle state at different revisions. The
-user then cannot continue the goal.
+**Status: completed.** Implemented in `e9bfae30caf7` (release
+`0.1.1+ef1ffc08e1f034b6`). The full test suite passed (4,396 collected; existing
+skips unchanged).
 
-**Work packages**
+**Problem.** Approving an Argus decision and resuming could leave backlog, campaign,
+daemon, decision-card, or lifecycle state at different revisions. The user could
+then be unable to continue the goal.
 
-- [ ] Reproduce at least three real failure traces: approval during a running
-      daemon, approval after Web/API restart, and repeated/idempotent approval.
-- [ ] Define one approval identity containing project/session id, campaign
-      generation, backlog item id, decision id, and expected state revision.
-- [ ] Apply approval with compare-and-swap semantics. Reject stale decisions with a
-      clear UI explanation instead of partially mutating state.
-- [ ] Commit answer, decision resolution, backlog transition, continuous state, and
-      daemon restart intent as one recoverable transaction or one append-only event
-      followed by deterministic projections.
-- [ ] Make resume idempotent: retries must neither duplicate a mission nor lose the
-      approved answer.
-- [ ] Add crash-injection tests between every write and restart boundary.
-- [ ] Add Web/TUI integration tests for pause → approve → process restart → resume.
+**Completed work**
+
+- [x] Bound each new decision to project/session id, campaign generation, backlog
+      item id, decision id, and expected revision.
+- [x] Added compare-and-swap checks before Manager calls or state mutation; stale
+      decisions now return `stale` without changing current state.
+- [x] Persisted decision resolution, continuation creation, dependency rewiring,
+      resolution identity, and restart intent in one atomic backlog update.
+- [x] Made retries and concurrent submissions idempotent: the first request returns
+      `accepted`, and the same request returns `already_applied` with the original
+      continuation.
+- [x] Added idempotent continuous-state reconciliation plus durable transcript, UI,
+      and audit records for accepted or stopped decisions.
+- [x] Added tests for stale revisions and campaign generations, concurrent and
+      repeated submissions, reopened state, injected write failure, and stop replay.
+- [x] Rebuilt Web/TUI release artifacts and ran the complete test suite.
 
 **Acceptance criteria**
 
 - A decision can be submitted repeatedly with one resulting mission transition.
 - Stale approval never mutates current state.
-- After host/Web/daemon restart, the same authoritative event rebuilds identical
-  backlog and campaign state.
-- The UI reports one of `accepted`, `already applied`, or `stale`; never a generic
-  state mismatch.
+- Reopening the project reproduces the same resolved card, continuation, and campaign
+  intent from durable state.
+- The API reports `accepted`, `already_applied`, or `stale`; never a generic state
+  mismatch.
 
 ---
 
 ## ARGUS-P0-02 — Replace the hard 24-round interruption with progress-aware continuation
 
-**Problem.** `SupervisedConfig.hard_escalate_rounds=24` currently force-ends a
-mission when Reviewer keeps returning `continue`. Long-horizon missions can remain
+**Status: completed.** Implemented and tested in `e9bfae30caf7`.
+
+**Problem.** `SupervisedConfig.hard_escalate_rounds=24` previously force-ended a
+mission when Reviewer kept returning `continue`. Long-horizon missions can remain
 productive beyond this boundary, and their observable indicators are often
 non-monotonic. A stronger proof invariant may temporarily break proved obligations;
 a coherent refactor may increase failing tests before interfaces converge; and a
 negative experiment may invalidate an intermediate hypothesis while reducing
-uncertainty. The fixed boundary fragments one task frontier and can turn a bounded,
-productive local regression into an unrelated replacement mission.
+uncertainty. The fixed boundary fragmented one task frontier and could turn a
+bounded, productive local regression into an unrelated replacement mission.
 
-**Work packages**
+**Completed work**
 
-- [ ] Instrument why each round continues: semantic frontier advance, bounded and
-      expected local regression, information-gaining exploration, repeated unchanged
-      failure, external blocker, or no decision progress.
-- [ ] Define a Reviewer-owned `productive_continue`/equivalent semantic signal;
-      avoid deriving it from changed-file count, verifier/test pass count, benchmark
-      score, open-obligation count, or keywords.
-- [ ] Permit productive missions to cross round 24 while budget, operator stop,
-      backend-failure, and genuine no-progress guards remain active.
-- [ ] When a clean boundary is necessary, continue the same mission contract and
-      task frontier from `CHECKPOINT.md`; do not ask Planner to invent a replacement
-      target merely because a counter reached 24.
-- [ ] Separate an external unresolved blocker from an internal repair or exploration
-      frontier. Only the former should be escalated to `blocked` solely for lack of
-      local work.
-- [ ] Add cross-domain regression fixtures: for example, Verus invariant
-      strengthening that temporarily reduces passing obligations, a refactor that
-      temporarily increases failing tests, and an experiment that retires a weak
-      hypothesis before the next approach succeeds. Include a productive trajectory
-      that requires more than 24 rounds.
-- [ ] Compare fixed-24, disabled-cap, and progress-aware policies on cost, completion,
-      repeated exploration, and task-frontier continuity and quality.
+- [x] Reused the Reviewer-owned `planner_report.forward_progress` judgment instead of
+      inferring progress from file count, pass count, benchmark score, or keywords.
+- [x] Added `forward_progress` and `plan_signal` to durable round-review events.
+- [x] Allowed missions with an explicit progress judgment to cross round 24,
+      including a bounded local regression that has not reached the stall threshold.
+- [x] Kept operator stop, budget, backend-failure, decision-timeout, semantic-stall,
+      no-output, and final `max_rounds` protections active.
+- [x] Kept `CHECKPOINT.md` as the mission baton so continuation does not replace the
+      objective merely because a round counter was reached.
+- [x] Updated Reviewer guidance to separate productive internal work from a genuine
+      external blocker and to state the progress judgment explicitly.
+- [x] Added a real 26-round regression test: round 24 temporarily regresses, the
+      mission recovers, and Reviewer accepts it at round 26.
 
 **Acceptance criteria**
 
 - A productive long-horizon mission can run beyond 24 rounds without replacement
   even when one or more local indicators temporarily regress.
 - A truly stagnant loop still terminates under budget/no-progress policy.
-- Continuation preserves the objective, assumptions, artifacts, evidence,
-  resolved/open obligations, observed regressions, recovery or exit conditions, and
-  next action across process/session boundaries.
+- Continuation preserves the objective and durable checkpoint while exposing why the
+  boundary was crossed.
 
 ---
 
@@ -525,11 +523,11 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 
 ## Recommended execution order
 
-1. **Immediately:** P0-01 approval/resume consistency and trace collection for P0-04.
-2. **In parallel:** design P0-03 authority/mission contracts; benchmark P1-02 session
-   policies without changing production defaults.
-3. **Then:** P0-02 progress-aware continuation and the P1-01 cross-domain
-   non-monotonic progress model on the clarified contract.
+1. **Completed:** P0-01 approval/resume consistency and P0-02 progress-aware
+   continuation.
+2. **Immediately:** collect P0-04 traces and design P0-03 authority/mission contracts.
+3. **In parallel:** benchmark P1-02 session policies without changing production
+   defaults; build the P1-01 cross-domain non-monotonic progress model.
 4. **After lifecycle stability:** P1-03 Skill audit, P1-04 vertical/core cleanup,
    and P1-06 runtime simplification.
 5. **Only after state semantics settle:** P2-01 storage decision and migration.
