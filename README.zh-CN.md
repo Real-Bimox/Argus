@@ -57,11 +57,12 @@
 - Node.js 22+
 - 至少一个已按官方方式安装并完成登录鉴权的 Agent CLI
 
-### Agent 一键接入
+### 🚀 Agent 一键接入（推荐）
 
-将下面这句话发送给 Codex CLI、Claude Code、GitHub Copilot CLI、Pi 或
-OpenCode，Agent 会检查环境、安装 Argus、连接当前 backend，并运行
-`argus --doctor` 验收：
+> [!TIP]
+> **无需手动逐条安装。** 将下面整段提示词发送给 Codex CLI、Claude Code、
+> GitHub Copilot CLI、Pi 或 OpenCode。Agent 会检查环境、安装 Argus、连接当前
+> backend，并运行 `argus --doctor` 验收。
 
 ```text
 请阅读 https://github.com/lbx154/Argus/blob/main/docs/agent-install.md，
