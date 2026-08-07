@@ -2,7 +2,7 @@
 
 Extracted from ``manager_bridge.py`` as part of a behavior-preserving
 decomposition. Owns the classify/control/config/SELF/TEAM phase helpers used
-by ``manager_message`` (handoff building, authorization/steer/abort control,
+by ``manager_message`` (handoff building, authorization/steer/pause/abort control,
 config-intent application, triage fallbacks, and mission dispatch), plus the
 execution/continuous/bounded handoff entry points. Public names are
 re-exported from ``manager_bridge`` unchanged so existing imports/monkeypatches
@@ -648,6 +648,101 @@ def _handle_steer_control(
         reply,
         {"kind": "control", "control": "steer"},
         message_id="steer",
+    )
+
+
+def _handle_pause_control(
+    body: str,
+    chat_state: dict[str, Any] | None,
+    life_dir: Path,
+    emitter: _TurnEmitter,
+) -> dict[str, Any]:
+    """Clock out the whole session immediately, preserving resumable state.
+
+    Unlike ABORT (one running backlog item), PAUSE disables the standing
+    campaign, interrupts the active item, and asks the daemon process to exit so
+    it cannot claim the next pending item. The objective and backlog remain on
+    disk for an explicit later resume.
+    """
+    from ..daemon.state import (
+        disable_continuous_config,
+        read_continuous_state,
+        request_daemon_stop,
+    )
+    from ..life.memory import request_running_item_abort
+
+    before = read_continuous_state(life_dir)
+    after = disable_continuous_config(
+        life_dir,
+        done_reason="operator pause",
+    )
+    pause_persisted = not after.enabled
+    if pause_persisted and chat_state is not None:
+        chat_state.setdefault("config", {})["continuous"] = False
+        chat_state["continuous_objective"] = ""
+        chat_state.pop("_continuous_pending_manager_handoff", None)
+
+    abort_requested, item_id = request_running_item_abort(
+        life_dir,
+        reason=f"operator paused session: {body}",
+        requested_by="manager",
+    )
+    daemon_stop_requested, daemon_pid = request_daemon_stop(life_dir)
+    daemon_stop_failed = daemon_pid is not None and not daemon_stop_requested
+
+    chinese = any("\u3400" <= ch <= "\u9fff" for ch in body)
+    if not pause_persisted:
+        reply = (
+            "已请求中止当前任务和停止 daemon，但暂停状态未能持久化；"
+            "在检查 continuous.json 前不要重启该会话。"
+            if chinese
+            else "The active task and daemon were asked to stop, but the pause "
+            "could not be persisted; do not restart this session until "
+            "continuous.json is checked."
+        )
+    elif chinese:
+        pieces = ["已暂停：持续任务已关闭"]
+        pieces.append("当前任务已请求中止" if abort_requested else "当前没有运行中的任务")
+        if daemon_stop_requested:
+            pieces.append("daemon 正在停止")
+        elif daemon_stop_failed:
+            pieces.append("daemon 停止请求失败")
+        else:
+            pieces.append("daemon 已停止")
+        reply = "，".join(pieces) + "。目标和待办已保留；明确继续时才会恢复。"
+    else:
+        pieces = ["Paused: continuous work is disabled"]
+        pieces.append(
+            "the active task was asked to abort"
+            if abort_requested
+            else "no task is currently running"
+        )
+        if daemon_stop_requested:
+            pieces.append("the daemon is stopping")
+        elif daemon_stop_failed:
+            pieces.append("the daemon stop request failed")
+        else:
+            pieces.append("the daemon is stopped")
+        reply = (
+            "; ".join(pieces)
+            + ". The objective and backlog are preserved until you explicitly resume."
+        )
+
+    return emitter.respond(
+        reply,
+        {
+            "kind": "control",
+            "control": "pause",
+            "pause_persisted": pause_persisted,
+            "continuous_was_enabled": before.enabled,
+            "continuous_enabled": after.enabled,
+            "requested": pause_persisted or abort_requested or daemon_stop_requested,
+            "item_id": item_id,
+            "daemon_stop_requested": daemon_stop_requested,
+            "daemon_stop_failed": daemon_stop_failed,
+            "daemon_pid": daemon_pid,
+        },
+        message_id="pause",
     )
 
 

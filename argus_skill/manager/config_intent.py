@@ -164,7 +164,7 @@ def _front_door_classify(
                 "standing",
             )
             chat_state["_frontdoor_lifetime"] = lifetime
-        elif intent is None and control not in {"abort", "no_dispatch", "steer"}:
+        elif intent is None and control not in {"abort", "pause", "no_dispatch", "steer"}:
             greeting_reply = next(
                 (
                     str(value).strip()
@@ -196,7 +196,7 @@ def _front_door_classify(
                 chat_state["_frontdoor_authorization"] = actions
         return (
             intent,
-            control if control in {"abort", "no_dispatch", "steer"} else None,
+            control if control in {"abort", "pause", "no_dispatch", "steer"} else None,
             normalized_route,
         )
     except Exception:  # noqa: BLE001 — a classify hiccup must never break the turn

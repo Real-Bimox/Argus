@@ -36,6 +36,7 @@ from argus_skill.daemon.state import (
     _daemon_status_payload,
     daemon_drain_requested,
     request_daemon_drain,
+    request_daemon_stop,
 )
 from argus_skill.life.memory import BacklogItem, LifeMemory
 
@@ -321,6 +322,50 @@ def test_life_worker_uses_global_config_without_project_budget_file(
 
 def test_stop_daemon_returns_1_when_no_daemon(tmp_path: Path) -> None:
     assert stop_daemon(tmp_path) == 1
+
+
+def test_nonblocking_stop_request_revalidates_pid_and_signals_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import argus_skill.daemon.state as daemon_state
+
+    status = SimpleNamespace(alive=True, pid=4242, life_dir=tmp_path)
+    monkeypatch.setattr(daemon_state, "read_daemon_status", lambda _root: status)
+    monkeypatch.setattr(daemon_state, "_same_daemon_alive", lambda _root, _pid: True)
+    signals: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        daemon_state.os,
+        "kill",
+        lambda pid, signum: signals.append((pid, signum)),
+    )
+    (tmp_path / DAEMON_UPGRADE_REQUEST_FILE).write_text("{}", encoding="utf-8")
+
+    requested, pid = request_daemon_stop(tmp_path)
+
+    assert (requested, pid) == (True, 4242)
+    assert signals == [(4242, daemon_state.signal.SIGTERM)]
+    assert not (tmp_path / DAEMON_UPGRADE_REQUEST_FILE).exists()
+
+
+def test_nonblocking_stop_request_refuses_stale_pid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import argus_skill.daemon.state as daemon_state
+
+    status = SimpleNamespace(alive=True, pid=4242, life_dir=tmp_path)
+    monkeypatch.setattr(daemon_state, "read_daemon_status", lambda _root: status)
+    monkeypatch.setattr(daemon_state, "_same_daemon_alive", lambda _root, _pid: False)
+    monkeypatch.setattr(
+        daemon_state.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("stale daemon identity must not be signalled")
+        ),
+    )
+
+    assert request_daemon_stop(tmp_path) == (False, None)
 
 
 def test_explicit_stop_cancels_pending_daemon_upgrade(tmp_path: Path) -> None:

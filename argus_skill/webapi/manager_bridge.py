@@ -29,6 +29,7 @@ from .manager_dispatch import (
     _dispatch_team_mission,
     _handle_abort_control,
     _handle_authorization_control,
+    _handle_pause_control,
     _handle_pending_question_turn,
     _handle_steer_control,
     _item_to_dict,
@@ -38,7 +39,12 @@ from .manager_dispatch import (
     _TurnEmitter,
 )
 from .manager_pending_question import _emit_ui_turn
-from .manager_state import _chat_state_for, _lock_for
+from .manager_state import (
+    _chat_state_for,
+    _lock_for,
+    interrupt_manager_turns,
+    manager_control_generation,
+)
 
 _PLAN_PREVIEW_CACHE_TTL_S = 60.0
 
@@ -67,7 +73,7 @@ def manager_message(
     ``/message``) keeps the whole exchange synchronous.
 
     The pipeline below is a sequence of typed phase helpers (pending-question,
-    classify, greeting shortcut, authorization/steer/abort control, config
+    classify, greeting shortcut, authorization/steer/pause/abort control, config
     intent, triage+fallbacks, TEAM dispatch) — each either returns a terminal
     result or ``None``/a small typed result to let the next phase run. This
     mirrors the original single-function control flow exactly; only the
@@ -82,7 +88,12 @@ def manager_message(
     if not body:
         return {"kind": "error", "reply": "empty message"}
 
+    control_generation = manager_control_generation(sid)
+    turn_id = f"web-{time.time_ns()}"
+
     def _cancelled() -> bool:
+        if manager_control_generation(sid) != control_generation:
+            return True
         if not callable(cancelled):
             return False
         try:
@@ -108,6 +119,42 @@ def manager_message(
         fingerprint=sid, global_root=Path(global_root) if global_root else None
     )
     life_dir = mem.project_root
+    emitter = _TurnEmitter(life_dir=life_dir, turn_id=turn_id, fragment=_fragment)
+    if not life_dir.is_dir():
+        return {
+            "kind": "error",
+            "reply": "project no longer exists; the message was not processed",
+        }
+
+    # Emergency pause and bounded status reads deliberately bypass the Manager
+    # session lock. A model/tool turn may be stalled while the operator is
+    # trying to intervene; making either command queue behind that turn defeats
+    # the control surface. The pause generation fences the older turn from
+    # committing stale work when it eventually returns.
+    from ..apps._self_reply import (
+        build_status_snapshot_reply,
+        looks_like_status_query,
+    )
+    from ..life.router import looks_like_pause_request
+
+    if looks_like_pause_request(body):
+        interrupt_manager_turns(sid)
+        try:
+            append_turn(life_dir, "operator", body)
+        except Exception:  # noqa: BLE001
+            pass
+        _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
+        return _handle_pause_control(body, None, life_dir, emitter)
+
+    if looks_like_status_query(body):
+        reply = build_status_snapshot_reply(life_dir, body)
+        if reply:
+            try:
+                append_turn(life_dir, "operator", body)
+            except Exception:  # noqa: BLE001
+                pass
+            _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
+            return emitter.respond(reply, {"kind": "chat"})
 
     lock = _lock_for(sid)
     with lock:
@@ -121,9 +168,6 @@ def manager_message(
         chat_state = _chat_state_for(sid)
         chat_state["session_id"] = sid
         chat_state["global_root"] = str(mem.global_root)
-        turn_id = f"web-{time.time_ns()}"
-        emitter = _TurnEmitter(life_dir=life_dir, turn_id=turn_id, fragment=_fragment)
-
         active_mission = mission_is_running(mem)
 
         # Build the restart handoff before journaling this turn so the current
@@ -155,18 +199,10 @@ def manager_message(
         pending_result = _handle_pending_question_turn(
             mem, pending_questions, body, chat_state, emitter
         )
+        if _cancelled():
+            return _cancelled_result()
         if pending_result is not None:
             return pending_result
-
-        from ..apps._self_reply import (
-            build_status_snapshot_reply,
-            looks_like_status_query,
-        )
-
-        if looks_like_status_query(body):
-            reply = build_status_snapshot_reply(life_dir, body)
-            if reply:
-                return emitter.respond(reply, {"kind": "chat"})
 
         # A web-process restart necessarily loses the live ACP process. Resume
         # seamlessly by opening one new warm conversation session with a
@@ -221,6 +257,12 @@ def manager_message(
                 return _cancelled_result()
             return _handle_steer_control(chat_state, life_dir, emitter)
 
+        if control == "pause":
+            if _cancelled():
+                return _cancelled_result()
+            interrupt_manager_turns(sid)
+            return _handle_pause_control(body, chat_state, life_dir, emitter)
+
         if control == "no_dispatch":
             route = "simple"
 
@@ -240,6 +282,8 @@ def manager_message(
             _cancelled,
         )
         if config_result is not None:
+            if _cancelled():
+                return _cancelled_result()
             return config_result
 
         triage_result = _run_triage_and_fallbacks(
@@ -254,6 +298,8 @@ def manager_message(
             emitter,
         )
         if triage_result is not None:
+            if _cancelled():
+                return _cancelled_result()
             return triage_result
 
         # 2) TEAM/complex — apply the BOUNDED/STANDING lifetime selected by the
@@ -275,6 +321,9 @@ def manager_message(
             error_reply = f"could not enqueue: {exc}"
             return emitter.respond(error_reply, {"kind": "error"})
 
+    if _cancelled():
+        return _cancelled_result()
+
     item_payload = _item_to_dict(item, body)
     result = {
         "kind": "task",
@@ -291,6 +340,7 @@ def manager_message(
     )
     emitter.emit_only(f"Queued · {title}")
     return result
+
 
 def manager_plan(
     sid: str,

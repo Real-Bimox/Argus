@@ -30,6 +30,10 @@ _LOCKS: weakref.WeakValueDictionary[str, threading.RLock] = weakref.WeakValueDic
 _REGISTRY_LOCK = threading.Lock()
 _MANAGER_PREWARMING: set[str] = set()
 _MANAGER_PREWARMING_LOCK = threading.Lock()
+# Emergency natural-language pause bypasses the per-session Manager lock. A
+# generation bump lets any older turn notice that it was superseded before it
+# can commit/dispatch work after the operator has clocked the session out.
+_CONTROL_GENERATIONS: dict[str, int] = {}
 _DEFAULT_WARM_CONTEXT_LIMIT = 8
 _DEFAULT_WARM_CONTEXT_IDLE_SECONDS = 30 * 60
 
@@ -41,6 +45,30 @@ def _lock_for(sid: str) -> threading.RLock:
             lk = threading.RLock()
             _LOCKS[sid] = lk
         return lk
+
+
+def manager_control_generation(sid: str) -> int:
+    """Return the current in-process operator-control generation."""
+    with _REGISTRY_LOCK:
+        return _CONTROL_GENERATIONS.get(sid, 0)
+
+
+def interrupt_manager_turns(sid: str) -> int:
+    """Supersede older Manager turns without waiting for their session lock.
+
+    Persistent daemon/continuous state is changed by the pause handler. This
+    in-process fence only prevents an already-running front-door turn from
+    dispatching stale work after that durable pause lands.
+    """
+    with _REGISTRY_LOCK:
+        generation = _CONTROL_GENERATIONS.get(sid, 0) + 1
+        _CONTROL_GENERATIONS[sid] = generation
+        state = _STATES.get(sid)
+        if state is not None:
+            state.setdefault("config", {})["continuous"] = False
+            state["continuous_objective"] = ""
+            state.pop("_continuous_pending_manager_handoff", None)
+        return generation
 
 
 @contextmanager

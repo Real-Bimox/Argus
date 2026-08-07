@@ -35,6 +35,9 @@ _STATUS_MUTATION_MARKERS = (
     "优化",
     "重启",
     "停止",
+    "暂停",
+    "停一下",
+    "别干了",
     "继续",
     "取消",
     "提交",
@@ -52,6 +55,8 @@ _STATUS_MUTATION_MARKERS = (
     "optimize ",
     "restart",
     "stop ",
+    "pause",
+    "hold on",
     "continue",
     "cancel",
     "commit",
@@ -69,6 +74,11 @@ _ZH_STATUS_QUERY = re.compile(
     r"(?:(?:项目|任务|研究|运行|当前|现在|目前)的?)*"
     r"(?:运行)?(?:进度|状态|运行情况)"
     r"(?:如何|怎么样|怎样|到哪(?:了)?|是什么|呢|吗)?[？?。]*$"
+)
+_ZH_ACTIVITY_QUERY = re.compile(
+    r"^(?:请|麻烦)?(?:你|argus)?(?:告诉我)?(?:一下)?"
+    r"(?:现在|当前|目前)?(?:正在|在)?"
+    r"(?:做什么|干什么|干嘛|干啥)(?:呢|啊|呀|吗)?[？?。.!！]*$"
 )
 _EN_STATUS_QUERY = re.compile(
     r"^(?:please )?(?:(?:show(?: me)?|check|tell me|what is|what's)\s+)?(?:the )?"
@@ -120,6 +130,7 @@ def looks_like_status_query(text: str) -> bool:
     punctuation_stripped = normalized.rstrip("?.! ")
     return bool(
         _ZH_STATUS_QUERY.fullmatch(normalized)
+        or _ZH_ACTIVITY_QUERY.fullmatch(normalized)
         or _EN_STATUS_QUERY.fullmatch(normalized)
         or punctuation_stripped in _EN_STATUS_PHRASES
     )

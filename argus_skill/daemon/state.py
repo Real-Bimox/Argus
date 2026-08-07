@@ -707,6 +707,33 @@ def _same_daemon_alive(life_dir: Path, pid: int) -> bool:
     return bool(current.alive and current.pid == pid)
 
 
+def request_daemon_stop(life_dir: Path | None = None) -> tuple[bool, int | None]:
+    """Request an immediate graceful stop without waiting for daemon exit.
+
+    This is the non-blocking control-plane primitive used by conversational
+    pause. The daemon's SIGTERM handler interrupts the active mission and exits;
+    callers separately disable continuous mode first so no later launch can
+    silently resume the campaign. PID identity is revalidated immediately
+    before signalling to avoid targeting a stale/reused pid-file value.
+    """
+    status = read_daemon_status(life_dir)
+    resolved_dir = status.life_dir
+    try:
+        (resolved_dir / DAEMON_UPGRADE_REQUEST_FILE).unlink(missing_ok=True)
+    except OSError:
+        pass
+    if not status.alive or status.pid is None:
+        return False, None
+    pid = status.pid
+    if not _same_daemon_alive(resolved_dir, pid):
+        return False, None
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError):
+        return False, pid
+    return True, pid
+
+
 def stop_daemon(
     life_dir: Path | None = None,
     *,
@@ -849,7 +876,8 @@ __all__ = [
     "continuous_mode_error", "format_budget_status",
     "read_continuous_config", "read_continuous_state",
     "read_daemon_status", "resolve_effective_budget",
-    "stop_daemon", "wait_for_daemon_status", "write_continuous_config",
+    "request_daemon_stop", "stop_daemon", "wait_for_daemon_status",
+    "write_continuous_config",
     "_daemon_log_path", "_daemon_pid_path", "_daemon_status_path",
     "_daemon_status_payload", "_new_boot_id", "_point_active_daemon_log",
     "_process_alive", "_redirect_std_to_log",

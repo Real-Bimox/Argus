@@ -400,6 +400,136 @@ def test_contextual_greeting_calls_real_manager(
     assert result == {"kind": "chat", "reply": "当前任务仍在推进。"}
 
 
+def test_advertised_what_are_you_doing_query_never_starts_manager_tool_loop(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    sid = "s-status-no-loop"
+    life = _make_project(tmp_path, sid)
+    manager_bridge._STATES.clear()
+    monkeypatch.setattr(
+        config_intent,
+        "_front_door_classify",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("bounded status must not call the classifier")
+        ),
+    )
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("bounded status must not start a Manager tool turn")
+        ),
+    )
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with manager_bridge.manager_context_lock(sid):
+            future = pool.submit(
+                manager_bridge.manager_message,
+                sid,
+                "你在干什么？",
+                global_root=tmp_path,
+            )
+            result = future.result(timeout=2)
+
+    assert result["kind"] == "chat"
+    assert result["reply"].startswith("当前即时状态：")
+    assert LifeMemory.open(life).backlog.all() == []
+
+
+def test_natural_pause_disables_loop_and_bypasses_pending_question_model(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from argus_skill.daemon.state import read_continuous_state, write_continuous_config
+
+    sid = "s-natural-pause"
+    life = _make_project(tmp_path, sid)
+    memory = LifeMemory.open(life)
+    running = memory.backlog.add(BacklogItem.new(title="looping", objective="work"))
+    memory.backlog.mark_running(running.id)
+    blocked = BacklogItem.new(title="blocked", objective="choose")
+    blocked.pending_question = "Which route?"
+    memory.backlog.add(blocked)
+    write_continuous_config(life, enabled=True, objective="keep optimizing")
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("pause must bypass pending-question/Manager calls")
+        ),
+    )
+
+    result = manager_bridge.manager_message(
+        sid,
+        "停一下，你在干什么？",
+        global_root=tmp_path,
+    )
+
+    assert result["kind"] == "control"
+    assert result["control"] == "pause"
+    assert result["pause_persisted"] is True
+    assert result["item_id"] == running.id
+    assert read_continuous_state(life).enabled is False
+    assert (life / "running_item_abort.json").exists()
+    stored = LifeMemory.open(life).backlog.all()
+    assert next(row for row in stored if row.id == blocked.id).pending_question == "Which route?"
+
+
+def test_natural_pause_does_not_wait_for_busy_manager_session_lock(
+    tmp_path: Path,
+) -> None:
+    sid = "s-pause-lock-bypass"
+    _make_project(tmp_path, sid)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        with manager_bridge.manager_context_lock(sid):
+            future = pool.submit(
+                manager_bridge.manager_message,
+                sid,
+                "停一下",
+                global_root=tmp_path,
+            )
+            result = future.result(timeout=2)
+
+    assert result["kind"] == "control"
+    assert result["control"] == "pause"
+
+
+def test_pause_supersedes_inflight_manager_dispatch(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    sid = "s-pause-supersedes"
+    life = _make_project(tmp_path, sid)
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_classify(*args, **kwargs):
+        entered.set()
+        assert release.wait(timeout=3)
+        return None, None, "complex"
+
+    monkeypatch.setattr(config_intent, "_front_door_classify", slow_classify)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        stale = pool.submit(
+            manager_bridge.manager_message,
+            sid,
+            "start another long-running task",
+            global_root=tmp_path,
+        )
+        assert entered.wait(timeout=2)
+        paused = manager_bridge.manager_message(
+            sid,
+            "停一下",
+            global_root=tmp_path,
+        )
+        release.set()
+        stale_result = stale.result(timeout=3)
+
+    assert paused["control"] == "pause"
+    assert stale_result["kind"] == "cancelled"
+    assert LifeMemory.open(life).backlog.all() == []
+
+
 def test_classifier_explanation_cannot_escape_as_manager_reply(
     tmp_path: Path, monkeypatch,
 ) -> None:

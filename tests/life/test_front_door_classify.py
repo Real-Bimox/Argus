@@ -12,6 +12,7 @@ from argus_skill.life.router import (
     build_front_door_prompt,
     classify_config_intent,
     classify_front_door,
+    looks_like_pause_request,
 )
 
 
@@ -291,6 +292,47 @@ def test_abort_control_forces_self_and_never_becomes_team_work() -> None:
     assert intent is None
     assert control == "abort"
     assert route == "simple"
+
+
+def test_pause_control_clocks_out_whole_session() -> None:
+    intent, control, route = classify_front_door(
+        "请暂停整个会话",
+        run_exec=_exec("CONFIG: NONE\nCONTROL: PAUSE\nROUTE: TEAM"),
+    )
+    assert intent is None
+    assert control == "pause"
+    assert route == "simple"
+
+
+def test_bare_pause_bypasses_model_even_when_followed_by_status_question() -> None:
+    called = False
+
+    def must_not_run(_prompt: str):
+        nonlocal called
+        called = True
+        raise AssertionError("emergency pause must not call the Manager model")
+
+    decision = classify_front_door(
+        "停一下，你在干什么？",
+        run_exec=must_not_run,
+        active_mission=True,
+    )
+
+    assert decision == (None, "pause", "simple")
+    assert called is False
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "怎么实现暂停功能？",
+        "我应该暂停吗？",
+        "暂停当前形式化路线；先检索最接近的前人研究",
+        "stop handling this event after the first match",
+    ],
+)
+def test_emergency_pause_recognizer_rejects_questions_and_task_content(text: str) -> None:
+    assert not looks_like_pause_request(text)
 
 
 def test_explicit_authorization_uses_structured_action_enum_and_forces_self() -> None:
