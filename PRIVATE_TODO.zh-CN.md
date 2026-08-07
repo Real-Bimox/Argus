@@ -272,7 +272,10 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
 显式要求检查 Skill 时，相关正文读取 4/4 且 held-out 通过 4/4，control 为 0/4；错误
 Skill 读取 1/4。但移除显式提示后的自然触发为 0/2、held-out 0/2。另一个不计 matcher
 成本的 oracle 注入基线同样 4/4，且比按需读取快 10.8%、prompt 少 1.3%、成本低 6.2%。
-完整结果和限制见 `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`。
+`8100d2ae` 已直接修复：每个角色在第一个仓库工具前必须基于 native description 做一次
+相关性决定，只打开明确匹配正文，并不再把空 general root 交给 native loader；这仍由
+Agent 判断，不恢复 harness matcher。按用户要求不再单独跑模型实验，后续从正常 mission
+观测。完整结果见 `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`。
 
 **工作项**
 
@@ -452,8 +455,8 @@ Argus 应像一个靠谱队友那样表达：先说结果，用普通语言解�
    目标级 mission 质量。
 2. **下一步：** 建立 P1-01 跨领域非单调进展模型，并在真实项目上 canary P1-02
    mission session；轮换 handoff 已修复并 smoke 2/2，下一步完整复测 rolling。
-3. **并行：** 解决 P1-03 原生 Skill 自然触发 0/2、补旧 session 迁移测试，并推进
-   P1-05 沟通改进。
+3. **并行：** 从正常 mission 观测 `8100d2ae` 的原生 Skill 相关性决定，补旧 session
+   迁移测试，并推进 P1-05 沟通改进；不再单独启动模型实验。
 4. **生命周期稳定后：** P1-04 vertical/core 清理和 P1-06 runtime 简化。
 5. **状态语义稳定后：** 再做 P2-01 存储方案和迁移。
 

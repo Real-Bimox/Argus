@@ -2,7 +2,8 @@
   "schema_version": 1,
   "date": "2026-08-07",
   "primary_source_commit": "bc553f04",
-  "follow_up_fix_commit": "c7f44522",
+  "session_follow_up_fix_commit": "c7f44522",
+  "skill_follow_up_fix_commit": "8100d2ae",
   "backend": "pi",
   "model": "github-copilot/gpt-5-mini",
   "reasoning_effort": "low",
@@ -95,6 +96,11 @@
       "runs": 2,
       "useful_skill_opened": 0,
       "held_out_pass": 0
+    },
+    "follow_up": {
+      "change": "mandatory_agent_native_relevance_decision_and_nonempty_native_roots",
+      "model_experiment_rerun": false,
+      "reason": "operator requested direct repair without further experiment"
     },
     "decision": "retain_implementation_but_prompt_cost_and_natural_invocation_not_met"
   },

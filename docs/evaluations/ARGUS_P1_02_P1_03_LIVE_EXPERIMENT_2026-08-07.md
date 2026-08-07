@@ -2,7 +2,8 @@
 
 Date: 2026-08-07
 Primary matrix baseline: `bc553f04`
-Follow-up fix: `c7f44522`
+Session follow-up fix: `c7f44522`
+Skill follow-up fix: `8100d2ae`
 Backend/model: Pi 0.84.1 via GitHub Copilot, `gpt-5-mini`, low reasoning
 Runs: 20 primary + 17 diagnostic/follow-up real provider runs, all sequential
 
@@ -98,10 +99,13 @@ observed adjacent false read in a single verification run, but did not fix natur
 invocation.
 
 **Revised decision:** retain the implementation behind its current default, but do
-not mark P1-03 complete. Prompt-cost and natural-use acceptance are not met. Next
-work must improve native discovery without restoring a harness matcher, test a
-stronger model, and compare against an injection baseline that includes selection
-cost.
+not mark P1-03 complete. Prompt-cost and natural-use acceptance are not met.
+`8100d2ae` now requires the coding agent to make one native description relevance
+decision before its first repository tool, opens only clearly matching bodies, and
+omits empty general roots from the native loader. This is an agent-owned decision,
+not a harness matcher. Per operator direction, no further model experiment was run;
+behavior will be observed in normal missions. A fair future comparison must include
+selection cost in the injection baseline.
 
 ## Limitations
 

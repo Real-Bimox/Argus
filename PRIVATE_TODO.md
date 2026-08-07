@@ -324,6 +324,10 @@ cue, the relevant body opened 4/4 and held-out checks passed 4/4 versus control 
 0/4; a wrong Skill opened in 1/4. Removing that cue produced 0/2 useful opens and
 0/2 held-out passes. A best-case oracle body injection (excluding matcher cost) also
 passed 4/4 and beat on-demand by 10.8% wall time, 1.3% prompt, and 6.2% provider cost.
+`8100d2ae` directly requires one native-description relevance decision before the
+first repository tool, opens only clear matches, and omits empty general roots from
+the native loader. The Agent still decides; no harness matcher was restored. Per
+operator direction, no separate model experiment was rerun; observe normal missions.
 See `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`.
 
 **Work packages**
@@ -546,8 +550,9 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 2. **Next:** build the P1-01 cross-domain non-monotonic progress model and canary
    P1-02 mission sessions on real projects. The repaired rotation handoff passed a
    2/2 smoke; next rerun the full rolling matrix.
-3. **In parallel:** fix P1-03 native Skill natural invocation (0/2), add old-session
-   migration tests, and continue P1-05 communication improvements.
+3. **In parallel:** observe `8100d2ae` native Skill relevance decisions in normal
+   missions, add old-session migration tests, and continue P1-05 communication
+   improvements; do not launch another standalone model experiment.
 4. **After lifecycle stability:** P1-04 vertical/core cleanup and P1-06 runtime
    simplification.
 5. **Only after state semantics settle:** P2-01 storage decision and migration.
