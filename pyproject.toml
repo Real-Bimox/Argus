@@ -60,6 +60,7 @@ visual-web = [
 # Layout-aware PDF inspection.
 paper = [
   "pymupdf>=1.26,<2",
+  "pypdf>=5,<7",
 ]
 # Optional Ed25519 provenance signing.
 signing = [
@@ -87,6 +88,7 @@ dev = [
   "ruff>=0.4",
   "cryptography>=41",
   "jsonschema>=4",
+  "pypdf>=5,<7",
   "httpx2>=2.9,<3",
   "numpy>=1.26",
   "pandas>=2",
