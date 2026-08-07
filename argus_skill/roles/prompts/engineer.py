@@ -198,11 +198,16 @@ def build_mission_prompt(
     )
 
 
-def mission_request(project_root: Path | str) -> RolePromptRequest:
+def mission_request(
+    project_root: Path | str,
+    *,
+    vertical: str | None = None,
+) -> RolePromptRequest:
     return RolePromptRequest(
         role=RoleName.ENGINEER,
         operation=MISSION,
         project_root=project_root,
+        vertical=vertical,
     )
 
 

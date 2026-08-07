@@ -367,6 +367,19 @@ class MissionExecutionRuntimeMixin:
                     execute_kwargs["maintenance_mission"] = (
                         "framework_maintenance" in state.item_tags
                     )
+                manager_decision = (
+                    item.manager_decision
+                    if isinstance(item.manager_decision, dict)
+                    else {}
+                )
+                if "vertical_override" in params or _accepts_kw:
+                    execute_kwargs["vertical_override"] = str(
+                        manager_decision.get("vertical") or ""
+                    ).strip()
+                if "stage_override" in params or _accepts_kw:
+                    execute_kwargs["stage_override"] = str(
+                        manager_decision.get("stage") or ""
+                    ).strip()
                 progressive_matrix = is_progressive_experiment_matrix(item)
                 if (
                     "progressive_experiment_matrix" in params
@@ -399,6 +412,17 @@ class MissionExecutionRuntimeMixin:
                 execute_kwargs["context_packet_path"] = (
                     str(state.context_packet_path) if state.context_packet_path else ""
                 )
+                manager_decision = (
+                    item.manager_decision
+                    if isinstance(item.manager_decision, dict)
+                    else {}
+                )
+                execute_kwargs["vertical_override"] = str(
+                    manager_decision.get("vertical") or ""
+                ).strip()
+                execute_kwargs["stage_override"] = str(
+                    manager_decision.get("stage") or ""
+                ).strip()
                 if state.repair_capability is not None:
                     execute_kwargs["max_rounds_override"] = 1
                     execute_kwargs["workflow_mode_override"] = "direct"

@@ -400,7 +400,8 @@ class AgentIOLogger:
             known_values=known_secret_values,
         )
         if persist_raw:
-            assert context is not None
+            if context is None:
+                raise RuntimeError("raw stream persistence requires an I/O context")
             self.buffer_stream(
                 context,
                 Path(log_path),

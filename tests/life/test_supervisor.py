@@ -138,6 +138,12 @@ def test_framework_maintenance_uses_private_worktree_and_review(
         objective="fix observed defect",
         tags=["framework_maintenance", "review:required", "scope:bounded"],
         execution_workdir=str(private),
+        manager_decision={
+            "routed": True,
+            "vertical": "argus_maintenance",
+            "stage": "verify",
+            "workflow_mode": "direct",
+        },
     ))
 
     result = supervisor.tick()
@@ -146,6 +152,8 @@ def test_framework_maintenance_uses_private_worktree_and_review(
     assert result["review_status"] == "done"
     assert runner.kwargs["working_dir_override"] == str(private)
     assert runner.kwargs["maintenance_mission"] is True
+    assert runner.kwargs["vertical_override"] == "argus_maintenance"
+    assert runner.kwargs["stage_override"] == "verify"
     assert runner.kwargs["require_independent_review"] is True
 
 

@@ -281,7 +281,6 @@ def main(argv: list[str] | None = None) -> int:
     load_backend_runtime_env()
     parser = build_parser()
     args = parser.parse_args(argv)
-    args.skill_stats = bool(args.skill_stats or args.skill_stats_json)
     from ...core.knobs import resolve_role_backend
 
     backend_default = (
@@ -321,8 +320,6 @@ def main(argv: list[str] | None = None) -> int:
         + bool(args.ppt_master_status)
         + bool(getattr(args, "approve_publication", ""))
         + bool(getattr(args, "list_pending_publications", False))
-        + bool(args.skill_stats)
-        + bool(args.skill_cleanse)
         + bool(args.export_builtin_skills is not None)
         + bool(args.evidence_chain_check)
         + bool(args.anti_mediocrity_check)
@@ -368,9 +365,9 @@ def main(argv: list[str] | None = None) -> int:
             "--daemon-runbook / --config-help / --config-snapshot / "
             "--watch / --follow / --notify / --init-identity / "
             "--setup / --doctor / "
-            "--model-api-status / --init-model-api / --skill-stats / "
+            "--model-api-status / --init-model-api / "
             "--install-ppt-master / --ppt-master-status / "
-            "--skill-cleanse / --export-builtin-skills / "
+            "--export-builtin-skills / "
             "--evidence-chain-check / --anti-mediocrity-check / --lifecycle-status / "
             "wiki subcommands "
             "are mutually exclusive.\n"
@@ -505,10 +502,6 @@ def main(argv: list[str] | None = None) -> int:
         return _run_with_path_resolution_errors(
             lambda: _cmd_approve_publication(args)
         )
-    if args.skill_stats:
-        return _run_with_path_resolution_errors(lambda: _cmd_skill_stats(args))
-    if args.skill_cleanse:
-        return _run_with_path_resolution_errors(lambda: _cmd_skill_cleanse(args))
     if args.export_builtin_skills is not None:
         return _run_with_path_resolution_errors(
             lambda: _cmd_export_builtin_skills(args)
@@ -1181,22 +1174,6 @@ def _cmd_approve_publication(args: argparse.Namespace) -> int:
         "pass. It will not merge it."
     )
     return 0
-
-
-def _cmd_skill_stats(args: argparse.Namespace) -> int:
-    from .._skill_stats import run_skill_stats
-    return run_skill_stats(
-        _resolve_project_bundle(args).project.root,
-        as_json=bool(args.skill_stats_json),
-    )
-
-
-def _cmd_skill_cleanse(args: argparse.Namespace) -> int:
-    from .._skill_cleanse import run_cleanse
-    return run_cleanse(
-        _resolve_skills_dir(args),
-        dry_run=not bool(args.apply),
-    )
 
 
 def _cmd_export_builtin_skills(args: argparse.Namespace) -> int:

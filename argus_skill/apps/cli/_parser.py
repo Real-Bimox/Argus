@@ -346,21 +346,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     skills_grp = parser.add_argument_group("skill admin")
     skills_grp.add_argument(
-        "--skill-stats",
-        action="store_true",
-        help="legacy option; Skill files no longer carry effectiveness counters",
-    )
-    skills_grp.add_argument(
-        "--skill-stats-json",
-        action="store_true",
-        help="render the skill-stats output as JSON instead of plain text",
-    )
-    skills_grp.add_argument(
-        "--skill-cleanse",
-        action="store_true",
-        help="legacy no-op; Skill files contain only name and description metadata",
-    )
-    skills_grp.add_argument(
         "--export-builtin-skills",
         nargs="?",
         const=DEFAULT_PROJECT_BUILTIN_SKILLS_DIR,
@@ -372,9 +357,7 @@ def build_parser() -> argparse.ArgumentParser:
     skills_grp.add_argument(
         "--apply",
         action="store_true",
-        help="with --skill-cleanse: actually mutate disk "
-             "(default is dry-run); with --export-builtin-skills: replace "
-             "existing copied built-in files",
+        help="with --export-builtin-skills: replace existing copied built-in files",
     )
     skills_grp.add_argument(
         "--skills-dir",

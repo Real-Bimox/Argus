@@ -229,10 +229,9 @@ Research target and metric:
   a FIXED wall-clock budget. The whole game is squeezing the best held-out
   language-modeling quality out of a tightly bounded training run, not building
   the largest possible model.
-- The primary metric is the MEAN val bpb across N random seeds. Recursive used
-  N=10; while iterating, use N=3-5 for fast signal and re-run a larger N for any
-  number that goes into a final comparison. A recipe that only wins on one lucky
-  seed has not won.
+- Use the seed count and aggregation rule declared by the frozen scorer. A
+  cheaper exploratory screen is provisional and cannot replace the official
+  protocol; a recipe that only wins on one lucky seed has not won.
 
 Fixed scaffold and harness (do not modify):
 - The operator-provided benchmark workspace contains a shared `lib.py` with the
@@ -252,47 +251,45 @@ Fixed scaffold and harness (do not modify):
   shared code.
 
 Budget and runtime contract:
-- The benchmark protocol is 300 seconds of wall-clock per run on one A100.
-  This profile defines the protocol; it does not assert that an A100 is
-  currently reachable. Every recipe must fit useful
-  tokenizer setup, model construction, and as much effective training as
-  possible inside that window, then stop cleanly and evaluate. Spending the
-  budget on a model too large to converge, or leaving the budget unused, are both
-  failures.
-- The SEED environment variable selects the seed for a run. The script must print
-  its result on a line containing "val_bpb:" so the harness and verifier can
-  parse it. Evaluation is the MEAN of these val bpb values across the N seeds.
+- Read the time limit, device constraint, and setup/evaluation accounting from
+  the current frozen harness. This profile does not define hardware inventory
+  or a portable time budget. Every recipe must stop cleanly and evaluate inside
+  the observed protocol; a model too large to converge or unused budget both
+  require measured diagnosis.
+- Read seed injection and result formatting from the active runner rather than
+  assuming an environment variable or output line. The official scorer owns the
+  aggregation across seeds.
 
 Hardware and execution rules:
 - Probe the actual device and software stack before choosing kernels. A profile
   name or historical result is not evidence that a particular GPU is available.
-- Proceed only when the active benchmark runner verifies one A100 and the
-  frozen 300-second protocol. A different GPU is a different benchmark, not a
-  substitute result.
+- Proceed only when the active benchmark runner verifies the hardware and time
+  constraints declared by its frozen protocol. A different device or budget is
+  a different benchmark, not a substitute result.
 - Use only the operator-provided remote command, interpreter, data mount, and
   compatibility shim. If the detected GPU cannot run a candidate attention
   implementation, use a supported path such as torch SDPA or record an
   infrastructure blocker; do not invent benchmark results.
 
 Baseline to beat:
-- The baseline is the released reference solution, re-measured on the active
-  frozen A100 harness rather than trusting published figures. Its best released
-  recipe is `optimized_from_karpathy.py`; the number that matters is its
-  re-measured mean val bpb under the same active protocol as the candidate.
-- Success means the argus-skill solution.py achieves a lower mean val bpb than
-  the re-measured optimized_from_karpathy.py baseline under the identical
-  protocol (same N seeds, same 300s budget, same held-out validation). Beating
-  a published number from different hardware while losing to the re-measured
+- The baseline is the reference artifact named by the current benchmark,
+  re-measured on the active frozen harness rather than trusting published
+  figures. The number that matters is its re-measured val bpb under the same
+  active protocol as the candidate.
+- Success means the candidate achieves a lower official val bpb than that
+  re-measured active baseline under the identical
+  protocol (same seeds, budget, device constraints, and held-out validation).
+  Beating a published number from different hardware while losing to the re-measured
   local baseline does not count.
 
 Anti-cheat and reward rules:
 - The ONLY reward that counts is the val bpb produced by the VERIFIER re-running
-  the agent's solution.py under the identical protocol: N seeds, 300s budget,
-  the held-out validation shard. The agent's self-reported "val_bpb:" line is
+  the agent's solution.py under the identical frozen protocol: seeds, budget,
+  hardware constraints, and held-out validation shard. The agent's self-reported "val_bpb:" line is
   never the reward; it is only a hint to be confirmed.
 - Any gap between a self-reported number and the verifier's number is resolved in
   favor of the verifier. Do not tune against the held-out validation set, do not
-  special-case shard_06542, and do not leak validation bytes into training.
+  special-case the held-out shard, and do not leak validation bytes into training.
   Recipes that inspect, memorize, or otherwise contaminate the val set are
   disqualified even if they print a low number.
 - Treat the held-out split as untouchable: select hyperparameters using only
@@ -312,7 +309,7 @@ Evidence and anti-fabrication rules:
   relabel a loss as a win or fill gaps with optimistic prose.
 
 Autonomy and background-experiment rules:
-- Training runs are short (300s each) but the search over recipes and seeds is
+- Individual runs are bounded, but the search over recipes and seeds is
   long. Launch sweeps as background jobs with a unique run_id and write
   experiments/<run_id>/manifest.json, pid, stdout.log, stderr.log, and a status
   file before returning from the mission.

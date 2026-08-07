@@ -790,6 +790,12 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
                 "scientific evidence changes",
                 "direct main push or merge",
             ],
+            manager_decision={
+                "routed": True,
+                "vertical": "argus_maintenance",
+                "stage": "verify",
+                "workflow_mode": "direct",
+            },
         ))
         self._write_state(
             active_item_id=item.id,

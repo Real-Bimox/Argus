@@ -294,7 +294,8 @@ class RunExecMixin:
         stderr_closed = False
 
         def consume_pipe(stream_name: str, pipe) -> None:
-            assert pipe is not None
+            if pipe is None:
+                raise RuntimeError(f"{stream_name} pipe was not created")
             for line in pipe:
                 if stop_queueing.is_set():
                     # Keep draining the OS pipe so an independently owned

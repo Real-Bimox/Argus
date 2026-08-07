@@ -565,15 +565,21 @@ def _augment(body: str, role: str, project_root, *, overlay_present: bool = Fals
 
 
 def _research_checklist_defs():
-    from ..verticals.research.stages import (
-        CANONICAL_STAGE_ORDER,
-        STAGE_CHECKLISTS,
+    from ..verticals._base import (
+        DEFAULT_VERTICAL,
+        load_vertical,
+        vertical_checklist_items,
+        vertical_checklist_stage_order,
     )
 
-    return CANONICAL_STAGE_ORDER, STAGE_CHECKLISTS
+    provider = load_vertical(DEFAULT_VERTICAL)
+    return (
+        vertical_checklist_stage_order(provider),
+        vertical_checklist_items(provider),
+    )
 
 
-def _active_vertical_checklist_defs(project_root):
+def _active_vertical_checklist_defs(project_root, vertical: str | None = None):
     """Return ``(stage_order, items_dict)`` for the ACTIVE vertical.
 
     Resolves the active vertical via ``vertical_select.resolve_vertical`` +
@@ -591,6 +597,7 @@ def _active_vertical_checklist_defs(project_root):
 
     if project_root is None:
         project_root = os.environ.get("ARGUS_SKILL_PROJECT_ROOT") or "."
+    explicit = str(vertical or "").strip()
     try:
         from ..verticals._base import (
             load_vertical,
@@ -599,23 +606,29 @@ def _active_vertical_checklist_defs(project_root):
         )
         from .vertical_select import resolve_checklist_vertical
 
-        vertical = resolve_checklist_vertical(project_root)
-        if vertical is None:
+        selected = explicit or resolve_checklist_vertical(project_root)
+        if selected is None:
             return _research_checklist_defs()
-        mod = load_vertical(vertical, project_root=project_root)
+        mod = load_vertical(selected, project_root=project_root)
         return (
             vertical_checklist_stage_order(mod),
             vertical_checklist_items(mod),
         )
-    except Exception:  # noqa: BLE001 - vertical resolution must never break prompts
+    except Exception:  # noqa: BLE001 - undecided legacy prompts retain research
+        if explicit:
+            raise
         return _research_checklist_defs()
 
 
-def _active_vertical_optional_stages(project_root) -> frozenset[str]:
+def _active_vertical_optional_stages(
+    project_root,
+    vertical: str | None = None,
+) -> frozenset[str]:
     import os
 
     if project_root is None:
         project_root = os.environ.get("ARGUS_SKILL_PROJECT_ROOT") or "."
+    explicit = str(vertical or "").strip()
     try:
         from ..verticals._base import (
             load_vertical,
@@ -623,12 +636,14 @@ def _active_vertical_optional_stages(project_root) -> frozenset[str]:
         )
         from .vertical_select import resolve_checklist_vertical
 
-        vertical = resolve_checklist_vertical(project_root)
-        if vertical is None:
+        selected = explicit or resolve_checklist_vertical(project_root)
+        if selected is None:
             return frozenset()
-        mod = load_vertical(vertical, project_root=project_root)
+        mod = load_vertical(selected, project_root=project_root)
         return vertical_checklist_optional_stages(mod)
     except Exception:  # noqa: BLE001
+        if explicit:
+            raise
         return frozenset()
 
 
@@ -675,7 +690,13 @@ def _append_domain_floor(
     return (*items, *additions)
 
 
-def _store_or_seed_items(project_root, vert_items, stage):
+def _store_or_seed_items(
+    project_root,
+    vert_items,
+    stage,
+    *,
+    include_domain: bool = True,
+):
     """Base checklist items for ``stage`` BEFORE the additive overlay.
 
     The per-project, Planner-authored checklist store
@@ -693,13 +714,19 @@ def _store_or_seed_items(project_root, vert_items, stage):
             _resolve_project_root_for_store(project_root), stage
         )
         if override is not None:
-            return _append_domain_floor(tuple(override), project_root, stage)
+            items = tuple(override)
+            return (
+                _append_domain_floor(items, project_root, stage)
+                if include_domain
+                else items
+            )
     except Exception:  # noqa: BLE001 — store read must never break prompt building
         pass
-    return _append_domain_floor(
-        tuple(vert_items.get(stage, ())),
-        project_root,
-        stage,
+    items = tuple(vert_items.get(stage, ()))
+    return (
+        _append_domain_floor(items, project_root, stage)
+        if include_domain
+        else items
     )
 
 
@@ -708,11 +735,15 @@ def resolve_stage_checklist_contract(
     *,
     role: str = "reviewer",
     project_root=None,
+    vertical: str | None = None,
 ) -> StageChecklistContract:
     """Resolve checklist provenance without treating an empty list as success."""
     stage_norm = _normalize_stage(stage)
-    _stage_order, vertical_items = _active_vertical_checklist_defs(project_root)
-    optional = stage_norm in _active_vertical_optional_stages(project_root)
+    _stage_order, vertical_items = _active_vertical_checklist_defs(
+        project_root,
+        vertical,
+    )
+    optional = stage_norm in _active_vertical_optional_stages(project_root, vertical)
     override = None
     try:
         from .checklist_store import store_items_for_stage
@@ -732,7 +763,8 @@ def resolve_stage_checklist_contract(
     else:
         items = ()
         state = ChecklistLoadState.NOT_LOADED
-    items = _append_domain_floor(items, project_root, stage_norm)
+    if not vertical:
+        items = _append_domain_floor(items, project_root, stage_norm)
     if items:
         state = ChecklistLoadState.LOADED
     if optional and not items:
@@ -751,20 +783,23 @@ def _apply_vertical_rendering(
     project_root,
     role: str,
     stage: str | None = None,
+    vertical: str | None = None,
 ) -> str:
     import os
 
     if project_root is None:
         project_root = os.environ.get("ARGUS_SKILL_PROJECT_ROOT") or "."
+    explicit = str(vertical or "").strip()
     try:
         from ..verticals._base import load_vertical
         from .vertical_select import resolve_checklist_vertical
 
-        vertical = resolve_checklist_vertical(project_root)
-        if vertical is None:
-            from ..verticals.research import stages as module
-        else:
-            module = load_vertical(vertical, project_root=project_root)
+        selected = explicit or resolve_checklist_vertical(project_root)
+        if selected is None:
+            from ..verticals._base import DEFAULT_VERTICAL
+
+            selected = DEFAULT_VERTICAL
+        module = load_vertical(selected, project_root=project_root)
         hook_name = (
             "render_stage_checklist_body"
             if stage is not None
@@ -781,7 +816,9 @@ def _apply_vertical_rendering(
                 **({"stage": stage} if stage is not None else {}),
             )
         )
-    except Exception:  # noqa: BLE001 - vertical rendering must not break prompts
+    except Exception:  # noqa: BLE001 - legacy rendering remains non-blocking
+        if explicit:
+            raise
         return body
 
 
@@ -791,6 +828,7 @@ def format_stage_checklist(
     role: str = "engineer",
     project_root=None,
     scope: str = "",
+    vertical: str | None = None,
 ) -> str:
     """Render the checklist for ``stage`` as prompt-injectable markdown.
 
@@ -817,6 +855,7 @@ def format_stage_checklist(
         stage_norm,
         role=role_norm,
         project_root=project_root,
+        vertical=vertical,
     )
     items = contract.items
     annotations: dict[str, list[str]] = {}
@@ -878,6 +917,7 @@ def format_stage_checklist(
         project_root=project_root,
         role=role_norm,
         stage=stage_norm,
+        vertical=vertical,
     )
     return _augment(
         body,
@@ -887,7 +927,7 @@ def format_stage_checklist(
     )
 
 
-def _full_pipeline_title(project_root) -> str:
+def _full_pipeline_title(project_root, vertical: str | None = None) -> str:
     """Vertical-aware title line for the full-pipeline checklist header.
 
     Paper-shaped verticals use ``final submission gate`` wording. Other
@@ -897,19 +937,21 @@ def _full_pipeline_title(project_root) -> str:
 
     if project_root is None:
         project_root = os.environ.get("ARGUS_SKILL_PROJECT_ROOT") or "."
+    explicit = str(vertical or "").strip()
     try:
         from ..verticals._base import load_vertical, vertical_completion_gate
         from .vertical_select import resolve_checklist_vertical
 
-        vertical = resolve_checklist_vertical(project_root)
-        if vertical is None:
+        selected = explicit or resolve_checklist_vertical(project_root)
+        if selected is None:
             return "## Full pipeline checklist (final submission gate)\n"
         if vertical_completion_gate(
-            load_vertical(vertical, project_root=project_root)
+            load_vertical(selected, project_root=project_root)
         ) != "certified":
-            return f"## Full pipeline checklist ({vertical})\n"
-    except Exception:  # noqa: BLE001 — title must never break prompt building
-        pass
+            return f"## Full pipeline checklist ({selected})\n"
+    except Exception:  # noqa: BLE001 — legacy title remains non-blocking
+        if explicit:
+            raise
     return "## Full pipeline checklist (final submission gate)\n"
 
 
@@ -917,10 +959,11 @@ def format_full_pipeline_checklist(
     *,
     role: str = "reviewer",
     project_root=None,
+    vertical: str | None = None,
 ) -> str:
     """Render every stage's checklist concatenated, for final submission review."""
 
-    title = _full_pipeline_title(project_root)
+    title = _full_pipeline_title(project_root, vertical)
     role_norm = (role or "reviewer").strip().lower()
     if role_norm == "reviewer":
         header = (
@@ -938,10 +981,15 @@ def format_full_pipeline_checklist(
     blocks = [header]
     overlay_present = False
     # Iterate the active vertical's stage order and render its items.
-    stage_order, vert_items = _active_vertical_checklist_defs(project_root)
+    stage_order, vert_items = _active_vertical_checklist_defs(project_root, vertical)
     for stage in stage_order:
         annotations: dict[str, list[str]] = {}
-        items = _store_or_seed_items(project_root, vert_items, stage)
+        items = _store_or_seed_items(
+            project_root,
+            vert_items,
+            stage,
+            include_domain=not bool(vertical),
+        )
         if not items:
             continue
         blocks.append(f"### {stage}\n{_render_items(items, annotations)}")
@@ -950,5 +998,6 @@ def format_full_pipeline_checklist(
         body,
         project_root=project_root,
         role=role_norm,
+        vertical=vertical,
     )
     return _augment(body, role_norm, project_root, overlay_present=overlay_present)

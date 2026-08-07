@@ -24,8 +24,25 @@ def test_minimal_non_research_vertical_implements_only_documented_contract() -> 
     assert contract.name == "minimal_delivery"
     assert contract.stage_order == ("build", "verify")
     assert contract.completion_gate == "none"
+    assert contract.mission_kind == "custom"
+    assert contract.ground_before_handoff is False
     assert contract.banner("engineer") == ""
     assert contract.evidence_schema is None
+
+
+def test_provider_declares_routing_metadata_without_manager_name_tables() -> None:
+    provider = SimpleNamespace(
+        CHECKLIST_STAGE_ORDER=("work",),
+        CHECKLIST_ITEMS={"work": ()},
+        completion_gate="none",
+        MISSION_KIND="software",
+        GROUND_BEFORE_HANDOFF=True,
+    )
+
+    contract = vertical_contract("maintainer", provider)
+
+    assert contract.mission_kind == "software"
+    assert contract.ground_before_handoff is True
 
 
 def test_incomplete_vertical_fails_visibly() -> None:

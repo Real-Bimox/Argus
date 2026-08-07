@@ -59,7 +59,7 @@ log = logging.getLogger(__name__)
 #:   nanogpt_speedrun — Task 2: minimize wall-time to val_loss<=3.28 (8xH100)
 #:   kernelbench      — Task 3: maximize SOL score (B200 kernels)
 VERTICALS: tuple[str, ...] = (
-    "software", "digital_circuit", "digital_circuit_benchmark", "chip_design",
+    "software", "argus_maintenance", "digital_circuit", "digital_circuit_benchmark", "chip_design",
     "research", "math", "physics", "materials", "quant", "speedrun",
     "kernel_engineering", "nanochat", "nanogpt_speedrun", "kernelbench",
     "learning", "ale_last_exam", "fiction_writing", "classical_poetry",
@@ -72,7 +72,10 @@ VERTICALS: tuple[str, ...] = (
 #: data domain. Keys must stay in sync with ``VERTICALS``.
 VERTICAL_PURPOSES: dict[str, str] = {
     "software": "software engineering: repository repairs, features, refactors, "
-    "tests, developer tooling, and implementation work",
+    "tests, developer tooling, and implementation work outside Argus itself",
+    "argus_maintenance": "maintenance and architectural improvement of the Argus "
+    "framework itself: concise reusable code, core/vertical decoupling, removal of "
+    "unjustified hardcoding/wrappers/fallbacks, independent regression and release checks",
     "digital_circuit": "digital hardware engineering: Verilog/SystemVerilog RTL, "
     "testbenches, assertions/formal verification, FPGA/ASIC synthesis, timing, "
     "and reproducible sign-off evidence",

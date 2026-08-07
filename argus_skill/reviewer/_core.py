@@ -30,6 +30,8 @@ log = logging.getLogger(__name__)
 class ReviewerConfig:
     model: str | None = None
     reasoning_effort: str | None = None
+    active_vertical: str = ""
+    active_stage: str = ""
     extra_args: list[str] = field(default_factory=list)
     skip_git_repo_check: bool = False
     full_auto: bool = False
@@ -156,6 +158,8 @@ class Reviewer:
             engineer_call_id=engineer_call_id,
             preselected_skill_block=preselected_skill_block,
             working_dir=config.working_dir,
+            vertical=config.active_vertical,
+            stage_override=config.active_stage,
         )
         static, delta_base = self._render(resumed=False, **common)
         prompt_block_stats = {
@@ -330,6 +334,8 @@ class Reviewer:
         engineer_call_id: str = "",
         preselected_skill_block: str | None = None,
         working_dir: str | Path | None = None,
+        vertical: str = "",
+        stage_override: str = "",
     ) -> tuple[str, str]:
         """F7: render the reviewer prompt as ``(static_preamble, round_delta)``.
 
@@ -363,6 +369,8 @@ class Reviewer:
             engineer_call_id=engineer_call_id,
             preselected_skill_block=preselected_skill_block,
             working_dir=working_dir,
+            vertical=vertical,
+            stage_override=stage_override,
         )
 
     def _build_prompt(self, **kwargs: Any) -> str:

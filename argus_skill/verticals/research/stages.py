@@ -15,6 +15,9 @@ from pathlib import Path
 
 from ...skills.stage_machine import ChecklistItem
 from ...skills.venue_profiles import VenueProfile, resolve_venue_profile
+from . import library_preparation
+
+LIBRARY_PREPARER = library_preparation.prepare_skill_libraries
 
 CANONICAL_STAGE_ORDER: tuple[str, ...] = (
     "research",
@@ -769,6 +772,7 @@ CHECKLIST_ITEMS = STAGE_CHECKLISTS
 
 #: Research missions complete on the selected venue's full-paper submission gate.
 completion_gate = "certified"
+MISSION_KIND = "research"
 
 # Research proceeds through strict stage gates, but evidence reuse within those
 # stages is proportional: once a Reviewer certifies a source or artifact, later

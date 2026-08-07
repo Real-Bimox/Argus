@@ -14,11 +14,6 @@ from typing import Any
 from ..core.run_gateway import run_exec as gateway_run_exec  # noqa: F401 — re-exported
 from ..core.runner_errors import result_has_missing_resume_target  # noqa: F401 — re-exported
 
-# Verticals that run a lean optimize/speedrun loop rather than the paper pipeline.
-_OPTIMIZE_VERTICALS = frozenset(
-    {"speedrun", "kernel_engineering", "nanochat", "nanogpt_speedrun", "kernelbench"}
-)
-
 log = logging.getLogger(__name__)
 
 _DEFAULT_MANAGER_REASONING_EFFORT = "xhigh"

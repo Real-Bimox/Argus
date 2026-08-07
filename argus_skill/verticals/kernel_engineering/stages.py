@@ -31,6 +31,7 @@ STAGE_ALIASES = {
 
 WORKFLOW_MODE = "staged"
 completion_gate = "metric"
+MISSION_KIND = "optimize"
 
 
 def prepare_mission(stage: str, project_root, state_root) -> str:

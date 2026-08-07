@@ -127,6 +127,10 @@ class SkillLoopConfig:
     )
     # Manager-selected execution topology. Every mode still uses skill/wiki.
     workflow_mode: str = "staged"
+    # Explicit Manager-routed vertical for isolated worktrees that intentionally
+    # carry no project pipeline state (for example framework self-maintenance).
+    active_vertical: str = ""
+    active_stage: str = ""
     # Explicit signal that this mission is a long-horizon academic-paper /
     # submission task. When True the engineer prompt carries the
     # long-horizon paper execution contract. Replaces the old keyword-based
@@ -242,6 +246,8 @@ class SkillLoop(
             ),
             reviewer_config=ReviewerConfig(
                 model=self.config.resolved_reviewer_model(),
+                active_vertical=self.config.active_vertical,
+                active_stage=self.config.active_stage,
                 reasoning_effort=self.config.reviewer_reasoning_effort,
                 extra_args=self.config.extra_args or [],
                 full_auto=self.config.full_auto,
@@ -275,7 +281,12 @@ class SkillLoop(
         run_id = self.config.session_id or f"run-{uuid.uuid4().hex}"
         from .roles.prompts import resolve_role_prompt
         from .roles.prompts.engineer import mission_request
-        engineer_prompt_context = resolve_role_prompt(mission_request(workdir))
+        engineer_prompt_context = resolve_role_prompt(
+            mission_request(
+                workdir,
+                vertical=self.config.active_vertical or None,
+            )
+        )
         active_vertical = engineer_prompt_context.vertical
         engineer_role_banner = engineer_prompt_context.role_banner
         if self.config.wiki_enabled:

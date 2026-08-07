@@ -339,6 +339,7 @@ def seed_context_skills(
     """Seed only the active workflow/domain context into one runtime layer."""
     skills_dir = Path(skills_dir)
     skills_dir.mkdir(parents=True, exist_ok=True)
+    retire_orphaned_builtin_seeds(skills_dir)
     created: dict[str, bool] = {}
     for filename, text in iter_context_skill_texts(vertical, domain):
         if filename.endswith(".md"):
@@ -370,17 +371,6 @@ def remove_unmodified_vertical_skill_seeds(
         except OSError:
             continue
     return removed
-
-
-def remove_unmodified_inactive_vertical_skill_seeds(
-    skills_dir: Path,
-    active_vertical: str | None,
-) -> list[str]:
-    """Compatibility wrapper for a workflow without a domain overlay."""
-    return remove_unmodified_inactive_context_skill_seeds(
-        skills_dir,
-        active_vertical,
-    )
 
 
 def remove_unmodified_inactive_context_skill_seeds(

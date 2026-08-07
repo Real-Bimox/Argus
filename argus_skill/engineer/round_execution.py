@@ -99,8 +99,10 @@ class RoundExecutionMixin:
             raw_engineer_message,
             known_values=known_secret_values(),
         )
-        assert state.engineer_session is not None
-        state.engineer_session.complete(
+        engineer_session = state.engineer_session
+        if engineer_session is None:
+            raise RuntimeError("engineer role session was not initialized")
+        engineer_session.complete(
             engineer_result,
             decisive_output=engineer_message,
         )
@@ -108,12 +110,12 @@ class RoundExecutionMixin:
             on_event({
                 "type": EventType.ROLE_SESSION_TURN,
                 "role": "engineer",
-                "policy": state.engineer_session.policy,
-                "action": state.engineer_session.action,
-                "rotation_reason": state.engineer_session.rotation_reason,
+                "policy": engineer_session.policy,
+                "action": engineer_session.action,
+                "rotation_reason": engineer_session.rotation_reason,
                 "round_index": round_index,
                 "session_id": str(new_tid or ""),
-                "turns_on_session": state.engineer_session.turns,
+                "turns_on_session": engineer_session.turns,
                 "input_tokens": int(
                     getattr(engineer_result, "input_tokens", 0) or 0
                 ),
@@ -123,7 +125,7 @@ class RoundExecutionMixin:
                 "duration_ms": int((time.time() - round_started_at) * 1000),
                 "prompt_chars": len(engineer_prompt),
                 "prompt_estimated_tokens": (len(engineer_prompt) + 3) // 4,
-                "capsule_path": str(state.engineer_session.path or ""),
+                "capsule_path": str(engineer_session.path or ""),
             })
         if supervised_config.context_packet_path:
             try:
@@ -238,6 +240,9 @@ class RoundExecutionMixin:
         stop_kind = outcome.stop_kind
         engineer_message = outcome.engineer_message
         round_thread_id = outcome.round_thread_id
+        engineer_session = state.engineer_session
+        if engineer_session is None:
+            raise RuntimeError("engineer role session was not initialized")
         if (
             stop_kind == "daemon_shutdown"
             or fatal_error_looks_like_daemon_stop_request(fatal_error)
@@ -303,8 +308,7 @@ class RoundExecutionMixin:
             ))
 
         if fatal_error_looks_like_model_configuration(fatal_error):
-            assert state.engineer_session is not None
-            state.engineer_session.rotate("model_configuration")
+            engineer_session.rotate("model_configuration")
             review = model_configuration_review_decision(
                 fatal_error=fatal_error,
                 exit_code=getattr(engineer_result, "exit_code", 0),
@@ -374,8 +378,7 @@ class RoundExecutionMixin:
             ))
 
         if stop_kind == "permanent_error":
-            assert state.engineer_session is not None
-            state.engineer_session.rotate("permanent_error")
+            engineer_session.rotate("permanent_error")
             review = backend_failure_review_decision(
                 fatal_error=fatal_error,
                 exit_code=getattr(engineer_result, "exit_code", 0),
@@ -399,8 +402,7 @@ class RoundExecutionMixin:
             ))
 
         if runner_result_is_backend_failure(engineer_result):
-            assert state.engineer_session is not None
-            state.engineer_session.rotate("backend_failure")
+            engineer_session.rotate("backend_failure")
             state.backend_failure_streak += 1
             state.no_progress_streak = 0
             configured_threshold = max(

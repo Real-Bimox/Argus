@@ -367,6 +367,8 @@ class SkillLoopExecuteMixin:
         stage_closing: bool = False,
         working_dir_override: str = "",
         maintenance_mission: bool = False,
+        vertical_override: str = "",
+        stage_override: str = "",
     ) -> _Outcome:
         # Chat fast-path (operator-front-door-only; gated by _allow_chat_fast_path).
         # The classifier + reply logic lives in ``_maybe_chat_outcome``; here we
@@ -388,6 +390,8 @@ class SkillLoopExecuteMixin:
             ex_state,
             working_dir_override=working_dir_override,
             maintenance_mission=maintenance_mission,
+            vertical_override=vertical_override,
+            stage_override=stage_override,
             require_independent_review=require_independent_review,
             max_rounds_override=max_rounds_override,
             progressive_experiment_matrix=progressive_experiment_matrix,
@@ -457,6 +461,8 @@ class SkillLoopExecuteMixin:
         *,
         working_dir_override: str,
         maintenance_mission: bool,
+        vertical_override: str,
+        stage_override: str,
         require_independent_review: bool,
         max_rounds_override: int | None,
         progressive_experiment_matrix: bool,
@@ -494,8 +500,24 @@ class SkillLoopExecuteMixin:
             if maintenance_mission or working_dir_override
             else Path(getattr(self, "_artifact_root", None) or workdir)
         )
-        effective_require_independent_review = (
-            require_independent_review or _independent_review_required_for_project_root(_proot)
+        active_vertical = str(vertical_override or "").strip()
+        active_contract = None
+        if active_vertical:
+            from ..skills.vertical_select import require_vertical
+            from ..verticals._base import load_vertical_contract
+
+            active_vertical = require_vertical(active_vertical, _proot)
+            active_contract = load_vertical_contract(
+                active_vertical,
+                project_root=_proot,
+            )
+        effective_require_independent_review = bool(
+            require_independent_review
+            or (
+                active_contract.requires_independent_review
+                if active_contract is not None
+                else _independent_review_required_for_project_root(_proot)
+            )
         )
         # 7×24 product: default to dangerous_yolo (no bwrap sandbox).
         # The operator runs the daemon on their own box and explicitly
@@ -539,6 +561,8 @@ class SkillLoopExecuteMixin:
             # Filled from the resolved vertical below.  Fail-safe default: an
             # undecided task is bounded/non-paper.
             "paper_mission": False,
+            "active_vertical": active_vertical,
+            "active_stage": str(stage_override or "").strip(),
             # Shared Markdown checkpoint in internal project state. Engineer
             # and Reviewer receive its absolute path and edit it in sequence;
             # output workdirs contain deliverables only.
@@ -587,13 +611,21 @@ class SkillLoopExecuteMixin:
         # may still opt out; True cannot turn a non-paper vertical into a paper.
         _paper_override = getattr(args, "paper_mission", None)
         _paper_allowed = True if _paper_override is None else bool(_paper_override)
-        config_kwargs["paper_mission"] = (
-            not maintenance_mission and _paper_allowed and _paper_mission_for_project_root(_proot)
+        config_kwargs["paper_mission"] = bool(
+            not maintenance_mission
+            and _paper_allowed
+            and (
+                active_contract.completion_gate == "certified"
+                if active_contract is not None
+                else _paper_mission_for_project_root(_proot)
+            )
         )
         config_kwargs["workflow_mode"] = (
             "direct"
             if maintenance_mission
-            else workflow_mode_override.strip().lower() or _workflow_mode_for_project_root(_proot)
+            else workflow_mode_override.strip().lower()
+            or (active_contract.workflow_mode if active_contract is not None else "")
+            or _workflow_mode_for_project_root(_proot)
         )
         try:
             from inspect import signature
@@ -652,7 +684,19 @@ class SkillLoopExecuteMixin:
             )
             from ..skills.vertical_select import resolve_skill_scope
 
-            active_skill_scope = resolve_skill_scope(workdir)
+            active_skill_scope = config.active_vertical or resolve_skill_scope(workdir)
+            vertical_dir = shared_skill_scope_dir(
+                global_skills_dir,
+                active_skill_scope,
+            )
+            if vertical_dir is not None and active_skill_scope:
+                from ..skills.builtins import seed_context_skills
+
+                seed_context_skills(
+                    vertical_dir,
+                    active_skill_scope,
+                    overwrite=True,
+                )
             explicit_project_skills = str(
                 os.environ.get("ARGUS_SKILL_PROJECT_SKILLS_DIR", "") or ""
             ).strip()
@@ -665,10 +709,7 @@ class SkillLoopExecuteMixin:
             skill_store = LayeredSkillStore(
                 project_dir=project_skills_dir,
                 global_dir=global_skills_dir,
-                vertical_dir=shared_skill_scope_dir(
-                    global_skills_dir,
-                    active_skill_scope,
-                ),
+                vertical_dir=vertical_dir,
             )
         ex_state.loop = self._SkillLoop(
             skills_dir=global_skills_dir,
@@ -742,7 +783,10 @@ class SkillLoopExecuteMixin:
             from ..roles.prompts.planner import preview_request
 
             planner_role_banner = resolve_role_prompt(
-                preview_request(workdir)
+                preview_request(
+                    workdir,
+                    vertical=config.active_vertical or None,
+                )
             ).role_banner
             sink.handle_event(
                 {

@@ -13,10 +13,26 @@ from typing import Any, Callable
 VERTICAL_CONTRACT_VERSION = 1
 _COMPLETION_GATES = frozenset({"none", "metric", "certified"})
 _WORKFLOW_MODES = frozenset({"staged", "direct", "proportional"})
+_MISSION_KINDS = frozenset({"custom", "optimize", "research", "software"})
 
 
 class VerticalContractError(ValueError):
     """A vertical is present but does not implement the framework contract."""
+
+
+@dataclass(frozen=True)
+class VerticalLibraryContext:
+    """Core-owned inputs for optional provider-owned Skill preparation."""
+
+    workdir: Path
+    stage: str
+    objective: str
+    direction: str
+    workflow_mode: str
+    paper_mission: bool
+    runner: Any
+    model: str | None
+    emit: Callable[[dict], None]
 
 
 @dataclass(frozen=True)
@@ -25,6 +41,8 @@ class VerticalContract:
     stage_order: tuple[str, ...]
     checklist_items: dict[str, Any]
     completion_gate: str
+    mission_kind: str = "custom"
+    ground_before_handoff: bool = False
     role_guidance: Callable[[str], str] | None = None
     evidence_schema: Any = None
     requires_independent_review: bool = False
@@ -35,6 +53,7 @@ class VerticalContract:
     stage_aliases: dict[str, str] | None = None
     search_altitude: Callable[[object], str] | None = None
     mission_prelude: Callable[[str, Path, Path], str] | None = None
+    library_preparer: Callable[[VerticalLibraryContext], None] | None = None
 
     def banner(self, role: str) -> str:
         if self.role_guidance is None:
@@ -47,6 +66,10 @@ class VerticalContract:
             return ""
         value = self.search_altitude(project_root)
         return value if isinstance(value, str) else ""
+
+    def prepare_libraries(self, context: VerticalLibraryContext) -> None:
+        if self.library_preparer is not None:
+            self.library_preparer(context)
 
     def prepare_mission(
         self,
@@ -97,6 +120,13 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         raise VerticalContractError(
             f"vertical {name!r} has unsupported workflow mode {mode!r}"
         )
+    mission_kind = str(
+        getattr(provider, "MISSION_KIND", "custom") or "custom"
+    ).strip().lower()
+    if mission_kind not in _MISSION_KINDS:
+        raise VerticalContractError(
+            f"vertical {name!r} has unsupported mission kind {mission_kind!r}"
+        )
     aliases = getattr(provider, "STAGE_ALIASES", {})
     aliases = {
         str(source).strip().lower(): str(target).strip().lower()
@@ -108,6 +138,10 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         stage_order=stage_order,
         checklist_items=checklist_items,
         completion_gate=gate,
+        mission_kind=mission_kind,
+        ground_before_handoff=bool(
+            getattr(provider, "GROUND_BEFORE_HANDOFF", False)
+        ),
         role_guidance=(
             getattr(provider, "role_banner")
             if callable(getattr(provider, "role_banner", None))
@@ -138,6 +172,11 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
             if callable(getattr(provider, "prepare_mission", None))
             else None
         ),
+        library_preparer=(
+            getattr(provider, "LIBRARY_PREPARER")
+            if callable(getattr(provider, "LIBRARY_PREPARER", None))
+            else None
+        ),
     )
 
 
@@ -145,5 +184,6 @@ __all__ = [
     "VERTICAL_CONTRACT_VERSION",
     "VerticalContract",
     "VerticalContractError",
+    "VerticalLibraryContext",
     "vertical_contract",
 ]

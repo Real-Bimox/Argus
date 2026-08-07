@@ -291,6 +291,12 @@ def test_manager_queues_private_reviewed_repair_from_real_event(
     assert item.execution_workdir == str(worktree)
     assert "framework_maintenance" in item.tags
     assert "review:required" in item.tags
+    assert item.manager_decision == {
+        "routed": True,
+        "vertical": "argus_maintenance",
+        "stage": "verify",
+        "workflow_mode": "direct",
+    }
     assert "Do not perform unrelated cleanup" in item.objective
 
 

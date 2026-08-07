@@ -496,9 +496,9 @@ def test_quant_vertical_loads_and_exposes_contract() -> None:
 def test_quant_is_a_report_vertical_not_optimize() -> None:
     # The triage layer must treat quant as a research-shaped REPORT mission, not
     # an optimize one — it produces a certified report, not a tuned number.
-    from argus_skill.manager._helpers import _OPTIMIZE_VERTICALS
+    from argus_skill.manager import Manager
 
-    assert "quant" not in _OPTIMIZE_VERTICALS
+    assert Manager._kind_for("quant") == "research"
 def test_quant_full_pipeline_checklist_is_finance_not_paper(tmp_path: Path) -> None:
     root = _project(tmp_path, "quant", current="run")
 

@@ -6,7 +6,7 @@ Domain-agnostic plumbing: decides whether a codex-spawning role runs sandboxed
 the ``--add-dir`` writable allowlist.
 
 OFF by default. Opt in with ``ARGUS_SKILL_ENGINEER_SANDBOX=workspace-write`` once
-the sandbox is verified on the box (network, ~/.cache, kube/B200 access all
+the sandbox is verified on the box (network, caches, and remote accelerator access all
 working). The default keeps existing 7x24 daemons byte-for-byte unchanged.
 
 Containment invariant: a sandboxed builder may write ONLY its project workdir
@@ -139,7 +139,7 @@ def writable_roots(*, life_root: str | os.PathLike[str] | None = None) -> list[s
         str(home / ".cache"),    # pip / HuggingFace / torch / conda caches
         str(home / ".triton"),   # Triton JIT / autotune cache (kernel work)
         str(home / ".nv"),       # NVIDIA compute cache (ptxas / nvrtc)
-        str(home / ".kube"),     # kubectl / oidc token cache (B200 access)
+        str(home / ".kube"),     # kubectl / OIDC token cache
         "/tmp",
     ]
     # NOTE: ``sys.prefix`` (the active venv) is deliberately NOT writable — its

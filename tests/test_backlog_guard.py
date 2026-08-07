@@ -51,6 +51,16 @@ def test_a_dispatched_item_is_left_alone() -> None:
     assert needs_manager_decision(_routed()) is False
 
 
+def test_manager_route_survives_backlog_serialization() -> None:
+    restored = BacklogItem.from_jsonable(_routed().to_jsonable())
+
+    assert restored.manager_decision == {
+        "routed": True,
+        "vertical": "research",
+    }
+    assert needs_manager_decision(restored) is False
+
+
 def test_a_decision_without_the_routed_flag_does_not_count() -> None:
     # Half-written metadata must not read as a routing.
     item = BacklogItem.new(title="t", objective="o", manager_decision={"vertical": "math"})

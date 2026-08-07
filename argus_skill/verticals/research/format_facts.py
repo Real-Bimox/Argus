@@ -318,7 +318,17 @@ def _layout_observations(pdf_path: Path) -> _LayoutObservations | None:
         document.close()
 
     nonempty_pages = sum(bool(text.strip()) for text in page_texts)
-    reliable = bool(page_texts) and nonempty_pages >= max(1, len(page_texts) // 2)
+    # Prefer the text fallback when layout extraction loses whole pages. Newer
+    # PyMuPDF versions can return a technically non-empty but visibly partial
+    # stream for minimal or unusual PDFs; treating half the pages as sufficient
+    # produced confident zero-section reports. Allow an occasional blank page,
+    # not systematic loss.
+    allowed_blank_pages = max(1, len(page_texts) // 10)
+    reliable = (
+        bool(page_texts)
+        and blank_pages <= allowed_blank_pages
+        and nonempty_pages >= max(1, len(page_texts) - allowed_blank_pages)
+    )
     if not reliable:
         warnings.append("layout text extraction was sparse; verify the PDF visually")
     return _LayoutObservations(

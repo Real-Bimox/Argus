@@ -82,7 +82,7 @@ class RolePromptCatalog:
         role_banner = vertical_banner
         domain = ""
         domain_banner = ""
-        if root is not None:
+        if root is not None and not str(request.vertical or "").strip():
             from ...skills.vertical_select import resolve_domain_if_decided
 
             domain = resolve_domain_if_decided(root) or ""
@@ -119,6 +119,7 @@ class RolePromptCatalog:
                 role=checklist_role.value,
                 project_root=root,
                 scope=scope,
+                vertical=vertical,
             )
         elif checklist_mode is ChecklistMode.FULL_PIPELINE:
             from ...skills.stage_machine import format_full_pipeline_checklist
@@ -126,6 +127,7 @@ class RolePromptCatalog:
             checklist = format_full_pipeline_checklist(
                 role=checklist_role.value,
                 project_root=root,
+                vertical=vertical,
             )
 
         search_altitude = (

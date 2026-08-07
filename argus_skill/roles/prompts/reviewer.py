@@ -284,6 +284,8 @@ def render_reviewer_prompt(
     engineer_call_id: str = "",
     preselected_skill_block: str | None = None,
     working_dir: str | Path | None = None,
+    vertical: str = "",
+    stage_override: str = "",
 ) -> tuple[str, str]:
     """Render the complete Reviewer prompt as ``(static_preamble, round_delta)``."""
     from ...core.project import resolve_project_root
@@ -298,17 +300,25 @@ def render_reviewer_prompt(
     # Skill body is selected or injected by the runtime.
     _proot = resolve_project_root(working_dir)
     scope_normalized = (scope or "").strip().lower().replace("-", "_")
-    prompt_context = resolve_role_prompt(evaluate_request(_proot, scope=scope_normalized))
     _persisted = _persisted_vertical(_proot)
+    routed_vertical = str(vertical or "").strip() or _persisted
+    prompt_context = resolve_role_prompt(
+        evaluate_request(
+            _proot,
+            scope=scope_normalized,
+            stage=str(stage_override or "").strip() or None,
+            vertical=routed_vertical,
+        )
+    )
     persisted_prompt_context = (
         resolve_role_prompt(
             evaluate_request(
                 _proot,
-                vertical=_persisted,
+                vertical=routed_vertical,
                 checklist_mode=ChecklistMode.NONE,
             )
         )
-        if _persisted is not None
+        if routed_vertical is not None
         else None
     )
     _requires_engineering_audit = bool(

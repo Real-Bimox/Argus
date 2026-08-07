@@ -95,15 +95,11 @@ produces a result no main-conference reviewer will believe.
    downloads fast. Verify the family is current by checking the Hugging Face
    model hub / trending / a recent open-LLM leaderboard at decision time —
    exactly as you verify framework recency.
-2. **Size the model to the hardware, not to convenience.** Read your real GPU
-   budget first with `nvidia-smi` or a project-owned probe. On a
-   multi-H200 box (hundreds of GB of aggregate VRAM) a **7B–14B** backbone
-   trains comfortably with LoRA/QLoRA, and an 8–9B model trains comfortably
-   even with full fine-tuning + FSDP/DeepSpeed-ZeRO. **The headline result must
-   use a model in at least the ~8–9B class** unless the research question is
-   specifically about small models. A 1–3B model is acceptable **only** as an
-   ablation/scaling point or a fast smoke run — never as the paper's main
-   claim when the GPUs can clearly train bigger.
+2. **Size the model to measured constraints, not convenience.** Probe the
+   actual accelerator memory and topology, then justify model size, precision,
+   optimizer state, activation/checkpointing strategy, and parallelism against
+   the research objective and measured budget. No GPU SKU or parameter-count
+   floor in a generic Skill can substitute for that project-specific evidence.
 3. **Justify the choice in writing.** `research/INFRA_CHOICE.md` (and the
    `## Infra` section of `research/EXPERIMENT_PLAN.md`) must name the exact
    backbone (org/model id + parameter count + release date), state the VRAM

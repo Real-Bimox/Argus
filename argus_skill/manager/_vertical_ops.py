@@ -21,7 +21,6 @@ from ._helpers import (
     _DEFAULT_FAST_ROUTE_MAX_PROMPT_CHARS,
     _DEFAULT_FAST_ROUTE_MAX_TASK_CHARS,
     _DEFAULT_GROUNDED_ROUTE_MAX_PROMPT_CHARS,
-    _OPTIMIZE_VERTICALS,
     _manager_backend_failure,
     _manager_fast_route_enabled,
     _manager_fast_route_min_confidence,
@@ -38,7 +37,7 @@ from .domain_author import VerticalDecision, VerticalDecisionError
 _log = logging.getLogger(__name__)
 
 
-def _software_workflow_mode(mode: str) -> str:
+def _repository_workflow_mode(mode: str) -> str:
     require_planner = (
         os.environ.get("ARGUS_SKILL_SOFTWARE_REQUIRE_PLANNER", "0")
         .strip()
@@ -51,14 +50,14 @@ def _software_workflow_mode(mode: str) -> str:
 class _VerticalDecisionMixin:
     """Mixin: vertical selection, staging, and domain-commit methods."""
 
-    def _ground_software_execution_task(
+    def _ground_execution_task(
         self,
         task: str,
         *,
         workflow_mode: str,
         root_task_id: str | None,
     ) -> str:
-        """Attach a bounded repository-grounding brief to software handoff."""
+        """Attach a bounded repository-grounding brief before code handoff."""
         from ..core.models import RunnerOptions
         from ..core.role_slots import role_call_slot
         from .stage_decider import extract_answer
@@ -69,7 +68,7 @@ class _VerticalDecisionMixin:
         prompt = (
             f"{manager_libraries.block}\n\n" if manager_libraries.block else ""
         ) + (
-            "Ground this software task with repository tools before handoff. "
+            "Ground this repository task with repository tools before handoff. "
             "Search the Manager-owned Skill paths above first and read a clearly "
             "relevant grounding Skill on demand if one exists. The tool working "
             "directory is already the repository root: use relative paths, never "
@@ -318,12 +317,18 @@ class _VerticalDecisionMixin:
                     and not fast_route.needs_grounding
                     and fast_route.confidence >= _manager_fast_route_min_confidence()
                 ):
+                    from ..verticals._base import load_vertical_contract
+
+                    contract = load_vertical_contract(
+                        fast_route.vertical,
+                        project_root=self.project_root,
+                    )
                     workflow_mode = fast_route.workflow_mode
-                    if fast_route.vertical == "software":
-                        workflow_mode = _software_workflow_mode(workflow_mode)
+                    if contract.mission_kind == "software":
+                        workflow_mode = _repository_workflow_mode(workflow_mode)
                     execution_task = task.strip()
-                    if fast_route.vertical == "software":
-                        execution_task = self._ground_software_execution_task(
+                    if contract.ground_before_handoff:
+                        execution_task = self._ground_execution_task(
                             task,
                             workflow_mode=workflow_mode,
                             root_task_id=root_task_id,
@@ -410,15 +415,23 @@ class _VerticalDecisionMixin:
                 f"Manager could not decide a vertical for task {task!r}: the "
                 "model reply was missing or not a valid existing/new choice"
             )
-        if decision.vertical == "software":
-            decision.workflow_mode = _software_workflow_mode(
-                decision.workflow_mode
+        if decision.choice == "existing":
+            from ..verticals._base import load_vertical_contract
+
+            contract = load_vertical_contract(
+                decision.vertical,
+                project_root=self.project_root,
             )
-            decision.execution_task = self._ground_software_execution_task(
-                task,
-                workflow_mode=decision.workflow_mode,
-                root_task_id=root_task_id,
-            )
+            if contract.mission_kind == "software":
+                decision.workflow_mode = _repository_workflow_mode(
+                    decision.workflow_mode
+                )
+            if contract.ground_before_handoff:
+                decision.execution_task = self._ground_execution_task(
+                    task,
+                    workflow_mode=decision.workflow_mode,
+                    root_task_id=root_task_id,
+                )
         return decision
 
     def _apply_vertical_decision_rendering(
@@ -440,14 +453,13 @@ class _VerticalDecisionMixin:
 
     @staticmethod
     def _kind_for(vertical: str) -> str:
-        """Coarse kind for a resolved vertical: optimize | research | custom."""
-        if vertical in _OPTIMIZE_VERTICALS:
-            return "optimize"
-        if vertical in ("research", "quant"):
-            return "research"
-        if vertical == "software":
-            return "software"
-        return "custom"  # a project-local (Manager-authored) data domain
+        """Return the provider-declared coarse mission kind."""
+        from ..verticals._base import load_vertical_contract
+
+        try:
+            return load_vertical_contract(vertical).mission_kind
+        except LookupError:
+            return "custom"  # project-local data domains need a project root
 
     # ---- split into the vertical's Stage template ----
     def plan_stages(self, vertical: str) -> list[str]:

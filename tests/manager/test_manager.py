@@ -61,7 +61,7 @@ def test_software_grounding_brief_is_appended_to_execution_handoff(
     runner = GroundingRunner()
     manager = Manager(project_root=tmp_path, runner=runner)
 
-    handoff = manager._ground_software_execution_task(
+    handoff = manager._ground_execution_task(
         "Repair parser behavior.",
         workflow_mode="direct",
         root_task_id="route-1",
@@ -99,7 +99,7 @@ def test_software_grounding_rejects_interrupted_partial_brief(
         project_root=tmp_path,
         runner=GroundingRunner(),
     )
-    handoff = manager._ground_software_execution_task(
+    handoff = manager._ground_execution_task(
         "Repair parser behavior.",
         workflow_mode="staged",
         root_task_id="route-1",
@@ -547,6 +547,18 @@ def test_software_planner_requirement_overrides_direct_route(
     assert decision.vertical == "software"
     assert decision.workflow_mode == "staged"
     assert "workflow_mode=staged" in runner.calls[-1]["prompt"]
+
+
+def test_argus_maintenance_uses_provider_declared_grounding(tmp_path) -> None:
+    runner = _existing("argus_maintenance")
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "Simplify Argus core while preserving recovery behavior."
+    )
+
+    assert decision.vertical == "argus_maintenance"
+    assert "## Manager project grounding" in decision.execution_task
+    assert runner.calls[-1]["run_label"] == "manager-project-grounding"
 
 
 def test_low_confidence_fast_route_escalates_once_and_preserves_original_task(

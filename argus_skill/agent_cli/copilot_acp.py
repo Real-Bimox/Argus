@@ -301,7 +301,8 @@ class CopilotAcpClient:
     # ── reader / dispatch ────────────────────────────────────────────────────
     def _reader_loop(self, proc: subprocess.Popen[str]) -> None:
         try:
-            assert proc.stdout is not None
+            if proc.stdout is None:
+                raise RuntimeError("Copilot ACP stdout pipe was not created")
             for line in proc.stdout:
                 line = line.strip()
                 if not line:

@@ -866,6 +866,11 @@ class BacklogItem:
                 if isinstance(row.get("operator_decision"), dict)
                 else {}
             ),
+            manager_decision=(
+                dict(row.get("manager_decision", {}))
+                if isinstance(row.get("manager_decision"), dict)
+                else {}
+            ),
             iterate=bool(row.get("iterate", False)),
             iteration_max_cycles=int(row.get("iteration_max_cycles", 6)),
             iteration_cycles_done=int(row.get("iteration_cycles_done", 0)),

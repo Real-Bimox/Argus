@@ -99,11 +99,16 @@ def continuous_request(
     )
 
 
-def preview_request(project_root: Path | str) -> RolePromptRequest:
+def preview_request(
+    project_root: Path | str,
+    *,
+    vertical: str | None = None,
+) -> RolePromptRequest:
     return RolePromptRequest(
         role=RoleName.PLANNER,
         operation=PLAN_PREVIEW,
         project_root=project_root,
+        vertical=vertical,
     )
 
 

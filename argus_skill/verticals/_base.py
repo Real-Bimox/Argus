@@ -113,6 +113,10 @@ def vertical_completion_gate(mod: VerticalDefinition) -> str:
     return _contract(mod).completion_gate
 
 
+def vertical_mission_kind(mod: VerticalDefinition) -> str:
+    return _contract(mod).mission_kind
+
+
 def vertical_completion_contract_version(mod: VerticalDefinition) -> int:
     """Return the optional versioned final-stage completion contract."""
     return _contract(mod).completion_contract_version
@@ -159,6 +163,7 @@ __all__ = [
     "vertical_requires_independent_review",
     "vertical_completion_contract_version",
     "vertical_completion_gate",
+    "vertical_mission_kind",
     "vertical_research_target_levels",
     "vertical_prepare_mission",
     "vertical_workflow_mode",

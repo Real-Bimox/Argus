@@ -20,7 +20,7 @@ from argus_skill.skills.builtins import (
     _validate_builtin,
     iter_builtin_skill_texts,
     iter_vertical_skill_texts,
-    remove_unmodified_inactive_vertical_skill_seeds,
+    remove_unmodified_inactive_context_skill_seeds,
     remove_unmodified_vertical_skill_seeds,
     retire_orphaned_builtin_seeds,
     seed_builtin_skills_for_vertical,
@@ -296,7 +296,7 @@ def test_remove_inactive_vertical_seeds_prunes_math_but_preserves_edits_and_acti
         encoding="utf-8",
     )
 
-    removed = remove_unmodified_inactive_vertical_skill_seeds(
+    removed = remove_unmodified_inactive_context_skill_seeds(
         tmp_path,
         "research",
     )
@@ -313,7 +313,7 @@ def test_remove_inactive_vertical_seeds_with_no_active_vertical_prunes_all(
 ) -> None:
     seed_vertical_skills(tmp_path, "math")
 
-    removed = remove_unmodified_inactive_vertical_skill_seeds(tmp_path, None)
+    removed = remove_unmodified_inactive_context_skill_seeds(tmp_path, None)
 
     assert set(removed) == MATH_SKILLS
     assert not any((tmp_path / filename).exists() for filename in MATH_SKILLS)
