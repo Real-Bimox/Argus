@@ -274,8 +274,8 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "scorer before completing run."
             ),
             evidence_hint=(
-                "`jq -r .score experiments/runs/<id>/results/<family>/scored_rows.jsonl"
-                " | sort -u | wc -l` should be > 1 per file with >3 rows"
+                "`python -m argus_skill.verticals.research.integrity_check scores` "
+                "fails on any scored_rows.jsonl whose scorer returned one value"
             ),
         ),
         ChecklistItem(
@@ -372,7 +372,11 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "ACL Anthology, DBLP, CrossRef, Semantic Scholar) — none invented "
                 "or auto-completed."
             ),
-            evidence_hint="paper/references.bib + verification log",
+            evidence_hint=(
+                "paper/references.bib + verification log; resolve mechanically "
+                "with `python -m argus_skill.verticals.research.integrity_check "
+                "citations`"
+            ),
         ),
         ChecklistItem(
             id="draft.figures",
