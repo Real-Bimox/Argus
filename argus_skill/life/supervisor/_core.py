@@ -430,6 +430,92 @@ class LifeSupervisor(
             )
         return resumed
 
+    def _adjudicate_mission_challenge(self, outcome: dict[str, Any]) -> str:
+        """Persist the Manager authority decision before Planner sees a challenge."""
+        from ...manager import adjudicate_plan_challenge
+
+        report = outcome.get("planner_report")
+        challenge = dict(outcome.get("plan_challenge") or {})
+        if not challenge:
+            decision = adjudicate_plan_challenge(
+                report if isinstance(report, dict) else {},
+                reviewer_status=str(
+                    outcome.get("review_status") or outcome.get("status") or ""
+                ),
+                review_reason=str(outcome.get("review_reason") or ""),
+                next_action=str(outcome.get("stop_reason") or ""),
+            )
+            challenge = {
+                "manager_action": decision.action,
+                "manager_reason": decision.reason,
+                "challenge": decision.challenge,
+                "alternative": decision.alternative,
+                "authority_impact": decision.authority_impact,
+                "source": decision.source,
+                "raised_at": time.time(),
+            }
+        now = time.time()
+        try:
+            raised_at = float(challenge.get("raised_at") or now)
+        except (TypeError, ValueError):
+            raised_at = now
+        challenge["adjudicated_at"] = now
+        challenge["revision_latency_seconds"] = max(0.0, now - raised_at)
+        action = str(challenge.get("manager_action") or "revise").strip().lower()
+        if action not in {"keep", "revise", "replace", "ask_operator"}:
+            action = "revise"
+        challenge["manager_action"] = action
+        outcome["plan_challenge"] = challenge
+        item_id = str(outcome.get("item_id") or "")
+        self._emit({
+            "type": EventType.LIFE_MANAGER_PLAN_CHALLENGE_DECIDED,
+            "item_id": item_id,
+            **challenge,
+            "text": (
+                f"Manager chose {action} after later evidence challenged the plan: "
+                f"{str(challenge.get('challenge') or '')[:240]}"
+            ),
+        })
+        if action == "ask_operator" and item_id:
+            try:
+                from ...core.operator_decision import build_operator_decision
+                from ...daemon.state import read_continuous_state
+
+                item = next(
+                    row for row in self.memory.backlog.all() if row.id == item_id
+                )
+                question = (
+                    "Please decide whether this operator-owned constraint may change: "
+                    + str(challenge.get("challenge") or outcome.get("review_reason") or "")
+                ).strip()
+                card = build_operator_decision(
+                    item_id=item.id,
+                    title=item.title,
+                    reason=str(challenge.get("manager_reason") or ""),
+                    question=question,
+                    recommendation="Keep the current operator-owned constraint.",
+                    project_id=self.memory.root.name,
+                    campaign_generation=read_continuous_state(
+                        self.memory.root
+                    ).generation,
+                )
+                self.memory.backlog.update(
+                    item.id,
+                    status="paused_operator",
+                    pending_question=question,
+                    operator_decision=card,
+                )
+                self._emit({
+                    "type": EventType.LIFE_OPERATOR_QUESTION_PENDING,
+                    "item_id": item.id,
+                    "title": item.title,
+                    "question": question,
+                    "agent_layer": "manager",
+                })
+            except Exception:  # noqa: BLE001 - stop path still fails closed
+                log.exception("failed to persist operator-owned plan challenge")
+        return action
+
     def run(self) -> dict[str, Any]:
         """Drive missions until a stop condition. Returns a summary."""
         results: list[dict[str, Any]] = []
@@ -626,6 +712,18 @@ class LifeSupervisor(
                 stopped_by = "auth_failure"
                 break
             if outcome.get("status") == "replan_requested":
+                manager_action = self._adjudicate_mission_challenge(outcome)
+                if manager_action == "keep":
+                    self._emit_status(
+                        "Manager retained the current plan after reviewing the challenge"
+                    )
+                    continue
+                if manager_action == "ask_operator":
+                    self._emit_status(
+                        "Manager held the challenged plan for an operator-owned decision"
+                    )
+                    stopped_by = "operator_decision_required"
+                    break
                 gate_reason = self._planner_cycle_gate_reason()
                 if gate_reason:
                     self._emit({
@@ -985,6 +1083,26 @@ class LifeSupervisor(
                 "delivery_id": event["delivery_id"],
             })
             return False
+        try:
+            from ...core.metrics import metrics_root_for_project, record_metric
+
+            record_metric(
+                metrics_root_for_project(self.memory.root),
+                "goal.planning",
+                labels={"status": str(status)},
+                fields={
+                    "delivery_id": event["delivery_id"],
+                    "project_id": self.memory.root.name,
+                    "project_done": bool(details.get("project_done", False)),
+                    "task_count": int(details.get("task_count", 0) or 0),
+                    "enqueued_tasks": int(details.get("enqueued_tasks", 0) or 0),
+                    "skipped_duplicate_tasks": int(
+                        details.get("skipped_duplicate_tasks", 0) or 0
+                    ),
+                },
+            )
+        except Exception:  # noqa: BLE001 - metrics never own planner delivery
+            log.debug("goal planning metric skipped", exc_info=True)
         try:
             record = mark_planner_verdict_delivered(self.memory.root, record)
         except OSError as exc:

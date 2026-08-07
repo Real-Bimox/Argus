@@ -359,6 +359,14 @@ def enqueue_mission(
                 node_key=node.key,
                 context_refs=context_refs,
                 acceptance_check=str(getattr(node, "acceptance_check", "") or ""),
+                plan_hypothesis=str(getattr(node, "hypothesis", "") or ""),
+                goal_contribution=str(
+                    getattr(node, "goal_contribution", "") or ""
+                ),
+                expected_regressions=str(
+                    getattr(node, "expected_regressions", "") or ""
+                ),
+                decision_rule=str(getattr(node, "decision_rule", "") or ""),
                 non_goals=list(getattr(node, "non_goals", ()) or ()),
             )
             item.original_objective = execution_body

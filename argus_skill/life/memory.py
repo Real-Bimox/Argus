@@ -736,6 +736,10 @@ class BacklogItem:
     # these fields bound completion and prevent a fresh session from reopening
     # unrelated project history.
     acceptance_check: str = ""
+    plan_hypothesis: str = ""
+    goal_contribution: str = ""
+    expected_regressions: str = ""
+    decision_rule: str = ""
     non_goals: list[str] = field(default_factory=list)
     superseded_by_plan_id: str = ""
     superseded_reason: str = ""
@@ -780,6 +784,10 @@ class BacklogItem:
         authorization_action: str = "",
         execution_workdir: str = "",
         acceptance_check: str = "",
+        plan_hypothesis: str = "",
+        goal_contribution: str = "",
+        expected_regressions: str = "",
+        decision_rule: str = "",
         non_goals: list[str] | None = None,
         original_objective: str = "",
     ) -> "BacklogItem":
@@ -810,6 +818,10 @@ class BacklogItem:
             authorization_action=str(authorization_action),
             execution_workdir=str(execution_workdir),
             acceptance_check=str(acceptance_check or "").strip(),
+            plan_hypothesis=str(plan_hypothesis or "").strip(),
+            goal_contribution=str(goal_contribution or "").strip(),
+            expected_regressions=str(expected_regressions or "").strip(),
+            decision_rule=str(decision_rule or "").strip(),
             non_goals=[
                 str(item).strip()
                 for item in (non_goals or [])
@@ -865,6 +877,10 @@ class BacklogItem:
             ],
             blocker_fingerprint=str(row.get("blocker_fingerprint", "")),
             acceptance_check=str(row.get("acceptance_check", "")),
+            plan_hypothesis=str(row.get("plan_hypothesis", "")),
+            goal_contribution=str(row.get("goal_contribution", "")),
+            expected_regressions=str(row.get("expected_regressions", "")),
+            decision_rule=str(row.get("decision_rule", "")),
             non_goals=[
                 str(item).strip()
                 for item in (row.get("non_goals", []) or [])
@@ -1420,6 +1436,12 @@ class Backlog:
                 authorization_action=blocked.authorization_action,
                 execution_workdir=blocked.execution_workdir,
                 acceptance_check=acceptance_check,
+                plan_hypothesis=(
+                    decision or blocked.plan_hypothesis
+                ),
+                goal_contribution=blocked.goal_contribution,
+                expected_regressions=blocked.expected_regressions,
+                decision_rule=blocked.decision_rule,
                 non_goals=non_goals,
             )
             blocked.status = "failed"

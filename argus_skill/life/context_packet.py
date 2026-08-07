@@ -90,6 +90,10 @@ def create_mission_context(
     objective: str,
     scope: str = "",
     acceptance_check: str = "",
+    plan_hypothesis: str = "",
+    goal_contribution: str = "",
+    expected_regressions: str = "",
+    decision_rule: str = "",
     non_goals: list[str] | None = None,
     context_refs: list[dict[str, str]] | None = None,
     plan_id: str = "",
@@ -115,6 +119,10 @@ def create_mission_context(
         "scope": str(scope or ""),
         "objective": str(objective or "").strip(),
         "acceptance_check": str(acceptance_check or "").strip(),
+        "plan_hypothesis": str(plan_hypothesis or "").strip(),
+        "goal_contribution": str(goal_contribution or "").strip(),
+        "expected_regressions": str(expected_regressions or "").strip(),
+        "decision_rule": str(decision_rule or "").strip(),
         "non_goals": [str(item).strip() for item in (non_goals or []) if str(item).strip()],
         "context_refs": [
             _model_visible_context_ref(ref)

@@ -191,6 +191,22 @@ class PlanningCycleCompletionMixin:
                         evidence=(
                             "The project has not yet received an independent final paper review."
                         ),
+                        hypothesis=(
+                            "A whole-project review can identify and close the remaining "
+                            "submission-critical gap."
+                        ),
+                        goal_contribution=(
+                            "Convert the current manuscript into an independently accepted "
+                            "final submission for the selected venue."
+                        ),
+                        expected_regressions=(
+                            "Claims, sections, or layout may be rolled back while unsupported "
+                            "material is repaired."
+                        ),
+                        decision_rule=(
+                            "Replan to the earliest deficient stage if final review finds a "
+                            "scientific or evidence gap that cannot be repaired in place."
+                        ),
                         scope=PLANNER_SCOPE_FINAL_SUBMISSION,
                         stage_closing=True,
                     )
@@ -241,6 +257,22 @@ class PlanningCycleCompletionMixin:
                             impact_score=5,
                             impact_area="requirement_gap",
                             evidence=external_gate_issue,
+                            hypothesis=(
+                                "A new evidence-backed mechanism can close the external "
+                                "controller gap without changing the gate."
+                            ),
+                            goal_contribution=(
+                                "Move the controller-owned completion result toward the "
+                                "operator's required outcome."
+                            ),
+                            expected_regressions=(
+                                "Intermediate candidates may worsen secondary metrics; "
+                                "the controller gate remains authoritative."
+                            ),
+                            decision_rule=(
+                                "Revise or abandon the mechanism when controller feedback "
+                                "shows no credible path to the required boolean."
+                            ),
                             acceptance_check=(
                                 "The configured external completion gate is controller-written "
                                 "and reports its required boolean as true."
@@ -289,6 +321,22 @@ class PlanningCycleCompletionMixin:
                             impact_score=5,
                             impact_area="requirement_gap",
                             evidence=goal_gate_issue,
+                            hypothesis=(
+                                "The remaining current-stage work can satisfy the unmet "
+                                "Goal Gate without changing the user objective."
+                            ),
+                            goal_contribution=(
+                                "Close the named stage requirement that currently prevents "
+                                "goal completion."
+                            ),
+                            expected_regressions=(
+                                "Local draft or checker status may regress while the missing "
+                                "stage evidence is repaired."
+                            ),
+                            decision_rule=(
+                                "Request replan or rollback when evidence shows the unmet "
+                                "requirement belongs to an earlier stage or a different route."
+                            ),
                             acceptance_check=(
                                 "The independent Reviewer satisfies every current-stage "
                                 "checklist item with concrete evidence and the Manager "

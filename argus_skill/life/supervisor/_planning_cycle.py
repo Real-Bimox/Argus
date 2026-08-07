@@ -85,6 +85,19 @@ class PlanningCycleMixin(
             impact_score=5,
             impact_area="throughput",
             evidence=f"live self-watched jobs: {job_ids}",
+            hypothesis=(
+                "A distinct current-stage deliverable can advance without polling "
+                "or changing the supervised background jobs."
+            ),
+            goal_contribution=(
+                "Use otherwise idle wall time on a prerequisite or deliverable that "
+                "shortens the path to the standing objective."
+            ),
+            expected_regressions="None; do not touch the in-flight jobs or their state.",
+            decision_rule=(
+                "Stop or revise if every useful current-stage action depends on the "
+                "background result."
+            ),
             scope="bounded",
             stage_closing=False,
         )

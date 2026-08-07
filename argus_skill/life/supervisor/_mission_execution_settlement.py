@@ -594,6 +594,34 @@ class MissionExecutionSettlementMixin:
             report=getattr(outcome, "final_planner_report", {}) or {},
         )
 
+        planner_report = dict(
+            getattr(outcome, "final_planner_report", {}) or {}
+        )
+        plan_challenge = dict(getattr(outcome, "plan_challenge", {}) or {})
+        try:
+            from ...core.metrics import metrics_root_for_project, record_metric
+
+            forward_progress = planner_report.get("forward_progress")
+            record_metric(
+                metrics_root_for_project(self.memory.root),
+                "goal.mission",
+                labels={"status": status},
+                fields={
+                    "project_id": self.memory.root.name,
+                    "item_id": item.id,
+                    "accepted": bool(success),
+                    "forward_progress": (
+                        forward_progress
+                        if isinstance(forward_progress, bool)
+                        else None
+                    ),
+                    "replan_requested": bool(state.replan_requested),
+                    "plan_signal": str(planner_report.get("plan_signal") or ""),
+                    "elapsed_seconds": float(state.elapsed or 0.0),
+                },
+            )
+        except Exception:  # noqa: BLE001 - metrics never own settlement
+            log.debug("goal mission metric skipped", exc_info=True)
         cost_sink = state.cost_sink
         scientist_totals = cost_sink.scientist_totals()
         scientist_usage_by_model = cost_sink.scientist_usage_by_model_snapshot()
@@ -611,6 +639,8 @@ class MissionExecutionSettlementMixin:
             "status": status,
             "outcome_class": mission_outcome_class(status=status, success=success),
             "outcome": state.outcome_dimensions,
+            "planner_report": planner_report,
+            "plan_challenge": plan_challenge,
             "rounds": state.rounds,
             "elapsed_seconds": state.elapsed,
             "cost_usd": state.usd,
@@ -714,6 +744,8 @@ class MissionExecutionSettlementMixin:
                 or getattr(outcome, "reason", "")
                 or ""
             ),
+            "planner_report": planner_report,
+            "plan_challenge": plan_challenge,
             "expected_plan_id": item.plan_id,
             "expected_plan_version": item.plan_version,
             "context_packet": (

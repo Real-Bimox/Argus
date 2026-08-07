@@ -18,6 +18,10 @@ class _Runner:
                 f"TASK_DEPS={','.join(task['deps'])}",
                 f"TASK_TITLE={task['title']}",
                 f"TASK_OBJECTIVE={task['objective']}",
+                f"TASK_HYPOTHESIS={task.get('hypothesis', 'This task tests its stated mechanism.')}",
+                f"TASK_GOAL_CONTRIBUTION={task.get('goal_contribution', 'This task advances the requested deliverable.')}",
+                f"TASK_EXPECTED_REGRESSIONS={task.get('expected_regressions', 'None expected beyond local work in progress.')}",
+                f"TASK_DECISION_RULE={task.get('decision_rule', 'Replan if the mechanism cannot satisfy the user goal.')}",
                 f"TASK_SCOPE={task.get('scope', 'bounded')}",
                 f"TASK_STAGE_CLOSING={task.get('stage_closing', 'false')}",
                 "TASK_REQUIRE_INDEPENDENT_REVIEW="
@@ -192,6 +196,10 @@ def test_bounded_planner_repairs_invalid_absolute_context_ref_once(tmp_path) -> 
         "TASK_DEPS=\n"
         "TASK_TITLE=Fix one test\n"
         "TASK_OBJECTIVE=locate and repair the failing test\n"
+        "TASK_HYPOTHESIS=The named test exposes the remaining defect.\n"
+        "TASK_GOAL_CONTRIBUTION=Restore the requested behavior.\n"
+        "TASK_EXPECTED_REGRESSIONS=The focused test may remain red during repair.\n"
+        "TASK_DECISION_RULE=Replan if the failure is outside this path.\n"
         f"TASK_CONTEXT_REFS=workspace::{tmp_path}::current workspace\n"
         "TASK_SCOPE=bounded\n"
         "TASK_STAGE_CLOSING=false\n"
@@ -220,6 +228,10 @@ def test_bounded_planner_repairs_invalid_stage_skip_contract_once(tmp_path) -> N
         "TASK_DEPS=\n"
         "TASK_TITLE=Draft outline\n"
         "TASK_OBJECTIVE=write paper/outline.md\n"
+        "TASK_HYPOTHESIS=A grounded outline is the next useful paper increment.\n"
+        "TASK_GOAL_CONTRIBUTION=Create the structure needed for the requested paper.\n"
+        "TASK_EXPECTED_REGRESSIONS=Section order may change during drafting.\n"
+        "TASK_DECISION_RULE=Replan if evidence requires a different paper structure.\n"
         "TASK_SCOPE=bounded\n"
         "TASK_STAGE_CLOSING=false\n"
         "TASK_REQUIRE_INDEPENDENT_REVIEW=false\n"

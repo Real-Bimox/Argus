@@ -65,6 +65,10 @@ export interface BacklogItem {
   orphan_retries?: number;
   deps?: string[];
   acceptance_check?: string;
+  plan_hypothesis?: string;
+  goal_contribution?: string;
+  expected_regressions?: string;
+  decision_rule?: string;
   non_goals?: string[];
   outcome?: MissionOutcomeDimensions;
 }
@@ -197,6 +201,10 @@ export interface MissionDagNode {
   branch_id: string;
   parent_branch_id: string | null;
   acceptance_check?: string;
+  plan_hypothesis?: string;
+  goal_contribution?: string;
+  expected_regressions?: string;
+  decision_rule?: string;
   non_goals?: string[];
 }
 

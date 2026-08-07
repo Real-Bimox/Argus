@@ -22,6 +22,10 @@ class BoundedDagNode:
     deps: tuple[str, ...]
     title: str
     objective: str
+    hypothesis: str = ""
+    goal_contribution: str = ""
+    expected_regressions: str = ""
+    decision_rule: str = ""
     acceptance_check: str = ""
     non_goals: tuple[str, ...] = ()
     context_refs: tuple[dict[str, str], ...] = ()
@@ -58,7 +62,9 @@ def _extract(result: Any) -> str:
 
 _PLAN_LINE = re.compile(
     r"^(?P<key>PLAN_REASON|TASK_KEY|TASK_DEPS|TASK_TITLE|TASK_OBJECTIVE|"
-    r"TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS|TASK_CONTEXT_REFS|TASK_SCOPE|"
+    r"TASK_HYPOTHESIS|TASK_GOAL_CONTRIBUTION|TASK_EXPECTED_REGRESSIONS|"
+    r"TASK_DECISION_RULE|TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS|"
+    r"TASK_CONTEXT_REFS|TASK_SCOPE|"
     r"TASK_STAGE_CLOSING|TASK_REQUIRE_INDEPENDENT_REVIEW|"
     r"TASK_SKIP_STAGE_TRANSITION)"
     r"\s*[:=]\s*(?P<value>.*)$",
@@ -83,6 +89,10 @@ def _parse_key_value_plan(text: str) -> dict[str, Any]:
         "TASK_KEY": "key",
         "TASK_TITLE": "title",
         "TASK_OBJECTIVE": "objective",
+        "TASK_HYPOTHESIS": "hypothesis",
+        "TASK_GOAL_CONTRIBUTION": "goal_contribution",
+        "TASK_EXPECTED_REGRESSIONS": "expected_regressions",
+        "TASK_DECISION_RULE": "decision_rule",
         "TASK_ACCEPTANCE_CHECK": "acceptance_check",
         "TASK_SCOPE": "scope",
     }
@@ -143,6 +153,10 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
         if not isinstance(row, dict):
             raise ValueError("planner task is not an object")
         required_controls = (
+            "hypothesis",
+            "goal_contribution",
+            "expected_regressions",
+            "decision_rule",
             "scope",
             "stage_closing",
             "require_independent_review",
@@ -153,6 +167,21 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
             raise ValueError(
                 "planner task is missing required control fields: "
                 + ", ".join(missing_controls)
+            )
+        empty_quality = [
+            field
+            for field in (
+                "hypothesis",
+                "goal_contribution",
+                "expected_regressions",
+                "decision_rule",
+            )
+            if not str(row.get(field) or "").strip()
+        ]
+        if empty_quality:
+            raise ValueError(
+                "planner task has empty mission-quality fields: "
+                + ", ".join(empty_quality)
             )
         key = str(row.get("key") or "").strip()
         title = str(row.get("title") or "").strip()
@@ -185,6 +214,12 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
                 deps=deps,
                 title=title,
                 objective=objective,
+                hypothesis=str(row.get("hypothesis") or "").strip(),
+                goal_contribution=str(row.get("goal_contribution") or "").strip(),
+                expected_regressions=str(
+                    row.get("expected_regressions") or ""
+                ).strip(),
+                decision_rule=str(row.get("decision_rule") or "").strip(),
                 acceptance_check=str(row.get("acceptance_check") or "").strip(),
                 non_goals=tuple(
                     str(item).strip()

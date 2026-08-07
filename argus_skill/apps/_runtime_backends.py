@@ -56,6 +56,8 @@ class _Outcome:
     final_review_status: str = ""
     final_review_reason: str = ""
     final_review_next_action: str = ""
+    final_planner_report: dict = field(default_factory=dict)
+    plan_challenge: dict = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

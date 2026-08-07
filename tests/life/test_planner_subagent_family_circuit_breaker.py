@@ -30,12 +30,26 @@ from argus_skill.life.supervisor._constants import (
 from argus_skill.life.supervisor._core import LifeSupervisor
 
 
+def _with_mission_quality(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines():
+        lines.append(line)
+        if line.strip().startswith("TASK_OBJECTIVE="):
+            lines.extend([
+                "TASK_HYPOTHESIS=The task tests its stated mechanism.",
+                "TASK_GOAL_CONTRIBUTION=Advance the requested project outcome.",
+                "TASK_EXPECTED_REGRESSIONS=Local checks may regress during repair.",
+                "TASK_DECISION_RULE=Replan if evidence refutes the mechanism.",
+            ])
+    return "\n".join(lines)
+
+
 class _CapturingPlannerRunner:
     """Fake planner backend that returns a fixed key-value verdict and records
     every prompt it was called with, so tests can assert on advisory text."""
 
     def __init__(self, verdict_text: str) -> None:
-        self._verdict_text = verdict_text
+        self._verdict_text = _with_mission_quality(verdict_text)
         self.prompts: list[str] = []
 
     def run_exec(self, *, prompt, options, run_label, resume_thread_id=None):

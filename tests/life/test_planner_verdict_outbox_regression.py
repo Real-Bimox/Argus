@@ -37,6 +37,20 @@ from argus_skill.skills.vertical_select import persist_vertical
 # ---------------------------------------------------------------------------
 
 
+def _with_mission_quality(text: str) -> str:
+    lines: list[str] = []
+    for line in text.splitlines():
+        lines.append(line)
+        if line.strip().startswith("TASK_OBJECTIVE="):
+            lines.extend([
+                "TASK_HYPOTHESIS=The task tests its stated mechanism.",
+                "TASK_GOAL_CONTRIBUTION=Advance the requested project outcome.",
+                "TASK_EXPECTED_REGRESSIONS=Local checks may regress during repair.",
+                "TASK_DECISION_RULE=Replan if evidence refutes the mechanism.",
+            ])
+    return "\n".join(lines)
+
+
 class _FailingSink:
     """Sink that rejects event delivery (simulates first-delivery failure)."""
 
@@ -142,7 +156,7 @@ def test_all_filtered_planned_verdict_replays_plan_retry_not_false(
                 "TASK_SKIP_STAGE_TRANSITION=false",
             ]
         )
-    verdict_text = "\n".join(verdict_lines)
+    verdict_text = _with_mission_quality("\n".join(verdict_lines))
 
     class _CountingPlannerRunner:
         def __init__(self) -> None:
@@ -370,7 +384,7 @@ def test_stale_outbox_discard_resumes_planning_and_enqueues_recovery_task(
             return RunnerResult(
                 exit_code=0,
                 agent_messages=[
-                    "\n".join(
+                    _with_mission_quality("\n".join(
                         [
                             "PROJECT_DONE=false",
                             "REASON=stale verdict was discarded; schedule concrete recovery",
@@ -389,7 +403,7 @@ def test_stale_outbox_discard_resumes_planning_and_enqueues_recovery_task(
                             "TASK_REQUIRE_INDEPENDENT_REVIEW=false",
                             "TASK_SKIP_STAGE_TRANSITION=false",
                         ]
-                    )
+                    ))
                 ],
                 stdout_lines=[],
                 stderr_lines=[],

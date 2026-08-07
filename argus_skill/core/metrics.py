@@ -283,6 +283,103 @@ def _http_status(row: dict[str, Any]) -> int:
         return 0
 
 
+def _goal_progress_snapshot(
+    rows: list[dict[str, Any]],
+    *,
+    now: float,
+) -> dict[str, Any]:
+    mission_rows = _metric_rows(rows, "goal.mission")
+    raw_planning = _metric_rows(rows, "goal.planning")
+    planning_by_delivery: dict[str, dict[str, Any]] = {}
+    for index, row in enumerate(raw_planning):
+        fields = row.get("fields", {}) if isinstance(row.get("fields"), dict) else {}
+        key = str(fields.get("delivery_id") or f"row:{index}")
+        planning_by_delivery[key] = row
+    planning_rows = list(planning_by_delivery.values())
+    project_ids = {
+        str((row.get("fields") or {}).get("project_id") or "unknown")
+        for row in [*mission_rows, *planning_rows]
+        if isinstance(row.get("fields"), dict)
+    }
+
+    def summarize(project_id: str | None) -> dict[str, Any]:
+        missions = [
+            row
+            for row in mission_rows
+            if project_id is None
+            or str((row.get("fields") or {}).get("project_id") or "unknown")
+            == project_id
+        ]
+        plans = [
+            row
+            for row in planning_rows
+            if project_id is None
+            or str((row.get("fields") or {}).get("project_id") or "unknown")
+            == project_id
+        ]
+        accepted = sum(bool((row.get("fields") or {}).get("accepted")) for row in missions)
+        progress_reports = [
+            (row.get("fields") or {}).get("forward_progress")
+            for row in missions
+            if isinstance((row.get("fields") or {}).get("forward_progress"), bool)
+        ]
+        forward = sum(value is True for value in progress_reports)
+        replans = sum(
+            bool((row.get("fields") or {}).get("replan_requested"))
+            for row in missions
+        )
+        proposed = sum(int((row.get("fields") or {}).get("task_count") or 0) for row in plans)
+        duplicates = sum(
+            int((row.get("fields") or {}).get("skipped_duplicate_tasks") or 0)
+            for row in plans
+        )
+        timestamps = [float(row.get("ts") or 0.0) for row in missions]
+        first_ts = min((value for value in timestamps if value > 0), default=0.0)
+        progress_ts = min(
+            (
+                float(row.get("ts") or 0.0)
+                for row in missions
+                if (row.get("fields") or {}).get("forward_progress") is True
+                and float(row.get("ts") or 0.0) > 0
+            ),
+            default=0.0,
+        )
+        completed = any(
+            bool((row.get("fields") or {}).get("project_done")) for row in plans
+        )
+        return {
+            "missions": len(missions),
+            "accepted": accepted,
+            "mission_acceptance_rate": accepted / len(missions) if missions else 0.0,
+            "forward_progress_reported": len(progress_reports),
+            "forward_progress_rate": (
+                forward / len(progress_reports) if progress_reports else 0.0
+            ),
+            "replans": replans,
+            "replan_rate": replans / len(missions) if missions else 0.0,
+            "planner_tasks_proposed": proposed,
+            "duplicate_tasks_skipped": duplicates,
+            "duplicate_work_rate": duplicates / proposed if proposed else 0.0,
+            "time_to_first_useful_progress_seconds": (
+                max(0.0, progress_ts - first_ts)
+                if first_ts and progress_ts
+                else None
+            ),
+            "terminal_goal_completed": completed,
+            "unfinished_goal_age_seconds": (
+                0.0 if completed or not first_ts else max(0.0, now - first_ts)
+            ),
+        }
+
+    return {
+        **summarize(None),
+        "projects": {
+            project_id: summarize(project_id)
+            for project_id in sorted(project_ids)
+        },
+    }
+
+
 def metrics_snapshot(
     *,
     root: Path | str,
@@ -339,6 +436,7 @@ def metrics_snapshot(
         float(row.get("value") or 0.0)
         for row in _metric_rows(rows, "event.validation_failure")
     ))
+    goal = _goal_progress_snapshot(rows, now=timestamp)
     if cost_control is not None:
         cost = dict(cost_control)
     else:
@@ -414,6 +512,7 @@ def metrics_snapshot(
             "p95_duration_ms": web_p95_ms,
         },
         "event_validation_failures": validation_failures,
+        "goal": goal,
         "cost_control": cost,
         "slo": {
             "status": "healthy" if not violations else "degraded",
@@ -427,6 +526,7 @@ def render_prometheus(snapshot: dict[str, Any]) -> str:
     commands = snapshot["daemon_commands"]
     web = snapshot["web"]
     cost = snapshot["cost_control"]
+    goal = snapshot.get("goal", {})
     healthy = 1 if snapshot["slo"]["status"] == "healthy" else 0
     lines = [
         "# TYPE argus_slo_healthy gauge",
@@ -449,6 +549,14 @@ def render_prometheus(snapshot: dict[str, Any]) -> str:
         f'argus_cost_unresolved_calls {cost.get("unresolved_calls", 0)}',
         "# TYPE argus_event_validation_failures_total gauge",
         f'argus_event_validation_failures_total {snapshot["event_validation_failures"]}',
+        "# TYPE argus_goal_mission_acceptance_ratio gauge",
+        f'argus_goal_mission_acceptance_ratio {goal.get("mission_acceptance_rate", 0)}',
+        "# TYPE argus_goal_forward_progress_ratio gauge",
+        f'argus_goal_forward_progress_ratio {goal.get("forward_progress_rate", 0)}',
+        "# TYPE argus_goal_replan_ratio gauge",
+        f'argus_goal_replan_ratio {goal.get("replan_rate", 0)}',
+        "# TYPE argus_goal_duplicate_work_ratio gauge",
+        f'argus_goal_duplicate_work_ratio {goal.get("duplicate_work_rate", 0)}',
     ]
     return "\n".join(lines) + "\n"
 

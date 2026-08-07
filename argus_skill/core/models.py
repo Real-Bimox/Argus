@@ -239,6 +239,14 @@ class ReviewDecision:
         plan_signal = str(report.get("plan_signal") or "").strip()
         if plan_signal:
             payload["plan_signal"] = plan_signal
+        for source_key, event_key in (
+            ("challenge", "plan_challenge"),
+            ("alternative", "plan_alternative"),
+            ("authority_impact", "authority_impact"),
+        ):
+            value = str(report.get(source_key) or "").strip()
+            if value:
+                payload[event_key] = value
         payload.update(extras)
         return payload
 

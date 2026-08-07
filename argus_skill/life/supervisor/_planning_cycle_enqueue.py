@@ -203,16 +203,32 @@ class PlanningCycleEnqueueMixin:
             sanitized_title = _sanitize_planner_task_text(task.title)
             sanitized_objective = _sanitize_planner_task_text(task.objective)
             sanitized_evidence = _sanitize_planner_task_text(task.evidence)
+            sanitized_hypothesis = _sanitize_planner_task_text(task.hypothesis)
+            sanitized_goal_contribution = _sanitize_planner_task_text(
+                task.goal_contribution
+            )
+            sanitized_expected_regressions = _sanitize_planner_task_text(
+                task.expected_regressions
+            )
+            sanitized_decision_rule = _sanitize_planner_task_text(task.decision_rule)
             if (
                 sanitized_title != task.title
                 or sanitized_objective != task.objective
                 or sanitized_evidence != task.evidence
+                or sanitized_hypothesis != task.hypothesis
+                or sanitized_goal_contribution != task.goal_contribution
+                or sanitized_expected_regressions != task.expected_regressions
+                or sanitized_decision_rule != task.decision_rule
             ):
                 task = replace(
                     task,
                     title=sanitized_title,
                     objective=sanitized_objective,
                     evidence=sanitized_evidence,
+                    hypothesis=sanitized_hypothesis,
+                    goal_contribution=sanitized_goal_contribution,
+                    expected_regressions=sanitized_expected_regressions,
+                    decision_rule=sanitized_decision_rule,
                 )
             canonical_scope = self._normalize_planner_scope(
                 getattr(task, "scope", "")
@@ -397,6 +413,14 @@ class PlanningCycleEnqueueMixin:
                     getattr(task, "blocker_fingerprint", "") or ""
                 ),
                 acceptance_check=str(getattr(task, "acceptance_check", "") or ""),
+                plan_hypothesis=str(getattr(task, "hypothesis", "") or ""),
+                goal_contribution=str(
+                    getattr(task, "goal_contribution", "") or ""
+                ),
+                expected_regressions=str(
+                    getattr(task, "expected_regressions", "") or ""
+                ),
+                decision_rule=str(getattr(task, "decision_rule", "") or ""),
                 non_goals=list(getattr(task, "non_goals", []) or []),
                 original_objective=str(
                     getattr(self.config, "continuous_objective", "") or ""
@@ -601,6 +625,8 @@ class PlanningCycleEnqueueMixin:
                         "node_key": item.node_key,
                     }
                 )
+            challenge = revision_request.get("plan_challenge")
+            challenge = challenge if isinstance(challenge, dict) else {}
             self._emit(
                 {
                     "type": EventType.LIFE_PLAN_REVISION_COMMITTED,
@@ -610,6 +636,14 @@ class PlanningCycleEnqueueMixin:
                     "new_plan_version": state.new_plan_version,
                     "superseded_item_ids": list(revision_result.superseded_ids),
                     "added_item_ids": list(revision_result.added_ids),
+                    "manager_action": str(
+                        challenge.get("manager_action") or "revise"
+                    ),
+                    "challenge": str(challenge.get("challenge") or ""),
+                    "alternative": str(challenge.get("alternative") or ""),
+                    "revision_latency_seconds": float(
+                        challenge.get("revision_latency_seconds") or 0.0
+                    ),
                 }
             )
 

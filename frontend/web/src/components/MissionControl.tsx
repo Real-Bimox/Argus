@@ -227,6 +227,30 @@ export function MissionControl({
             <div className="mt-3 rounded border border-blue/25 bg-blue/5 px-3 py-3">
               <div className="text-xs font-semibold text-blue-sky">{selectedTask.title || selectedTask.id}</div>
               {selectedTask.objective ? <p className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-ink-dim">{selectedTask.objective}</p> : null}
+              {selectedTask.plan_hypothesis ? (
+                <div className="mt-3">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">Working hypothesis · revisable</div>
+                  <p className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-ink-dim">{selectedTask.plan_hypothesis}</p>
+                </div>
+              ) : null}
+              {selectedTask.goal_contribution ? (
+                <div className="mt-3">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">Goal contribution</div>
+                  <p className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-ink-dim">{selectedTask.goal_contribution}</p>
+                </div>
+              ) : null}
+              {selectedTask.expected_regressions ? (
+                <div className="mt-3">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">Temporary regressions</div>
+                  <p className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-ink-dim">{selectedTask.expected_regressions}</p>
+                </div>
+              ) : null}
+              {selectedTask.decision_rule ? (
+                <div className="mt-3">
+                  <div className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">Revise / split / stop when</div>
+                  <p className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-ink-dim">{selectedTask.decision_rule}</p>
+                </div>
+              ) : null}
               {selectedTask.acceptance_check ? (
                 <div className="mt-3">
                   <div className="text-[10px] uppercase tracking-[0.12em] text-ink-faint">Acceptance</div>

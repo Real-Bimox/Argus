@@ -85,6 +85,7 @@ class EventType(StrEnum):
     LIFE_MANAGER_INTENT_COMPLETED = "life.manager.intent.completed"
     LIFE_MANAGER_INTENT_FAILED = "life.manager.intent.failed"
     LIFE_MANAGER_STAGE_DECISION = "life.manager.stage_decision"
+    LIFE_MANAGER_PLAN_CHALLENGE_DECIDED = "life.manager.plan_challenge.decided"
     LIFE_VERTICAL_RESOLVED = "life.vertical.resolved"
     LIFE_PLANNER_START = "life.planner.start"
     LIFE_PLANNER_TASK_ADDED = "life.planner.task_added"
@@ -230,6 +231,7 @@ SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     EventType.LIFE_MANAGER_INTENT_COMPLETED,
     EventType.LIFE_MANAGER_INTENT_FAILED,
     EventType.LIFE_MANAGER_STAGE_DECISION,
+    EventType.LIFE_MANAGER_PLAN_CHALLENGE_DECIDED,
     EventType.LIFE_VERTICAL_RESOLVED,
     EventType.LIFE_PLANNER_START,
     EventType.LIFE_PLANNER_TASK_ADDED,

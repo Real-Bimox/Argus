@@ -173,6 +173,11 @@ def _planner_task_signature(
 ) -> tuple[str, ...]:
     """Identity for deduping work, including the evidence revision it reads.
 
+    Mission-quality prose is deliberately not identity: old persisted rows do not
+    have it, and wording a new hypothesis differently must not duplicate the same
+    executable task. Dynamic plan revision already excludes the superseded active
+    plan, so a genuine replacement remains enqueueable.
+
     Title/objective-only dedup incorrectly suppresses a legitimate rerun after
     an upstream artifact changes. Stable context refs keep true duplicates
     filtered while a changed content hash creates a new acceptance unit.

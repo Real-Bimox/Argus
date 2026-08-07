@@ -144,6 +144,10 @@ def merge_mission_view_snapshot(
             "branch_id": item_id,
             "parent_branch_id": str((item.get("deps") or [""])[0] or "") or None,
             "acceptance_check": str(item.get("acceptance_check") or ""),
+            "plan_hypothesis": str(item.get("plan_hypothesis") or ""),
+            "goal_contribution": str(item.get("goal_contribution") or ""),
+            "expected_regressions": str(item.get("expected_regressions") or ""),
+            "decision_rule": str(item.get("decision_rule") or ""),
             "non_goals": [
                 str(value) for value in (item.get("non_goals") or [])
             ],

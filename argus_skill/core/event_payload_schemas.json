@@ -317,6 +317,9 @@
         "review_source": {"type": "string"},
         "forward_progress": {"type": "boolean"},
         "plan_signal": {"type": "string"},
+        "plan_challenge": {"type": "string"},
+        "plan_alternative": {"type": "string"},
+        "authority_impact": {"type": "string"},
         "text": {"type": "string"},
         "review_skipped": {"type": "boolean"},
         "prompt_block_stats": {"type": "object"},
@@ -457,6 +460,22 @@
         "kind": {"type": "string"},
         "stages": {"type": "array", "items": {"type": "string"}},
         "reason": {"type": "string"}
+      }
+    },
+    "life.manager.plan_challenge.decided": {
+      "version": 1,
+      "required": ["item_id", "manager_action", "challenge", "adjudicated_at"],
+      "properties": {
+        "item_id": {"type": "string", "minLength": 1},
+        "manager_action": {"type": "string", "enum": ["keep", "revise", "replace", "ask_operator"]},
+        "manager_reason": {"type": "string"},
+        "challenge": {"type": "string"},
+        "alternative": {"type": "string"},
+        "authority_impact": {"type": "string"},
+        "raised_at": {"type": "number"},
+        "adjudicated_at": {"type": "number"},
+        "revision_latency_seconds": {"type": "number", "minimum": 0},
+        "text": {"type": "string"}
       }
     },
     "life.inbox.drained": {

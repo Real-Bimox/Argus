@@ -24,6 +24,10 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
         scope="bounded",
         objective="Screen one candidate on public tasks.",
         acceptance_check="research/screen.json reports a binding pass/fail",
+        plan_hypothesis="The candidate screen can eliminate weak directions cheaply.",
+        goal_contribution="Reduce uncertainty before the expensive experiment.",
+        expected_regressions="Candidate count may fall sharply.",
+        decision_rule="Replace the screen if it fails to predict the binding test.",
         non_goals=["do not preregister", "do not run GPU inference"],
         context_refs=[
             {
@@ -58,6 +62,10 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
     assert mission_payload["scope"] == "bounded"
     assert mission_payload["objective"] == "Screen one candidate on public tasks."
     assert mission_payload["acceptance_check"].endswith("binding pass/fail")
+    assert mission_payload["plan_hypothesis"].startswith("The candidate screen")
+    assert mission_payload["goal_contribution"].startswith("Reduce uncertainty")
+    assert mission_payload["expected_regressions"] == "Candidate count may fall sharply."
+    assert mission_payload["decision_rule"].startswith("Replace the screen")
     assert mission_payload["non_goals"] == [
         "do not preregister",
         "do not run GPU inference",
@@ -65,7 +73,18 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
     assert mission_payload["context_refs"][0]["ref"] == "research/IDEA_CANDIDATES.md"
     assert "content_hash" not in mission_payload["context_refs"][0]
     assert (
-        not {"stage", "scope", "objective", "acceptance_check", "non_goals", "context_refs"}
+        not {
+            "stage",
+            "scope",
+            "objective",
+            "acceptance_check",
+            "plan_hypothesis",
+            "goal_contribution",
+            "expected_regressions",
+            "decision_rule",
+            "non_goals",
+            "context_refs",
+        }
         & latest.keys()
     )
     assert "sha256" not in engineer_payload["checkpoint"]

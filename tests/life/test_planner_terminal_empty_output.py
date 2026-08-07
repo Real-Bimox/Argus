@@ -118,6 +118,10 @@ class _EmptyThenTaskPlannerRunner(_EmptyPlannerThenManagerRunner):
                             "TASK_OBJECTIVE=Update planner lifecycle handling and "
                             "run the focused tests."
                         ),
+                        "TASK_HYPOTHESIS=Empty verdict recovery loses concrete next work.",
+                        "TASK_GOAL_CONTRIBUTION=Restore reliable Planner continuation.",
+                        "TASK_EXPECTED_REGRESSIONS=Planner retry status may remain noisy during repair.",
+                        "TASK_DECISION_RULE=Replan if the empty output comes from provider failure.",
                         "TASK_ACCEPTANCE_CHECK=pytest tests/planner/test_planner.py",
                         "TASK_SCOPE=bounded",
                         "TASK_STAGE_CLOSING=false",

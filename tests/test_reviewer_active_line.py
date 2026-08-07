@@ -41,10 +41,14 @@ def test_checkpoint_state_is_not_copied_into_the_prompt():
 def test_reviewer_final_handoff_requires_explicit_progress_fields():
     p = _prompt()
 
-    assert (
-        "Return exactly STATUS, REASON, NEXT_ACTION, OPERATOR_QUESTION, "
-        "CHECKPOINT_RECOMMENDED, FORWARD_PROGRESS and PLAN_SIGNAL"
-    ) in p
+    for field in (
+        "FORWARD_PROGRESS=true|false",
+        "PLAN_SIGNAL=continue|reconsider",
+        "PLAN_CHALLENGE=<invalidated plan assumption, or none>",
+        "PLAN_ALTERNATIVE=<better technical route, or none>",
+        "AUTHORITY_IMPACT=technical|manager_contract|operator",
+    ):
+        assert field in p
     assert "Return only STATUS, REASON, NEXT_ACTION and OPERATOR_QUESTION" not in p
 
 

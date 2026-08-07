@@ -14,12 +14,16 @@ from ..core.models import ReviewDecision
 
 _STATUSES = {"done", "continue", "blocked", "replan_requested"}
 _PLAN_SIGNALS = {"continue", "reconsider"}
+_AUTHORITY_IMPACTS = {"technical", "manager_contract", "operator"}
 
 
 def _planner_report(
     *,
     forward_progress: Any = None,
     plan_signal: Any = None,
+    challenge: Any = None,
+    alternative: Any = None,
+    authority_impact: Any = None,
 ) -> dict[str, Any]:
     report: dict[str, Any] = {}
     if isinstance(forward_progress, bool):
@@ -27,6 +31,15 @@ def _planner_report(
     signal = str(plan_signal or "").strip().lower()
     if signal in _PLAN_SIGNALS:
         report["plan_signal"] = signal
+    challenge_text = str(challenge or "").strip()
+    if challenge_text.casefold() not in {"", "none", "n/a", "null"}:
+        report["challenge"] = challenge_text[:2000]
+    alternative_text = str(alternative or "").strip()
+    if alternative_text.casefold() not in {"", "none", "n/a", "null"}:
+        report["alternative"] = alternative_text[:2000]
+    authority = str(authority_impact or "").strip().lower()
+    if authority in _AUTHORITY_IMPACTS:
+        report["authority_impact"] = authority
     return report
 
 
@@ -143,6 +156,9 @@ def parse_decision_text(
                     _planner_report(
                         forward_progress=raw_planner_report.get("forward_progress"),
                         plan_signal=raw_planner_report.get("plan_signal"),
+                        challenge=raw_planner_report.get("challenge"),
+                        alternative=raw_planner_report.get("alternative"),
+                        authority_impact=raw_planner_report.get("authority_impact"),
                     )
                     if isinstance(raw_planner_report, dict)
                     else {}
@@ -161,6 +177,9 @@ _VERDICT_KEYS = (
     "CHECKPOINT_RECOMMENDED",
     "FORWARD_PROGRESS",
     "PLAN_SIGNAL",
+    "PLAN_CHALLENGE",
+    "PLAN_ALTERNATIVE",
+    "AUTHORITY_IMPACT",
 )
 
 
@@ -199,6 +218,9 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
                     else None
                 ),
                 plan_signal=read_optional(values, "PLAN_SIGNAL"),
+                challenge=read_block(text, "PLAN_CHALLENGE", _VERDICT_KEYS),
+                alternative=read_block(text, "PLAN_ALTERNATIVE", _VERDICT_KEYS),
+                authority_impact=read_optional(values, "AUTHORITY_IMPACT"),
             ),
         )
     )

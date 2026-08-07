@@ -15,6 +15,7 @@ import logging
 import os
 import shutil
 import stat
+import time
 from pathlib import Path
 
 from ..core.knobs import resolve_role_reasoning_effort
@@ -1030,6 +1031,8 @@ class SkillLoopExecuteMixin:
         final_review_status = ""
         final_review_next_action = ""
         review_source = ""
+        final_planner_report: dict = {}
+        plan_challenge: dict = {}
         rounds_list = getattr(outcome, "rounds", None) or []
         if rounds_list:
             _final_review = getattr(rounds_list[-1], "review", None)
@@ -1044,6 +1047,42 @@ class SkillLoopExecuteMixin:
                 final_review_next_action = str(
                     getattr(_final_review, "next_action", "") or ""
                 ).strip()
+                raw_report = getattr(_final_review, "planner_report", {}) or {}
+                if isinstance(raw_report, dict):
+                    final_planner_report = dict(raw_report)
+                manager = getattr(self, "manager", None)
+                if manager is not None:
+                    challenge_decision = manager.adjudicate_plan_challenge(
+                        final_planner_report,
+                        reviewer_status=final_review_status,
+                        review_reason=str(
+                            getattr(_final_review, "reason", "") or ""
+                        ),
+                        next_action=final_review_next_action,
+                        operator_question=operator_question,
+                    )
+                else:
+                    from ..manager import adjudicate_plan_challenge
+
+                    challenge_decision = adjudicate_plan_challenge(
+                        final_planner_report,
+                        reviewer_status=final_review_status,
+                        review_reason=str(
+                            getattr(_final_review, "reason", "") or ""
+                        ),
+                        next_action=final_review_next_action,
+                        operator_question=operator_question,
+                    )
+                if challenge_decision.action != "keep":
+                    plan_challenge = {
+                        "manager_action": challenge_decision.action,
+                        "manager_reason": challenge_decision.reason,
+                        "challenge": challenge_decision.challenge,
+                        "alternative": challenge_decision.alternative,
+                        "authority_impact": challenge_decision.authority_impact,
+                        "source": challenge_decision.source,
+                        "raised_at": time.time(),
+                    }
         if ex_state.mission_scope == "final_submission":
             final_review = None
             if rounds_list:
@@ -1060,6 +1099,8 @@ class SkillLoopExecuteMixin:
         ex_state.final_review_status = final_review_status
         ex_state.final_review_next_action = final_review_next_action
         ex_state.review_source = review_source
+        ex_state.final_planner_report = final_planner_report
+        ex_state.plan_challenge = plan_challenge
         ex_state.final_submission_certified = final_submission_certified
         ex_state.completion_evidence = completion_evidence
 
@@ -1180,6 +1221,8 @@ class SkillLoopExecuteMixin:
                 getattr(outcome, "final_review_reason", "") or ""
             ),
             final_review_next_action=ex_state.final_review_next_action,
+            final_planner_report=ex_state.final_planner_report,
+            plan_challenge=ex_state.plan_challenge,
         )
 
     @staticmethod

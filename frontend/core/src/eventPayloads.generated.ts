@@ -232,6 +232,9 @@ export interface RoundReviewCompletedEvent extends EventMsg {
   "review_source"?: string;
   "forward_progress"?: boolean;
   "plan_signal"?: string;
+  "plan_challenge"?: string;
+  "plan_alternative"?: string;
+  "authority_impact"?: string;
   "text"?: string;
   "review_skipped"?: boolean;
   "prompt_block_stats"?: Record<string, unknown>;
@@ -324,6 +327,21 @@ export interface LifeManagerIntentCompletedEvent extends EventMsg {
   "kind": string;
   "stages": Array<string>;
   "reason"?: string;
+}
+
+export interface LifeManagerPlanChallengeDecidedEvent extends EventMsg {
+  type: "life.manager.plan_challenge.decided";
+  payload_schema_version?: 1;
+  "item_id": string;
+  "manager_action": "keep" | "revise" | "replace" | "ask_operator";
+  "manager_reason"?: string;
+  "challenge": string;
+  "alternative"?: string;
+  "authority_impact"?: string;
+  "raised_at"?: number;
+  "adjudicated_at": number;
+  "revision_latency_seconds"?: number;
+  "text"?: string;
 }
 
 export interface LifeInboxDrainedEvent extends EventMsg {
@@ -838,6 +856,7 @@ export interface EventPayloadByType {
   "life.planner.task_added": LifePlannerTaskAddedEvent;
   "life.planner.task_skipped": LifePlannerTaskSkippedEvent;
   "life.manager.intent.completed": LifeManagerIntentCompletedEvent;
+  "life.manager.plan_challenge.decided": LifeManagerPlanChallengeDecidedEvent;
   "life.inbox.drained": LifeInboxDrainedEvent;
   "life.operator_question.pending": LifeOperatorQuestionPendingEvent;
   "life.operator_question.answered": LifeOperatorQuestionAnsweredEvent;

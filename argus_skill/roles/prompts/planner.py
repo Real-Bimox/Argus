@@ -49,20 +49,20 @@ create or refine those knowledge pages under its own evidence rules.
   `replan_requested`, do not report completion; repair or replace the direction unless
   a later Reviewer explicitly certifies a valuable project thesis with `done`.
 - Credentials, paid access, irreversible actions, or scope expansion require
-  operator authority.
-- Failure capsules are analogies; timeout is not impossibility.
+  operator authority. Methods and local checks remain revisable working choices;
 - If `PROJECT_DONE=false`, do not leave an empty plan. Either report an
   intentional live wait with `WAITING=true` and a durable recheck contract, or
-  emit concrete `TASK_*` blocks (`TASK_KEY`, `TASK_TITLE`, `TASK_OBJECTIVE`, and
-  when known `TASK_ACCEPTANCE_CHECK`) for legal next work. Refs use
+  emit concrete `TASK_*` blocks for legal next work. Alongside title/objective,
+  include `TASK_HYPOTHESIS`, `TASK_GOAL_CONTRIBUTION`,
+  `TASK_EXPECTED_REGRESSIONS`, `TASK_DECISION_RULE`, and a decisive acceptance
+  check. Refs use
   `TASK_CONTEXT_REFS=kind::project/relative/path::why|...` (existing project
   files; omit if none). `TASK_SKIP_STAGE_TRANSITION=true` requires bounded +
   reviewed + `TASK_STAGE_CLOSING=false`. For a known blocker, keep one stable
   `TASK_BLOCKER_FINGERPRINT` across retries; blank otherwise. Use
   `item:<item_id>` for a failed non-resumable backlog item.
   Never fabricate work merely to satisfy this shape.
-- Natural-language progress and a final summary are allowed. End the final response
-  with plain key-value lines, not JSON or a Markdown fence. Always include:
+- End with plain key-value lines, not JSON or a Markdown fence. Include:
   `PROJECT_DONE=true|false`
   `REASON=<concise implementation and verification summary or blocker>`
   When `PROJECT_DONE=false`, include the required `WAITING_*` or `TASK_*` lines
@@ -169,6 +169,8 @@ def build_bounded_dag_prompt(objective: str) -> str:
         "`TASK_DEPS=comma,separated,keys` (empty when none), `TASK_TITLE=...`, "
         "`TASK_OBJECTIVE=...`, `TASK_IMPACT_SCORE=1..5`, "
         "`TASK_IMPACT_AREA=...`, `TASK_EVIDENCE=...`, "
+        "`TASK_HYPOTHESIS=...`, `TASK_GOAL_CONTRIBUTION=...`, "
+        "`TASK_EXPECTED_REGRESSIONS=...`, `TASK_DECISION_RULE=...`, "
         "`TASK_ACCEPTANCE_CHECK=...`, "
         "`TASK_NON_GOALS=item|item`, "
         "`TASK_CONTEXT_REFS=kind::project/relative/path::why|...`, "

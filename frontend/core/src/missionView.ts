@@ -527,6 +527,10 @@ function mergeSnapshot(view: MissionView, snapshot: Snapshot, artifacts: Artifac
       branch_id: item.id,
       parent_branch_id: item.deps?.[0] ?? null,
       acceptance_check: item.acceptance_check ?? '',
+      plan_hypothesis: item.plan_hypothesis ?? '',
+      goal_contribution: item.goal_contribution ?? '',
+      expected_regressions: item.expected_regressions ?? '',
+      decision_rule: item.decision_rule ?? '',
       non_goals: item.non_goals ?? [],
     };
     upsert(view.dag as Array<MissionDagNode & Record<string, unknown>>, 'id', node.id, node as MissionDagNode & Record<string, unknown>);

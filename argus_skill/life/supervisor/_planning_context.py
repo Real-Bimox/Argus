@@ -164,6 +164,12 @@ class PlanningContextMixin:
         scope = self._planner_scope_from_item(item)
         context_refs = [ref for ref in getattr(item, "context_refs", []) if isinstance(ref, dict)]
         acceptance_check = str(getattr(item, "acceptance_check", "") or "").strip()
+        plan_hypothesis = str(getattr(item, "plan_hypothesis", "") or "").strip()
+        goal_contribution = str(getattr(item, "goal_contribution", "") or "").strip()
+        expected_regressions = str(
+            getattr(item, "expected_regressions", "") or ""
+        ).strip()
+        decision_rule = str(getattr(item, "decision_rule", "") or "").strip()
         non_goals = [
             str(value).strip() for value in getattr(item, "non_goals", []) if str(value).strip()
         ]
@@ -173,6 +179,10 @@ class PlanningContextMixin:
             and not getattr(item, "plan_id", "")
             and not context_refs
             and not acceptance_check
+            and not plan_hypothesis
+            and not goal_contribution
+            and not expected_regressions
+            and not decision_rule
             and not non_goals
         ):
             return ""
@@ -196,6 +206,17 @@ class PlanningContextMixin:
             )
         if item.tags:
             lines.append("- tags: " + ", ".join(item.tags))
+        if plan_hypothesis:
+            lines.append("- planner_working_hypothesis: " + plan_hypothesis)
+            lines.append(
+                "  This is revisable technical strategy, not an operator-owned constraint."
+            )
+        if goal_contribution:
+            lines.append("- goal_frontier_contribution: " + goal_contribution)
+        if expected_regressions:
+            lines.append("- allowed_temporary_regressions: " + expected_regressions)
+        if decision_rule:
+            lines.append("- revise_split_or_abandon_when: " + decision_rule)
         if acceptance_check:
             lines.append("- what_good_looks_like: " + acceptance_check)
         if non_goals:

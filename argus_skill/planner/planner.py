@@ -68,6 +68,12 @@ class TaskSpec:
     impact_score: int = 0  # model-authored 0-5 priority metadata
     impact_area: str = ""
     evidence: str = ""
+    # Mission-quality context. These are Planner-authored working claims, not
+    # operator constraints; later evidence may challenge or replace them.
+    hypothesis: str = ""
+    goal_contribution: str = ""
+    expected_regressions: str = ""
+    decision_rule: str = ""
     # One decisive completion check plus explicit read-only inputs. These form
     # the canonical Planner→Engineer context packet instead of forcing every
     # fresh session to rediscover the whole project.
@@ -133,6 +139,23 @@ class PlannerVerdict:
     waiting: bool = False
     waiting_reason: str = ""
     waiting_contract: WaitingContract | None = None
+
+
+def _planner_task_quality_error(verdict: PlannerVerdict) -> str:
+    required = (
+        ("TASK_HYPOTHESIS", "hypothesis"),
+        ("TASK_GOAL_CONTRIBUTION", "goal_contribution"),
+        ("TASK_EXPECTED_REGRESSIONS", "expected_regressions"),
+        ("TASK_DECISION_RULE", "decision_rule"),
+    )
+    for index, task in enumerate(verdict.new_tasks, start=1):
+        missing = [label for label, attr in required if not str(getattr(task, attr, "") or "").strip()]
+        if missing:
+            return (
+                f"planner task {index} is missing mission-quality fields: "
+                + ", ".join(missing)
+            )
+    return ""
 
 
 class Planner:
@@ -295,12 +318,12 @@ class Planner:
                 error=f"planner backend exit {getattr(result, 'exit_code', 'unknown')}",
             )
         verdict = parse_planner_text(text)
-        rejection = verdict.error
+        rejection = verdict.error or _planner_task_quality_error(verdict)
         open_ended_done = bool(cfg.open_ended and verdict.project_done)
         if open_ended_done:
             rejection = OPEN_ENDED_PROJECT_DONE_ERROR
         repairable_metadata_error = str(rejection or "").startswith(
-            "invalid planner task metadata:"
+            ("invalid planner task metadata:", "planner task ")
         )
         if (
             rejection == NO_CONCRETE_TASKS_ERROR
@@ -387,12 +410,17 @@ class Planner:
                 )
                 continue
             repaired = parse_planner_text(text)
-            if not repaired.error and not (open_ended and repaired.project_done):
+            quality_error = _planner_task_quality_error(repaired)
+            if (
+                not repaired.error
+                and not quality_error
+                and not (open_ended and repaired.project_done)
+            ):
                 return repaired
             last_error = (
                 OPEN_ENDED_PROJECT_DONE_ERROR
                 if open_ended and repaired.project_done
-                else repaired.error
+                else repaired.error or quality_error
             )
         return PlannerVerdict(
             project_done=False,
@@ -434,6 +462,10 @@ _KEY_VALUE_KEYS = (
     "TASK_IMPACT_SCORE",
     "TASK_IMPACT_AREA",
     "TASK_EVIDENCE",
+    "TASK_HYPOTHESIS",
+    "TASK_GOAL_CONTRIBUTION",
+    "TASK_EXPECTED_REGRESSIONS",
+    "TASK_DECISION_RULE",
     "TASK_ACCEPTANCE_CHECK",
     "TASK_BLOCKER_FINGERPRINT",
     "TASK_NON_GOALS",
@@ -639,8 +671,9 @@ def _build_no_task_repair_prompt(
         "- If work remains and is legal in the current stage, end with "
         "`PROJECT_DONE=false`, `REASON=...`, and at least one concrete task block: "
         "`TASK_KEY=...`, `TASK_TITLE=...`, `TASK_OBJECTIVE=...`, "
-        "`TASK_IMPACT_SCORE=1..5`, `TASK_IMPACT_AREA=...`, and "
-        "`TASK_EVIDENCE=...`; include "
+        "`TASK_IMPACT_SCORE=1..5`, `TASK_IMPACT_AREA=...`, `TASK_EVIDENCE=...`, "
+        "`TASK_HYPOTHESIS=...`, `TASK_GOAL_CONTRIBUTION=...`, "
+        "`TASK_EXPECTED_REGRESSIONS=...`, and `TASK_DECISION_RULE=...`; include "
         "`TASK_ACCEPTANCE_CHECK=...` when a decisive check is known. For a task "
         "that targets a known blocking condition, also include a stable "
         "`TASK_BLOCKER_FINGERPRINT=...` and reuse it unchanged if the title or "
@@ -781,6 +814,12 @@ def parse_planner_text(text: str) -> PlannerVerdict:
                 impact_score=max(0, _key_value_int(row.get("TASK_IMPACT_SCORE", ""))),
                 impact_area=row.get("TASK_IMPACT_AREA", "").strip(),
                 evidence=row.get("TASK_EVIDENCE", "").strip(),
+                hypothesis=row.get("TASK_HYPOTHESIS", "").strip(),
+                goal_contribution=row.get("TASK_GOAL_CONTRIBUTION", "").strip(),
+                expected_regressions=row.get(
+                    "TASK_EXPECTED_REGRESSIONS", ""
+                ).strip(),
+                decision_rule=row.get("TASK_DECISION_RULE", "").strip(),
                 acceptance_check=row.get("TASK_ACCEPTANCE_CHECK", "").strip(),
                 blocker_fingerprint=row.get(
                     "TASK_BLOCKER_FINGERPRINT", ""

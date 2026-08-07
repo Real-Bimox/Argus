@@ -160,6 +160,10 @@ def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:
                     "TASK_OBJECTIVE=Update src/verifier.py and run pytest "
                     "tests/test_verifier.py."
                 ),
+                "TASK_HYPOTHESIS=The verifier path is the remaining defect.",
+                "TASK_GOAL_CONTRIBUTION=Restore trustworthy verification for the objective.",
+                "TASK_EXPECTED_REGRESSIONS=The focused verifier may stay red during repair.",
+                "TASK_DECISION_RULE=Replan if the failing evidence points outside this path.",
                 "TASK_ACCEPTANCE_CHECK=pytest tests/test_verifier.py",
             ]
         ),
@@ -179,6 +183,8 @@ def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:
     assert verdict.error == ""
     assert verdict.project_done is False
     assert [task.title for task in verdict.new_tasks] == ["Repair verifier path"]
+    assert verdict.new_tasks[0].hypothesis == "The verifier path is the remaining defect."
+    assert verdict.new_tasks[0].goal_contribution.startswith("Restore trustworthy")
     assert runner.calls[0]["run_label"] == "planner.cycle7"
     assert runner.calls[1]["run_label"] == "planner.cycle7.repair1"
     assert NO_CONCRETE_TASKS_ERROR in runner.calls[1]["prompt"]
@@ -186,7 +192,49 @@ def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:
         "Never return `PROJECT_DONE=false` without either `WAITING=true`"
         in runner.calls[1]["prompt"]
     )
+    assert "TASK_HYPOTHESIS=..." in runner.calls[1]["prompt"]
+    assert "TASK_GOAL_CONTRIBUTION=..." in runner.calls[1]["prompt"]
     assert runner.calls[1]["options"].working_dir == "/tmp/project"
+
+
+def test_plan_next_repairs_missing_mission_quality_context(monkeypatch) -> None:
+    runner = _SequenceRunner([
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=try the next checker",
+            "TASK_KEY=weak",
+            "TASK_TITLE=Make checker green",
+            "TASK_OBJECTIVE=Change code until the local checker passes.",
+            "TASK_ACCEPTANCE_CHECK=pytest tests/test_checker.py",
+        ]),
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=ground the checker repair in the user goal",
+            "TASK_KEY=grounded",
+            "TASK_TITLE=Repair the user-visible parser behavior",
+            "TASK_OBJECTIVE=Fix the parser defect and verify the user-visible case.",
+            "TASK_HYPOTHESIS=The parser branch drops the required user-visible value.",
+            "TASK_GOAL_CONTRIBUTION=Restore the behavior requested by the user.",
+            "TASK_EXPECTED_REGRESSIONS=The local checker may remain red during repair.",
+            "TASK_DECISION_RULE=Replan if the parser branch is not causal.",
+            "TASK_ACCEPTANCE_CHECK=Reproduce the user case, then run pytest tests/test_checker.py.",
+        ]),
+    ])
+    monkeypatch.setattr(
+        Planner,
+        "_build_planner_prompt",
+        staticmethod(lambda **kwargs: "original planner prompt"),
+    )
+
+    verdict = Planner(runner).plan_next(
+        continuous_objective="restore parser behavior",
+        config=PlannerConfig(working_dir="/tmp/project"),
+    )
+
+    assert verdict.error == ""
+    assert verdict.new_tasks[0].title == "Repair the user-visible parser behavior"
+    assert len(runner.calls) == 2
+    assert "missing mission-quality fields" in runner.calls[1]["prompt"]
 
 
 def test_plan_next_repairs_malformed_context_ref_metadata(monkeypatch) -> None:
@@ -211,6 +259,10 @@ def test_plan_next_repairs_malformed_context_ref_metadata(monkeypatch) -> None:
                 "TASK_KEY=paper-summary",
                 "TASK_TITLE=Summarize paper",
                 "TASK_OBJECTIVE=Read the supplied paper and summarize it.",
+                "TASK_HYPOTHESIS=The supplied paper can be summarized from current sources.",
+                "TASK_GOAL_CONTRIBUTION=Produce the requested grounded paper summary.",
+                "TASK_EXPECTED_REGRESSIONS=None expected; this is read-only synthesis.",
+                "TASK_DECISION_RULE=Stop and ask for sources if the referenced paper is absent.",
                 (
                     "TASK_CONTEXT_REFS=artifact::research/PIPELINE_STATE.json::"
                     "current stage"
@@ -277,6 +329,10 @@ def test_open_ended_planner_must_delegate_after_one_increment() -> None:
             "TASK_KEY=next",
             "TASK_TITLE=Remove duplicate Manager reply rows",
             "TASK_OBJECTIVE=Unify live and persisted Manager message identity.",
+            "TASK_HYPOTHESIS=Identity drift creates duplicate conversation rows.",
+            "TASK_GOAL_CONTRIBUTION=Keep the standing user conversation coherent.",
+            "TASK_EXPECTED_REGRESSIONS=Replay ordering may move while identity is unified.",
+            "TASK_DECISION_RULE=Replan if duplicate rows survive stable message ids.",
             "TASK_ACCEPTANCE_CHECK=run the focused TUI stream tests",
         ]),
     ])
