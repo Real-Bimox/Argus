@@ -27,6 +27,7 @@ from ._constants import (
 )
 from ._helpers import _normalize_planner_text
 from ._mission_execution_helpers import _MissionRunState
+from .pending_notify import notify_pending_question
 
 log = logging.getLogger(__name__)
 
@@ -469,6 +470,12 @@ class MissionExecutionSettlementMixin:
                 pending_question=operator_question,
                 operator_decision=decision_card,
             )
+            # The mission is now parked on the operator. Nobody watches a
+            # long-running daemon's portal, so tell them where they already
+            # are — otherwise the wait lasts until someone happens to look.
+            item.pending_question = operator_question
+            item.operator_decision = decision_card
+            notify_pending_question(self.memory.root, item)
         elif stage_reconciled_replan:
             self.memory.backlog.mark_failed(
                 item.id,
