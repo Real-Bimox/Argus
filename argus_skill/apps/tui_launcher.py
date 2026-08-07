@@ -178,6 +178,16 @@ def _configure_tui_backend_bin() -> None:
         os.environ["ARGUS_SKILL_BIN"] = str(sibling)
 
 
+def _needs_foreground_spawn() -> bool:
+    """Whether this platform must wait for the cockpit instead of exec-ing it.
+
+    Windows has no real exec: ``os.execv`` starts the child and exits the
+    parent, so the shell prints its next prompt while the Ink cockpit still
+    owns the console and both compete for the keyboard.
+    """
+    return os.name == "nt"
+
+
 def main(argv: list[str] | None = None) -> int:
     forwarded = list(sys.argv[1:] if argv is None else argv)
     if _uses_python_admin(forwarded):
@@ -211,8 +221,21 @@ def main(argv: list[str] | None = None) -> int:
         # The TUI must own the real frozen backend process, not an npm wrapper
         # that would leave argus-core orphaned when the ownership PID is stopped.
         os.environ["ARGUS_BINARY_MODE"] = "cli"
+    if _needs_foreground_spawn():
+        # Windows has no real exec. os.execv() there starts the child and
+        # returns/exits the parent immediately, so the shell prints its next
+        # prompt while the Ink TUI keeps running on the *same* console. Two
+        # processes then compete for the keyboard, the cursor position, and
+        # stdout, which is why typed characters land below the input box —
+        # letters and digits equally, nothing to do with input methods.
+        # Run it in the foreground and exit with its status instead.
+        try:
+            completed = subprocess.run([node, str(bundle), *forwarded], check=False)
+        except KeyboardInterrupt:
+            return 130
+        return int(completed.returncode or 0)
     os.execv(node, [node, str(bundle), *forwarded])
-    return 0  # pragma: no cover - execv replaces the process
+    return 0  # pragma: no cover - execv replaces the process on POSIX
 
 
 __all__ = ["main"]
