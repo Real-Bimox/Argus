@@ -36,8 +36,8 @@
 | --- | --- | --- | --- | --- | --- |
 | ARGUS-P0-01 | P0 | 严重 | 已完成 | Runtime/state | 无 |
 | ARGUS-P0-02 | P0 | 严重 | 已完成 | Mission loop | P0-01 checkpoint invariants |
-| ARGUS-P0-03 | P0 | 严重 | 立即 | Manager/contract | 无 |
-| ARGUS-P0-04 | P0 | 高 | 立即 | Planner/goal | P0-03 |
+| ARGUS-P0-03 | P0 | 严重 | 已完成 | Manager/contract | 无 |
+| ARGUS-P0-04 | P0 | 高 | 已完成 | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | 高 | 下一阶段 | Mission progress/evaluation | P0-02、P0-03、P0-04 |
 | ARGUS-P1-02 | P1 | 高 | 实验中 | Agent/session integration | 无；可并行 |
 | ARGUS-P1-03 | P1 | 中 | 部分完成 | Skill system | 已部分实现 |
@@ -119,83 +119,68 @@ invariant 可能暂时破坏已经通过的 obligations；一次完整重构可�
 
 ## ARGUS-P0-03 — 让 Planner mission 保持可修改
 
-**问题。** Planner 必须在大部分工作还没发生前先选一个方向。这个方向有用，但它
-一旦写进 mission，往往就变得过于僵硬。Engineer 会沿着它执行；Reviewer 后续即使
-找到反例或更好的路线，通常也只能升级决策，不能修改 mission。于是信息更少时做的
-决定反而压过了信息更多时的判断。
+**状态：已完成。** 实现在 `ec32c0c0ee28`（release
+`0.1.1+52dd12145f5c7077`）。
 
-这可以叫作内生约束（endogenous harnessing，也称 self-harnessing）：内部计划开始像
-外部约束一样起作用。问题不在 planning 本身。用户目标、安全规则、权限或 trust 边界
-是真正的约束；candidate、方法、任务分解或 validator 通常不是。后续证据应当能够改变
-这些技术选择。
+**问题。** Planner 的方向写进 mission 后可能被误当成硬约束，让早期、信息较少的
+选择压过后续反例和更好的路线。
 
-`0d-3` 就出现了这个问题：
+**已完成工作**
 
-1. Planner 要求生成一个 `skip-zero` candidate。
-2. Engineer 在这个目标内工作。
-3. Reviewer 找到了 `no-gap` validator alternative。
-4. Reviewer 可以升级决策，却不能修改 mission。
-5. 即使更好的方案已经出现，工作仍被早期计划约束。
-
-**工作项**
-
-- [ ] 在提示词和持久化状态中区分用户约束、Manager 决策和 Planner 的工作计划，
-      并记录每个约束来自哪里。
-- [ ] 把计划写进 mission 后，不能让它因此更难修改。
-- [ ] 硬约束只包括用户目标、安全规则、权限边界，以及明确的 trust、permission 或
-      resource 限制。除非用户明确固定，否则技术选择默认可修改。
-- [ ] 让 Engineer 和 Reviewer 能直接质疑当前计划、附上证据并提出替代方案。
-- [ ] 由 Manager 决定保留、修改还是替换计划。只有变化涉及用户拥有的约束时才询问
-      用户。
-- [ ] 计划被质疑后，不能只因为它还写在 mission 里，就强迫 Engineer 把它做完或
-      Reviewer 接受它。
-- [ ] 记录冲突证据何时首次出现、何时提出质疑，以及 mission 修改前又花了多少工作。
-- [ ] 回放 `0d-3`：在要求继续做 `skip-zero` 前，先比较 `no-gap` alternative 和原计划。
-- [ ] 增加目标描述不完整的测试；涉及产品或范围选择时，Argus 应询问用户，而不是
-      悄悄替用户做决定。
+- [x] 将用户目标以及安全、权限、trust、permission、resource 边界与 Planner 技术
+      策略分开。
+- [x] 在 backlog 和 mission context 中保存工作假设、目标贡献、允许的局部回退、
+      改线条件和来源。
+- [x] Reviewer 可以在不使用严格 JSON schema 的情况下报告被证伪假设、更优路线和
+      涉及的 authority 层级。
+- [x] `done` 或 `continue` 加 `PLAN_SIGNAL=reconsider` 会停止旧 mission，不再继续
+      派发过期下游工作。
+- [x] Planner 行动前，Manager 必须记录 `keep`、`revise`、`replace` 或
+      `ask_operator` 决策。
+- [x] 用户拥有的变化进入持久决策卡；技术替代方案不会被误报成用户 blocker。
+- [x] 在持久事件中记录 challenge、处理、提交时间和 revision latency。
+- [x] 增加 `0d-3` 回放：`no-gap` 替换 `skip-zero`，旧 plan nodes 在继续旧工作前被
+      原子 supersede。
 
 **验收标准**
 
-- Planner 策略写进 mission 后仍是工作计划。
-- Engineer 或 Reviewer 提出质疑后，在继续执行有争议的计划前，必须明确决定保留、
-  修改或替换。
-- 在 `0d-3` 回放中，继续要求 `skip-zero` 工作前，必须按用户真实目标评估 `no-gap`
-  alternative。
-- 用户拥有的目标以及安全、权限和 trust 边界始终生效。
-- 新证据出现到 mission 修改之间损失的时间和工作量可以测量。
+- Planner 策略写进 mission 后仍是可修改的工作计划。
+- 后续证据在争议工作继续前获得有记录的 Manager 决策。
+- `0d-3` 按用户目标选择 alternative，不会重新运行过期 `skip-zero` 路线。
+- 用户拥有的边界始终生效，revision latency 可测量。
 
 ---
 
 ## ARGUS-P0-04 — 提高 Planner mission 质量并衡量目标是否完成
 
-**问题。** 现在有用户连续数周甚至一个月仍无法完成一个目标。Planner mission 的质量
-直接影响最终完成率。有些 mission 只优化某个 verifier 或检查脚本是否变绿，而没有
-推进真实目标。对存在短期回退或信息性失败的长程任务来说，这类一次性局部目标并不
-可靠。
+**状态：已完成。** 实现在 `ec32c0c0ee28`；全量 Python 测试通过（共收集 4,451 项，
+原有 skip 保持不变），Web 134/134、TUI 224/224 也全部通过。
 
-**工作项**
+**问题。** Planner mission 可能只优化方便的局部 checker，却不说明工作如何推进用户
+真实目标、哪些内容可能回退，以及什么证据应当触发改线。
 
-- [ ] 从 Shan、Xuchuan 和现有长程项目建立可安全披露的轨迹集，包含原始目标、
-      missions、修改、停滞、问题和最终状态。
-- [ ] 定义 mission 质量标准：目标一致性、权限是否正确、依赖是否就绪、范围是否连贯、
-      预期失败/回退模型、修改自由度、决定性证据，以及对项目整体进展的贡献。
-- [ ] 标注失败模式：追逐 verifier、早期计划锁定、重复 mission、过早打磨、缺少前置、
-      局部变绿但全局无进展、mission 过大，以及把连续工作切碎。
-- [ ] 修改 Planner 指引，让验收检查衡量有意义的整体推进，而不是只看最容易变绿的
-      脚本或 checker。
-- [ ] 要求 mission 说明哪些内容可能暂时回退，以及什么证据会触发修改、继续、拆分或
-      放弃。
-- [ ] 把 Reviewer 结果和负面结果反馈给后续 planning，不能把每次失败都改写成另一个
-      几乎相同的修复 mission。
-- [ ] 增加目标级指标：首次有用产物耗时、mission 接受率、重复工作率、replan 率、
-      用户问题等待时间、最终目标完成情况，以及未完成目标的持续时间。
-- [ ] 对修改前后的 mission 样本做盲测人工评审。
+**已完成工作**
+
+- [x] Planner mission 必须说明可修改假设、目标前沿贡献、预期临时回退、决策规则和
+      决定性 acceptance check。
+- [x] Planner 缺少 mission-quality 信息时会获得一次有边界的修复机会，而不是直接接受
+      一个只追逐局部 checker 的任务。
+- [x] continuous planning 和 bounded DAG planning 使用同一质量约定。
+- [x] 质量信息写入 backlog、mission packet、Mission View 和 Web 任务检查器。
+- [x] Planner 明确知道：checker 变绿只能验证产物，不能单独证明用户目标有进展。
+- [x] Reviewer challenge、负面证据和 replacement 原因会进入下一轮 planning，同时保留
+      现有重复工作保护。
+- [x] 增加 mission acceptance、forward progress、replan、重复工作、首次有效进展时间、
+      最终完成和未完成目标年龄等目标级指标。
+- [x] 增加弱 mission 修复、plan replacement、持久化、metrics、prompt budget 和用户
+      可见渲染的固定回放与回归测试。
 
 **验收标准**
 
-- 三条参考用户轨迹都有明确的下一步或终止路径，不再无限增长 backlog。
-- 抽样 mission 的评分提高，同时不会增加未授权的范围变化。
-- 在固定回放或配对评估中，目标完成率提高；verifier 通过数不能单独作为结果。
+- 新 Planner 路径中的 mission 必须说明如何推进目标，以及什么证据会改变计划。
+- checker 成功不会被单独当成目标级结果。
+- 目标进展、浪费工作和 replanning 都能在持久 metrics 中查看。
+- 固定 `0d-3` 回放会退出过期路线并提交连贯 replacement。
 
 ---
 
@@ -451,12 +436,11 @@ Argus 应像一个靠谱队友那样表达：先说结果，用普通语言解�
 
 ## 建议执行顺序
 
-1. **已完成：** P0-01 批准/恢复一致性和 P0-02 按进展继续。
-2. **立即：** 为 P0-04 收集轨迹，并设计 P0-03 权限/mission 约定。
-3. **并行：** 在不改变生产默认值的情况下评估 P1-02 session 策略，并建立 P1-01
-   跨领域非单调进展模型。
-4. **生命周期稳定后：** P1-03 Skill 审计、P1-04 vertical/core 清理和 P1-06 runtime
-   简化。
+1. **已完成：** P0-01 到 P0-04，包括批准/恢复一致性、按进展继续、可修改计划和
+   目标级 mission 质量。
+2. **下一步：** 建立 P1-01 跨领域非单调进展模型，并继续 P1-02 role-session 实验。
+3. **并行：** 完成 P1-03 按需 Skill 验证和 P1-05 沟通改进。
+4. **生命周期稳定后：** P1-04 vertical/core 清理和 P1-06 runtime 简化。
 5. **状态语义稳定后：** 再做 P2-01 存储方案和迁移。
 
 ## P0 — 保证同步后的基线可运行

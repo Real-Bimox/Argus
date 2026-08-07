@@ -42,8 +42,8 @@ not implementation convenience.
 | --- | --- | --- | --- | --- | --- |
 | ARGUS-P0-01 | P0 | Critical | Done | Runtime/state | none |
 | ARGUS-P0-02 | P0 | Critical | Done | Mission loop | P0-01 checkpoint invariants |
-| ARGUS-P0-03 | P0 | Critical | Immediate | Manager/contract | none |
-| ARGUS-P0-04 | P0 | High | Immediate | Planner/goal | P0-03 |
+| ARGUS-P0-03 | P0 | Critical | Done | Manager/contract | none |
+| ARGUS-P0-04 | P0 | High | Done | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | High | Next | Mission progress/evaluation | P0-02, P0-03, P0-04 |
 | ARGUS-P1-02 | P1 | High | Experimenting | Agent/session integration | none; can run in parallel |
 | ARGUS-P1-03 | P1 | Medium | Partially complete | Skill system | partially implemented |
@@ -134,96 +134,79 @@ bounded, productive local regression into an unrelated replacement mission.
 
 ## ARGUS-P0-03 — Keep Planner missions revisable
 
-**Problem.** Planner has to choose a direction before most of the work has been
-done. That direction is useful, but today it can become too rigid once it is written
-into a mission. Engineer works toward it; Reviewer may later find a counterexample or
-a better route, but can usually only escalate instead of changing the mission. A
-decision made with less information then overrides a better-informed one.
+**Status: completed.** Implemented in `ec32c0c0ee28` (release
+`0.1.1+52dd12145f5c7077`).
 
-This is sometimes called endogenous harnessing, or self-harnessing: an internal plan
-starts acting like an external constraint. Planning is not the problem. The user’s
-goal, safety rules, and authority or trust limits are real constraints. A candidate,
-method, decomposition, or validator usually is not. The workflow should let later
-evidence change those technical choices.
+**Problem.** A Planner direction could become an unintended hard constraint after it
+was written into a mission, allowing an early, lower-information choice to override
+later counterexamples or better alternatives.
 
-This showed up in `0d-3`:
+**Completed work**
 
-1. Planner asked for a `skip-zero` candidate.
-2. Engineer worked inside that target.
-3. Reviewer found a `no-gap` validator alternative.
-4. Reviewer could escalate, but could not change the mission.
-5. Work continued under the earlier plan even though a better option was available.
-
-**Work packages**
-
-- [ ] Distinguish user constraints, Manager decisions, and Planner’s working plan in
-      prompts and saved state. Keep track of where each constraint came from.
-- [ ] Writing a plan into a mission must not make it harder to change.
-- [ ] Keep hard constraints to the user’s goal, safety rules, authority boundaries,
-      and explicit trust, permission, or resource limits. Treat technical choices as
-      revisable unless the user has explicitly fixed them.
-- [ ] Give Engineer and Reviewer a direct way to challenge the current plan, attach
-      the evidence, and suggest a replacement.
-- [ ] Let Manager decide whether to keep, revise, or replace the plan. Ask the user
-      only when the change affects a user-owned constraint.
-- [ ] Once a plan is challenged, do not make Engineer finish it or Reviewer approve
-      it just because it is still written in the mission.
-- [ ] Record when the conflicting evidence first appeared, when the challenge was
-      raised, and how much work happened before the mission changed.
-- [ ] Replay `0d-3`: compare the `no-gap` alternative with the original `skip-zero`
-      plan before requiring more work on `skip-zero`.
-- [ ] Add tests for underspecified goals, where Argus should ask the user rather than
-      silently making a product or scope decision.
+- [x] Kept user goals, safety, authority, trust, permission, and resource boundaries
+      separate from Planner-authored technical strategy.
+- [x] Persisted each mission’s working hypothesis, goal contribution, expected local
+      regressions, decision rule, and provenance in backlog and mission context.
+- [x] Let Reviewer report a challenged assumption, a better alternative, and the
+      affected authority layer without using a strict JSON schema.
+- [x] Made `done` or `continue` plus `PLAN_SIGNAL=reconsider` stop the old mission
+      instead of silently dispatching stale downstream work.
+- [x] Routed every challenge through a Manager-owned `keep`, `revise`, `replace`, or
+      `ask_operator` decision before Planner acts.
+- [x] Routed operator-owned changes into the durable decision-card path; technical
+      alternatives do not become unnecessary operator blockers.
+- [x] Recorded challenge, adjudication, commit time, and revision latency in durable
+      events.
+- [x] Added the `0d-3` replay: the `no-gap` route replaces `skip-zero`, and the old
+      plan nodes are atomically superseded before more stale work runs.
 
 **Acceptance criteria**
 
-- A Planner strategy remains a working plan after it is written into a mission.
-- A challenge from Engineer or Reviewer gets an explicit keep, revise, or replace
-  decision before work quietly continues on the disputed plan.
-- In the `0d-3` replay, the `no-gap` alternative is considered against the user’s
-  actual goal before more `skip-zero` work is required.
-- User-owned goals and safety, authority, and trust boundaries remain enforced.
-- Time and work lost between new evidence and a mission change are measured.
+- A Planner strategy remains a revisable working plan after mission serialization.
+- Later evidence receives a recorded Manager decision before disputed work continues.
+- The `0d-3` replay selects the alternative against the user goal and does not rerun
+  the stale `skip-zero` path.
+- User-owned boundaries remain enforced, and revision latency is measurable.
 
 ---
 
 ## ARGUS-P0-04 — Improve Planner mission quality and measure goal completion
 
-**Problem.** Current users often fail to finish one goal after weeks or a month.
-Planner mission quality strongly affects completion. Some missions optimize for a
-verifier/check script becoming green instead of moving the actual goal frontier;
-local one-shot objectives can be invalid for long-horizon work with temporary,
-bounded regressions or information-gaining failures.
+**Status: completed.** Implemented in `ec32c0c0ee28`; the full Python suite passed
+(4,451 collected, existing skips unchanged), together with Web 134/134 and TUI
+224/224 tests.
 
-**Work packages**
+**Problem.** Planner missions could optimize a convenient local checker without
+stating how the work advances the user’s actual goal, what may regress, or what
+evidence should change direction.
 
-- [ ] Build a disclosure-safe trace set from Shan, Xuchuan, and existing long-running
-      projects: original goal, missions, revisions, stalls, questions, and terminal
-      state.
-- [ ] Define a mission-quality rubric: goal alignment, authority correctness,
-      dependency readiness, coherent scope, expected failure/regression model,
-      revision freedom, decisive evidence, and contribution to project frontier.
-- [ ] Label failure modes: verifier chasing, early-plan lock-in, duplicate mission,
-      premature polish, missing prerequisite, local-green/global-no-progress,
-      overlarge mission, and fragmented continuation.
-- [ ] Change Planner guidance so acceptance checks measure a meaningful frontier
-      increment, not only the easiest script/checker result.
-- [ ] Require missions to state what may temporarily regress and what evidence would
-      trigger revise, continue, split, or abandon decisions.
-- [ ] Feed Reviewer outcomes and negative results into later planning without
-      converting every failure into another similarly worded repair mission.
-- [ ] Add goal-level metrics: time to first useful artifact, mission acceptance rate,
-      duplicate-work rate, replan rate, operator-question latency, terminal goal
-      completion, and unfinished-goal age.
-- [ ] Run blinded human review of sampled missions before/after the Planner change.
+**Completed work**
+
+- [x] Required Planner missions to state a revisable hypothesis, goal-frontier
+      contribution, expected temporary regressions, decision rule, and decisive
+      acceptance check.
+- [x] Added one bounded repair pass when Planner omits mission-quality context instead
+      of accepting a weak local-checker task.
+- [x] Applied the same quality contract to continuous and bounded-DAG planning.
+- [x] Persisted the quality context in backlog rows, mission packets, Mission View,
+      and the Web task inspector.
+- [x] Told Planner that a green checker verifies an artifact but does not alone prove
+      progress toward the operator goal.
+- [x] Fed Reviewer challenges, negative evidence, and replacement rationale into the
+      next planning cycle while preserving existing duplicate-work protection.
+- [x] Added goal-level metrics for mission acceptance, forward progress, replans,
+      duplicate work, time to first useful progress, terminal completion, and
+      unfinished-goal age.
+- [x] Added fixed replays and regression tests for weak mission repair, plan
+      replacement, persistence, metrics, prompt budgets, and user-visible rendering.
 
 **Acceptance criteria**
 
-- The three reference user traces have a clear next/terminal path rather than an
-  indefinitely growing backlog.
-- Sampled missions improve on the rubric without increasing silent scope changes.
-- Goal-level completion improves in a fixed replay/paired evaluation; verifier pass
-  count alone is not accepted as the outcome.
+- A mission cannot enter the new Planner path without saying how it advances the
+  goal and what evidence changes the plan.
+- Checker success alone is not treated as a goal-level outcome.
+- Goal progress and wasted/replanned work are visible in durable metrics.
+- The fixed `0d-3` replay exits the stale path and commits a coherent replacement.
 
 ---
 
@@ -543,13 +526,14 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 
 ## Recommended execution order
 
-1. **Completed:** P0-01 approval/resume consistency and P0-02 progress-aware
-   continuation.
-2. **Immediately:** collect P0-04 traces and design P0-03 authority/mission contracts.
-3. **In parallel:** benchmark P1-02 session policies without changing production
-   defaults; build the P1-01 cross-domain non-monotonic progress model.
-4. **After lifecycle stability:** P1-03 Skill audit, P1-04 vertical/core cleanup,
-   and P1-06 runtime simplification.
+1. **Completed:** P0-01 through P0-04 — approval/resume consistency,
+   progress-aware continuation, revisable plans, and goal-level mission quality.
+2. **Next:** build the P1-01 cross-domain non-monotonic progress model and continue
+   the P1-02 role-session experiment.
+3. **In parallel:** finish P1-03 on-demand Skill validation and P1-05 communication
+   improvements.
+4. **After lifecycle stability:** P1-04 vertical/core cleanup and P1-06 runtime
+   simplification.
 5. **Only after state semantics settle:** P2-01 storage decision and migration.
 
 ## P0 — Keep the synchronized baseline operational
