@@ -1,0 +1,121 @@
+name: tests
+
+# Argus is developed on Linux, but it is installed on laptops. Without CI on
+# the other two platforms, portability regressions are only found by users —
+# and some are invisible on Linux by construction (a Windows console uses the
+# ANSI code page, so text that prints fine here raises UnicodeEncodeError
+# there).
+#
+# Coverage is deliberately asymmetric, because the runtime itself is not fully
+# portable today: the subagent pool uses ``os.fork`` and cross-process locking
+# uses ``fcntl``, neither of which exists on Windows. Running the whole suite
+# there would be red on arrival and tell us nothing. So:
+#
+#   * Linux           — the full suite; this is the development platform.
+#   * macOS + Windows — the portable surface that must work everywhere:
+#                       the chat bridges, the pairing/QR path, and the core
+#                       helpers behind them.
+#
+# Widen PORTABLE_TESTS as modules become platform-clean.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Modules that must pass on every platform.
+  PORTABLE_TESTS: >-
+    tests/life/test_chat_render.py
+    tests/life/test_feishu_bot.py
+    tests/life/test_telegram_bot.py
+    tests/life/test_telegram_mobile.py
+    tests/webapi/test_pairing.py
+
+jobs:
+  linux:
+    name: linux · full suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[qr]'
+          python -m pip install pytest httpx jsonschema cryptography numpy pandas scipy ruff
+      - name: Lint
+        run: python -m ruff check argus_skill tests
+      - name: Test
+        run: python -m pytest -q
+
+  portable:
+    name: ${{ matrix.os }} · portable surface
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[qr]'
+          python -m pip install pytest
+      - name: Test portable surface
+        run: python -m pytest -q ${{ env.PORTABLE_TESTS }}
+
+      # The pairing banner is written to stderr, which on Windows uses the ANSI
+      # code page (cp1252/cp936) whenever output is redirected — not UTF-8.
+      # Printing a QR code there used to raise UnicodeEncodeError and abort
+      # `--web` outright, and no amount of Linux testing would show it. Assert
+      # the real redirected path, not just the unit tests.
+      - name: Pairing banner survives a redirected console
+        shell: bash
+        run: |
+          python -c "
+          import sys
+          from argus_skill.webapi.pairing import pairing_plan
+          plan = pairing_plan('0.0.0.0', 8799, lan_address='192.168.1.50')
+          sys.stderr.write(plan.banner)
+          assert plan.url.startswith('http://192.168.1.50:8799/?token='), plan.url
+          print('pairing banner OK on', sys.platform, '/', sys.stderr.encoding)
+          " > banner.log 2>&1
+          cat banner.log
+
+  frontend:
+    name: frontend · web + cockpit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          npm --prefix frontend/web ci
+          npm --prefix frontend/tui ci
+      - name: Typecheck web
+        run: npm --prefix frontend/web run typecheck
+      - name: Test web
+        run: npm --prefix frontend/web test
+      - name: Test cockpit
+        run: npm --prefix frontend/tui test

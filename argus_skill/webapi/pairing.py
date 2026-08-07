@@ -27,15 +27,19 @@ import io
 import os
 import secrets
 import socket
+import sys
 from dataclasses import dataclass
+from typing import Any
 
 __all__ = [
     "PairingPlan",
+    "encodable",
     "insecure_bind_allowed",
     "is_loopback_host",
     "pairing_plan",
     "primary_lan_address",
     "render_qr",
+    "stream_encoding",
 ]
 
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", ""}
@@ -74,12 +78,36 @@ def primary_lan_address() -> str:
         sock.close()
 
 
-def render_qr(text: str) -> str:
+def stream_encoding(stream: Any = None) -> str:
+    """Encoding the operator's terminal will actually use.
+
+    On Windows this is the ANSI code page (cp1252, cp936, …) whenever output
+    is redirected to a file or pipe, not UTF-8 — writing a QR code there
+    raises ``UnicodeEncodeError`` and takes down the whole ``--web`` command.
+    """
+    target = stream if stream is not None else sys.stderr
+    return str(getattr(target, "encoding", "") or "utf-8")
+
+
+def encodable(text: str, encoding: str) -> bool:
+    """Whether *text* survives *encoding* intact."""
+    try:
+        text.encode(encoding, errors="strict")
+        return True
+    except (UnicodeEncodeError, LookupError):
+        return False
+
+
+def render_qr(text: str, *, encoding: str | None = None) -> str:
     """Render *text* as a terminal QR code, or return ``""`` if unavailable.
 
     Inverted so the light modules use the terminal foreground: the common case
     is a dark terminal, where printing dark modules as blocks would give a
     scanner reversed contrast.
+
+    Returns ``""`` when the target encoding cannot carry the block characters.
+    A QR printed with ``?`` substituted for every white module does not scan,
+    so a missing code is strictly better than a corrupted one.
     """
     try:
         import qrcode
@@ -91,9 +119,12 @@ def render_qr(text: str) -> str:
         code.make(fit=True)
         buffer = io.StringIO()
         code.print_ascii(out=buffer, invert=True)
-        return buffer.getvalue().rstrip("\n")
+        art = buffer.getvalue().rstrip("\n")
     except Exception:  # noqa: BLE001 - a missing QR must never block serving
         return ""
+    if encoding and not encodable(art, encoding):
+        return ""
+    return art
 
 
 @dataclass(frozen=True)
@@ -118,14 +149,22 @@ def pairing_plan(
     *,
     token: str | None = None,
     lan_address: str | None = None,
+    encoding: str | None = None,
 ) -> PairingPlan:
     """Decide the token and pairing message for a ``--web`` run.
 
-    ``token`` defaults to ``ARGUS_SKILL_WEB_TOKEN``. ``lan_address`` is
-    injectable so the decision is testable without touching the network.
+    ``token`` defaults to ``ARGUS_SKILL_WEB_TOKEN``. ``lan_address`` and
+    ``encoding`` are injectable so the decision is testable without touching
+    the network or the real terminal.
+
+    The banner is ASCII apart from the QR block characters, and the QR is
+    dropped when the terminal encoding cannot carry it — a Windows console
+    redirected to a file uses the ANSI code page, where a stray ``->`` arrow
+    or a block glyph would raise ``UnicodeEncodeError`` and abort serving.
     """
     configured = (token if token is not None else os.environ.get("ARGUS_SKILL_WEB_TOKEN", "")) or ""
     configured = configured.strip()
+    target_encoding = encoding or stream_encoding()
 
     if is_loopback_host(host):
         # Only reachable from this machine; a token stays optional.
@@ -157,7 +196,7 @@ def pairing_plan(
 
     lines = [
         "",
-        f"  Argus web UI  →  {url}",
+        f"  Argus web UI  ->  {url}",
     ]
     if minted:
         lines += [
@@ -172,9 +211,18 @@ def pairing_plan(
             "  is set. Anyone who can reach this port controls the daemon.",
         ]
 
-    qr = render_qr(url)
+    qr_art = render_qr(url)
+    qr = qr_art if (qr_art and encodable(qr_art, target_encoding)) else ""
     if qr:
         lines += ["", "  Scan to open on your phone:", "", qr]
+    elif qr_art:
+        # Rendered fine, but this terminal would mangle it into something
+        # unscannable — say which encoding, so the fix is obvious.
+        lines += [
+            "",
+            f"  (terminal encoding {target_encoding} cannot show a QR code; "
+            "open the URL above)",
+        ]
     elif effective:
         lines += [
             "",

@@ -5,6 +5,8 @@ served unauthenticated unless the operator explicitly asked for that.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from argus_skill.webapi.pairing import (
@@ -181,3 +183,64 @@ def test_pair_plan_marks_a_loopback_bind_as_needing_no_pairing(capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["pairing"] is False
     assert payload["token"] == ""
+
+
+# -- terminal encoding (Windows) --------------------------------------------
+
+WINDOWS_ENCODINGS = ["cp1252", "cp936", "cp932", "ascii"]
+
+
+@pytest.mark.parametrize("encoding", WINDOWS_ENCODINGS + ["utf-8"])
+def test_banner_survives_the_terminal_encoding(encoding) -> None:
+    """A Windows console redirected to a file uses the ANSI code page.
+
+    The banner used to carry a U+2192 arrow, and the QR uses U+00A0 plus block
+    glyphs; writing either to a cp1252/cp936 stream raises UnicodeEncodeError
+    and aborts `--web` entirely.
+    """
+    import io
+
+    plan = _plan(encoding=encoding)
+    stream = io.TextIOWrapper(io.BytesIO(), encoding=encoding, errors="strict")
+
+    stream.write(plan.banner)   # must not raise
+    stream.flush()
+
+
+@pytest.mark.parametrize("encoding", WINDOWS_ENCODINGS)
+def test_qr_is_dropped_when_the_terminal_cannot_render_it(encoding) -> None:
+    plan = _plan(encoding=encoding)
+
+    # A QR with '?' substituted for every white module does not scan; no QR
+    # beats a corrupted one, and the URL is still right there.
+    assert plan.qr == ""
+    assert "cannot show a QR code" in plan.banner
+    assert plan.url in plan.banner
+
+
+def test_qr_is_kept_on_a_utf8_terminal() -> None:
+    plan = _plan(encoding="utf-8")
+
+    assert plan.qr
+    assert "Scan to open on your phone" in plan.banner
+
+
+def test_banner_body_is_ascii_apart_from_the_qr() -> None:
+    plan = _plan(encoding="ascii")
+
+    plan.banner.encode("ascii")  # must not raise
+
+
+def test_stream_encoding_falls_back_when_unknown() -> None:
+    from argus_skill.webapi.pairing import stream_encoding
+
+    assert stream_encoding(SimpleNamespace(encoding=None)) == "utf-8"
+    assert stream_encoding(SimpleNamespace(encoding="cp936")) == "cp936"
+
+
+def test_encodable_rejects_unknown_codecs() -> None:
+    from argus_skill.webapi.pairing import encodable
+
+    assert encodable("plain", "utf-8") is True
+    assert encodable("→", "cp1252") is False
+    assert encodable("x", "not-a-real-codec") is False
