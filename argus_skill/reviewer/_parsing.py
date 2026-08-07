@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from ..core.model_visible_text import (
@@ -195,6 +196,13 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
 
     values = read_key_values(text, _VERDICT_KEYS)
     status = str(values.get("STATUS") or "").strip().lower()
+    if status not in _STATUSES:
+        natural = re.search(
+            r"(?im)^\s*(?:verdict|decision)\s*[:=]\s*`?"
+            r"(done|continue|blocked|replan_requested)\b",
+            text,
+        )
+        status = natural.group(1).lower() if natural else ""
     if status not in _STATUSES:
         return None
     reason = read_block(text, "REASON", _VERDICT_KEYS)

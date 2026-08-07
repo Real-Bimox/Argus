@@ -42,15 +42,35 @@ class RoundPromptMixin:
         include_static = (
             round_index == 1
             or not supervised_config.compact_continuation_prompts
+            or (
+                role_session.policy != "fresh"
+                and role_session.action in {"fresh", "rotated"}
+            )
         )
         engineer_prompt = engineer_prompt_builder(
             reviewer_next_action,
             include_static,
         )
+        rotation_block = ""
+        if (
+            round_index > 1
+            and role_session.policy != "fresh"
+            and role_session.action in {"fresh", "rotated"}
+        ):
+            rotation_block = (
+                "## Session rotation — continue the current mission stage\n"
+                f"This is mission round {round_index}, not round 1. Provider context "
+                "was rotated; do not restart a staged protocol or repeat completed "
+                "work. The Reviewer guidance in this prompt is the approval for the "
+                "current step: execute it now and do not yield to ask for that "
+                "approval again. Read the canonical checkpoint and latest reviewed "
+                "handoff below first."
+            )
         checkpoint_block = "\n\n".join(
             block
             for block in (
                 role_session.prompt_block(),
+                rotation_block,
                 shared_checkpoint_instructions(
                     checkpoint_path,
                     role="engineer",

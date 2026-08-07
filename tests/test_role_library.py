@@ -23,6 +23,7 @@ def test_role_receives_path_without_matcher_call_or_content(tmp_path: Path) -> N
 
     assert str(root.resolve()) in result.block
     assert "PRIVATE BODY" not in result.block
+    assert "Leave every non-fitting body unopened" in result.block
     assert backend.history == []
 
 

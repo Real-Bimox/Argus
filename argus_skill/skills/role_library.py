@@ -62,20 +62,16 @@ def render_skill_library_paths(skill_store: object | None, *, role: str) -> str:
         )
     return (
         "## Skill libraries (on-demand)\n"
-        f"Role: {role}\n"
-        "Precedence is the order below: project before active vertical/domain "
-        "before shared global. Within one library, OWN guidance outranks "
-        "REFERENCE guidance from another role.\n"
+        f"Role: {role}. Order: project → vertical/domain → global; OWN > REFERENCE.\n"
         + "\n".join(lines)
-        + "\n\nSearch filenames and frontmatter with your file tools only when reusable "
-        "prior guidance may materially help. Read a Skill body only after its "
-        "description clearly fits; a wrong Skill is worse than no Skill. Files "
-        "created under these roots are available immediately. The task, current "
-        "evidence, and role boundaries override every Skill. The paths are the "
-        "portable fallback when a backend has no compatible native Skill loader; "
-        "do not expect bodies to be copied into this prompt. Mutable facts in a "
-        "Skill (paths, hosts, credentials, allocations, or service health) require "
-        "a fresh probe before use."
+        + "\n\nNative-loader descriptions may already be visible. Before repository "
+        "work, read each clearly matching Skill body; otherwise inspect "
+        "names/frontmatter only when reusable procedure could help. Leave every "
+        "non-fitting body unopened; never "
+        "scan all bodies or open a neighbor because another matched. A wrong Skill "
+        "is worse than none. Task, evidence, "
+        "and role boundaries override Skills. These paths are the portable fallback; "
+        "bodies are not injected. Re-probe mutable facts before use."
     )
 
 

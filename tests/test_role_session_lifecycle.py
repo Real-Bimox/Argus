@@ -173,6 +173,18 @@ def test_rolling_policy_rotates_at_the_turn_limit(tmp_path: Path) -> None:
     ).run("implement the change", workdir=tmp_path)
 
     assert outcome.successful
+    engineer_prompts = [
+        prompt for label, prompt, _options in backend.history
+        if label.startswith("engineer-")
+    ]
+    assert all("## Current mission task" in prompt for prompt in engineer_prompts)
+    assert "This is mission round 2, not round 1" in engineer_prompts[1]
+    assert "do not yield to ask for that approval again" in engineer_prompts[1]
+    reviewer_prompts = [
+        prompt for label, prompt, _options in backend.history if label == "reviewer"
+    ]
+    assert "This is Reviewer round 2, not round 1" in reviewer_prompts[1]
+    assert "Do not reenact an earlier Engineer stage" in reviewer_prompts[1]
     assert [
         thread
         for label, thread in backend.resume_history

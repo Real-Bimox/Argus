@@ -49,9 +49,12 @@ def shared_checkpoint_instructions(path: Path | None, *, role: str) -> str:
             "directly update current state, evidence paths, blockers, and open questions."
         )
     return (
-        "## Shared checkpoint — edit the file directly\n"
+        "## Shared checkpoint — edit the file directly using these exact absolute paths\n"
         f"Canonical context packet: `{packet}`\n"
         f"Human-editable projection: `{checkpoint}`\n\n"
+        "Use these absolute paths verbatim for every read and edit. Never create or "
+        "use a relative `state/`, `handoffs/`, `latest.json`, or `CHECKPOINT.md` "
+        "copy inside the worktree; such a copy is not runtime state.\n\n"
         "Read the index first. If its `kind` is `mission_context`, the immutable "
         "objective/acceptance contract is inline because no role handoff exists "
         "yet. If its `kind` is `handoff_ref`, open `handoff.path` for the latest "

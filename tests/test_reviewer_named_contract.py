@@ -30,6 +30,19 @@ def test_named_verdict_fails_closed_without_status_or_reason() -> None:
     assert parse_decision_text("STATUS=done\nREASON=\nNEXT_ACTION=") is None
 
 
+def test_natural_verdict_label_recovers_a_missing_status_line() -> None:
+    decision = parse_decision_text(
+        "Verdict: continue.\n"
+        "REASON=The final implementation step remains.\n"
+        "NEXT_ACTION=Finish the current step.\n"
+        "OPERATOR_QUESTION=none\n"
+    )
+
+    assert decision is not None
+    assert decision.status == "continue"
+    assert decision.next_action == "Finish the current step."
+
+
 def test_legacy_json_verdict_still_parses_for_inflight_sessions() -> None:
     decision = parse_decision_text(
         '{"status":"blocked","reason":"Need operator input.",'

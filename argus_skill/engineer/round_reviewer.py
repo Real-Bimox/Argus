@@ -119,10 +119,30 @@ class RoundReviewerMixin:
             else None
         )
         capsule_block = reviewer_session.prompt_block() if reviewer_session else ""
-        if capsule_block:
-            reviewer_background_context = "\n\n".join(
-                part for part in (capsule_block, reviewer_background_context) if part
+        rotation_block = ""
+        if (
+            reviewer_session is not None
+            and round_index > 1
+            and reviewer_session.policy != "fresh"
+            and reviewer_session.action in {"fresh", "rotated"}
+        ):
+            rotation_block = (
+                "## Reviewer session rotation — judge the current round\n"
+                f"This is Reviewer round {round_index}, not round 1. Provider context "
+                "was rotated. Do not reenact an earlier Engineer stage, create its "
+                "artifacts, or ask for an approval already recorded in the canonical "
+                "checkpoint. Verify the current Engineer summary and artifacts, then "
+                "return the verdict for this round."
             )
+        reviewer_background_context = "\n\n".join(
+            part
+            for part in (
+                capsule_block,
+                rotation_block,
+                reviewer_background_context,
+            )
+            if part
+        )
         started_at = time.monotonic()
         try:
             review = self.reviewer.evaluate(
