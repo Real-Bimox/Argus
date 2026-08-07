@@ -315,6 +315,8 @@
         "next_action": {"type": "string"},
         "operator_question": {"type": "string"},
         "review_source": {"type": "string"},
+        "forward_progress": {"type": "boolean"},
+        "plan_signal": {"type": "string"},
         "text": {"type": "string"},
         "review_skipped": {"type": "boolean"},
         "prompt_block_stats": {"type": "object"},
@@ -482,7 +484,11 @@
         "item_id": {"type": "string", "minLength": 1},
         "continuation_item_id": {"type": "string", "minLength": 1},
         "question": {"type": "string", "minLength": 1},
-        "manager_decision": {"type": "string", "minLength": 1}
+        "manager_decision": {"type": "string", "minLength": 1},
+        "decision_id": {"type": "string"},
+        "decision_revision": {"type": ["integer", "null"], "minimum": 1},
+        "campaign_generation": {"type": ["integer", "null"], "minimum": 0},
+        "stopped": {"type": "boolean"}
       }
     },
     "engineer.progress": {

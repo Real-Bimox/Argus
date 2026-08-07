@@ -124,6 +124,143 @@ def _parse_pending_question_decision(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _decision_stale(reason: str) -> dict[str, Any]:
+    return {
+        "error": f"stale decision: {reason}",
+        "application_status": "stale",
+    }
+
+
+def _resolved_decision_replay(
+    mem: Any,
+    item: Any,
+    *,
+    decision_id: str,
+    option_id: str,
+    note: str,
+    expected_revision: int | None,
+) -> dict[str, Any] | None:
+    """Return an idempotent result for the exact choice already on disk."""
+    card = item.operator_decision
+    if str(card.get("status") or "") != "resolved":
+        return None
+    resolved_from = int(
+        card.get("resolved_from_revision", int(card.get("revision", 1) or 1) - 1)
+        or 0
+    )
+    same_request = (
+        str(card.get("id") or "") == decision_id
+        and str(card.get("selected_option") or "") == option_id
+        and str(card.get("note") or "").strip() == note.strip()
+        and (
+            expected_revision is None
+            or resolved_from == int(expected_revision)
+        )
+    )
+    if not same_request:
+        return _decision_stale("another choice or revision was already applied")
+    continuation_id = str(card.get("continuation_item_id") or "").strip()
+    continuation = next(
+        (row for row in mem.backlog.all() if row.id == continuation_id),
+        None,
+    ) if continuation_id else None
+    if option_id != "stop" and continuation is None:
+        return {
+            "error": "resolved decision is missing its continuation item",
+            "application_status": "stale",
+        }
+    result: dict[str, Any] = {
+        "answered_item_id": item.id,
+        "decision_id": decision_id,
+        "resolved": True,
+        "application_status": "already_applied",
+        "resolution_id": str(card.get("resolution_id") or ""),
+        "resume_requested": bool(card.get("resume_requested", option_id != "stop")),
+        "reply": str(card.get("reply") or "").strip()
+        or (
+            "Campaign stopped. Current work was preserved."
+            if option_id == "stop"
+            else "This decision was already delivered to the team."
+        ),
+    }
+    if option_id == "stop":
+        result["stopped"] = True
+    else:
+        result["manager_decision"] = str(card.get("manager_decision") or "")
+        result["item"] = continuation.to_jsonable()
+    return result
+
+
+def _pending_decision_conflict(
+    mem: Any,
+    item: Any,
+    *,
+    sid: str,
+    decision_id: str,
+    expected_revision: int | None,
+) -> dict[str, Any] | None:
+    """Validate the full decision identity before any model call or mutation."""
+    from ..daemon.state import read_continuous_state
+
+    card = item.operator_decision
+    if str(card.get("id") or "") != decision_id:
+        return _decision_stale("decision identity changed")
+    if str(card.get("status") or "") != "pending":
+        return _decision_stale("decision is no longer pending")
+    project_id = str(card.get("project_id") or "").strip()
+    if project_id and project_id != sid:
+        return _decision_stale("project identity changed")
+    current_revision = int(card.get("revision", 1) or 1)
+    if expected_revision is not None and current_revision != int(expected_revision):
+        return _decision_stale(
+            f"expected revision {expected_revision}, current revision {current_revision}"
+        )
+    if "campaign_generation" in card:
+        expected_generation = int(card.get("campaign_generation", 0) or 0)
+        current_generation = read_continuous_state(mem.project_root).generation
+        if current_generation != expected_generation:
+            return _decision_stale(
+                "campaign changed since the question was created; reload before choosing"
+            )
+    if not str(item.pending_question or "").strip():
+        return _decision_stale("question is no longer pending")
+    return None
+
+
+def _reconcile_campaign_after_decision(
+    mem: Any,
+    *,
+    stopped: bool,
+) -> tuple[bool, str]:
+    """Project a resolved card onto continuous state; safe to call again."""
+    from ..daemon.state import read_continuous_state, write_continuous_config
+
+    before = read_continuous_state(mem.project_root)
+    if stopped:
+        if before.enabled:
+            write_continuous_config(
+                mem.project_root,
+                enabled=False,
+                objective=before.objective,
+                done_reason="operator chose to stop the campaign",
+            )
+        after = read_continuous_state(mem.project_root)
+        if after.enabled:
+            return False, "campaign stop is recorded but continuous state is still enabled"
+        return False, ""
+    if before.objective.strip() and not before.enabled:
+        write_continuous_config(
+            mem.project_root,
+            enabled=True,
+            objective=before.objective,
+        )
+        after = read_continuous_state(mem.project_root)
+        if not after.enabled:
+            return False, "decision is recorded but continuous resume is still pending"
+        return True, ""
+    return False, ""
+
+
 def _resolve_pending_question_with_manager(
     mem: Any,
     item: Any,
@@ -132,6 +269,9 @@ def _resolve_pending_question_with_manager(
     *,
     root_task_id: str | None = None,
     decision_option: str = "custom",
+    decision_id: str = "",
+    expected_revision: int | None = None,
+    decision_note: str = "",
 ) -> dict[str, Any]:
     from ..apps._inbox import queue_inbox_message
     from ..core.event_catalog import EventType
@@ -179,15 +319,43 @@ def _resolve_pending_question_with_manager(
             "reply": parsed["reply"] or "Please clarify the requested decision.",
         }
 
+    if decision_id:
+        conflict = _pending_decision_conflict(
+            mem,
+            item,
+            sid=mem.project_root.name,
+            decision_id=decision_id,
+            expected_revision=expected_revision,
+        )
+        if conflict is not None:
+            conflict["answered_item_id"] = item.id
+            conflict["decision_id"] = decision_id
+            return conflict
+
     blocked, continuation = mem.backlog.continue_with_operator_reply(
         item.id,
         answer,
         manager_decision=parsed["decision"],
         decision_option=decision_option,
+        decision_id=decision_id,
+        expected_revision=expected_revision,
+        decision_note=decision_note,
+        manager_reply=parsed["reply"],
     )
     if blocked is None:
         return {"error": "unknown backlog item", "answered_item_id": item.id}
     if continuation is None:
+        if decision_id:
+            replay = _resolved_decision_replay(
+                mem,
+                blocked,
+                decision_id=decision_id,
+                option_id=decision_option,
+                note=decision_note,
+                expected_revision=expected_revision,
+            )
+            if replay is not None:
+                return replay
         return {
             "error": "question is no longer pending",
             "answered_item_id": item.id,
@@ -208,11 +376,21 @@ def _resolve_pending_question_with_manager(
         "continuation_item_id": continuation.id,
         "question": question,
         "manager_decision": parsed["decision"],
+        "decision_id": decision_id,
+        "decision_revision": expected_revision,
+        "campaign_generation": blocked.operator_decision.get(
+            "campaign_generation"
+        ),
     })
     return {
         "answered_item_id": item.id,
         "answer_intent": True,
         "resolved": True,
+        "application_status": "accepted",
+        "resolution_id": str(
+            blocked.operator_decision.get("resolution_id") or ""
+        ),
+        "resume_requested": True,
         "reply": parsed["reply"] or "I have delivered your decision to the team.",
         "manager_decision": parsed["decision"],
         "item": continuation.to_jsonable(),
@@ -226,6 +404,9 @@ def manager_answer_pending_question(
     *,
     global_root: Path | str | None = None,
     decision_option: str = "custom",
+    decision_id: str = "",
+    expected_revision: int | None = None,
+    decision_note: str = "",
 ) -> dict[str, Any] | None:
     """Have Manager interpret and atomically deliver one operator answer."""
     from ..core.transcript import append_turn
@@ -242,12 +423,32 @@ def manager_answer_pending_question(
         if item is None:
             return None
         if not str(item.pending_question or "").strip():
+            if decision_id:
+                replay = _resolved_decision_replay(
+                    mem,
+                    item,
+                    decision_id=decision_id,
+                    option_id=decision_option,
+                    note=decision_note,
+                    expected_revision=expected_revision,
+                )
+                if replay is not None:
+                    return replay
             return {"error": "question is no longer pending"}
         chat_state = _chat_state_for(sid)
         chat_state["session_id"] = sid
         chat_state["global_root"] = str(mem.global_root)
-        turn_id = f"web-{time.time_ns()}"
-        append_turn(mem.project_root, "operator", text.strip())
+        turn_id = (
+            f"decision-{decision_id}-r{expected_revision}"
+            if decision_id
+            else f"web-{time.time_ns()}"
+        )
+        append_turn(
+            mem.project_root,
+            "operator",
+            text.strip(),
+            message_id=f"{turn_id}-operator",
+        )
         _emit_ui_turn(
             mem.project_root,
             "operator",
@@ -260,6 +461,9 @@ def manager_answer_pending_question(
             text,
             chat_state,
             decision_option=decision_option,
+            decision_id=decision_id,
+            expected_revision=expected_revision,
+            decision_note=decision_note,
         )
         reply = str(
             result.get("reply")
@@ -267,17 +471,20 @@ def manager_answer_pending_question(
             or "Manager could not resolve the pending question."
         )
         if result.get("resolved"):
-            from ..daemon.state import read_continuous_state, write_continuous_config
-
-            continuous = read_continuous_state(mem.project_root)
-            if continuous.objective.strip() and not continuous.enabled:
-                write_continuous_config(
-                    mem.project_root,
-                    enabled=True,
-                    objective=continuous.objective,
-                )
+            resumed, projection_error = _reconcile_campaign_after_decision(
+                mem,
+                stopped=False,
+            )
+            if resumed:
                 result["continuous"] = True
-        append_turn(mem.project_root, "argus", reply)
+            if projection_error:
+                result["projection_error"] = projection_error
+        append_turn(
+            mem.project_root,
+            "argus",
+            reply,
+            message_id=f"{turn_id}-argus",
+        )
         _emit_ui_turn(
             mem.project_root,
             "argus",
@@ -296,62 +503,159 @@ def manager_resolve_operator_decision(
     expected_revision: int | None = None,
     global_root: Path | str | None = None,
 ) -> dict[str, Any] | None:
-    """Resolve one visible decision-card option."""
+    """Resolve one visible decision-card option with CAS and replay semantics."""
     from ..core.operator_decision import selected_decision_text
-    from ..daemon.state import read_continuous_state, write_continuous_config
     from ..life.memory import MemoryBundle
 
     mem = MemoryBundle.for_cwd(
         fingerprint=sid,
         global_root=Path(global_root) if global_root else None,
     )
-    item = next(
-        (
-            row
-            for row in mem.backlog.all()
-            if str(row.operator_decision.get("id") or "") == decision_id
-        ),
-        None,
-    )
-    if item is None:
-        return None
-    card = item.operator_decision
-    if card.get("status") != "pending":
-        return {"error": "decision is no longer pending"}
-    if expected_revision is not None and int(card.get("revision", 1)) != expected_revision:
-        return {"error": "decision changed; reload before choosing"}
-    if option_id == "stop":
-        stopped = mem.backlog.stop_for_operator_decision(item.id, note=note)
-        if stopped is None:
-            return {"error": "decision is no longer pending"}
-        continuous = read_continuous_state(mem.project_root)
-        if continuous.enabled:
-            write_continuous_config(
-                mem.project_root,
-                enabled=False,
-                objective=continuous.objective,
-                done_reason="operator chose to stop the campaign",
+    with _bridge()._lock_for(sid):
+        item = next(
+            (
+                row
+                for row in mem.backlog.all()
+                if str(row.operator_decision.get("id") or "") == decision_id
+            ),
+            None,
+        )
+        if item is None:
+            return None
+
+        replay = _resolved_decision_replay(
+            mem,
+            item,
+            decision_id=decision_id,
+            option_id=option_id,
+            note=note,
+            expected_revision=expected_revision,
+        )
+        if replay is not None:
+            if replay.get("application_status") == "already_applied":
+                resumed, projection_error = _reconcile_campaign_after_decision(
+                    mem,
+                    stopped=option_id == "stop",
+                )
+                if resumed:
+                    replay["continuous"] = True
+                if projection_error:
+                    replay["projection_error"] = projection_error
+            return replay
+
+        conflict = _pending_decision_conflict(
+            mem,
+            item,
+            sid=sid,
+            decision_id=decision_id,
+            expected_revision=expected_revision,
+        )
+        if conflict is not None:
+            conflict["decision_id"] = decision_id
+            conflict["answered_item_id"] = item.id
+            return conflict
+
+        card = item.operator_decision
+        if option_id == "stop":
+            stopped = mem.backlog.stop_for_operator_decision(
+                item.id,
+                note=note,
+                decision_id=decision_id,
+                expected_revision=expected_revision,
             )
-        return {
-            "resolved": True,
-            "stopped": True,
-            "decision_id": decision_id,
-            "reply": "Campaign stopped. Current work was preserved.",
-        }
-    try:
-        answer = selected_decision_text(card, option_id, note)
-    except ValueError as exc:
-        return {"error": str(exc)}
-    result = manager_answer_pending_question(
-        sid,
-        item.id,
-        answer,
-        global_root=global_root,
-        decision_option=option_id,
-    )
-    if result is not None:
-        result["decision_id"] = decision_id
-    return result
+            if stopped is None:
+                current = next(
+                    (row for row in mem.backlog.all() if row.id == item.id),
+                    item,
+                )
+                replay = _resolved_decision_replay(
+                    mem,
+                    current,
+                    decision_id=decision_id,
+                    option_id=option_id,
+                    note=note,
+                    expected_revision=expected_revision,
+                )
+                return replay or _decision_stale("decision changed while applying")
+            _resumed, projection_error = _reconcile_campaign_after_decision(
+                mem,
+                stopped=True,
+            )
+            result = {
+                "answered_item_id": item.id,
+                "resolved": True,
+                "stopped": True,
+                "decision_id": decision_id,
+                "application_status": "accepted",
+                "resolution_id": str(
+                    stopped.operator_decision.get("resolution_id") or ""
+                ),
+                "resume_requested": False,
+                "reply": "Campaign stopped. Current work was preserved.",
+            }
+            if projection_error:
+                result["projection_error"] = projection_error
+            from ..core.event_catalog import EventType
+            from ..core.transcript import append_turn
+            from ..life.event_log import JsonlEventSink
+
+            turn_id = f"decision-{decision_id}-r{expected_revision}"
+            operator_text = note.strip() or "Stop this campaign."
+            append_turn(
+                mem.project_root,
+                "operator",
+                operator_text,
+                message_id=f"{turn_id}-operator",
+            )
+            append_turn(
+                mem.project_root,
+                "argus",
+                result["reply"],
+                message_id=f"{turn_id}-argus",
+            )
+            _emit_ui_turn(
+                mem.project_root,
+                "operator",
+                operator_text,
+                message_id=f"{turn_id}-operator",
+            )
+            _emit_ui_turn(
+                mem.project_root,
+                "argus",
+                result["reply"],
+                message_id=f"{turn_id}-argus",
+            )
+            JsonlEventSink(None, life_dir=mem.project_root).append({
+                "type": EventType.LIFE_OPERATOR_QUESTION_ANSWERED,
+                "item_id": item.id,
+                "continuation_item_id": item.id,
+                "question": str(item.pending_question or ""),
+                "manager_decision": "stop campaign",
+                "decision_id": decision_id,
+                "decision_revision": expected_revision,
+                "campaign_generation": item.operator_decision.get(
+                    "campaign_generation"
+                ),
+                "stopped": True,
+            })
+            return result
+        try:
+            answer = selected_decision_text(card, option_id, note)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        result = manager_answer_pending_question(
+            sid,
+            item.id,
+            answer,
+            global_root=global_root,
+            decision_option=option_id,
+            decision_id=decision_id,
+            expected_revision=expected_revision,
+            decision_note=note,
+        )
+        if result is not None:
+            result["decision_id"] = decision_id
+        return result
 
 
 def record_task_dispatch_ack(

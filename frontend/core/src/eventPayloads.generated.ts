@@ -230,6 +230,8 @@ export interface RoundReviewCompletedEvent extends EventMsg {
   "next_action"?: string;
   "operator_question"?: string;
   "review_source"?: string;
+  "forward_progress"?: boolean;
+  "plan_signal"?: string;
   "text"?: string;
   "review_skipped"?: boolean;
   "prompt_block_stats"?: Record<string, unknown>;
@@ -347,6 +349,10 @@ export interface LifeOperatorQuestionAnsweredEvent extends EventMsg {
   "continuation_item_id": string;
   "question": string;
   "manager_decision": string;
+  "decision_id"?: string;
+  "decision_revision"?: number | null;
+  "campaign_generation"?: number | null;
+  "stopped"?: boolean;
 }
 
 export interface EngineerProgressEvent extends EventMsg {

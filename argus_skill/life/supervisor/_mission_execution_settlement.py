@@ -407,7 +407,10 @@ class MissionExecutionSettlementMixin:
             self.memory.backlog.mark_done(item.id, outcome=outcome_dimensions)
         elif status == "blocked" and operator_question:
             from ...core.operator_decision import build_operator_decision
+            from ...daemon.state import read_continuous_state
 
+            decision_root = self.memory.root
+            campaign_state = read_continuous_state(decision_root)
             evidence = list(getattr(item, "context_refs", None) or [])
             if str(getattr(item, "acceptance_check", "") or "").strip():
                 evidence.append({
@@ -423,6 +426,8 @@ class MissionExecutionSettlementMixin:
                     getattr(outcome, "final_review_next_action", "") or ""
                 ),
                 evidence=evidence,
+                project_id=decision_root.name,
+                campaign_generation=campaign_state.generation,
             )
             # Status and the authority-bearing question must reach disk in one
             # backlog transaction. Keep the row nonterminal so dependency

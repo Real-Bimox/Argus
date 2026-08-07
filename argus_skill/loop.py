@@ -77,10 +77,10 @@ class SkillLoopConfig:
     )
     max_rounds: int = 500
     no_progress_threshold: int = 2
-    # Anti-livelock escalation thresholds threaded into SupervisedConfig: at
+    # Anti-livelock thresholds threaded into SupervisedConfig: at
     # ``soft_round_limit`` the reviewer is told to escalate an unresolvable
-    # external blocker to ``blocked``; at ``hard_escalate_rounds`` the round loop
-    # force-ends as ``blocked`` so the planner re-plans. 0 disables either.
+    # external blocker; at ``hard_escalate_rounds`` continuation requires the
+    # Reviewer's explicit semantic-progress judgment. 0 disables either.
     soft_round_limit: int = 12
     hard_escalate_rounds: int = 24
     backend_failure_threshold: int = 2

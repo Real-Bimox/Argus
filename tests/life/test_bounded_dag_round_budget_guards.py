@@ -188,6 +188,83 @@ def test_explicit_progress_resets_stall_streak_on_real_run(tmp_path) -> None:
     assert len(rounds) == 4
 
 
+def test_productive_mission_crosses_round_24_with_a_local_regression(
+    tmp_path,
+) -> None:
+    backend = MemoryBackend()
+    for round_index in range(1, 27):
+        _queue_round(
+            backend,
+            round_index,
+            status="done" if round_index == 26 else "continue",
+            forward_progress=(False if round_index == 24 else True),
+        )
+    events: list[dict] = []
+
+    status, rounds, _final, _reason, _thread = _engineer(backend).run(
+        objective="Keep one coherent long-horizon mission while evidence improves.",
+        engineer_prompt_builder=lambda _next, _static=True: "Do the task.",
+        supervised_config=SupervisedConfig(
+            max_rounds=26,
+            stall_threshold=3,
+            soft_round_limit=0,
+            hard_escalate_rounds=24,
+            decision_progress_timeout_seconds=0,
+        ),
+        workdir=tmp_path,
+        on_event=events.append,
+    )
+
+    assert status == "done"
+    assert len(rounds) == 26
+    review_24 = next(
+        event
+        for event in events
+        if event.get("type") == "round.review.completed"
+        and event.get("round_index") == 24
+    )
+    assert review_24["forward_progress"] is False
+    assert review_24["plan_signal"] == "continue"
+    boundary = [
+        event
+        for event in events
+        if event.get("type") == "round.escalated"
+        and event.get("round_index") == 24
+    ]
+    assert boundary == [{
+        "type": "round.escalated",
+        "round_index": 24,
+        "hard_escalate_rounds": 24,
+        "forward_progress": False,
+        "continuation_reason": "bounded_no_progress_observation",
+        "text": (
+            "round 24 crossed the continuation boundary under the Reviewer's "
+            "explicit progress judgment"
+        ),
+    }]
+
+
+def test_hard_boundary_refuses_blind_continue_without_progress_signal() -> None:
+    status, reason = _engineer(MemoryBackend())._classify(
+        review=ReviewDecision(
+            status="continue",
+            reason="More work remains.",
+            next_action="Continue.",
+            planner_report={},
+        ),
+        no_progress_streak=0,
+        no_progress_threshold=2,
+        semantic_stall_streak=0,
+        stall_threshold=4,
+        round_index=24,
+        max_rounds=500,
+        hard_escalate_rounds=24,
+    )
+
+    assert status == "blocked"
+    assert "did not provide an explicit forward-progress judgment" in reason
+
+
 def test_missing_progress_signal_never_counts_as_stall_evidence(tmp_path) -> None:
     backend = MemoryBackend()
     _queue_round(backend, 1, forward_progress=False)

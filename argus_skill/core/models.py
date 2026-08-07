@@ -228,6 +228,13 @@ class ReviewDecision:
             "stop_kind": self.backend_stop_kind,
             "usage_scope": "delta",
         }
+        report = self.planner_report if isinstance(self.planner_report, dict) else {}
+        forward_progress = report.get("forward_progress")
+        if isinstance(forward_progress, bool):
+            payload["forward_progress"] = forward_progress
+        plan_signal = str(report.get("plan_signal") or "").strip()
+        if plan_signal:
+            payload["plan_signal"] = plan_signal
         payload.update(extras)
         return payload
 

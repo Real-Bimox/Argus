@@ -218,7 +218,12 @@ class RoundReviewerMixin:
                 "repeated finding and the exact stage/artifact that needs "
                 "Manager-owned repair, so the mission ends now and control "
                 "returns to the Planner/Manager instead of waiting for the "
-                "hard round cap."
+                "hard continuation boundary. At or beyond that boundary, set "
+                "planner_report.forward_progress explicitly: use true when the "
+                "task frontier is still advancing, even if a local metric has "
+                "temporarily regressed; use false for a genuine no-progress "
+                "round. Do not call productive work blocked merely because the "
+                "round count is high."
             )
             if on_event and round_index == supervised_config.soft_round_limit:
                 on_event({

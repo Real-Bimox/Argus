@@ -170,11 +170,12 @@ class SupervisedConfig:
     # nondecision work. A mission that makes evidence progress every round but
     # never passes its gate would otherwise drift to ``max_rounds``.
     # At ``soft_round_limit`` the reviewer is instructed to return ``blocked`` if
-    # the binding constraint is an external/unresolvable dependency; at
-    # ``hard_escalate_rounds`` the loop force-ends as ``blocked`` so the planner
-    # re-plans/decomposes and the operator inbox is re-read on the next mission.
-    # The continuous planner makes many SHORT missions, so a single mission this
-    # long without finishing is anomalous. 0 disables either guard.
+    # the binding constraint is an external/unresolvable dependency. At
+    # ``hard_escalate_rounds`` the loop requires an explicit Reviewer progress
+    # judgment: known progress (including a short bounded regression before the
+    # stall threshold) may continue, while a missing signal ends the mission so
+    # the planner can re-plan instead of letting the harness continue blind.
+    # 0 disables either guard.
     soft_round_limit: int = 12
     hard_escalate_rounds: int = 24
     backend_failure_threshold: int = 2
@@ -262,9 +263,10 @@ class SupervisedConfig:
           when a two-round budget should stop after its first negative verdict.
         * ``soft_round_limit`` advises the Reviewer partway through, so it
           must also land strictly inside the budget.
-        * ``hard_escalate_rounds`` force-ends the loop with a planner-readable
-          reason; firing on the final round is still better than the generic
-          ``Hit max_rounds`` path, so ``<= max_rounds`` is enough.
+        * ``hard_escalate_rounds`` is the point where continuation must be backed
+          by the Reviewer's explicit progress judgment. A missing signal ends
+          with a planner-readable reason; reaching this boundary on the final
+          round is still useful, so ``<= max_rounds`` is enough.
 
         A guard explicitly disabled with ``0`` stays disabled, and a budget
         large enough for the configured values is left byte-for-byte

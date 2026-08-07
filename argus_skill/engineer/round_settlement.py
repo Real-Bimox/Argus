@@ -107,12 +107,14 @@ class RoundSettlementMixin:
             hard_escalate_rounds > 0
             and round_index >= hard_escalate_rounds
             and review.status == "continue"
+            and _review_forward_progress(review) is None
         ):
             return (
                 "blocked",
-                f"Escalated: ran {round_index} rounds without completing — the "
-                "mission is likely stuck on an external / unresolved constraint. "
-                "Ending so the planner can re-plan or decompose. " + (review.reason or ""),
+                f"Escalated after {round_index} rounds because Reviewer did not "
+                "provide an explicit forward-progress judgment at the continuation "
+                "boundary. Refusing to continue blindly; Planner can re-plan or "
+                "decompose. " + (review.reason or ""),
             )
         return None, ""
 
@@ -190,6 +192,28 @@ class RoundSettlementMixin:
                     ),
                 }
             )
+        if (
+            on_event
+            and supervised_config.hard_escalate_rounds > 0
+            and round_index == supervised_config.hard_escalate_rounds
+            and review.status == "continue"
+            and forward_progress is not None
+        ):
+            on_event({
+                "type": EventType.ROUND_ESCALATED,
+                "round_index": round_index,
+                "hard_escalate_rounds": supervised_config.hard_escalate_rounds,
+                "forward_progress": forward_progress,
+                "continuation_reason": (
+                    "semantic_progress"
+                    if forward_progress
+                    else "bounded_no_progress_observation"
+                ),
+                "text": (
+                    f"round {round_index} crossed the continuation boundary under "
+                    "the Reviewer's explicit progress judgment"
+                ),
+            })
         terminal_status, reason = self._classify(
             review=review,
             no_progress_streak=state.no_progress_streak,

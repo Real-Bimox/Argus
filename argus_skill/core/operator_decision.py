@@ -17,6 +17,8 @@ def build_operator_decision(
     question: str,
     recommendation: str = "",
     evidence: Iterable[Mapping[str, Any]] = (),
+    project_id: str = "",
+    campaign_generation: int | None = None,
 ) -> dict[str, Any]:
     options: list[dict[str, Any]] = []
     if recommendation.strip():
@@ -40,7 +42,7 @@ def build_operator_decision(
             "requires_note": False,
         },
     ])
-    return {
+    card: dict[str, Any] = {
         "id": f"decision-{item_id}",
         "item_id": item_id,
         "revision": 1,
@@ -61,6 +63,11 @@ def build_operator_decision(
         "selected_option": "",
         "note": "",
     }
+    if project_id.strip():
+        card["project_id"] = project_id.strip()
+    if campaign_generation is not None:
+        card["campaign_generation"] = max(0, int(campaign_generation))
+    return card
 
 
 def selected_decision_text(card: Mapping[str, Any], option_id: str, note: str) -> str:

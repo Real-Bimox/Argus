@@ -1332,12 +1332,36 @@ class Backlog:
         *,
         manager_decision: str = "",
         decision_option: str = "custom",
+        decision_id: str = "",
+        expected_revision: int | None = None,
+        decision_note: str = "",
+        manager_reply: str = "",
     ) -> tuple[BacklogItem | None, BacklogItem | None]:
-        """Atomically consume one pending question and enqueue its continuation."""
+        """Atomically consume one pending question and enqueue its continuation.
+
+        Decision-card callers may bind the update to the card id and revision.
+        A mismatch makes no change; the web layer then reports the request as
+        stale or as an idempotent replay of an already-applied choice.
+        """
         with self._locked():
             items = self._load()
             blocked = next((item for item in items if item.id == item_id), None)
-            if blocked is None or not str(blocked.pending_question or "").strip():
+            if blocked is None:
+                return None, None
+            card = blocked.operator_decision
+            if decision_id:
+                if (
+                    str(card.get("id") or "") != decision_id
+                    or str(card.get("status") or "") != "pending"
+                ):
+                    return blocked, None
+                current_revision = int(card.get("revision", 1) or 1)
+                if (
+                    expected_revision is not None
+                    and current_revision != int(expected_revision)
+                ):
+                    return blocked, None
+            if not str(blocked.pending_question or "").strip():
                 return blocked, None
             answer = answer.strip()
             decision = manager_decision.strip()
@@ -1402,11 +1426,25 @@ class Backlog:
             blocked.finished_ts = time.time()
             blocked.pending_question = ""
             if blocked.operator_decision:
+                resolved_from_revision = int(
+                    blocked.operator_decision.get("revision", 1) or 1
+                )
                 blocked.operator_decision.update({
                     "status": "resolved",
                     "selected_option": decision_option,
-                    "note": answer,
-                    "revision": int(blocked.operator_decision.get("revision", 1)) + 1,
+                    "note": (
+                        decision_note.strip() if decision_id else answer
+                    ),
+                    "resolved_from_revision": resolved_from_revision,
+                    "revision": resolved_from_revision + 1,
+                    "continuation_item_id": continuation.id,
+                    "manager_decision": decision,
+                    "reply": manager_reply.strip(),
+                    "resume_requested": True,
+                    "resolution_id": (
+                        f"{blocked.operator_decision.get('id', decision_id)}:"
+                        f"r{resolved_from_revision}"
+                    ),
                 })
             # The blocked item becomes terminal in the same transaction that
             # creates its continuation. Every live downstream node that
@@ -1431,22 +1469,51 @@ class Backlog:
         item_id: str,
         *,
         note: str = "",
+        decision_id: str = "",
+        expected_revision: int | None = None,
     ) -> BacklogItem | None:
         """Resolve one pending decision by stopping its campaign item."""
         with self._locked():
             items = self._load()
             item = next((row for row in items if row.id == item_id), None)
-            if item is None or not item.pending_question:
+            if item is None:
+                return None
+            card = item.operator_decision
+            if decision_id:
+                if (
+                    str(card.get("id") or "") != decision_id
+                    or str(card.get("status") or "") != "pending"
+                ):
+                    return None
+                current_revision = int(card.get("revision", 1) or 1)
+                if (
+                    expected_revision is not None
+                    and current_revision != int(expected_revision)
+                ):
+                    return None
+            if not item.pending_question:
                 return None
             item.status = "aborted"
             item.finished_ts = time.time()
             item.pending_question = ""
             if item.operator_decision:
+                resolved_from_revision = int(
+                    item.operator_decision.get("revision", 1) or 1
+                )
                 item.operator_decision.update({
                     "status": "resolved",
                     "selected_option": "stop",
                     "note": note.strip(),
-                    "revision": int(item.operator_decision.get("revision", 1)) + 1,
+                    "resolved_from_revision": resolved_from_revision,
+                    "revision": resolved_from_revision + 1,
+                    "continuation_item_id": "",
+                    "manager_decision": "stop campaign",
+                    "reply": "Campaign stopped. Current work was preserved.",
+                    "resume_requested": False,
+                    "resolution_id": (
+                        f"{item.operator_decision.get('id', decision_id)}:"
+                        f"r{resolved_from_revision}"
+                    ),
                 })
             self._save(items)
             return item
