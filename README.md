@@ -57,11 +57,13 @@ A project can stop, resume, survive a runtime replacement, and continue from its
 - Node.js 22+
 - One supported Agent CLI installed and authenticated through its official login flow
 
-### Agent-assisted installation
+### 🚀 Agent-assisted installation (recommended)
 
-Send this prompt to Codex CLI, Claude Code, GitHub Copilot CLI, Pi, or
-OpenCode. The agent will inspect the environment, install Argus, connect the
-current backend, and verify it with `argus --doctor`:
+> [!TIP]
+> **Skip the manual installation steps.** Send the complete prompt below to
+> Codex CLI, Claude Code, GitHub Copilot CLI, Pi, or OpenCode. The agent will
+> inspect the environment, install Argus, connect the current backend, and
+> verify it with `argus --doctor`.
 
 ```text
 Read https://github.com/lbx154/Argus/blob/main/docs/agent-install.md and follow
@@ -127,6 +129,10 @@ argus --web
 ```
 
 Default address: [http://127.0.0.1:8799](http://127.0.0.1:8799)
+
+The Web UI follows the browser language on first launch and supports English
+and Simplified Chinese. Use the language button in the session sidebar to
+switch; the selection is saved in the browser.
 
 ```bash
 argus --web --no-open    # start without opening a browser
