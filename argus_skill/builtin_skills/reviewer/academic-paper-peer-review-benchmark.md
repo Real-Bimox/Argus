@@ -69,8 +69,9 @@ Score each dimension 1–5.
 4. **Literature and novelty**
    - Are material premises, nearest competitors, foundations, contradictions,
      and the frontier grounded in primary sources?
-   - Does the bibliography contain at least 35 verified BibTeX entries and at
-     least 30 unique cited keys, with claim-complete coverage rather than padding?
+   - Does the bibliography cover every material premise, the nearest
+     competitors, and the contradictions a reader would raise — judged against
+     what this paper claims, not against a reference count?
    - Does the paper explain why the result matters?
 
 5. **Reproducibility**
@@ -128,7 +129,6 @@ and no hard blocker.
 - uncertainty or repeatability omitted where required by the claim;
 - stale or untraceable generated artifacts;
 - unresolved citations or official-format violations;
-- fewer than 35 verified BibTeX entries or 30 unique cited keys;
 - unreadable, factually wrong, or visibly broken required figure;
 - private infrastructure/secrets leaked into rendered prose;
 - paper value depends only on relabeling a weak result rather than a genuine

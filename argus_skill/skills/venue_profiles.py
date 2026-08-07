@@ -131,8 +131,14 @@ class VenueProfile:
     figure_style_persona: str = "EMNLP/ACL/NeurIPS"
 
     # ---- shared quality heuristics (kept equal across venues for now) ---
-    min_verified_bib_entries: int = 35
-    min_cited_keys: int = 30
+    # NOTE: bibliography *size* is deliberately not a profile field. Reference
+    # count is a proxy, not a standard: what matters is that every claim is
+    # supported and every citation is real. A fixed floor rejected complete,
+    # well-cited short papers for arithmetic reasons, and the two fields that
+    # used to live here (min_verified_bib_entries / min_cited_keys) had no
+    # consumer at all — the real thresholds were hard-coded in the reviewer
+    # skills, so a venue that set 15 was still judged against 35. Citation
+    # sufficiency is claim-proportional and belongs to Reviewer judgement.
     abstract_word_floor: int = 170
     abstract_word_floor_is_hard: bool = True
 
@@ -422,8 +428,6 @@ FRONTIERS_SLEEP_PROFILE = VenueProfile(
     figure_style_persona="Frontiers biomedical journal",
     abstract_word_floor=150,
     abstract_word_floor_is_hard=False,
-    min_verified_bib_entries=15,
-    min_cited_keys=15,
     aliases=("FRONTIERS", "FRONTIERS IN SLEEP", "FRSLE"),
     venue_skill_files=(),
 )
