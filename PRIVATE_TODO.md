@@ -34,7 +34,7 @@ not implementation convenience.
 | ARGUS-P0-02 | P0 | Critical | Immediate | Mission loop | P0-01 checkpoint invariants |
 | ARGUS-P0-03 | P0 | Critical | Immediate | Manager/contract | none |
 | ARGUS-P0-04 | P0 | High | Immediate | Planner/goal | P0-03 |
-| ARGUS-P1-01 | P1 | High | Next | Verus vertical | P0-02, P0-03, P0-04 |
+| ARGUS-P1-01 | P1 | High | Next | Mission progress/evaluation | P0-02, P0-03, P0-04 |
 | ARGUS-P1-02 | P1 | High | Next | Agent/session integration | none; can run in parallel |
 | ARGUS-P1-03 | P1 | Medium | Next | Skill system | partially implemented |
 | ARGUS-P1-04 | P1 | Medium | Next | Architecture/verticals | behavior baseline first |
@@ -79,35 +79,46 @@ user then cannot continue the goal.
 ## ARGUS-P0-02 — Replace the hard 24-round interruption with progress-aware continuation
 
 **Problem.** `SupervisedConfig.hard_escalate_rounds=24` currently force-ends a
-mission when Reviewer keeps returning `continue`. Long Verus proofs legitimately
-need more rounds: strengthening an inductive invariant can temporarily break many
-previously proved obligations, followed by a long repair phase. The hard boundary
-fragments one coherent proof search.
+mission when Reviewer keeps returning `continue`. Long-horizon missions can remain
+productive beyond this boundary, and their observable indicators are often
+non-monotonic. A stronger proof invariant may temporarily break proved obligations;
+a coherent refactor may increase failing tests before interfaces converge; and a
+negative experiment may invalidate an intermediate hypothesis while reducing
+uncertainty. The fixed boundary fragments one task frontier and can turn a bounded,
+productive local regression into an unrelated replacement mission.
 
 **Work packages**
 
-- [ ] Instrument why each round continues: semantic progress, expected regression,
-      repeated failure, external blocker, or no decision progress.
+- [ ] Instrument why each round continues: semantic frontier advance, bounded and
+      expected local regression, information-gaining exploration, repeated unchanged
+      failure, external blocker, or no decision progress.
 - [ ] Define a Reviewer-owned `productive_continue`/equivalent semantic signal;
-      avoid deriving it from changed-file count, verifier pass count, or keywords.
+      avoid deriving it from changed-file count, verifier/test pass count, benchmark
+      score, open-obligation count, or keywords.
 - [ ] Permit productive missions to cross round 24 while budget, operator stop,
       backend-failure, and genuine no-progress guards remain active.
 - [ ] When a clean boundary is necessary, continue the same mission contract and
-      proof frontier from `CHECKPOINT.md`; do not ask Planner to invent a replacement
+      task frontier from `CHECKPOINT.md`; do not ask Planner to invent a replacement
       target merely because a counter reached 24.
-- [ ] Separate an external unresolved blocker from an internal repair frontier.
-      Only the former should be escalated to `blocked` solely for lack of local work.
-- [ ] Add a Verus regression fixture where invariant strengthening reduces the
-      passing-obligation count, then recovers after more than 24 rounds.
+- [ ] Separate an external unresolved blocker from an internal repair or exploration
+      frontier. Only the former should be escalated to `blocked` solely for lack of
+      local work.
+- [ ] Add cross-domain regression fixtures: for example, Verus invariant
+      strengthening that temporarily reduces passing obligations, a refactor that
+      temporarily increases failing tests, and an experiment that retires a weak
+      hypothesis before the next approach succeeds. Include a productive trajectory
+      that requires more than 24 rounds.
 - [ ] Compare fixed-24, disabled-cap, and progress-aware policies on cost, completion,
-      repeated exploration, and proof-frontier quality.
+      repeated exploration, and task-frontier continuity and quality.
 
 **Acceptance criteria**
 
-- A productive Verus repair can run beyond 24 rounds without mission replacement.
+- A productive long-horizon mission can run beyond 24 rounds without replacement
+  even when one or more local indicators temporarily regress.
 - A truly stagnant loop still terminates under budget/no-progress policy.
-- Continuation preserves objective, proof obligations, changed invariants, failures,
-  and the next repair action across process/session boundaries.
+- Continuation preserves the objective, assumptions, artifacts, evidence,
+  resolved/open obligations, observed regressions, recovery or exit conditions, and
+  next action across process/session boundaries.
 
 ---
 
@@ -153,8 +164,8 @@ assumption at the operator boundary and excessive rigidity inside the Agent team
 **Problem.** Current users often fail to finish one goal after weeks or a month.
 Planner mission quality strongly affects completion. Some missions optimize for a
 verifier/check script becoming green instead of moving the actual goal frontier;
-local one-shot objectives can be invalid for research/proof work with temporary
-regressions.
+local one-shot objectives can be invalid for long-horizon work with temporary,
+bounded regressions or information-gaining failures.
 
 **Work packages**
 
@@ -188,35 +199,56 @@ regressions.
 
 ---
 
-## ARGUS-P1-01 — Make the Verus vertical proof-frontier aware
+## ARGUS-P1-01 — Model non-monotonic progress in long-horizon tasks
 
-**Problem.** Verus proof development is non-monotonic. Strengthening an inductive
-invariant can temporarily increase errors and reduce verified obligations. Missions
-that demand a locally green verifier or monotonic count misclassify necessary proof
-work as failure.
+**Problem.** Long-horizon progress is multidimensional and often non-monotonic.
+During one coherent trajectory, selected proxies may temporarily worsen even while
+the global task state improves: proof strengthening can create repair obligations, a
+software migration can break intermediate tests while removing structural risk, and
+a research or optimization run can lower a headline metric while eliminating a bad
+hypothesis. Requiring a small set of counters to rise every round—or every
+intermediate state to be locally green—misclassifies bounded, explained regression
+as failure. Conversely, “non-monotonic” must not become an excuse for churn:
+temporary regressions need an attributable cause, explicit scope, and recovery or
+exit conditions.
 
 **Work packages**
 
-- [ ] Audit representative Verus missions and Reviewer verdicts from real traces.
-- [ ] Represent the proof frontier: invariants changed, obligations newly proved,
-      obligations regressed, counterexamples/failures, suspected shared causes, and
-      remaining repair clusters.
-- [ ] Define progress semantically: a justified stronger invariant plus localized
-      induced failures can be progress even before the total verified count recovers.
-- [ ] Plan coherent missions such as “strengthen this invariant and repair its
-      induced obligation cluster,” not “make the next verifier script green.”
-- [ ] Teach Reviewer to distinguish expected temporary regression, unsupported
-      invariant changes, semantic proof progress, and repeated unchanged failure.
-- [ ] Preserve exact failure diagnostics and proof state across fresh sessions.
-- [ ] Add end-to-end fixtures for invariant strengthening, temporary regression,
-      multi-round repair, and eventual proof closure.
+- [ ] Audit representative missions and Reviewer verdicts across software/refactor,
+      research/optimization, and proof workflows, with Verus retained as one
+      concrete case rather than the governing abstraction.
+- [ ] Define a generic persisted task frontier containing the objective and
+      invariants, current hypothesis/strategy, artifacts and evidence, resolved/new/
+      regressed obligations, remaining work clusters, relevant proxy measurements,
+      uncertainty, and the next decision point.
+- [ ] Define progress over semantic frontier transitions rather than a scalar score.
+      Progress may be an improved artifact, discharged risk, reduced uncertainty, or
+      a justified transformation that introduces bounded repair debt; no individual
+      field is required to improve monotonically.
+- [ ] Require a regression envelope when local state worsens: what changed, why the
+      regression is expected, its permitted scope/budget, how recovery will be
+      recognized, and what evidence triggers replan or abandonment.
+- [ ] Plan coherent frontier transitions such as “change the shared abstraction and
+      repair its affected cluster,” not “make the next convenient checker green.”
+- [ ] Teach Reviewer to distinguish bounded expected regression, unsupported or
+      expanding regression, information-gaining failure, genuine recovery, and
+      repeated unchanged failure.
+- [ ] Preserve exact diagnostics, causal hypotheses, accepted repair debt, and
+      frontier state across fresh sessions and process restarts.
+- [ ] Add end-to-end fixtures spanning invariant strengthening, multi-module
+      refactoring, and research/optimization search, each with temporary regression,
+      multi-round recovery or justified abandonment, and a goal-level outcome.
 
 **Acceptance criteria**
 
-- Planner and Reviewer do not reject a valid proof route solely because the passing
-  count temporarily falls.
-- Repeated unchanged failures still trigger diagnosis/replan.
-- A long proof trajectory remains one coherent, inspectable frontier across rounds.
+- Planner and Reviewer neither reject a valid route solely because a selected proxy
+  temporarily worsens nor accept a route solely because one proxy improves.
+- Every tolerated regression is attributable, bounded, visible in durable state, and
+  paired with recovery and exit conditions.
+- Repeated unchanged failures or expanding unexplained regressions still trigger
+  diagnosis, replan, escalation, or termination.
+- A long trajectory remains one coherent, inspectable task frontier across rounds,
+  including its local setbacks and recovered state.
 
 ---
 
@@ -314,7 +346,7 @@ dependency direction and makes a new vertical inherit assumptions from another.
 - Core imports no concrete vertical package.
 - Adding a vertical requires implementing one documented interface, not editing
   central conditionals.
-- Existing research/software/Verus behavior and persisted state remain compatible.
+- Existing vertical behavior and persisted state remain compatible.
 
 ---
 
@@ -350,8 +382,9 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 ## ARGUS-P2-02 — Build the shared evaluation and observability matrix
 
 - [ ] Create a versioned corpus of disclosure-safe failure traces covering
-      approval/resume, long proof repair, ambiguous goals, stale Planner targets,
-      repeated exploration, and Skill loading.
+      approval/resume, non-monotonic proof, software-refactor, and research/
+      optimization trajectories, ambiguous goals, stale Planner targets, repeated
+      exploration, and Skill loading.
 - [ ] Define common metrics and event fields once; avoid one bespoke dashboard per
       issue.
 - [ ] Run component A/B tests and end-to-end goal replays separately. Component
@@ -367,8 +400,8 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 1. **Immediately:** P0-01 approval/resume consistency and trace collection for P0-04.
 2. **In parallel:** design P0-03 authority/mission contracts; benchmark P1-02 session
    policies without changing production defaults.
-3. **Then:** P0-02 progress-aware continuation and P1-01 Verus implementation on the
-   clarified contract.
+3. **Then:** P0-02 progress-aware continuation and the P1-01 cross-domain
+   non-monotonic progress model on the clarified contract.
 4. **After lifecycle stability:** P1-03 Skill audit and P1-04 vertical/core cleanup.
 5. **Only after state semantics settle:** P2-01 storage decision and migration.
 
