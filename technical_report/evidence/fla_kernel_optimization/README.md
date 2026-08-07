@@ -11,11 +11,14 @@ Argus performed the profiling, hypothesis, kernel implementation, benchmarking, 
 independent certification autonomously; the operator only supplied the objective and
 re-derived every speedup from the raw `score.json`.
 
-**Status: submitted upstream, not accepted.** The work is under review as
-[fla-org#1054](https://github.com/fla-org/flash-linear-attention/pull/1054), where a
-maintainer has questioned whether a D64 result generalises at all. Read
-*[Upstream status](#upstream-status)* before citing any number here — the speedups are
-measured honestly, but their scope is one shape on one GPU generation.
+**Status: the D64 measurement remains valid, but the performance route was retired.**
+[fla-org#1054](https://github.com/fla-org/flash-linear-attention/pull/1054) was closed
+without merge after representative D128 follow-up showed no meaningful training gain.
+The independently reproducible SM100 autotune crash was extracted into focused PR
+[fla-org#1109](https://github.com/fla-org/flash-linear-attention/pull/1109), which was
+maintainer-approved and awaiting merge on 2026-08-07. Read
+*[Upstream status](#upstream-status)* before citing any number here — the original
+speedups are measured honestly, but their scope is one shape on one GPU generation.
 
 ## Setup
 
@@ -55,37 +58,39 @@ consistently from forward producer→consumer fusion. Speedups compound multipli
 
 ## Upstream status
 
-Submitted to the library itself as
+The performance stack was submitted as
 [fla-org/flash-linear-attention#1054](https://github.com/fla-org/flash-linear-attention/pull/1054)
-(2026-07-22). **Open, not merged**, no formal review as of 2026-07-26; CI is green
-(12 passed / 11 skipped / 3 cancelled). An earlier attempt, #1053, was self-closed four
-seconds after opening and carries no separate history. The upstream diff (+437/-31) is
-slightly larger than the patch archived here (+432/-32); treat the PR as authoritative.
+on 2026-07-22. Maintainer `zhiyuan1i` called the fusion strategy sound but requested
+D128/H32/H64 and Hopper evidence because D64 has limited practical KDA use. The concern
+matched the mechanism: every proposed win removed a fixed launch or HBM round-trip, and
+those fixed costs should matter less when D128 performs substantially more arithmetic.
 
-Maintainer `zhiyuan1i` — author of several merged KDA kernel PRs upstream (#672, #703,
-#733) — called the fusion strategy sound and asked for two things before it can be
-judged:
+The requested follow-up confirmed that concern:
 
-> Could you add numbers for **D=128 shapes (e.g. H32 / H64, D128)**? D=64 has very
-> limited practical use for KDA, so the ~30% geomean at B8_T1024_H8_D64 is hard to
-> extrapolate: at D128 each chunk does substantially more compute, so kernel-launch
-> overhead and HBM round-trips weigh much less, and the register pressure of the
-> solve-epilogue fusion also grows. [...] **Hopper (H100) numbers** would also be
-> valuable — FLA's CI runs on H100, so that's the platform where most users will
-> actually validate and run this.
+- on the available H200 runner, two independent runs across four D128 shapes measured
+  only **1.055–1.061x forward geomean** and **1.001–1.002x forward+backward geomean**;
+- `B4_T4096_H64_D128` measured **0.987–0.990x forward** and **0.998–1.000x
+  forward+backward**; and
+- isolated B200 D128 checks measured paired q/k L2 norm at 1.015x forward / 1.001x
+  forward+backward and cumsum producer fusion at 0.999x / 1.000x.
 
-**This critique is mechanistically consistent with our own "Mechanism theme" above, and
-that is what makes it serious.** Every one of the three wins removes a kernel launch or
-an HBM round-trip, so each is worth exactly as much as those fixed costs weigh in the
-total. D64 does little compute per chunk, which is the regime where that weight is
-highest. At D128 the same savings are amortised over more arithmetic, so the speedup
-should be expected to shrink — by how much is unmeasured. The measurements here are
-sound; what is unproven is that they generalise to the shape and the hardware the
-library's users actually run.
+H200 is Hopper-family hardware, but these are not direct H100 measurements. More
+importantly, the practical training path was essentially unchanged. The 432-line
+performance stack was therefore not justified against current FLA, and #1054 was closed
+without merge on 2026-08-07. The result here remains a narrow historical D64 case study,
+not general KDA acceleration.
 
-Until D128 and H100 numbers exist, this case study demonstrates a correctness-preserving,
-memory-neutral, independently certified optimisation **at B8_T1024_H8_D64 on B200** — and
-nothing wider.
+The follow-up also isolated a separate correctness issue: B200/SM100 backward autotuning
+could explore `BK == 32` with unsafe 4/8-warp configurations and trigger an illegal
+memory access. Focused PR
+[fla-org/flash-linear-attention#1109](https://github.com/fla-org/flash-linear-attention/pull/1109)
+filters only those SM100 configurations while leaving Hopper and SM120 unchanged. The
+full B200 KDA test file passed (**76 passed, 7 skipped**), and `zhiyuan1i` approved the PR
+on 2026-08-07. It was open and awaiting merge at the time of this update.
+
+This is the intended evidence-driven outcome: preserve the reproducible D64 numbers,
+retire the performance route that failed to generalise, and upstream the small
+independently reproducible correctness fix.
 
 ## Files
 
@@ -100,5 +105,6 @@ nothing wider.
    are each **N>=10** certified; a full N>=10 certification of the combined stack would
    tighten it (expected ~+25–30%). The strongest number that clears the stated certification
    bar is the **+17.66%** cumulative of optimizations #2 and #3.
-2. **Generalisation is untested.** See *Upstream status*: one shape, one GPU generation, and
-   the mechanism predicts the gain shrinks at larger head dimensions.
+2. **Generalisation was tested and the practical performance claim failed.** See
+   *Upstream status*: representative D128 forward+backward was effectively unchanged,
+   so the original fusion stack was retired rather than rebased.
