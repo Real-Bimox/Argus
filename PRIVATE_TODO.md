@@ -29,6 +29,10 @@ not implementation convenience.
 - Treat a Planner mission as a working plan, not a fixed contract. User goals and
   safety/authority limits stay fixed; technical choices can change when later
   evidence points to a better route.
+- Every gate, assertion, wrapper, fallback, and compatibility path must have a clear
+  job. Do not add layers “just in case,” and remove duplicates once one layer owns
+  the check. Keep security, authority, data-integrity, and process-isolation
+  protections unless an equivalent safeguard is proven.
 - Status labels: `unassigned`, `investigating`, `design-review`, `implementing`,
   `experimenting`, `blocked`, `done`.
 
@@ -45,6 +49,7 @@ not implementation convenience.
 | ARGUS-P1-03 | P1 | Medium | Next | Skill system | partially implemented |
 | ARGUS-P1-04 | P1 | Medium | Next | Architecture/verticals | behavior baseline first |
 | ARGUS-P1-05 | P1 | High | Next | Role prompts/UX | P0-03, P0-04 |
+| ARGUS-P1-06 | P1 | High | Next | Runtime/architecture | behavior baseline first |
 | ARGUS-P2-01 | P2 | Medium | Later spike | Persistence | P0 state semantics stable |
 | ARGUS-P2-02 | P2 | Medium | Continuous | Evaluation/observability | supports all items |
 
@@ -428,6 +433,51 @@ adding a human persona or exposing a raw thought transcript.
 
 ---
 
+## ARGUS-P1-06 — Reduce accidental complexity in the runtime
+
+**Problem.** Argus has accumulated duplicate checks, old compatibility branches,
+pass-through wrappers, gates, assertions, and fallback paths. Some protect real
+boundaries. Others repeat work, hide the main path, turn recoverable conditions into
+crashes, or make a small change pass through several layers. Code kept only “just in
+case” is hard to understand and rarely has a useful test.
+
+**Work packages**
+
+- [ ] Start with a few important paths—mission dispatch, review, resume, and Web/API
+      commands—and list their gates, assertions, wrappers, fallbacks, and compatibility
+      branches.
+- [ ] For each one, record the failure or boundary it protects and the test that proves
+      it. Mark entries with no current caller, producer, or failure case for removal.
+- [ ] Put each check at the layer that owns it. Stop rechecking the same condition in
+      every caller unless the boundary can actually be crossed there.
+- [ ] Use assertions for impossible internal states, not bad user input, missing tools,
+      stale state, or other conditions the runtime can report and handle.
+- [ ] Remove wrappers that only rename arguments or forward calls. Keep a wrapper when
+      it owns policy, translation, lifecycle, or a real compatibility boundary.
+- [ ] Review broad catches, retries, and fallback ladders that hide the first failure.
+      Prefer one clear path and a useful error over a plausible but wrong fallback.
+- [ ] Simplify gate chains. A remaining gate should have one owner, one reason to
+      exist, and a focused test.
+- [ ] Delete obsolete compatibility code in small PRs after checking saved-state and
+      supported-version requirements.
+- [ ] Track branch count, call depth, deleted code, and regression results for each
+      cleaned path; do not use line count alone as proof of improvement.
+
+**Acceptance criteria**
+
+- Every remaining gate, wrapper, fallback, and compatibility branch on the reviewed
+  paths has a named purpose and a test or known boundary behind it.
+- The reviewed paths have fewer duplicate checks and less call indirection without
+  changing their expected behavior.
+- Recoverable problems return useful errors instead of assertion failures or silent
+  fallback behavior.
+- Cleanup does not weaken authentication, sandboxing, secret handling, authority
+  checks, data integrity, idempotency, or crash recovery.
+- A maintainer can trace the normal path without stepping through obsolete branches
+  or wrappers that add no behavior.
+
+---
+
 ## ARGUS-P2-01 — Evaluate hybrid persistence instead of assuming “all files” or “all DB”
 
 **Problem.** `~/.argus-skill` has complex file organization and many sidecar locks.
@@ -480,7 +530,8 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
    policies without changing production defaults.
 3. **Then:** P0-02 progress-aware continuation and the P1-01 cross-domain
    non-monotonic progress model on the clarified contract.
-4. **After lifecycle stability:** P1-03 Skill audit and P1-04 vertical/core cleanup.
+4. **After lifecycle stability:** P1-03 Skill audit, P1-04 vertical/core cleanup,
+   and P1-06 runtime simplification.
 5. **Only after state semantics settle:** P2-01 storage decision and migration.
 
 ## P0 — Keep the synchronized baseline operational
