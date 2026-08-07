@@ -245,15 +245,29 @@ def build_continuous_prompt(
     research_target_block = ""
     _research_target_level = resolve_research_target_level(_proot)
     if _research_target_level is not None:
+        # The target is the PROJECT bar; the profile is THIS round's bar. A
+        # publishable target does not mean every probe must already be
+        # publishable — that reading is what kills seed ideas.
+        from ...core.verification_policy import resolve_policy
+        from ...skills.stage_machine import current_stage
+
+        try:
+            _stage = current_stage(_proot)
+        except Exception:  # noqa: BLE001 - stage is advisory here
+            _stage = ""
+        _policy = resolve_policy(
+            _proot, stage=_stage, target_level=_research_target_level,
+        )
         research_target_block = (
             "## Manager-owned research target\n"
             f"Preserve `research_target_level={_research_target_level}` from "
-            "`research/PIPELINE_STATE.json`. At `publishable` or `doctoral`, "
-            "`PROJECT_DONE=true` requires Reviewer-certified correctness, verified "
-            "novelty, and an original result at that significance level. Known "
-            "results, finite checks, or honest negative reports remain useful "
-            "progress but are not completion. At `exploratory`, an independently "
-            "verified negative report may satisfy the objective."
+            "`research/PIPELINE_STATE.json`; it sets `PROJECT_DONE`, not this "
+            f"round (`{_policy.profile}`, {_policy.posture}). At "
+            "`publishable` or `doctoral`, `PROJECT_DONE=true` requires "
+            "Reviewer-certified correctness, verified novelty, and an original "
+            "result at that level. Known results, finite checks, and honest "
+            "negative reports are progress, not completion. At `exploratory`, an "
+            "independently verified negative report may satisfy the objective."
         )
 
     standing_research_block = ""

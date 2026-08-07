@@ -341,13 +341,27 @@ def render_reviewer_prompt(
     research_target_instruction = ""
     _research_target_level = resolve_research_target_level(_proot)
     if _research_target_level is not None:
+        # Two separate things, previously one sentence: `research_target_level`
+        # says what finishing the PROJECT means, and the verification profile
+        # says what THIS round has to show. Conflating them made every early
+        # probe get judged against publication readiness.
+        from ...core.verification_policy import policy_line, resolve_policy
+        from ...skills.stage_machine import current_stage
+
+        try:
+            _stage = current_stage(_proot)
+        except Exception:  # noqa: BLE001 - stage is advisory here
+            _stage = ""
+        _policy = resolve_policy(
+            _proot, stage=_stage, vertical=_persisted_vertical(_proot),
+            target_level=_research_target_level,
+        )
         research_target_instruction = (
-            f"Project target: `{_research_target_level}`. Judge correctness, novelty, "
-            "significance, fidelity, evidence, and limitations directly. Explain the "
-            "judgment in `reason`; do not encode it in extra fields. For project-level "
-            "`publishable` or `doctoral` completion, require a verified original result "
-            "at the requested significance. If the current direction cannot meet that "
-            "bar, return `replan_requested`.\n\n"
+            f"Project target `{_research_target_level}` defines project completion, "
+            f"not this round's bar. This round: {policy_line(_policy)}. The integrity "
+            "floor is identical at every profile. Judge directly and explain in "
+            "`reason`. If the direction cannot reach the target, return "
+            "`replan_requested`.\n\n"
         )
     # Live search-altitude facts (NO verdict) so the reviewer can SEE the
     # floor history when judging forward_progress — i.e. distinguish "this
