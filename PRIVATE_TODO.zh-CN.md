@@ -40,7 +40,7 @@
 | ARGUS-P0-04 | P0 | 高 | 已完成 | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | 高 | 下一阶段 | Mission progress/evaluation | P0-02、P0-03、P0-04 |
 | ARGUS-P1-02 | P1 | 高 | 受控实验完成 | Agent/session integration | 下一步：真实项目 canary |
-| ARGUS-P1-03 | P1 | 中 | 受控实验完成；需优化 | Skill system | 旧字段迁移仍未完成 |
+| ARGUS-P1-03 | P1 | 中 | 受控实验完成；自然触发未过 | Skill system | 旧字段迁移仍未完成 |
 | ARGUS-P1-04 | P1 | 中 | 下一阶段 | Architecture/verticals | 先建立行为基线 |
 | ARGUS-P1-05 | P1 | 高 | 下一阶段 | Role prompts/UX | P0-03、P0-04 |
 | ARGUS-P1-06 | P1 | 高 | 下一阶段 | Runtime/architecture | 先建立行为基线 |
@@ -227,8 +227,10 @@ invariant 可能暂时破坏已经通过的 obligations；一次完整重构可�
 **状态：受控 live 实验已完成；真实项目 canary 未完成。** `60060c38` 实现了
 `fresh`、`mission` 和 `rolling`，生产默认仍是 `fresh`。20 次真实 provider run 的
 结果见 `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`：mission
-在受控匹配任务上 4/4 联合成功，fresh 2/4，当前两轮滚动策略 1/4。结论是扩大 mission
-canary、停止当前 rolling 配置，暂不改生产默认值。
+在受控匹配任务上 4/4 联合成功，fresh 2/4，原两轮滚动策略 1/4。`c7f44522` 修复了
+轮换后角色重启旧阶段、相对路径 checkpoint 分叉和自然 verdict 漏 `STATUS` 的问题；
+两类任务修复后 smoke 为 2/2。结论仍是扩大 mission canary，rolling 完整复测前不改
+生产默认值。
 
 **问题。** Manager 会复用 session，而 Planner、Engineer 和 Reviewer 通常每次启动新
 session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增长的 session 又会累积
@@ -241,7 +243,8 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
       保留可披露聚合结果。真实用户轨迹基线仍是下一阶段 canary。
 - [x] 完成 fresh、mission、rolling 三策略 live 配对评估并作决定：mission 相比 fresh
       墙钟降低 14.6%、显式 prompt 降低 33.5%、重复仓库读取降低 41.9%，联合成功率
-      4/4 对 2/4；当前 rolling 联合成功率仅 1/4，停止该配置。
+      4/4 对 2/4；原 rolling 联合成功率仅 1/4。轮换 handoff 修复后 smoke 2/2，仍需
+      完整矩阵复测后才能恢复 rolling 候选资格。
 - [x] 实现小型、按角色隔离的 session capsule：只保存目标版本、仓库地图、已检查路径、
       最新关键输出、开放问题、checkpoint 指针和会话计数，不保存完整对话。
 - [ ] 完成全部轮换触发。已实现 turn/Token 上限、目标/分支/model/backend 变化、resume
@@ -265,11 +268,11 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
 
 ## ARGUS-P1-03 — 完成 coding-agent 原生、按需使用 Skill 的方案
 
-**状态：受控 live 实验已完成；成本验收未通过，旧字段迁移仍未完成。** `43a76917`
-和 `60060c38` 完成实现。4 组 relevant 与 4 组 control 的真实 provider A/B 见
-`docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`：相关 Skill
-实际读取 4/4 且 held-out 通过 4/4，control 为 0/4；错误 Skill 读取 1/4。质量提升明显，
-但墙钟增加 27.8%、provider 成本增加 18.8%，所以必须优化，不能标记整体完成。
+**状态：受控 live 实验已完成；自然触发和成本验收未通过，旧字段迁移仍未完成。**
+显式要求检查 Skill 时，相关正文读取 4/4 且 held-out 通过 4/4，control 为 0/4；错误
+Skill 读取 1/4。但移除显式提示后的自然触发为 0/2、held-out 0/2。另一个不计 matcher
+成本的 oracle 注入基线同样 4/4，且比按需读取快 10.8%、prompt 少 1.3%、成本低 6.2%。
+完整结果和限制见 `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`。
 
 **工作项**
 
@@ -283,8 +286,8 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
       tests。
 - [x] 完成受控 live 按需测量：记录实际打开文件、读取字节、Tokens、成本、墙钟、
       有用/错误复用、Reviewer verdict、visible tests 和 held-out tests。相关 Skill 正文
-      4/4 被读取并使 held-out 从 0/4 提升到 4/4；出现 1/4 错误复用。仍需无显式 Skill
-      提示的自然任务研究。
+      4/4 被读取并使 held-out 从 0/4 提升到 4/4；出现 1/4 错误复用。后续自然触发
+      probe 为 0/2，说明“能按需读取”已经成立，但“会自然按需读取”尚未成立。
 - [x] Agent 新建的角色 Skill 可从稳定 library root 立即发现；prompt 只持有路径，
       不需要重建 Skill 正文列表或重启 daemon。
 - [ ] 尚未删除旧兼容字段；必须先增加旧 event/session fixture 的迁移回放并确认仍可读取。
@@ -293,8 +296,9 @@ session。新 session 会重复探索仓库，浪费时间和 Tokens；无限增
 
 - [x] 普通 mission prompt 默认不包含完整的非角色 Skill 正文。
 - [x] Agent 能通过原生 Pi loader 或可移植文件工具路径按需找到并加载相关 Skill。
-- [ ] **未满足。** 完成质量从 0/4 提升到 4/4，但显式 prompt 增加 1.9%、墙钟增加
-      27.8%、provider 成本增加 18.8%；保留按需加载，下一步优化发现/工具开销。
+- [ ] **未满足。** 显式提示下质量从 0/4 提升到 4/4，但自然触发 0/2；与不计选择成本
+      的 oracle 正文注入相比，按需读取 prompt 增加 1.3%、墙钟增加 10.8%、provider
+      成本增加 6.2%。下一步先解决原生发现触发，再比较包含 matcher 成本的公平基线。
 
 ---
 
@@ -447,9 +451,9 @@ Argus 应像一个靠谱队友那样表达：先说结果，用普通语言解�
 1. **已完成：** P0-01 到 P0-04，包括批准/恢复一致性、按进展继续、可修改计划和
    目标级 mission 质量。
 2. **下一步：** 建立 P1-01 跨领域非单调进展模型，并在真实项目上 canary P1-02
-   mission session；当前 rolling 配置停止继续试验，先修复轮换 handoff。
-3. **并行：** 优化 P1-03 Skill 发现/工具开销、补旧 session 迁移测试，并推进 P1-05
-   沟通改进。
+   mission session；轮换 handoff 已修复并 smoke 2/2，下一步完整复测 rolling。
+3. **并行：** 解决 P1-03 原生 Skill 自然触发 0/2、补旧 session 迁移测试，并推进
+   P1-05 沟通改进。
 4. **生命周期稳定后：** P1-04 vertical/core 清理和 P1-06 runtime 简化。
 5. **状态语义稳定后：** 再做 P2-01 存储方案和迁移。
 

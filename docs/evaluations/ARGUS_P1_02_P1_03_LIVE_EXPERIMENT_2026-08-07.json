@@ -1,11 +1,14 @@
 {
   "schema_version": 1,
   "date": "2026-08-07",
-  "source_commit": "bc553f04",
+  "primary_source_commit": "bc553f04",
+  "follow_up_fix_commit": "c7f44522",
   "backend": "pi",
   "model": "github-copilot/gpt-5-mini",
   "reasoning_effort": "low",
-  "run_count": 20,
+  "primary_run_count": 20,
+  "diagnostic_follow_up_run_count": 17,
+  "total_run_count": 37,
   "session_experiment": {
     "tasks": 2,
     "replicates": 2,
@@ -44,7 +47,14 @@
       "mean_engineer_repeated_repo_reads": 2.0,
       "mean_cost_usd": 0.025583
     },
-    "decision": "canary_mission_reject_current_rolling_keep_default_fresh"
+    "post_fix_rolling_smoke": {
+      "runs": 2,
+      "reviewer_done": 2,
+      "held_out_pass": 2,
+      "joint_success": 2,
+      "note": "full matrix rerun still required"
+    },
+    "decision": "canary_mission_keep_default_fresh_expand_repaired_rolling"
   },
   "skill_experiment": {
     "tasks": 2,
@@ -72,13 +82,28 @@
       "mean_provider_input_tokens": 103014.0,
       "mean_cost_usd": 0.012284
     },
-    "decision": "retain_on_demand_loading_but_do_not_claim_cost_reduction"
+    "oracle_injected_relevant_body": {
+      "runs": 4,
+      "held_out_pass": 4,
+      "mean_wall_seconds": 73.373,
+      "mean_prompt_estimated_tokens": 4795.5,
+      "mean_provider_input_tokens": 86688.0,
+      "mean_cost_usd": 0.011562,
+      "selection_cost_included": false
+    },
+    "natural_incidence_probe": {
+      "runs": 2,
+      "useful_skill_opened": 0,
+      "held_out_pass": 0
+    },
+    "decision": "retain_implementation_but_prompt_cost_and_natural_invocation_not_met"
   },
   "limitations": [
     "one backend and model",
     "two controlled repositories",
-    "four runs per condition",
-    "skill treatment explicitly requested inspection of clearly relevant guidance",
+    "four primary runs per condition",
+    "initial skill treatment explicitly requested inspection of clearly relevant guidance",
+    "natural-incidence follow-up has only two runs",
     "raw traces retained locally only"
   ]
 }

@@ -1,9 +1,10 @@
 # ARGUS-P1-02 / P1-03 controlled live experiment
 
-Date: 2026-08-07  
-Source baseline: `bc553f04`  
-Backend/model: Pi 0.84.1 via GitHub Copilot, `gpt-5-mini`, low reasoning  
-Runs: 20 real provider-backed runs, all sequential and isolated
+Date: 2026-08-07
+Primary matrix baseline: `bc553f04`
+Follow-up fix: `c7f44522`
+Backend/model: Pi 0.84.1 via GitHub Copilot, `gpt-5-mini`, low reasoning
+Runs: 20 primary + 17 diagnostic/follow-up real provider runs, all sequential
 
 ## Method
 
@@ -45,10 +46,16 @@ not translate into lower total provider input. The two-turn rolling boundary was
 safe: rotation caused stale-stage confusion in observed runs and joint success fell
 to 1/4.
 
-**Decision:** keep production default unchanged for now; advance `mission` to a
-larger real-project canary. Stop the current rolling policy (`max_turns=2`) rather
-than ship it. A revised rolling policy needs a rotation handoff that explicitly
-carries the current gate/stage before another trial.
+**Initial decision:** keep production default unchanged and advance `mission` to a
+larger real-project canary. The original rolling policy (`max_turns=2`) was not
+shippable. Follow-up diagnosis found that rotated Engineer/Reviewer sessions could
+restart an earlier stage, write a relative duplicate checkpoint, or omit the exact
+`STATUS` line despite a usable natural verdict. `c7f44522` now sends full static
+context plus an explicit current-round/approval handoff on rotation, requires the
+canonical absolute checkpoint path, and tolerantly reads a natural `Verdict:` label.
+One post-fix run on each task passed both Reviewer and held-out checks (2/2). This is
+a repair smoke test, not enough evidence to change the production default or replace
+the original table.
 
 ## P1-03 results
 
@@ -73,19 +80,37 @@ Treatment overhead versus control was:
 - 62.6% higher provider-reported input tokens, almost entirely cached context
   (uncached input increased only 2.5%).
 
-**Decision:** retain agent-native on-demand Skill loading—the quality signal is
-strong in this controlled sample—but do not claim cost reduction. Next work is to
-reduce discovery/tool overhead, investigate the one false reuse, and add held-out
-acceptance probes to Reviewer evaluations.
+An additional best-case oracle baseline injected the one known-relevant Skill body
+without charging matcher/selection cost (`n=4`). It also passed held-out checks 4/4
+and averaged 73.4 s, 4,796 explicit prompt tokens, and $0.01156. The initial
+explicitly-cued on-demand condition was 10.8% slower, used 1.3% more explicit prompt,
+18.8% more provider input, and cost 6.2% more than this oracle injection. The extra
+read/tool inference erased progressive-disclosure savings for these ~1 KiB Skills.
+The oracle baseline is intentionally favorable and is not implementable without
+selection knowledge.
+
+More importantly, two natural-incidence follow-ups removed the explicit instruction
+to inspect Skills. The useful body was opened 0/2 and held-out checks passed 0/2,
+even though native paths and high-fit descriptions were available. This means the
+current coding-agent-native contract supports on-demand use but does not reliably
+trigger it on this model. A stronger compact discovery instruction removed the one
+observed adjacent false read in a single verification run, but did not fix natural
+invocation.
+
+**Revised decision:** retain the implementation behind its current default, but do
+not mark P1-03 complete. Prompt-cost and natural-use acceptance are not met. Next
+work must improve native discovery without restoring a harness matcher, test a
+stronger model, and compare against an injection baseline that includes selection
+cost.
 
 ## Limitations
 
 - One backend/model and two controlled repositories; these are real coding-agent
   calls, not production user trajectories.
-- Four runs per condition are enough to expose large failures, not to estimate a
-  stable population effect.
-- Skill tasks explicitly asked the Agent to inspect clearly relevant guidance; a
-  natural-incidence study is still required.
+- Four primary runs per condition and two post-fix rolling smoke runs expose large
+  failures but do not estimate a stable population effect.
+- Initial Skill treatment explicitly requested inspection; the later natural probe
+  had only two runs and found 0/2 useful opens.
 - Wall time includes provider variance. Runs were sequential, not simultaneous.
 - Raw traces remain local because they contain machine paths and provider session
   material; only aggregate, disclosure-safe results belong in the repository.
@@ -93,8 +118,8 @@ acceptance probes to Reviewer evaluations.
 ## Next experiment
 
 1. Replay `fresh` and `mission` on disclosure-safe slices of two real projects.
-2. Revise rolling rotation to carry an explicit current-stage handoff, then rerun.
+2. Expand the repaired rolling handoff from its 2/2 smoke test to the full matrix.
 3. Repeat Skill A/B on at least ten naturally occurring tasks without an explicit
-   “inspect Skills” instruction.
+   “inspect Skills” instruction and compare at least two models.
 4. Measure bytes opened and false reuse by role, and gate Reviewer acceptance with
    held-out or independently generated edge cases where available.

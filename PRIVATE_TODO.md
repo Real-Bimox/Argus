@@ -46,7 +46,7 @@ not implementation convenience.
 | ARGUS-P0-04 | P0 | High | Done | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | High | Next | Mission progress/evaluation | P0-02, P0-03, P0-04 |
 | ARGUS-P1-02 | P1 | High | Controlled experiment done | Agent/session integration | next: real-project canary |
-| ARGUS-P1-03 | P1 | Medium | Controlled experiment done; revise | Skill system | legacy migration remains |
+| ARGUS-P1-03 | P1 | Medium | Controlled experiment done; natural trigger failed | Skill system | legacy migration remains |
 | ARGUS-P1-04 | P1 | Medium | Next | Architecture/verticals | behavior baseline first |
 | ARGUS-P1-05 | P1 | High | Next | Role prompts/UX | P0-03, P0-04 |
 | ARGUS-P1-06 | P1 | High | Next | Runtime/architecture | behavior baseline first |
@@ -269,9 +269,11 @@ exit conditions.
 `60060c38` implements `fresh`, `mission`, and `rolling`; production still defaults
 to `fresh`. Twenty real provider runs are reported in
 `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`: mission achieved
-4/4 joint success on controlled matched tasks, fresh 2/4, and the current two-turn
-rolling policy 1/4. Advance mission to a larger canary, stop this rolling
-configuration, and leave the production default unchanged for now.
+4/4 joint success on controlled matched tasks, fresh 2/4, and the original two-turn
+rolling policy 1/4. `c7f44522` fixed rotated roles restarting old stages, relative
+checkpoint forks, and natural verdicts missing `STATUS`; one post-fix smoke run per
+task passed 2/2. Advance mission to a larger canary and fully rerun rolling before
+changing the production default.
 
 **Problem.** Manager reuses a session, while Planner, Engineer, and Reviewer normally
 start fresh sessions. Fresh sessions repeat repository exploration and spend time and
@@ -285,8 +287,9 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
       stores disclosure-safe aggregates. Real user trajectories remain the next canary.
 - [x] Complete the fresh/mission/rolling live comparison and decide: versus fresh,
       mission reduced wall time 14.6%, explicit prompt estimate 33.5%, and repeated
-      repository reads 41.9%, with joint success 4/4 versus 2/4. Current rolling
-      achieved only 1/4 joint success, so stop that configuration.
+      repository reads 41.9%, with joint success 4/4 versus 2/4. Original rolling
+      achieved only 1/4; its handoff repair passed a 2/2 smoke and now needs the full
+      matrix before regaining candidate status.
 - [x] Implement a small role-isolated capsule containing only objective revision,
       repository map, inspected paths, latest decisive output, open items,
       checkpoint pointer, and session counters—not the transcript.
@@ -315,13 +318,13 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
 
 ## ARGUS-P1-03 — Finish coding-agent-native, on-demand Skill use
 
-**Status: controlled live experiment complete; cost acceptance failed and legacy
-migration remains.** `43a76917` and `60060c38` provide the implementation. The live
-A/B in `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md` ran four
-relevant and four control conditions: the relevant body was opened 4/4 and passed
-held-out checks 4/4 versus control at 0/4; a wrong Skill was opened in 1/4 treatment
-runs. Quality improved strongly, but wall time rose 27.8% and provider cost 18.8%, so
-this item needs optimization rather than a completed label.
+**Status: controlled live experiment complete; natural invocation and cost
+acceptance failed, and legacy migration remains.** With an explicit Skill-inspection
+cue, the relevant body opened 4/4 and held-out checks passed 4/4 versus control at
+0/4; a wrong Skill opened in 1/4. Removing that cue produced 0/2 useful opens and
+0/2 held-out passes. A best-case oracle body injection (excluding matcher cost) also
+passed 4/4 and beat on-demand by 10.8% wall time, 1.3% prompt, and 6.2% provider cost.
+See `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`.
 
 **Work packages**
 
@@ -337,8 +340,9 @@ this item needs optimization rather than a completed label.
 - [x] Complete a controlled live measurement of files actually opened, bytes read,
       Tokens, cost, wall time, useful/false reuse, Reviewer verdicts, visible tests,
       and held-out tests. Relevant bodies were read 4/4 and moved held-out success
-      from 0/4 to 4/4; false reuse occurred in 1/4. A natural-incidence study without
-      an explicit Skill-inspection instruction remains.
+      from 0/4 to 4/4; false reuse occurred in 1/4. The subsequent natural-incidence
+      probe was 0/2, so “can load on demand” is established but “naturally does load”
+      is not.
 - [x] Make Agent-authored role Skills immediately discoverable from stable library
       roots; prompts retain paths rather than a body snapshot, so no daemon restart
       or giant-prompt rebuild is required.
@@ -350,9 +354,11 @@ this item needs optimization rather than a completed label.
 - [x] No ordinary mission prompt contains full non-role Skill bodies by default.
 - [x] Agents can load relevant Skills on demand through Pi's native loader or the
       portable file-tool paths.
-- [ ] **Not met.** Completion quality rose from 0/4 to 4/4, but explicit prompt grew
-      1.9%, wall time 27.8%, and provider cost 18.8%. Keep on-demand loading and next
-      reduce discovery/tool overhead.
+- [ ] **Not met.** Explicitly cued quality rose from 0/4 to 4/4, but natural
+      invocation was 0/2. Against oracle body injection without selection cost,
+      on-demand used 1.3% more prompt, 10.8% more wall time, and 6.2% more provider
+      cost. Fix native triggering, then compare against a baseline that includes
+      matcher cost.
 
 ---
 
@@ -538,9 +544,9 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 1. **Completed:** P0-01 through P0-04 — approval/resume consistency,
    progress-aware continuation, revisable plans, and goal-level mission quality.
 2. **Next:** build the P1-01 cross-domain non-monotonic progress model and canary
-   P1-02 mission sessions on real projects. Stop the current rolling configuration
-   until its rotation handoff is repaired.
-3. **In parallel:** reduce P1-03 Skill discovery/tool overhead, add old-session
+   P1-02 mission sessions on real projects. The repaired rotation handoff passed a
+   2/2 smoke; next rerun the full rolling matrix.
+3. **In parallel:** fix P1-03 native Skill natural invocation (0/2), add old-session
    migration tests, and continue P1-05 communication improvements.
 4. **After lifecycle stability:** P1-04 vertical/core cleanup and P1-06 runtime
    simplification.
