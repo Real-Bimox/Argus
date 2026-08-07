@@ -45,8 +45,8 @@ not implementation convenience.
 | ARGUS-P0-03 | P0 | Critical | Done | Manager/contract | none |
 | ARGUS-P0-04 | P0 | High | Done | Planner/goal | P0-03 |
 | ARGUS-P1-01 | P1 | High | Next | Mission progress/evaluation | P0-02, P0-03, P0-04 |
-| ARGUS-P1-02 | P1 | High | Experimenting | Agent/session integration | none; can run in parallel |
-| ARGUS-P1-03 | P1 | Medium | Partially complete | Skill system | partially implemented |
+| ARGUS-P1-02 | P1 | High | Controlled experiment done | Agent/session integration | next: real-project canary |
+| ARGUS-P1-03 | P1 | Medium | Controlled experiment done; revise | Skill system | legacy migration remains |
 | ARGUS-P1-04 | P1 | Medium | Next | Architecture/verticals | behavior baseline first |
 | ARGUS-P1-05 | P1 | High | Next | Role prompts/UX | P0-03, P0-04 |
 | ARGUS-P1-06 | P1 | High | Next | Runtime/architecture | behavior baseline first |
@@ -265,12 +265,13 @@ exit conditions.
 
 ## ARGUS-P1-02 — Design a bounded role-session lifecycle
 
-**Status: experimenting; infrastructure is complete, real-project evaluation is
-not.** `60060c38` implements `fresh`, `mission`, and `rolling`; production still
-defaults to `fresh`. A deterministic replay shows that Reviewer resume sends only
-the round delta and reduces prompt bytes without changing the verdict. Design,
-configuration, rollback, and observability are documented in
-`docs/ROLE_SESSIONS_AND_SKILLS.md`.
+**Status: controlled live experiment complete; real-project canary remains.**
+`60060c38` implements `fresh`, `mission`, and `rolling`; production still defaults
+to `fresh`. Twenty real provider runs are reported in
+`docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md`: mission achieved
+4/4 joint success on controlled matched tasks, fresh 2/4, and the current two-turn
+rolling policy 1/4. Advance mission to a larger canary, stop this rolling
+configuration, and leave the production default unchanged for now.
 
 **Problem.** Manager reuses a session, while Planner, Engineer, and Reviewer normally
 start fresh sessions. Fresh sessions repeat repository exploration and spend time and
@@ -278,13 +279,14 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
 
 **Work packages**
 
-- [ ] Measure repeated-exploration cost by role. `role.session.turn` now records
-      policy, resume/rotation, prompt size, Tokens, and wall time, while `agent.io.*`
-      can reconstruct file reads; real traces still need duplicate-read, repository-
-      remapping, and correction-rate baselines.
-- [ ] Complete the three-policy paired evaluation on real matched tasks. All three
-      policies and a deterministic A/B replay exist, but disclosure-safe project
-      replays, blinded correctness review, and a ship/revise/stop decision remain.
+- [x] Measure prompt size, provider Tokens, wall time, repeated repository reads,
+      Reviewer verdict, and held-out correctness by role across two controlled
+      repository tasks with two replicates each. Raw traces remain local; the repo
+      stores disclosure-safe aggregates. Real user trajectories remain the next canary.
+- [x] Complete the fresh/mission/rolling live comparison and decide: versus fresh,
+      mission reduced wall time 14.6%, explicit prompt estimate 33.5%, and repeated
+      repository reads 41.9%, with joint success 4/4 versus 2/4. Current rolling
+      achieved only 1/4 joint success, so stop that configuration.
 - [x] Implement a small role-isolated capsule containing only objective revision,
       repository map, inspected paths, latest decisive output, open items,
       checkpoint pointer, and session counters—not the transcript.
@@ -301,9 +303,11 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
 
 **Acceptance criteria**
 
-- [ ] A selected policy reduces repeated exploration/time/Tokens on real matched tasks.
-- [ ] Real-project paired evaluation confirms correctness and Reviewer acceptance do
-      not regress.
+- [x] Mission reduces repeated exploration, wall time, and explicit prompt on
+      controlled live matched tasks. Provider input Tokens rose 43.8% and cost 4.7%,
+      so total Token/cost reduction is not claimed.
+- [x] In the controlled pairing, mission held-out correctness plus Reviewer acceptance
+      was 4/4 versus fresh at 2/4; a real-project canary still must test external validity.
 - [x] Context rotation is explicit, observable, and recoverable across process restart.
 - [x] The design works with resumable and fresh-only coding-agent backends.
 
@@ -311,11 +315,13 @@ Tokens; indefinitely long sessions accumulate stale context and reduce output qu
 
 ## ARGUS-P1-03 — Finish coding-agent-native, on-demand Skill use
 
-**Status: partially complete.** `43a76917` completed the main prompt audit and
-role-owned discovery contract; `60060c38` added native-loader/portable-fallback
-wiring, Manager integration, and regression tests. The runtime still does not match,
-score, rewrite, or inject Skill bodies. Real-task reuse-quality evaluation and legacy
-field migration/removal remain.
+**Status: controlled live experiment complete; cost acceptance failed and legacy
+migration remains.** `43a76917` and `60060c38` provide the implementation. The live
+A/B in `docs/evaluations/ARGUS_P1_02_P1_03_LIVE_EXPERIMENT_2026-08-07.md` ran four
+relevant and four control conditions: the relevant body was opened 4/4 and passed
+held-out checks 4/4 versus control at 0/4; a wrong Skill was opened in 1/4 treatment
+runs. Quality improved strongly, but wall time rose 27.8% and provider cost 18.8%, so
+this item needs optimization rather than a completed label.
 
 **Work packages**
 
@@ -328,10 +334,11 @@ field migration/removal remain.
 - [x] Cover Codex, Claude, Copilot, OpenCode, and Pi adapters. Pi uses explicit
       `--skill` with ambient discovery disabled; the other backends use the same
       role-path fallback. Parameterized contract tests cover the matrix.
-- [ ] Measure real on-demand behavior. `skill.library.available` now records roots,
-      OWN/REFERENCE paths, and discovery mode, and `agent.io.*` retains actual file
-      access; aggregation of opened Skills, bytes/Tokens, useful/false reuse, task
-      success, and latency plus human relevance review remains.
+- [x] Complete a controlled live measurement of files actually opened, bytes read,
+      Tokens, cost, wall time, useful/false reuse, Reviewer verdicts, visible tests,
+      and held-out tests. Relevant bodies were read 4/4 and moved held-out success
+      from 0/4 to 4/4; false reuse occurred in 1/4. A natural-incidence study without
+      an explicit Skill-inspection instruction remains.
 - [x] Make Agent-authored role Skills immediately discoverable from stable library
       roots; prompts retain paths rather than a body snapshot, so no daemon restart
       or giant-prompt rebuild is required.
@@ -343,7 +350,9 @@ field migration/removal remain.
 - [x] No ordinary mission prompt contains full non-role Skill bodies by default.
 - [x] Agents can load relevant Skills on demand through Pi's native loader or the
       portable file-tool paths.
-- [ ] Real paired evaluation proves lower prompt cost without lower completion quality.
+- [ ] **Not met.** Completion quality rose from 0/4 to 4/4, but explicit prompt grew
+      1.9%, wall time 27.8%, and provider cost 18.8%. Keep on-demand loading and next
+      reduce discovery/tool overhead.
 
 ---
 
@@ -528,10 +537,11 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 
 1. **Completed:** P0-01 through P0-04 — approval/resume consistency,
    progress-aware continuation, revisable plans, and goal-level mission quality.
-2. **Next:** build the P1-01 cross-domain non-monotonic progress model and continue
-   the P1-02 role-session experiment.
-3. **In parallel:** finish P1-03 on-demand Skill validation and P1-05 communication
-   improvements.
+2. **Next:** build the P1-01 cross-domain non-monotonic progress model and canary
+   P1-02 mission sessions on real projects. Stop the current rolling configuration
+   until its rotation handoff is repaired.
+3. **In parallel:** reduce P1-03 Skill discovery/tool overhead, add old-session
+   migration tests, and continue P1-05 communication improvements.
 4. **After lifecycle stability:** P1-04 vertical/core cleanup and P1-06 runtime
    simplification.
 5. **Only after state semantics settle:** P2-01 storage decision and migration.
