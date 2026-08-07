@@ -55,6 +55,7 @@ import {
   type DaemonReplacementState,
 } from './components/DaemonReplacementPicker.js';
 import { projectMissionView } from '../../core/src/missionView.js';
+import { isPromptRewriteShortcut } from '../../core/src/shortcuts.js';
 import { useProjectFeed } from './appProjectFeed.js';
 import { useManagerSession } from './appManagerSession.js';
 import { usePanelState } from './appPanelState.js';
@@ -484,7 +485,7 @@ export function App({
       quit();
       return;
     }
-    if (key.ctrl && input === 'r') {
+    if (isPromptRewriteShortcut(input, key.ctrl, key.meta)) {
       rewriteDraft(edit.value);
       return;
     }

@@ -801,6 +801,7 @@ test('footer exposes only stable cockpit controls', async () => {
     160,
   );
   assert.match(output, /Enter send/);
+  assert.match(output, /Ctrl-R rewrite/);
   assert.doesNotMatch(output, /Ctrl\+O|Ctrl\+T|Copilot|gpt-|pid/);
 });
 
