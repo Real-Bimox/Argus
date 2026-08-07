@@ -16,6 +16,7 @@ from argus_skill.life.context_packet import (
 from argus_skill.life.memory import BacklogItem, LifeMemory, MemoryBundle
 from argus_skill.life.supervisor._config import LifeSupervisorConfig
 from argus_skill.life.supervisor._constants import (
+    PLAN_AWAITING,
     PLAN_ERROR,
     PLAN_RETRY,
     PLAN_TERMINAL_IDLE,
@@ -385,7 +386,7 @@ def test_nonterminal_empty_plan_repairs_into_concrete_backlog_task(
     )
 
 
-def test_nonterminal_empty_plan_repair_exhaustion_fails_with_planner_error(
+def test_nonterminal_empty_plan_repair_exhaustion_asks_operator(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -395,23 +396,33 @@ def test_nonterminal_empty_plan_repair_exhaustion_fails_with_planner_error(
         terminal_stage_done=False,
     )
 
-    assert supervisor._plan_next_work() == PLAN_ERROR
+    assert supervisor._plan_next_work() == PLAN_AWAITING
 
     assert backend.planner_calls == 2
     assert backend.manager_calls == 0
-    assert supervisor.memory.backlog.pending() == []
+    paused = [
+        item for item in supervisor.memory.backlog.all()
+        if item.status == "paused_operator"
+    ]
+    assert len(paused) == 1
+    assert "cannot identify a concrete next task" in paused[0].pending_question
     error_event = next(
         event for event in sink.events if event.get("type") == "life.planner.error"
     )
     assert str(error_event.get("error", "")).startswith(NO_CONCRETE_TASKS_ERROR)
     assert "repair exhausted after 1 attempt" in str(error_event.get("error", ""))
+    assert error_event["operator_alert"] is True
+    assert any(
+        event.get("type") == "life.operator_question.pending"
+        for event in sink.events
+    )
     assert not any(
         event.get("type") == "life.planner.verdict" and event.get("status") == "completed"
         for event in sink.events
     )
 
 
-def test_nonterminal_empty_plan_repair_exhaustion_stops_run_with_planner_error(
+def test_nonterminal_empty_plan_repair_exhaustion_stops_for_operator_input(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -423,7 +434,7 @@ def test_nonterminal_empty_plan_repair_exhaustion_stops_run_with_planner_error(
 
     summary = supervisor.run()
 
-    assert summary["stopped_by"] == "planner_error"
+    assert summary["stopped_by"] == PLAN_AWAITING
     assert backend.planner_calls == 2
     error_event = next(
         event for event in sink.events if event.get("type") == "life.planner.error"

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
 
 from ...core.campaign_workdir import (
@@ -169,20 +170,35 @@ class PlanningCycleEnqueueMixin:
                 or 0.0
             )
 
-        reviewed: list[Any] = []
-        for item in rows:
-            if self._item_pipeline_stage(item) != current_stage:
-                continue
-            if not self._item_is_stage_closing(item) or item.status != "done":
-                continue
-            outcome = getattr(item, "outcome", {}) or {}
-            if str(outcome.get("review_status") or "").strip().lower() != "done":
-                continue
-            reviewed.append(item)
-        if not reviewed:
-            return None
-        latest = max(reviewed, key=finished_at)
-        cutoff = finished_at(latest)
+        latest = None
+        cutoff = 0.0
+        try:
+            from ...core.stage_certificate import latest_stage_review
+
+            certificate = latest_stage_review(self.memory.root, current_stage)
+        except Exception:  # noqa: BLE001 - backlog fallback remains available
+            certificate = None
+        if certificate and certificate.get("review_status") == "done":
+            task_id = str(certificate.get("task_id") or "")
+            latest = next((item for item in rows if item.id == task_id), None)
+            if latest is None:
+                latest = SimpleNamespace(id=task_id or "stage-review", status="done")
+            cutoff = float(certificate.get("recorded_at") or 0.0)
+        else:
+            reviewed: list[Any] = []
+            for item in rows:
+                if self._item_pipeline_stage(item) != current_stage:
+                    continue
+                if not self._item_is_stage_closing(item) or item.status != "done":
+                    continue
+                outcome = getattr(item, "outcome", {}) or {}
+                if str(outcome.get("review_status") or "").strip().lower() != "done":
+                    continue
+                reviewed.append(item)
+            if not reviewed:
+                return None
+            latest = max(reviewed, key=finished_at)
+            cutoff = finished_at(latest)
 
         # A successful ordinary mission after the review is the evidence delta
         # that unlocks one new stage-closing attempt.  Merely renaming or

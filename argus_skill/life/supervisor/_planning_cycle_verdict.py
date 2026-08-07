@@ -13,7 +13,7 @@ from dataclasses import replace
 from typing import Any
 
 from ...core.event_catalog import EventType
-from ._constants import PLAN_ERROR, PLAN_RETRY
+from ._constants import PLAN_AWAITING, PLAN_ERROR, PLAN_RETRY
 from ._planning_cycle_helpers import _PlanCycleState, _render_revision_request
 
 log = logging.getLogger(__name__)
@@ -26,6 +26,81 @@ def _is_content_filter_failure(*values: Any) -> bool:
 
 class PlanningCycleVerdictMixin:
     """Planner invocation and error/overlap normalization."""
+
+    def _pause_empty_plan_for_operator(
+        self,
+        state: _PlanCycleState,
+    ) -> str:
+        """Make an exhausted empty plan visible instead of silently backing off."""
+        verdict = state.verdict
+        reason = str(verdict.reason or verdict.error or "").strip()
+        question = (
+            "Planner cannot identify a concrete next task. "
+            + (f"It reported: {reason[:900]} " if reason else "")
+            + "Please tell Argus what direction to try next, provide the missing "
+            "decision/resource, or say that this campaign should stop."
+        )
+        item = None
+        revision = state.revision_request or {}
+        item_id = str(revision.get("item_id") or "")
+        if item_id:
+            item = next(
+                (row for row in self.memory.backlog.all() if row.id == item_id),
+                None,
+            )
+        if item is None:
+            from ..memory import BacklogItem
+
+            item = self.memory.backlog.add(
+                BacklogItem.new(
+                    title="Planner needs operator direction",
+                    objective=str(self.config.continuous_objective or question),
+                    tags=["planner", "operator_decision", "scope:bounded"],
+                    iterate=False,
+                )
+            )
+        try:
+            from ...core.operator_decision import build_operator_decision
+            from ...daemon.state import read_continuous_state
+
+            card = build_operator_decision(
+                item_id=item.id,
+                title=item.title,
+                reason=reason or "Planner produced no executable task.",
+                question=question,
+                recommendation="Provide one concrete next direction or stop the campaign.",
+                project_id=self.memory.root.name,
+                campaign_generation=read_continuous_state(
+                    self.memory.root
+                ).generation,
+            )
+        except Exception:  # noqa: BLE001 - the plain question is sufficient
+            card = {}
+        self.memory.backlog.update(
+            item.id,
+            status="paused_operator",
+            pending_question=question,
+            operator_decision=card,
+            last_error=reason,
+        )
+        self._emit({
+            "type": EventType.LIFE_OPERATOR_QUESTION_PENDING,
+            "item_id": item.id,
+            "title": item.title,
+            "question": question,
+            "agent_layer": "planner",
+        })
+        self._emit({
+            "type": EventType.LIFE_PLANNER_ERROR,
+            "cycle": self._planning_cycles,
+            "error": verdict.error,
+            "raw_text": verdict.raw_text,
+            "operator_alert": True,
+            "recoverable": True,
+            "stop_kind": "operator_input_required",
+        })
+        self._emit_status("planner has no concrete task; waiting for operator direction")
+        return PLAN_AWAITING
 
     def _pc_invoke_planner(self, state: _PlanCycleState) -> Any | None:
         revision_request = state.revision_request
@@ -165,6 +240,8 @@ class PlanningCycleVerdictMixin:
                 return PLAN_RETRY
             if reconciliation == "hold":
                 return self._pc_complete_terminal_empty_plan(state)
+            if str(verdict.error).startswith(NO_CONCRETE_TASKS_ERROR):
+                return self._pause_empty_plan_for_operator(state)
             content_filtered = _is_content_filter_failure(
                 verdict.error,
                 verdict.raw_text,

@@ -199,6 +199,32 @@ class MissionExecutionSettlementMixin:
         state.stage_action = stage_action
         state.planner_bounded_node = planner_bounded_node
 
+        review_status = str(
+            getattr(outcome, "final_review_status", "") or ""
+        ).strip().lower()
+        if (
+            self._item_is_stage_closing(item)
+            and review_status == "done"
+            and state.pipeline_stage_at_start
+        ):
+            try:
+                from ...core.stage_certificate import record_stage_review
+
+                record_stage_review(
+                    state_root=self.memory.root,
+                    project_root=self._artifact_root(),
+                    stage=state.pipeline_stage_at_start,
+                    item=item,
+                    manager_action=stage_action or "hold",
+                    manager_reason=(
+                        str(stage_transition.get("reason") or "")
+                        if isinstance(stage_transition, dict)
+                        else ""
+                    ),
+                )
+            except Exception:  # noqa: BLE001 - certificate is observability/control aid
+                log.exception("life supervisor: failed to record stage review certificate")
+
     def _maybe_short_circuit_for_stage_transition(
         self, state: _MissionRunState,
     ) -> dict[str, Any] | None:

@@ -152,6 +152,30 @@ def test_reviewed_gate_requires_an_intervening_repair_before_recertification(
     assert "non-stage-closing repair" in blocked[1]
 
 
+def test_host_stage_certificate_blocks_reworded_legacy_reproposal(tmp_path) -> None:
+    from argus_skill.core.stage_certificate import record_stage_review
+
+    guard = _StageCertificationGuard(tmp_path)
+    legacy = SimpleNamespace(
+        id="legacy-certification",
+        acceptance_check="review baseline",
+        context_refs=[],
+    )
+    guard.memory.root = tmp_path
+    record_stage_review(
+        state_root=guard.memory.root,
+        project_root=tmp_path,
+        stage="baseline",
+        item=legacy,
+        manager_action="hold",
+    )
+
+    blocked = guard.blocker()
+
+    assert blocked is not None
+    assert blocked[0].id == "legacy-certification"
+
+
 def test_successful_same_stage_repair_unlocks_one_recertification(tmp_path) -> None:
     guard = _StageCertificationGuard(tmp_path)
     guard.memory.backlog.add(_reviewed_stage_item(item_id="prior-certification"))
