@@ -12,6 +12,7 @@ import { HtmlPreview } from './HtmlPreview';
 import { JsonPreview, TablePreview } from './DataPreview';
 import { MarkdownContent } from './MarkdownContent';
 import { displayObjective, formatMissionElapsed } from '../../../core/src/missionView';
+import { useI18n } from '../i18n';
 
 export const LIVE_PROGRESS_PATH = '__argus_live_progress__';
 
@@ -140,6 +141,7 @@ function LiveProgressPreview({
   artifacts?: ArtifactInfo[];
   onOpenArtifact: (path: string) => void;
 }) {
+  const { t } = useI18n();
   const summary = liveProgressSummary(view);
   const reviewedArtifacts = [...artifacts]
     .filter((item) => item.exists && item.source !== 'manager_live')
@@ -156,21 +158,21 @@ function LiveProgressPreview({
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-5 text-sm text-ink-dim scroll-thin">
       <section className="rounded-lg border border-blue-deep/30 bg-blue-deep/10 p-4">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-sky">Current work</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-blue-sky">{t('research.currentWork')}</div>
         <h3 className="mt-2 text-base font-semibold leading-snug text-ink">
           {summary.title}
         </h3>
         {liveStatus?.detail ? <p className="mt-2 leading-6 text-ink-dim">{liveStatus.detail}</p> : null}
         <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-          <div><span className="text-ink-faint">Stage</span><div className="mt-1 font-medium capitalize text-blue-sky">{view.stage.label || view.stage.id || '—'}</div></div>
-          <div><span className="text-ink-faint">Campaign</span><div className="mt-1 font-mono text-ink">{formatMissionElapsed(view.mission.campaign_elapsed_seconds)}</div></div>
-          <div><span className="text-ink-faint">Round</span><div className="mt-1 font-mono text-ink">{view.round.current || '—'}{view.round.max ? ` / ${view.round.max}` : ''}</div></div>
-          <div><span className="text-ink-faint">DAG progress</span><div className="mt-1 font-mono text-ink">{summary.dagProgress}</div></div>
+          <div><span className="text-ink-faint">{t('mission.stage')}</span><div className="mt-1 font-medium capitalize text-blue-sky">{view.stage.label || view.stage.id || '—'}</div></div>
+          <div><span className="text-ink-faint">{t('mission.campaign')}</span><div className="mt-1 font-mono text-ink">{formatMissionElapsed(view.mission.campaign_elapsed_seconds)}</div></div>
+          <div><span className="text-ink-faint">{t('mission.round')}</span><div className="mt-1 font-mono text-ink">{view.round.current || '—'}{view.round.max ? ` / ${view.round.max}` : ''}</div></div>
+          <div><span className="text-ink-faint">{t('research.dagProgress')}</span><div className="mt-1 font-mono text-ink">{summary.dagProgress}</div></div>
         </div>
       </section>
 
       <section className="mt-5">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">Research DAG</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">{t('mission.researchDag')}</div>
         <div className="mt-2 space-y-2">
           {view.dag.map((node) => (
             <div key={node.id} className="rounded-md border border-line/60 bg-panel px-3 py-2.5">
@@ -190,7 +192,7 @@ function LiveProgressPreview({
 
       {reviewedArtifacts.length ? (
         <section className="mt-5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">Verified outputs</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">{t('research.verifiedOutputs')}</div>
           <div className="mt-2 flex flex-wrap gap-2">
             {reviewedArtifacts.map((item) => (
               <button key={item.path} type="button" onClick={() => onOpenArtifact(item.path)} className="rounded border border-line/70 bg-panel px-2.5 py-1.5 font-mono text-[10px] text-blue-sky hover:border-blue/60">
@@ -203,7 +205,7 @@ function LiveProgressPreview({
 
       {recent.length ? (
         <section className="mt-5">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">Recent milestones</div>
+          <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">{t('research.recentMilestones')}</div>
           <div className="mt-2 space-y-2 border-l border-line/70 pl-3">
             {recent.map((item) => (
               <div key={item.id}>
@@ -239,6 +241,7 @@ export function ResearchCanvas({
   missionView?: MissionView | null;
   activityEvents?: EventMsg[];
 }) {
+  const { t } = useI18n();
   const previewArtifacts = useMemo(
     () => selectPreviewArtifacts(artifacts),
     [artifacts],
@@ -292,8 +295,8 @@ export function ResearchCanvas({
   }, [sid, selected?.path, info?.kind, info?.mtime]);
 
   const title = showLiveProgress
-    ? 'Live progress'
-    : previewArtifacts[0]?.group_title || 'Research artifact';
+    ? t('research.liveProgress')
+    : previewArtifacts[0]?.group_title || t('research.artifact');
   const download = async () => {
     if (!sid || !selected) return;
     setDownloading(true);
@@ -332,7 +335,7 @@ export function ResearchCanvas({
   }, [showLiveProgress, selected?.path, info?.kind]);
 
   return (
-    <section className={`glass-panel glass-panel--side flex min-h-0 flex-col overflow-hidden ${embedded ? '' : 'rounded-lg border'} ${className}`} aria-label="Manager live research canvas">
+    <section className={`glass-panel glass-panel--side flex min-h-0 flex-col overflow-hidden ${embedded ? '' : 'rounded-lg border'} ${className}`} aria-label={t('research.canvas')}>
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line/50 bg-panel px-4">
         <div className="flex min-w-0 shrink-0 items-center gap-2">
           <span className="h-2 w-2 animate-pulse rounded-full bg-blue" />
@@ -340,13 +343,13 @@ export function ResearchCanvas({
         </div>
         {missionView || previewArtifacts.length > 0 ? (
           <label className="min-w-0 flex-1">
-            <span className="sr-only">Preview artifact</span>
+            <span className="sr-only">{t('research.previewArtifact')}</span>
             <select
               value={showLiveProgress ? LIVE_PROGRESS_PATH : selected?.path ?? ''}
               onChange={(event) => setManualPath(event.target.value)}
               className="h-8 w-full min-w-0 max-w-64 truncate rounded-md border border-line/50 bg-bg px-2 font-mono text-xs text-ink-dim outline-none focus:border-blue/60"
             >
-              {missionView ? <option value={LIVE_PROGRESS_PATH}>Live progress</option> : null}
+              {missionView ? <option value={LIVE_PROGRESS_PATH}>{t('research.liveProgress')}</option> : null}
               {previewArtifacts.map((item) => (
                 <option key={item.path} value={item.path} disabled={!item.exists}>
                   {item.source === 'manager_live' ? 'Checkpoint · ' : ''}{artifactLabel(item)}{item.exists ? '' : ' · pending'}
@@ -362,8 +365,8 @@ export function ResearchCanvas({
                 type="button"
                 onClick={() => void download()}
                 disabled={downloading || !selected.exists}
-                title="Download artifact"
-                aria-label="download artifact"
+                title={t('artifact.download')}
+                aria-label={t('artifact.download')}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-ink-faint hover:bg-surface hover:text-ink disabled:opacity-40"
               >
                 <svg viewBox="0 0 16 16" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.25">
@@ -373,8 +376,8 @@ export function ResearchCanvas({
               <button
                 type="button"
                 onClick={() => onExpand(selected.path)}
-                title="Open large preview"
-                aria-label="open large preview"
+                title={t('research.openLarge')}
+                aria-label={t('research.openLarge')}
                 className="flex h-7 w-7 items-center justify-center rounded-md text-ink-faint hover:bg-surface hover:text-ink"
               >
                 <svg viewBox="0 0 16 16" aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.25">
@@ -385,7 +388,7 @@ export function ResearchCanvas({
           ) : null}
         </div>
         {onCollapse ? (
-          <button type="button" onClick={onCollapse} aria-label="Collapse preview" title="Collapse preview" className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line/50 bg-bg/40 text-ink-faint hover:border-blue/50 hover:text-ink lg:flex">
+          <button type="button" onClick={onCollapse} aria-label={t('research.collapse')} title={t('research.collapse')} className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line/50 bg-bg/40 text-ink-faint hover:border-blue/50 hover:text-ink lg:flex">
             <FontAwesomeIcon icon={faAnglesRight} className="h-3.5 w-3.5" />
           </button>
         ) : null}
@@ -396,7 +399,7 @@ export function ResearchCanvas({
           <div className="flex items-center gap-2 text-xs">
             <span className="h-2 w-2 animate-pulse rounded-full bg-blue" />
             <span className="font-semibold text-ink">{liveStatus.roleLabel}</span>
-            <span className="text-blue-sky">active</span>
+            <span className="text-blue-sky">{t('mission.active')}</span>
             <span className="truncate text-ink-faint">· {liveStatus.label}</span>
           </div>
           {liveStatus.detail ? (
@@ -411,31 +414,31 @@ export function ResearchCanvas({
         ) : null}
         {!showLiveProgress && error ? (
           <div className="m-auto max-w-sm px-6 text-center text-sm text-warn">
-            Manager live view is temporarily unavailable.
+            {t('research.unavailable')}
           </div>
         ) : null}
         {!showLiveProgress && !error && previewArtifacts.length === 0 ? (
           <div className="m-auto max-w-sm px-8 text-center">
             <div className="text-3xl text-ink-faint">◇</div>
-            <h3 className="mt-3 text-xs text-ink-faint">No preview</h3>
+            <h3 className="mt-3 text-xs text-ink-faint">{t('research.noPreview')}</h3>
           </div>
         ) : null}
         {!showLiveProgress && !error && previewArtifacts.length > 0 && !selected ? (
           <div className="m-auto max-w-sm px-8 text-center">
             <Spinner />
-            <p className="mt-3 text-xs text-ink-faint">Waiting…</p>
+            <p className="mt-3 text-xs text-ink-faint">{t('research.waiting')}</p>
           </div>
         ) : null}
         {selected && !selected.exists ? (
           <div className="m-auto max-w-sm px-8 text-center">
             <Spinner />
-            <p className="mt-3 text-xs text-ink-faint">Updating…</p>
+            <p className="mt-3 text-xs text-ink-faint">{t('research.updating')}</p>
           </div>
         ) : null}
         {selected?.exists && artifactQ.isLoading ? <div className="m-auto"><Spinner /></div> : null}
         {selected?.exists && artifactQ.isError ? (
           <div className="m-auto px-6 text-center text-sm text-err">
-            Preview unavailable · {(artifactQ.error as Error).message}
+            {t('artifact.unavailable')} · {(artifactQ.error as Error).message}
           </div>
         ) : null}
         {info?.kind === 'text' ? (
@@ -458,7 +461,7 @@ export function ResearchCanvas({
         ) : null}
         {info?.kind === 'html' && info.truncated ? (
           <div className="m-auto max-w-sm px-8 text-center text-sm text-warn">
-            HTML preview is too large to render safely. Download the complete file.
+            {t('artifact.htmlTooLarge')}
           </div>
         ) : null}
         {info?.kind === 'image' && previewUrl ? (
@@ -486,7 +489,7 @@ export function ResearchCanvas({
         ) : null}
         {info?.kind === 'binary' ? (
           <div className="m-auto max-w-sm px-8 text-center text-sm text-ink-dim">
-            Preview unavailable for this file.
+            {t('research.fileUnavailable')}
           </div>
         ) : null}
         {info && ['image', 'pdf', 'audio', 'video'].includes(info.kind) && !previewUrl && !previewError ? (
@@ -497,15 +500,15 @@ export function ResearchCanvas({
 
       {showLiveProgress ? (
         <footer className="flex h-9 items-center gap-2 border-t border-line px-4 font-mono text-xs text-ink-faint">
-          <span className="min-w-0 flex-1 truncate">event-sourced mission state</span>
-          <span className="shrink-0 text-ok">live</span>
+          <span className="min-w-0 flex-1 truncate">{t('research.eventSourced')}</span>
+          <span className="shrink-0 text-ok">{t('common.live')}</span>
         </footer>
       ) : info ? (
         <footer className="flex h-9 items-center gap-2 border-t border-line px-4 font-mono text-xs text-ink-faint">
           <span className="min-w-0 flex-1 truncate">{info.path}</span>
-          {downloadError ? <span className="ml-auto truncate text-err" title={downloadError}>download failed</span> : null}
+          {downloadError ? <span className="ml-auto truncate text-err" title={downloadError}>{t('research.downloadFailed')}</span> : null}
           <span className="shrink-0">{info.kind} · {formatBytes(info.size)}</span>
-          <span className="shrink-0 text-ok">live</span>
+          <span className="shrink-0 text-ok">{t('common.live')}</span>
         </footer>
       ) : null}
     </section>

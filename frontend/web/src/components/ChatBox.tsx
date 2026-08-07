@@ -17,6 +17,7 @@ import {
   SLASH_COMPLETION_LISTBOX_ID,
   SLASH_COMPLETION_VISIBLE_ROWS,
 } from './SlashCompletionMenu';
+import { useI18n } from '../i18n';
 
 interface RewriteShortcutEvent {
   key: string;
@@ -97,6 +98,7 @@ export function ChatBox({
   slashSelection: number;
   onSlashSelectionChange: (n: number) => void;
 }) {
+  const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement>(null);
   const [thinkTick, setThinkTick] = useState(0);
   // Track whether the user explicitly dismissed the menu for the current value.
@@ -191,7 +193,7 @@ export function ChatBox({
         <div className="border-b border-line/40 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2 text-xs">
             <span className="font-mono text-manager">{spinnerFrame(thinkTick)}</span>
-            <span className="shrink-0 font-semibold text-manager">Your message</span>
+            <span className="shrink-0 font-semibold text-manager">{t('chat.yourMessage')}</span>
             <span className="min-w-0 flex-1 truncate text-blue" title={thinkingLine}>{thinkingLine}</span>
             <span className="shrink-0 font-mono tabular-nums text-ink-faint">{elapsedS}s</span>
           </div>
@@ -219,7 +221,7 @@ export function ChatBox({
               })}
             </ol>
           ) : null}
-          <div className="mt-1 text-xs text-ink-faint">Esc stop waiting</div>
+          <div className="mt-1 text-xs text-ink-faint">{t('chat.stopWaitingHint')}</div>
         </div>
       ) : null}
       {completionOpen ? (
@@ -230,7 +232,7 @@ export function ChatBox({
         />
       ) : null}
       <div className="flex items-end gap-2 px-3 py-2">
-        <span className="pb-2 font-mono text-lg text-blue" title="message Argus">›</span>
+        <span className="pb-2 font-mono text-lg text-blue" title={t('chat.messageArgus')}>›</span>
         <textarea
           ref={taRef}
           value={value}
@@ -246,7 +248,7 @@ export function ChatBox({
           aria-controls={completionOpen ? SLASH_COMPLETION_LISTBOX_ID : undefined}
           aria-expanded={completionOpen}
           aria-activedescendant={activeCompletion ? slashCompletionOptionId(activeCompletion.id) : undefined}
-          placeholder={disabled ? 'Select a session…' : 'Ask a question or assign work'}
+          placeholder={disabled ? t('chat.selectSession') : t('chat.placeholder')}
           className="max-h-48 min-h-[38px] min-w-0 flex-1 resize-none bg-transparent py-2 font-sans text-[15px] text-ink outline-none placeholder:text-ink-faint"
           style={{ fieldSizing: 'content' } as React.CSSProperties}
         />
@@ -255,20 +257,20 @@ export function ChatBox({
             type="button"
             onClick={() => onRewrite(value.trim())}
             disabled={disabled || pending || rewriting || !value.trim()}
-            title="Ctrl/⌘+R · Let the Manager rewrite this prompt into a brief the team can act on. Nothing is sent — the rewrite lands back in this box for you to edit."
-            aria-label="rewrite prompt with the Manager"
+            title={`Ctrl/⌘+R · ${t('chat.rewriteHint')}`}
+            aria-label={t('chat.rewriteLabel')}
             aria-keyshortcuts="Control+R Meta+R"
             className="send-control h-9 shrink-0 rounded-full border-manager/70 bg-manager/10 px-3 text-xs font-medium text-manager hover:border-manager hover:bg-manager/20 disabled:opacity-40"
           >
-            {rewriting ? `${spinnerFrame(thinkTick)} rewriting` : '✦ Rewrite'}
+            {rewriting ? `${spinnerFrame(thinkTick)} ${t('chat.rewriting')}` : t('chat.rewrite')}
           </button>
         ) : null}
         <button
           type="button"
           onClick={pending ? onCancel : () => void submit()}
           disabled={disabled || (!pending && !value.trim())}
-          title={pending ? 'stop waiting for this reply; server-side work may continue' : undefined}
-          aria-label={pending ? 'stop waiting' : 'send message'}
+          title={pending ? t('chat.stopWaitingTitle') : undefined}
+          aria-label={pending ? t('chat.stopWaiting') : t('chat.send')}
           className={`send-control h-9 w-9 shrink-0 rounded-full text-sm font-medium disabled:opacity-40 ${
             pending
               ? 'border-line text-warn hover:border-warn/60 hover:bg-warn/10'

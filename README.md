@@ -130,6 +130,10 @@ argus --web
 
 Default address: [http://127.0.0.1:8799](http://127.0.0.1:8799)
 
+The Web UI follows the browser language on first launch and supports English
+and Simplified Chinese. Use the language button in the session sidebar to
+switch; the selection is saved in the browser.
+
 ```bash
 argus --web --no-open    # start without opening a browser
 argus --web --port 8800  # use another port

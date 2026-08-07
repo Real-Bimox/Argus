@@ -54,6 +54,7 @@ import { useGlobalKeyboardShortcuts } from './useGlobalKeyboardShortcuts';
 import { usePendingReplySession } from './usePendingReplySession';
 import { useProjectSelection } from './useProjectSelection';
 import { useWorkbenchLayout } from './useWorkbenchLayout';
+import { useI18n } from './i18n';
 
 type Overlay = 'none' | 'palette' | 'help' | 'doctor' | 'config' | 'identity' | 'transcript' | 'inspector' | 'operations';
 interface ActiveMessageRequest {
@@ -64,6 +65,7 @@ interface ActiveMessageRequest {
 let noticeSequence = 0;
 
 export default function App() {
+  const { locale, t } = useI18n();
   const queryClient = useQueryClient();
   const projectsQ = useProjects();
   const projectCostsQ = useProjectCosts();
@@ -535,41 +537,42 @@ export default function App() {
       COMMANDS,
       (name) => { void sendMessageRef.current(name); },
       (text) => { setComposerDraft(text); setComposerFocus((x) => x + 1); },
+      locale,
     );
     const nav: PaletteItem[] = [
-      ...(kiosk ? [] : [{ id: 'new', label: 'New daemon', hint: '+', group: 'View', run: () => setNewDaemonOpen(true) }]),
-      { id: 'transcript', label: 'Open Transcript', hint: '/transcript', group: 'View', run: () => setOverlay('transcript') },
-      { id: 'inspector', label: 'Open Project', hint: 'work · memory · agents', group: 'View', run: () => setOverlay('inspector') },
-      { id: 'operations', label: 'Open Operations', hint: 'backend controls', group: 'View', run: () => setOverlay('operations') },
-      { id: 'help', label: 'Keyboard shortcuts', hint: '?', group: 'View', run: () => setOverlay('help') },
+      ...(kiosk ? [] : [{ id: 'new', label: t('palette.newDaemon'), hint: '+', group: t('palette.view'), run: () => setNewDaemonOpen(true) }]),
+      { id: 'transcript', label: t('palette.openTranscript'), hint: '/transcript', group: t('palette.view'), run: () => setOverlay('transcript') },
+      { id: 'inspector', label: t('palette.openProject'), hint: t('palette.projectHint'), group: t('palette.view'), run: () => setOverlay('inspector') },
+      { id: 'operations', label: t('palette.openOperations'), hint: t('palette.operationsHint'), group: t('palette.view'), run: () => setOverlay('operations') },
+      { id: 'help', label: t('help.title'), hint: '?', group: t('palette.view'), run: () => setOverlay('help') },
       {
         id: 'reasoning',
-        label: showReasoning ? 'Hide reasoning' : 'Show reasoning',
+        label: showReasoning ? t('palette.hideReasoning') : t('palette.showReasoning'),
         hint: '⌘T',
-        group: 'View',
+        group: t('palette.view'),
         run: () => setShowReasoning((v) => !v),
       },
       {
         id: 'kiosk',
-        label: kiosk ? 'Exit kiosk mode' : 'Enter kiosk mode',
+        label: kiosk ? t('palette.exitKiosk') : t('palette.enterKiosk'),
         hint: '⌘.',
-        group: 'View',
+        group: t('palette.view'),
         run: () => setKiosk((v) => !v),
       },
     ];
     const acts: PaletteItem[] = kiosk
       ? []
       : [
-          { id: 'message', label: 'Message Argus…', hint: '/', group: 'Action', run: () => setComposerFocus((x) => x + 1) },
+          { id: 'message', label: t('palette.messageArgus'), hint: '/', group: t('palette.action'), run: () => setComposerFocus((x) => x + 1) },
           ...(chatPending
-            ? [{ id: 'cancel-message', label: 'Stop waiting for Manager reply', hint: 'Esc', group: 'Action', run: stopWaiting }]
+            ? [{ id: 'cancel-message', label: t('palette.stopWaiting'), hint: 'Esc', group: t('palette.action'), run: stopWaiting }]
             : []),
           ...(continuous
             ? [
                 {
                   id: 'continuous',
-                  label: continuous.enabled ? 'Stop continuous campaign' : 'Start continuous campaign',
-                  group: 'Action',
+                  label: continuous.enabled ? t('palette.stopContinuous') : t('palette.startContinuous'),
+                  group: t('palette.action'),
                   run: toggleContinuous,
                 },
               ]
@@ -578,28 +581,28 @@ export default function App() {
             ? []
             : [
                 snap?.daemon.alive
-                  ? { id: 'stop', label: 'Stop daemon', group: 'Action', run: requestStopDaemon }
-                  : { id: 'start', label: 'Start daemon', group: 'Action', run: requestStartDaemon },
+                  ? { id: 'stop', label: t('palette.stopDaemon'), group: t('palette.action'), run: requestStopDaemon }
+                  : { id: 'start', label: t('palette.startDaemon'), group: t('palette.action'), run: requestStartDaemon },
               ]),
         ];
     const proj: PaletteItem[] = projects.map((p) => ({
       id: `p-${p.id}`,
       label: p.label || p.id,
-      hint: p.daemon_alive ? '● live' : '○',
+      hint: p.daemon_alive ? `● ${t('common.live')}` : '○',
       keywords: `${p.id} ${p.display_name ?? ''} ${p.objective} ${p.daemon_alive ? 'live running' : 'stopped idle'}`,
-      group: 'Project',
+      group: t('palette.project'),
       run: () => selectProject(p.id),
     }));
     return [...nav, ...acts, ...commandRows, ...proj];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, snap?.daemon.alive, kiosk, showReasoning, continuous?.enabled, chatPending, stopWaiting]);
+  }, [projects, snap?.daemon.alive, kiosk, showReasoning, continuous?.enabled, chatPending, stopWaiting, locale, t]);
 
   return (
     <div ref={shellRef} className="workbench-shell ambient-canvas flex h-screen h-[100dvh] w-screen max-w-full overflow-hidden text-ink">
       {!kiosk && sidebarOpen ? (
         <button
           type="button"
-          aria-label="Close sessions"
+          aria-label={t('common.closeSessions')}
           onClick={() => setSidebarOpen(false)}
           className="fixed inset-0 z-30 bg-black/40 lg:hidden"
         />
@@ -631,7 +634,7 @@ export default function App() {
       ) : null}
       {!kiosk && leftPanelOpen ? (
         <SplitHandle
-          label="Resize sessions"
+          label={t('common.resizeSessions')}
           value={leftWidth}
           min={220}
           max={400}
@@ -659,11 +662,11 @@ export default function App() {
               <div className="flex h-10 shrink-0 items-center gap-1 border-b border-line/60 px-3">
                 <div className="workspace-tabs" data-active={workspaceView}>
                   <span className="workspace-tab-indicator" aria-hidden="true" />
-                  <button type="button" onClick={() => setWorkspaceView('mission')} className="workspace-tab" data-selected={workspaceView === 'mission'}>Mission</button>
-                  <button type="button" onClick={() => setWorkspaceView('activity')} className="workspace-tab" data-selected={workspaceView === 'activity'}>Activity</button>
+                  <button type="button" onClick={() => setWorkspaceView('mission')} className="workspace-tab" data-selected={workspaceView === 'mission'}>{t('mobile.mission')}</button>
+                  <button type="button" onClick={() => setWorkspaceView('activity')} className="workspace-tab" data-selected={workspaceView === 'activity'}>{t('mobile.activity')}</button>
                 </div>
-                {workspaceView === 'mission' ? <span className="ml-auto hidden max-w-72 truncate text-[10px] text-ink-faint sm:block">{missionView?.active_role ? `${missionView.active_role} active` : 'mission overview'}</span> : <span className="ml-auto" />}
-                {!kiosk ? <button type="button" onClick={() => setOverlay('operations')} className="rounded border border-line/60 px-2 py-1 text-[10px] text-ink-faint hover:border-blue/50 hover:text-blue">Operations</button> : null}
+                {workspaceView === 'mission' ? <span className="ml-auto hidden max-w-72 truncate text-[10px] text-ink-faint sm:block">{missionView?.active_role ? t('mission.roleActive', { role: missionView.active_role }) : t('mission.overview')}</span> : <span className="ml-auto" />}
+                {!kiosk ? <button type="button" onClick={() => setOverlay('operations')} className="rounded border border-line/60 px-2 py-1 text-[10px] text-ink-faint hover:border-blue/50 hover:text-blue">{t('mission.operations')}</button> : null}
               </div>
               <GuardianBanner alert={guardianAlert} />
               {workspaceView === 'mission' && missionView ? (
@@ -713,7 +716,7 @@ export default function App() {
             </section>
             {rightPanelOpen ? (
               <SplitHandle
-                label="Resize preview"
+                label={t('common.resizePreview')}
                 value={rightWidth}
                 min={320}
                 max={600}
@@ -754,7 +757,7 @@ export default function App() {
               />
               {!rightPanelOpen ? (
                 <div className="hidden h-12 items-center justify-center border-b border-line/50 text-ink-faint lg:flex">
-                  <button type="button" onClick={() => setRightPanelOpen(true)} aria-label="Expand preview" title="Expand preview" className="flex h-8 w-8 items-center justify-center rounded-md border border-line/50 bg-bg/40 hover:border-blue/50 hover:text-ink">
+                  <button type="button" onClick={() => setRightPanelOpen(true)} aria-label={t('common.expandPreview')} title={t('common.expandPreview')} className="flex h-8 w-8 items-center justify-center rounded-md border border-line/50 bg-bg/40 hover:border-blue/50 hover:text-ink">
                     <FontAwesomeIcon icon={faAnglesLeft} className="h-3.5 w-3.5" />
                   </button>
                 </div>

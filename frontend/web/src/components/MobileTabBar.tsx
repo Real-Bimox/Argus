@@ -6,6 +6,7 @@ import {
   faWindowMaximize,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
+import { useI18n } from '../i18n';
 
 export type MobileTab = 'sessions' | 'mission' | 'activity' | 'preview';
 
@@ -25,26 +26,27 @@ export function MobileTabBar({
   onSelect: (tab: Exclude<MobileTab, 'sessions'>) => void;
   onOpenSessions?: () => void;
 }) {
+  const { t } = useI18n();
   const tabs: { id: Exclude<MobileTab, 'sessions'>; label: string; icon: IconDefinition }[] = [
-    { id: 'mission', label: 'Mission', icon: faDiagramProject },
-    { id: 'activity', label: 'Activity', icon: faListUl },
-    { id: 'preview', label: 'Preview', icon: faWindowMaximize },
+    { id: 'mission', label: t('mobile.mission'), icon: faDiagramProject },
+    { id: 'activity', label: t('mobile.activity'), icon: faListUl },
+    { id: 'preview', label: t('mobile.preview'), icon: faWindowMaximize },
   ];
 
   return (
     <nav
-      aria-label="Views"
+      aria-label={t('mobile.views')}
       className="mobile-tabbar glass-panel glass-panel--raised fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t border-line/60 lg:hidden"
     >
       {onOpenSessions ? (
         <button
           type="button"
           onClick={onOpenSessions}
-          aria-label="Open sessions"
+          aria-label={t('topbar.openSessions')}
           className="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-0.5 text-ink-faint active:bg-panel-raised"
         >
           <FontAwesomeIcon icon={faBars} className="h-4 w-4" />
-          <span className="text-[10px] leading-none">Sessions</span>
+          <span className="text-[10px] leading-none">{t('mobile.sessions')}</span>
         </button>
       ) : null}
       {tabs.map((tab) => {

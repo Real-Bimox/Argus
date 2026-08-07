@@ -9,6 +9,7 @@ import { rotate, IDLE_LINES } from '../lib/soul';
 import { PanelHeader, EmptyHint } from './primitives';
 import { MarkdownContent } from './MarkdownContent';
 import { ArgusMark } from './Wordmark';
+import { useI18n } from '../i18n';
 
 type ActivityRow = { ev: EventMsg; r: Rendered; key: string };
 type ConversationGroup = { key: string; operator: ActivityRow; rows: ActivityRow[] };
@@ -307,6 +308,7 @@ export function EventStream({
   query?: string;
   skipFirst?: number;
 }) {
+  const { locale } = useI18n();
   const [following, setFollowing] = useState(true);
   const [activityTick, setActivityTick] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
@@ -332,7 +334,7 @@ export function EventStream({
     let hiddenReasoning = 0;
     const displayEvents = skipFirst > 0 ? events.slice(skipFirst) : events;
     displayEvents.forEach((ev, i) => {
-      const r = renderEvent(ev);
+      const r = renderEvent(ev, locale);
       if (!r) return; // non-whitelisted → hidden
       if (r.reasoning && !showReasoning) {
         hiddenReasoning++;
@@ -365,7 +367,7 @@ export function EventStream({
       out.push(entry);
     });
     return { list: out, hiddenReasoning };
-  }, [events, showReasoning, filter, query, skipFirst]);
+  }, [events, showReasoning, filter, query, skipFirst, locale]);
 
   const rows = baseRows;
   const conversations = useMemo(() => {

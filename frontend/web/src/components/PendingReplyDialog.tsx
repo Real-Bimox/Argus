@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import type { OperatorDecisionCard } from '../../../core/src/decisions';
 import { Modal, ModalHeader } from './Modal';
 import { isImeComposing } from '../lib/ime';
+import { useI18n } from '../i18n';
 
 export type PendingReply = OperatorDecisionCard;
 
@@ -18,6 +19,7 @@ export function PendingReplyDialog({
   onClose: () => void;
   onSubmit: (optionId: string, note: string) => void;
 }) {
+  const { t } = useI18n();
   const defaultOption = useMemo(
     () => reply?.options.find((option) => option.id === 'recommended')?.id
       ?? reply?.options[0]?.id
@@ -47,19 +49,19 @@ export function PendingReplyDialog({
   };
 
   return (
-    <Modal open={open} onClose={busy ? () => undefined : onClose} label="Operator decision" width="max-w-2xl">
-      <ModalHeader title="Decision required" sub={reply.title} />
+    <Modal open={open} onClose={busy ? () => undefined : onClose} label={t('decision.operator')} width="max-w-2xl">
+      <ModalHeader title={t('decision.required')} sub={reply.title} />
       <div className="space-y-4 px-5 py-4">
         {reply.reason ? (
           <section className="rounded-md border border-gold/30 bg-gold/5 p-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gold">Why work is blocked</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gold">{t('decision.whyBlocked')}</div>
             <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed text-ink">{reply.reason}</p>
           </section>
         ) : null}
 
         {reply.evidence.length ? (
           <section>
-            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">Evidence</div>
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">{t('decision.evidence')}</div>
             <div className="space-y-2">
               {reply.evidence.map((row, index) => (
                 <div key={`${row.path}:${index}`} className="rounded border border-line/70 bg-bg/40 p-2.5">
@@ -99,17 +101,17 @@ export function PendingReplyDialog({
             onKeyDown={onKeyDown}
             rows={3}
             disabled={busy}
-            placeholder="Add the guidance the Manager should apply…"
+            placeholder={t('decision.notePlaceholder')}
             className="w-full resize-y rounded-lg border border-line bg-bg px-3 py-2 text-sm leading-relaxed text-ink outline-none focus:border-blue disabled:opacity-60"
           />
         ) : null}
 
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs text-ink-faint">The Manager applies your choice before work resumes.</span>
+          <span className="text-xs text-ink-faint">{t('decision.resumeHint')}</span>
           <div className="flex gap-2">
-            <button type="button" onClick={onClose} disabled={busy} className="rounded-md px-3 py-2 text-xs text-ink-dim hover:bg-bg disabled:opacity-50">Later</button>
+            <button type="button" onClick={onClose} disabled={busy} className="rounded-md px-3 py-2 text-xs text-ink-dim hover:bg-bg disabled:opacity-50">{t('decision.later')}</button>
             <button type="button" onClick={submit} disabled={busy || !canSubmit} className="rounded-md bg-blue-deep px-3 py-2 text-xs font-medium text-white hover:bg-blue-deep/85 disabled:opacity-50">
-              {busy ? 'Applying…' : optionId === 'stop' ? 'Stop campaign' : 'Use this option'}
+              {busy ? t('decision.applying') : optionId === 'stop' ? t('decision.stopCampaign') : t('decision.useOption')}
             </button>
           </div>
         </div>
