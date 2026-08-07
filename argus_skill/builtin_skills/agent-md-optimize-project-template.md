@@ -63,8 +63,9 @@ score.
 - Read the active vertical's `role_banner` (the optimize vertical your objective
   routes to: `kernel_engineering` / `kernelbench` / `speedrun` / `nanochat` /
   `nanogpt_speedrun`) — it
-  states the exact metric, hardware budget, correctness rule, and stop condition
-  for this task. Treat it as the authoritative mission contract.
+  states the metric, benchmark constraints, correctness rule, and stop condition
+  for this task. Benchmark constraints never prove that matching hardware is
+  currently accessible; verify the configured runner before making that claim.
 - Read the optimize skills under `./argus_builtin_skills/engineer/` before
   touching the scorer:
   - the active vertical's `engineer/kernel-environment-first-engineering.md`
@@ -74,8 +75,8 @@ score.
     speed-of-light optimization,
   - `./argus_builtin_skills/engineer/nanogpt-speedrun-h100-sota.md` for the
     nanoGPT speedrun (time-to-target-loss),
-  - `./argus_builtin_skills/engineer/nanochat-autoresearch-sota-optimization.md`
-    for nanochat val_bpb,
+  - for nanochat val_bpb, read the current project's frozen harness and scorer;
+    do not import hardware assumptions or score anchors from an unrelated run,
   - `./argus_builtin_skills/engineer/speedrun-sota-optimization.md` for the
     generic speedrun shape,
   - and the matching `*-hands-on-trace.md` for a concrete worked run.

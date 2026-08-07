@@ -16,6 +16,7 @@ import hashlib
 import pytest
 
 from argus_skill.skills.builtins import (
+    _RETIRED_BUILTIN_SEED_HASHES,
     _validate_builtin,
     iter_builtin_skill_texts,
     iter_vertical_skill_texts,
@@ -45,8 +46,17 @@ MATH_SKILLS = {
 
 RETIRED_BUILTIN_SKILLS = {
     "engineer/experiment-audit.md",
+    "engineer/nanochat-autoresearch-hands-on-trace.md",
+    "engineer/nanochat-autoresearch-sota-optimization.md",
+    "engineer/nanochat-pretrain-runner.md",
     "engineer/paper-claim-audit.md",
     "engineer/singularity-amlt-gpu-ops.md",
+}
+
+RETIRED_NANOCHAT_SKILLS = {
+    "engineer/nanochat-autoresearch-hands-on-trace.md",
+    "engineer/nanochat-autoresearch-sota-optimization.md",
+    "engineer/nanochat-pretrain-runner.md",
 }
 
 
@@ -111,6 +121,13 @@ def test_retired_builtin_skills_are_not_packaged() -> None:
     packaged = {name for name, _text in iter_builtin_skill_texts()}
 
     assert packaged.isdisjoint(RETIRED_BUILTIN_SKILLS)
+
+
+def test_machine_specific_nanochat_playbooks_are_retired() -> None:
+    packaged = {name for name, _text in iter_vertical_skill_texts("nanochat")}
+
+    assert packaged == set()
+    assert RETIRED_NANOCHAT_SKILLS <= _RETIRED_BUILTIN_SEED_HASHES.keys()
 
 
 def test_retire_orphaned_builtin_seeds_archives_edited_copies(
