@@ -44,6 +44,7 @@ not implementation convenience.
 | ARGUS-P1-02 | P1 | High | Next | Agent/session integration | none; can run in parallel |
 | ARGUS-P1-03 | P1 | Medium | Next | Skill system | partially implemented |
 | ARGUS-P1-04 | P1 | Medium | Next | Architecture/verticals | behavior baseline first |
+| ARGUS-P1-05 | P1 | High | Next | Role prompts/UX | P0-03, P0-04 |
 | ARGUS-P2-01 | P2 | Medium | Later spike | Persistence | P0 state semantics stable |
 | ARGUS-P2-02 | P2 | Medium | Continuous | Evaluation/observability | supports all items |
 
@@ -371,6 +372,51 @@ dependency direction and makes a new vertical inherit assumptions from another.
 - Adding a vertical requires implementing one documented interface, not editing
   central conditionals.
 - Existing vertical behavior and persisted state remain compatible.
+
+---
+
+## ARGUS-P1-05 — Make user-facing output clear and natural
+
+**Problem.** Some Argus messages read like generated process notes: they repeat the
+request, pile up headings, use abstract language, and bury the result. Users should
+not have to decode the output to learn what happened or what Argus needs from them.
+
+Argus should write like a good teammate. Lead with the result, explain the important
+tradeoff in plain language, point to concrete evidence, and say when the answer is
+uncertain or has changed. The reasoning visible to users should be easy to follow:
+what changed, which options mattered, and why one was chosen. This is not about
+adding a human persona or exposing a raw thought transcript.
+
+**Work packages**
+
+- [ ] Collect real CLI, Web, notification, and decision-card examples that users find
+      hard to read or obviously machine-written. Pair each with a short human rewrite.
+- [ ] Keep internal role traffic out of user-facing messages unless it helps the user
+      make a decision or understand a failure.
+- [ ] Put the answer or current status first. Follow with the reason, evidence, and
+      next action only when they add value.
+- [ ] Replace generic claims with concrete facts: the file changed, test that failed,
+      decision waiting, result found, or uncertainty that remains.
+- [ ] Cut repeated summaries, stock transitions, excessive headings, inflated praise,
+      and fake certainty. Do not implement this as a keyword blacklist.
+- [ ] When Argus makes or revises a choice, explain the deciding tradeoff and what new
+      evidence would change the decision.
+- [ ] Make questions specific: ask for one decision, explain why it belongs to the
+      user, and state what happens for each option.
+- [ ] Tune length and detail for each surface instead of using one response template
+      everywhere.
+- [ ] Run blind human review on matched outputs and check comprehension, preference,
+      factual accuracy, and time to find the next action.
+
+**Acceptance criteria**
+
+- Users can identify the result, supporting evidence, and next action without reading
+  internal logs.
+- Blind reviewers prefer the revised output and answer comprehension questions more
+  accurately, with no drop in factual correctness.
+- Uncertainty and changes of mind are stated plainly rather than hidden behind a
+  confident summary.
+- Questions are understandable without knowing Argus’s internal role vocabulary.
 
 ---
 
