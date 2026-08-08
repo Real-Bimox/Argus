@@ -19,6 +19,7 @@ import pytest
 from argus_skill.life.supervisor.pending_notify import (
     notify_pending_question,
     pending_question_message,
+    should_report_pending_wait,
 )
 
 
@@ -122,6 +123,41 @@ def test_nothing_is_sent_without_a_question(project: Path, channel) -> None:
 def test_no_configured_channel_is_not_an_error(project: Path) -> None:
     # Every channel is opt-in; a project with none simply gets no message.
     assert notify_pending_question(project, _item()) is False
+
+
+# -- persistent waiting-status dedup ---------------------------------------
+
+
+def test_wait_status_is_reported_once_per_question_set(project: Path) -> None:
+    items = [_item()]
+
+    assert should_report_pending_wait(project, items, now=100.0) is True
+    assert should_report_pending_wait(project, items, now=101.0) is False
+    # A new supervisor process reads the same durable state.
+    assert should_report_pending_wait(project, items, now=102.0) is False
+
+
+def test_wait_status_reports_changed_question_and_slow_heartbeat(project: Path) -> None:
+    assert should_report_pending_wait(project, [_item()], now=100.0) is True
+    assert should_report_pending_wait(
+        project,
+        [_item(pending_question="which seed count?")],
+        now=101.0,
+    ) is True
+    assert should_report_pending_wait(
+        project,
+        [_item(pending_question="which seed count?")],
+        heartbeat_seconds=60.0,
+        now=162.0,
+    ) is True
+
+
+def test_wait_status_ignores_empty_question_set(project: Path) -> None:
+    assert should_report_pending_wait(
+        project,
+        [_item(pending_question="")],
+        now=100.0,
+    ) is False
 
 
 # -- the mission must not be affected --------------------------------------

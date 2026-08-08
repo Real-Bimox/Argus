@@ -61,7 +61,6 @@ class PlanningCycleVerdictMixin:
             )
         try:
             from ...core.operator_decision import build_operator_decision
-            from ...daemon.state import read_continuous_state
 
             card = build_operator_decision(
                 item_id=item.id,
@@ -70,9 +69,6 @@ class PlanningCycleVerdictMixin:
                 question=question,
                 recommendation="Provide one concrete next direction or stop the campaign.",
                 project_id=self.memory.root.name,
-                campaign_generation=read_continuous_state(
-                    self.memory.root
-                ).generation,
             )
         except Exception:  # noqa: BLE001 - the plain question is sufficient
             card = {}

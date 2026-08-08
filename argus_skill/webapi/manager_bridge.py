@@ -37,6 +37,10 @@ from .manager_dispatch import (
     _TurnEmitter,
 )
 from .manager_pending_question import _emit_ui_turn
+from .manager_session_intent import (
+    contextualize_operator_turn,
+    maybe_handle_session_intent,
+)
 from .manager_state import (
     _chat_state_for,
     _lock_for,
@@ -223,6 +227,13 @@ def manager_message(
         chat_state["session_id"] = sid
         chat_state["global_root"] = str(mem.global_root)
         active_mission = mission_is_running(mem)
+        prior_turns: list[dict[str, Any]] = []
+        try:
+            from ..core.transcript import read_turns
+
+            prior_turns = read_turns(life_dir, limit=6)
+        except Exception:  # noqa: BLE001 - bounded context is an optimization
+            pass
 
         # Build the restart handoff before journaling this turn so the current
         # message appears exactly once. Do not consume it until a model-backed
@@ -258,6 +269,30 @@ def manager_message(
         if pending_result is not None:
             return pending_result
 
+        try:
+            session_intent = maybe_handle_session_intent(
+                sid=sid,
+                body=body,
+                life_dir=life_dir,
+                global_root=Path(mem.global_root),
+                prior_turns=prior_turns,
+            )
+        except (OSError, RuntimeError, ValueError) as exc:
+            chinese = any("\u3400" <= char <= "\u9fff" for char in body)
+            reply = (
+                f"无法创建或切换工作目录：{exc}。没有派发软件任务。"
+                if chinese
+                else f"Could not create or switch the work directory: {exc}. No software task was dispatched."
+            )
+            return emitter.respond(
+                reply,
+                {"kind": "error", "control": "workdir", "changed": False},
+            )
+        if session_intent is not None:
+            return emitter.respond(session_intent.reply, session_intent.result)
+
+        routing_body = contextualize_operator_turn(body, prior_turns)
+
         # A web-process restart necessarily loses the live ACP process. Resume
         # seamlessly by opening one new warm conversation session with a
         # structured handoff built from the transcript that existed BEFORE this
@@ -271,7 +306,7 @@ def manager_message(
 
         classify = _classify_operator_turn(
             mem,
-            body,
+            routing_body,
             chat_state,
             active_mission,
             life_dir,
@@ -285,7 +320,7 @@ def manager_message(
         send_body, root_task_id = classify.send_body, classify.root_task_id
         frontdoor_failure = classify.frontdoor_failure
 
-        greeting_result = _maybe_greeting_reply(classify, body, emitter)
+        greeting_result = _maybe_greeting_reply(classify, routing_body, emitter)
         if greeting_result is not None:
             return greeting_result
 
@@ -367,7 +402,7 @@ def manager_message(
             return _cancelled_result()
         try:
             item, daemon_alive, daemon_pid = _dispatch_team_mission(
-                mem, body, chat_state, root_task_id, _cancelled, emitter
+                mem, routing_body, chat_state, root_task_id, _cancelled, emitter
             )
         except Exception as exc:  # noqa: BLE001
             if _cancelled():

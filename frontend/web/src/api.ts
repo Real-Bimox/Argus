@@ -442,7 +442,6 @@ export const api = {
     decisionId: string,
     optionId: string,
     note: string,
-    expectedRevision: number,
   ) => postJson<{
     resolved: boolean;
     stopped?: boolean;
@@ -450,7 +449,7 @@ export const api = {
     daemon?: { rc?: number; error?: string; admission_required?: boolean };
   }>(
     P(sid, `/decisions/${encodeURIComponent(decisionId)}/resolve`),
-    { option_id: optionId, note, expected_revision: expectedRevision },
+    { option_id: optionId, note },
   ),
   /** The Manager front-door: NL message → chat reply or an enqueued mission. */
   message: (sid: string, text: string, signal?: AbortSignal) =>

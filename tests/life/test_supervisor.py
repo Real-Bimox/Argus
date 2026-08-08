@@ -629,7 +629,7 @@ def test_blocked_verdict_persists_operator_question_onto_backlog_item(
     assert rows[item.id].status == "paused_operator"
     assert rows[item.id].pending_question == "fp16 精度损失可以接受吗，还是必须 fp32？"
     assert rows[item.id].operator_decision["project_id"] == mem.root.name
-    assert rows[item.id].operator_decision["campaign_generation"] == 0
+    assert "campaign_generation" not in rows[item.id].operator_decision
     pending_events = [
         event
         for event in sink.events
@@ -637,6 +637,111 @@ def test_blocked_verdict_persists_operator_question_onto_backlog_item(
     ]
     assert pending_events[-1]["item_id"] == item.id
     assert pending_events[-1]["question"] == "fp16 精度损失可以接受吗，还是必须 fp32？"
+
+
+class _TechnicalQuestionRunner:
+    """A recoverable benchmark choice incorrectly phrased as a human question."""
+
+    def execute(self, **kwargs: Any) -> _Outcome:
+        outcome = _Outcome(
+            success=False,
+            status="blocked",
+            stop_reason="the largest benchmark row timed out",
+            operator_question="Should the benchmark use a smaller diagnostic shape?",
+        )
+        outcome.final_review_reason = "The largest benchmark row timed out."
+        outcome.final_review_next_action = (
+            "Validate one smaller row, then replan the full measurement."
+        )
+        outcome.final_planner_report = {
+            "forward_progress": False,
+            "plan_signal": "reconsider",
+            "authority_impact": "technical",
+        }
+        return outcome
+
+
+def test_pragmatic_autonomy_replans_technical_question_without_pausing(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_AUTONOMY_MODE", "pragmatic")
+    mem = LifeMemory.open(tmp_path / "life")
+    sink = _RecordingSink(mem.root)
+    sup = LifeSupervisor(
+        memory=mem,
+        runner=_TechnicalQuestionRunner(),
+        sink=sink,
+        config=LifeSupervisorConfig(
+            budget=LifeBudget(global_daily_cap_usd=0.0, max_missions=2),
+            poll_interval_seconds=0.01,
+        ),
+    )
+    item = mem.backlog.add(BacklogItem.new(
+        title="Measure the kernel", objective="compare baseline and candidate",
+    ))
+
+    result = sup.tick()
+
+    assert result is not None and result["status"] == "replan_requested"
+    stored = next(row for row in mem.backlog.all() if row.id == item.id)
+    assert stored.status == "pending"
+    assert stored.pending_question == ""
+    assert not stored.operator_decision
+    decisions = [
+        event
+        for event in sink.events
+        if event.get("type") == EventType.LIFE_MANAGER_PLAN_CHALLENGE_DECIDED
+        and event.get("source") == "pragmatic_autonomy_policy"
+    ]
+    assert decisions
+    assert decisions[-1]["authority_impact"] == "technical"
+
+
+def test_pending_wait_status_is_not_repeated_across_supervisor_restarts(
+    tmp_path,
+) -> None:
+    mem = LifeMemory.open(tmp_path / "life")
+    item = mem.backlog.add(BacklogItem.new(
+        title="Choose a dataset", objective="run the baseline",
+    ))
+    mem.backlog.update(
+        item.id,
+        status="paused_operator",
+        pending_question="Which dataset should the baseline use?",
+    )
+    config = LifeSupervisorConfig(
+        budget=LifeBudget(global_daily_cap_usd=0.0, max_missions=2),
+        poll_interval_seconds=0.01,
+        continuous=True,
+        continuous_objective="finish the benchmark",
+    )
+
+    first_sink = _RecordingSink(mem.root)
+    first = LifeSupervisor(
+        memory=mem,
+        runner=_BlockedQuestionRunner(),
+        sink=first_sink,
+        config=config,
+    ).run()
+    second_sink = _RecordingSink(mem.root)
+    second = LifeSupervisor(
+        memory=LifeMemory.open(tmp_path / "life"),
+        runner=_BlockedQuestionRunner(),
+        sink=second_sink,
+        config=config,
+    ).run()
+
+    assert first["stopped_by"] == "pending_operator_question"
+    assert second["stopped_by"] == "pending_operator_question"
+    assert [
+        event for event in first_sink.events
+        if event.get("type") == "life.planner.deferred"
+    ]
+    assert not [
+        event for event in second_sink.events
+        if event.get("type") == "life.planner.deferred"
+    ]
 
 
 def test_non_blocked_failure_does_not_set_pending_question(tmp_path) -> None:

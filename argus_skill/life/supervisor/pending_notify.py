@@ -20,15 +20,21 @@ import json
 import logging
 import os
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
 
-__all__ = ["notify_pending_question", "pending_question_message"]
+__all__ = [
+    "notify_pending_question",
+    "pending_question_message",
+    "should_report_pending_wait",
+]
 
 #: Ids already announced, so a restart or a re-read does not re-notify.
 _SENT_RELPATH = "pending_notified.json"
+_WAIT_RELPATH = "pending_wait_state.json"
 
 
 def _sent_path(life_dir: Path) -> Path:
@@ -72,6 +78,79 @@ def _record_sent(life_dir: Path, item_id: str, question: str) -> None:
                 tmp.unlink(missing_ok=True)
             except OSError:
                 pass
+
+
+def should_report_pending_wait(
+    life_dir: Path | str,
+    items: Any,
+    *,
+    heartbeat_seconds: float = 3600.0,
+    now: float | None = None,
+) -> bool:
+    """Persistently deduplicate the daemon's "waiting for you" heartbeat.
+
+    Daemon outer loops may create fresh supervisor objects, so in-memory log
+    suppression is insufficient.  Report immediately when the set or text of
+    pending questions changes, then at most once per heartbeat interval.
+    """
+    directory = Path(life_dir)
+    rows = sorted(
+        (
+            str(getattr(item, "id", "") or ""),
+            str(getattr(item, "pending_question", "") or "").strip(),
+        )
+        for item in (items or [])
+        if str(getattr(item, "pending_question", "") or "").strip()
+    )
+    if not rows:
+        return False
+    signature = json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
+    path = directory / _WAIT_RELPATH
+    try:
+        prior = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        prior = {}
+    timestamp = float(time.time() if now is None else now)
+    try:
+        last_at = float(prior.get("reported_at") or 0.0)
+    except (TypeError, ValueError):
+        last_at = 0.0
+    if (
+        str(prior.get("signature") or "") == signature
+        and timestamp - last_at < max(0.0, float(heartbeat_seconds))
+    ):
+        return False
+
+    tmp: Path | None = None
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        fd, name = tempfile.mkstemp(
+            dir=directory,
+            prefix=f".{_WAIT_RELPATH}.",
+            suffix=".tmp",
+        )
+        tmp = Path(name)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(
+                {"signature": signature, "reported_at": timestamp},
+                handle,
+                ensure_ascii=False,
+            )
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+        tmp = None
+    except OSError:
+        # If state cannot be persisted, prefer one duplicate status over
+        # suppressing the only visible explanation for an idle daemon.
+        log.debug("pending-question wait: could not persist dedup state")
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return True
 
 
 def pending_question_message(

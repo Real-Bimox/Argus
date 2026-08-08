@@ -38,7 +38,6 @@ def _bound_blocked_project(tmp_path, sid: str = "s-decision"):
     mem = MemoryBundle.for_cwd(workspace, global_root=tmp_path, fingerprint=sid)
     mem.init()
     write_continuous_config(mem.project_root, enabled=True, objective="standing work")
-    campaign = read_continuous_state(mem.project_root)
     item = mem.backlog.add(
         BacklogItem.new(title="Blocked", objective="Do work", item_id="item")
     )
@@ -49,7 +48,6 @@ def _bound_blocked_project(tmp_path, sid: str = "s-decision"):
         question="Use the fallback?",
         recommendation="Use the local fallback.",
         project_id=sid,
-        campaign_generation=campaign.generation,
     )
     mem.backlog.update(
         item.id,
@@ -58,15 +56,6 @@ def _bound_blocked_project(tmp_path, sid: str = "s-decision"):
         operator_decision=card,
     )
     return mem, card
-
-
-def _manager_accepts_fallback(*_args, **_kwargs) -> str:
-    return json.dumps({
-        "is_answer": True,
-        "resolved": True,
-        "decision": "Use the local fallback and retain the acceptance check.",
-        "reply": "I delivered the fallback decision to the team.",
-    })
 
 
 def test_stop_option_resolves_item_and_disables_campaign(tmp_path) -> None:
@@ -99,7 +88,7 @@ def test_stop_option_resolves_item_and_disables_campaign(tmp_path) -> None:
     assert "event_validation" not in stopped[-1]
 
 
-def test_recommended_option_routes_text_through_manager(tmp_path, monkeypatch) -> None:
+def test_recommended_option_routes_text_through_answer_handler(tmp_path, monkeypatch) -> None:
     _mem, card = _blocked_project(tmp_path)
     seen: dict[str, object] = {}
 
@@ -112,7 +101,6 @@ def test_recommended_option_routes_text_through_manager(tmp_path, monkeypatch) -
         "s-decision",
         card["id"],
         "recommended",
-        expected_revision=1,
         global_root=tmp_path,
     )
 
@@ -130,26 +118,23 @@ def test_repeated_decision_is_idempotent_across_reopened_memory(
     monkeypatch,
 ) -> None:
     mem, card = _bound_blocked_project(tmp_path)
-    calls = 0
-
-    def manager_reply(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        return _manager_accepts_fallback(*args, **kwargs)
-
-    monkeypatch.setattr(front_door, "manager_triage", manager_reply)
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("explicit decisions must not require a model call")
+        ),
+    )
     first = manager_pending_question.manager_resolve_operator_decision(
         "s-decision",
         card["id"],
         "recommended",
-        expected_revision=1,
         global_root=tmp_path,
     )
     second = manager_pending_question.manager_resolve_operator_decision(
         "s-decision",
         card["id"],
         "recommended",
-        expected_revision=1,
         global_root=tmp_path,
     )
 
@@ -158,7 +143,6 @@ def test_repeated_decision_is_idempotent_across_reopened_memory(
     assert first["item"]["id"] == second["item"]["id"]
     assert first["resolution_id"] == second["resolution_id"]
     assert first["resume_requested"] is True
-    assert calls == 1
     assert len(mem.backlog.all()) == 2
 
     stale = manager_pending_question.manager_resolve_operator_decision(
@@ -166,17 +150,18 @@ def test_repeated_decision_is_idempotent_across_reopened_memory(
         card["id"],
         "custom",
         "Try a different route.",
-        expected_revision=1,
         global_root=tmp_path,
     )
     assert stale is not None and stale["application_status"] == "stale"
 
 
-def test_campaign_generation_change_rejects_stale_decision_before_manager_call(
+def test_campaign_generation_change_does_not_block_pending_decision(
     tmp_path,
     monkeypatch,
 ) -> None:
     mem, card = _bound_blocked_project(tmp_path)
+    card["campaign_generation"] = read_continuous_state(mem.project_root).generation
+    mem.backlog.update("item", operator_decision=card)
     write_continuous_config(
         mem.project_root,
         enabled=True,
@@ -186,7 +171,7 @@ def test_campaign_generation_change_rejects_stale_decision_before_manager_call(
         front_door,
         "manager_triage",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(
-            AssertionError("stale decision must not call Manager")
+            AssertionError("explicit decisions must not require a model call")
         ),
     )
 
@@ -194,15 +179,14 @@ def test_campaign_generation_change_rejects_stale_decision_before_manager_call(
         "s-decision",
         card["id"],
         "recommended",
-        expected_revision=1,
         global_root=tmp_path,
     )
 
-    assert result is not None and result["application_status"] == "stale"
-    assert "campaign changed" in result["error"]
+    assert result is not None and result["application_status"] == "accepted"
+    assert result["resolved"] is True
     item = next(row for row in mem.backlog.all() if row.id == "item")
-    assert item.pending_question == "Use the fallback?"
-    assert item.operator_decision["status"] == "pending"
+    assert item.pending_question == ""
+    assert item.operator_decision["status"] == "resolved"
 
 
 def test_concurrent_same_decision_returns_accepted_and_already_applied(
@@ -210,21 +194,19 @@ def test_concurrent_same_decision_returns_accepted_and_already_applied(
     monkeypatch,
 ) -> None:
     mem, card = _bound_blocked_project(tmp_path)
-    calls = 0
-
-    def manager_reply(*args, **kwargs):
-        nonlocal calls
-        calls += 1
-        return _manager_accepts_fallback(*args, **kwargs)
-
-    monkeypatch.setattr(front_door, "manager_triage", manager_reply)
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("explicit decisions must not require a model call")
+        ),
+    )
 
     def resolve():
         return manager_pending_question.manager_resolve_operator_decision(
             "s-decision",
             card["id"],
             "recommended",
-            expected_revision=1,
             global_root=tmp_path,
         )
 
@@ -235,7 +217,6 @@ def test_concurrent_same_decision_returns_accepted_and_already_applied(
         "accepted",
         "already_applied",
     }
-    assert calls == 1
     assert len(mem.backlog.all()) == 2
 
 
@@ -246,7 +227,6 @@ def test_stop_decision_replay_does_not_advance_campaign_twice(tmp_path) -> None:
         "s-decision",
         card["id"],
         "stop",
-        expected_revision=1,
         global_root=tmp_path,
     )
     generation_after_first = read_continuous_state(mem.project_root).generation
@@ -254,7 +234,6 @@ def test_stop_decision_replay_does_not_advance_campaign_twice(tmp_path) -> None:
         "s-decision",
         card["id"],
         "stop",
-        expected_revision=1,
         global_root=tmp_path,
     )
 

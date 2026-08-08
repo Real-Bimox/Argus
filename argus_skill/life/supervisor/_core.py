@@ -99,6 +99,7 @@ from ._planner_orchestration import PlannerOrchestrationMixin
 from ._planner_rendering import PlannerRenderingMixin
 from ._planning_context import PlanningContextMixin
 from ._planning_cycle import PlanningCycleMixin
+from .pending_notify import should_report_pending_wait
 
 log = logging.getLogger(__name__)
 
@@ -502,7 +503,6 @@ class LifeSupervisor(
         if action == "ask_operator" and item_id:
             try:
                 from ...core.operator_decision import build_operator_decision
-                from ...daemon.state import read_continuous_state
 
                 item = next(
                     row for row in self.memory.backlog.all() if row.id == item_id
@@ -518,9 +518,6 @@ class LifeSupervisor(
                     question=question,
                     recommendation="Keep the current operator-owned constraint.",
                     project_id=self.memory.root.name,
-                    campaign_generation=read_continuous_state(
-                        self.memory.root
-                    ).generation,
                 )
                 self.memory.backlog.update(
                     item.id,
@@ -635,16 +632,24 @@ class LifeSupervisor(
                         ):
                             continue
                         sleep_s = self._enter_pause_backoff()
-                        self._emit({
-                            "type": "life.planner.deferred",
-                            "reason": "waiting for operator answer",
-                            "item_ids": [item.id for item in pending_questions],
-                            "suggested_sleep_s": sleep_s,
-                            "agent_layer": "planner",
-                        })
-                        self._emit_status(
-                            "planner deferred: waiting for operator answer"
-                        )
+                        if should_report_pending_wait(
+                            self.memory.root,
+                            pending_questions,
+                        ):
+                            self._emit({
+                                "type": "life.planner.deferred",
+                                "reason": "waiting for operator answer",
+                                "item_ids": [item.id for item in pending_questions],
+                                "suggested_sleep_s": sleep_s,
+                                "agent_layer": "planner",
+                            })
+                            self._emit_status(
+                                "Argus is waiting for your answer on: "
+                                + "; ".join(
+                                    str(item.pending_question).strip()
+                                    for item in pending_questions[:3]
+                                )
+                            )
                         stopped_by = "pending_operator_question"
                         break
                     gate_reason = self._planner_cycle_gate_reason()
@@ -1262,12 +1267,33 @@ class LifeSupervisor(
                     or event.get("failure_reason")
                     or "The mission ended without a verified result."
                 ).strip()
+                next_action = str(event.get("next_action") or "").strip()
+                operator_question = str(
+                    event.get("operator_question") or ""
+                ).strip()
+                from ...core.autonomy import assess_operator_intervention
+
+                intervention = assess_operator_intervention(
+                    question=(
+                        operator_question
+                        or next_action
+                        if status in {"blocked", "paused_operator"}
+                        else ""
+                    ),
+                    reason=reason,
+                    next_action=next_action,
+                    planner_report={
+                        "authority_impact": (
+                            "operator" if status == "paused_operator" else ""
+                        )
+                    },
+                )
                 text = render_operator_update(
                     title=title,
                     status=status,
                     reason=reason,
-                    next_action=str(event.get("next_action") or "").strip(),
-                    user_action_required=status in {"blocked", "paused_operator"},
+                    next_action=next_action,
+                    user_action_required=intervention.required,
                 )
                 publish_operator_message(
                     life_dir,

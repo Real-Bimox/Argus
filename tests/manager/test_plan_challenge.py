@@ -34,6 +34,23 @@ def test_operator_owned_change_routes_back_to_operator() -> None:
     assert decision.action == "ask_operator"
 
 
+def test_technical_question_uses_the_available_alternative(monkeypatch) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_AUTONOMY_MODE", "pragmatic")
+    decision = adjudicate_plan_challenge(
+        {
+            "plan_signal": "reconsider",
+            "challenge": "The largest benchmark row timed out.",
+            "alternative": "Run the isolated one-row diagnostic first.",
+            "authority_impact": "technical",
+        },
+        reviewer_status="replan_requested",
+        operator_question="Should the benchmark use a smaller diagnostic shape?",
+    )
+
+    assert decision.action == "replace"
+    assert decision.authority_impact == "technical"
+
+
 def test_unchallenged_plan_is_kept() -> None:
     decision = adjudicate_plan_challenge(
         {"plan_signal": "continue", "forward_progress": True},

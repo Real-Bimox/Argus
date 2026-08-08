@@ -123,6 +123,13 @@ KNOBS: tuple[Knob, ...] = (
     Knob("ARGUS_SKILL_SUBAGENT_FAMILY_FAILURE_STREAK_LIMIT", "3", "consecutive unresolved subagent-job failures (same experiment family) before the L4 planner circuit-breaks further retries", "budget"),
     Knob("ARGUS_SKILL_SUBAGENT_FAMILY_FAILURE_WINDOW_HOURS", "72.0", "trailing window (hours) the subagent family failure streak is computed over", "budget"),
     # --- mission / lifecycle ---
+    Knob(
+        "ARGUS_SKILL_AUTONOMY_MODE",
+        "pragmatic",
+        "operator interruption policy: cautious | pragmatic | autonomous",
+        "mission",
+        cockpit=True,
+    ),
     Knob("ARGUS_SKILL_MAX_ROUNDS", "500", "max engineer rounds per mission", "mission"),
     Knob("ARGUS_SKILL_ROUND_CHECKPOINT", "off", "record private git refs for Reviewer-recommended round checkpoints", "mission"),
     Knob("ARGUS_SKILL_REQUIRE_POST_TASK_LEARNING", "1", "enable selective project-layer Skill maintenance for all four roles (default ON)", "mission"),
@@ -385,6 +392,13 @@ def normalize_cockpit_knob_value(name: str, value: str) -> str:
         if policy not in {"block", "allow"}:
             raise ValueError(f"{name} must be block or allow")
         return policy
+    if name == "ARGUS_SKILL_AUTONOMY_MODE":
+        mode = raw.lower()
+        if mode not in {"cautious", "pragmatic", "autonomous"}:
+            raise ValueError(
+                f"{name} must be cautious, pragmatic, or autonomous"
+            )
+        return mode
     if name in BUDGET_KNOB_DEFAULTS:
         number = _parse_budget_value(name, raw.removeprefix("$"))
         return f"{number:g}"

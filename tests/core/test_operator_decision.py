@@ -18,19 +18,36 @@ def test_card_is_readable_and_uses_item_identity() -> None:
         recommendation="Use the local fallback and keep the same acceptance check.",
         evidence=[{"ref": "logs/run.txt", "why": "provider refusal"}],
         project_id="s-project",
-        campaign_generation=7,
     )
 
     assert card["id"] == "decision-item-7"
     assert card["revision"] == 1
     assert card["project_id"] == "s-project"
-    assert card["campaign_generation"] == 7
+    assert "campaign_generation" not in card
     assert [row["id"] for row in card["options"]] == ["recommended", "custom", "stop"]
     assert card["evidence"] == [{
         "label": "provider refusal",
         "path": "logs/run.txt",
         "summary": "provider refusal",
     }]
+
+
+def test_chinese_decision_uses_operator_language_and_human_reason() -> None:
+    card = build_operator_decision(
+        item_id="i-zh",
+        title="验证内核性能",
+        reason="row exceeded timeout_s=300",
+        question="是否继续使用更小的诊断 shape？",
+        recommendation="先运行单行诊断。",
+    )
+
+    assert [row["label"] for row in card["options"]] == [
+        "按建议继续",
+        "给出其他指示",
+        "保留当前结果并停止",
+    ]
+    assert "300 秒" in card["reason"]
+    assert "不代表方案错误" in card["reason"]
 
 
 def test_option_selection_is_direct_and_custom_requires_text() -> None:
@@ -81,7 +98,7 @@ def test_backlog_persists_and_resolves_card_with_continuation(tmp_path) -> None:
     assert continuation.status == "pending"
 
 
-def test_decision_revision_mismatch_makes_no_backlog_change(tmp_path) -> None:
+def test_decision_identity_mismatch_makes_no_backlog_change(tmp_path) -> None:
     backlog = Backlog(tmp_path / "backlog.jsonl")
     item = backlog.add(BacklogItem.new(title="blocked", objective="work", item_id="item"))
     card = build_operator_decision(
@@ -102,8 +119,7 @@ def test_decision_revision_mismatch_makes_no_backlog_change(tmp_path) -> None:
         "Use B",
         manager_decision="Use B",
         decision_option="custom",
-        decision_id=card["id"],
-        expected_revision=99,
+        decision_id="decision-some-other-item",
         decision_note="Use B",
     )
 
@@ -142,7 +158,6 @@ def test_failed_decision_write_leaves_original_card_retriable(tmp_path, monkeypa
             manager_decision="Use B",
             decision_option="custom",
             decision_id=card["id"],
-            expected_revision=1,
             decision_note="Use B",
         )
 
@@ -158,7 +173,6 @@ def test_failed_decision_write_leaves_original_card_retriable(tmp_path, monkeypa
         manager_decision="Use B",
         decision_option="custom",
         decision_id=card["id"],
-        expected_revision=1,
         decision_note="Use B",
     )
     assert continuation is not None

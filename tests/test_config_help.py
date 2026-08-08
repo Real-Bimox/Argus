@@ -134,6 +134,9 @@ def test_cockpit_value_normalization_is_typed() -> None:
     assert normalize_cockpit_knob_value("ARGUS_SKILL_CODEX_DAILY_CALL_CAP", "250") == "250"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_COPILOT_DAILY_PREMIUM_CAP", "12.5") == "12.5"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_SAFE_MODE", "enabled") == "1"
+    assert normalize_cockpit_knob_value(
+        "ARGUS_SKILL_AUTONOMY_MODE", "PRAGMATIC"
+    ) == "pragmatic"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "COPILOT") == "copilot"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "opencod") == "opencode"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "PI") == "pi"
@@ -141,6 +144,8 @@ def test_cockpit_value_normalization_is_typed() -> None:
         normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "magic")
     with pytest.raises(ValueError, match="non-negative integer"):
         normalize_cockpit_knob_value("ARGUS_SKILL_MAX_ACTIVE_DAEMONS", "-1")
+    with pytest.raises(ValueError, match="cautious, pragmatic, or autonomous"):
+        normalize_cockpit_knob_value("ARGUS_SKILL_AUTONOMY_MODE", "reckless")
 
 
 def test_shared_model_default_feeds_role_model_resolution() -> None:

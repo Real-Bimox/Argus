@@ -182,6 +182,7 @@ export interface LifeMissionCompletedEvent extends EventMsg {
   "repair_capability"?: Record<string, unknown> | null;
   "stop_kind"?: "budget_exhausted" | "provider_cooldown" | "provider_fence" | "daemon_shutdown" | "operator_pause" | "operator_abort" | "backend_unavailable" | "transient_error" | "permanent_error" | null;
   "recoverable"?: boolean;
+  "operator_question"?: string;
 }
 
 export interface RoundStartEvent extends EventMsg {
