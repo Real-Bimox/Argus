@@ -30,6 +30,42 @@ STAGE_CHECKS: dict[str, list[tuple[str, str]]] = {
     stage: [_PIPELINE_CHECK] for stage in STAGE_ORDER
 }
 
+
+def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
+    """Validate objective identity and the proof graph when policy requires it."""
+    from ...core.verification_policy import resolve_policy
+    from .objective_mode import resolve_objective
+    from .proof_graph import graph_required_for, load_graph
+
+    stage_name = (stage or "").strip().lower()
+    objective = resolve_objective(project_root)
+    if stage_name not in STAGE_ORDER:
+        return (f"unknown math stage {stage_name!r}",)
+    if not objective.resolved:
+        return (objective.note,)
+    if stage_name == "scope":
+        return ()
+
+    policy = resolve_policy(
+        project_root,
+        stage=stage_name,
+        vertical="math",
+    )
+    if not graph_required_for(policy.profile, objective.mode):
+        return ()
+    graph = load_graph(project_root)
+    if graph is None:
+        return (
+            "targeted math under develop/certify requires "
+            "research/PROOF_GRAPH.json",
+        )
+    issues = list(graph.validate())
+    if graph.goal != objective.goal:
+        issues.append(
+            "proof graph goal does not match the Manager-owned math_goal"
+        )
+    return tuple(issues)
+
 REVIEWER_CHECKLISTS: dict[str, tuple[str, str, list[str]]] = {
     "scope": (
         "reviewer/math-research-review.md",
@@ -199,4 +235,5 @@ __all__ = [
     "WORKFLOW_MODE",
     "completion_gate",
     "role_banner",
+    "stage_completion_issues",
 ]

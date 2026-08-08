@@ -31,6 +31,18 @@ class ChecklistLoadState(str, Enum):
     LOADED = "loaded"
 
 
+class StageCompletionError(ValueError):
+    """A deterministic vertical-owned completion check rejected the stage."""
+
+    def __init__(self, stage: str, issues: Iterable[str]) -> None:
+        self.stage = _normalize_stage(stage)
+        self.issues = tuple(str(issue).strip() for issue in issues if str(issue).strip())
+        preview = "; ".join(self.issues[:3])
+        if len(self.issues) > 3:
+            preview += f"; and {len(self.issues) - 3} more"
+        super().__init__(f"stage {self.stage!r} completion blocked: {preview}")
+
+
 @dataclass(frozen=True)
 class StageChecklistContract:
     stage: str
@@ -137,6 +149,29 @@ def current_stage(project_root: Path | str = ".") -> str:
     if stage in {_normalize_stage(s) for s in order}:
         return stage
     return fallback
+
+
+def _ensure_stage_completion(project_root: Path | str, stage: str) -> None:
+    """Fail closed on the active vertical's deterministic completion hook."""
+    from ..verticals._base import load_vertical, vertical_stage_completion_issues
+    from .vertical_select import resolve_vertical
+
+    try:
+        vertical = resolve_vertical(project_root)
+        issues = vertical_stage_completion_issues(
+            load_vertical(vertical, project_root=project_root),
+            stage=_normalize_stage(stage),
+            project_root=Path(project_root),
+        )
+    except StageCompletionError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — completion authority fails closed
+        raise StageCompletionError(
+            stage,
+            (f"completion validator unavailable: {exc}",),
+        ) from exc
+    if issues:
+        raise StageCompletionError(stage, issues)
 
 
 _STATUS_STAGE_LINE = re.compile(r"(?m)^Current stage:\s*[^\r\n]*$")
@@ -393,6 +428,7 @@ def advance_stage(
                 f"advance target {target!r} must be the immediate next stage "
                 f"after {cur_norm!r}"
             )
+            _ensure_stage_completion(project_root, cur_norm)
     return _set_stage(
         project_root,
         target_stage=target,
@@ -498,6 +534,7 @@ def complete_final_stage(
             f"complete target must be the final stage {order[-1] if order else '?'!r}; "
             f"current stage is {cur!r}"
         )
+    _ensure_stage_completion(project_root, cur)
     from ..verticals._base import (
         load_vertical,
         vertical_completion_contract_version,

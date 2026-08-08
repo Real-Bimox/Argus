@@ -388,6 +388,7 @@ class _StageDecisionMixin:
     ) -> "StageTransition":  # noqa: F821
         """Phase 5: write the chosen action to ``PIPELINE_STATE.json`` and return a
         ``StageTransition`` describing what happened."""
+        from ..skills.stage_machine import StageCompletionError
         from ..skills.stage_machine import (
             advance_stage as _advance,
         )
@@ -403,6 +404,12 @@ class _StageDecisionMixin:
             try:
                 _advance(root, target_stage=decision.target_stage,
                          reason=decision.reason, advanced_by="manager")
+            except StageCompletionError as exc:
+                return StageTransition(
+                    "hold", cur, str(exc), current_stage=cur,
+                    source="stage_completion_gate_hold",
+                    diagnostic="stage_completion_gate_failed",
+                )
             except ValueError:
                 return StageTransition(
                     "hold", cur, "illegal advance target", current_stage=cur,
@@ -416,6 +423,12 @@ class _StageDecisionMixin:
         if decision.action == "complete":
             try:
                 _complete(root, reason=decision.reason, completed_by="manager")
+            except StageCompletionError as exc:
+                return StageTransition(
+                    "hold", cur, str(exc), current_stage=cur,
+                    source="stage_completion_gate_hold",
+                    diagnostic="stage_completion_gate_failed",
+                )
             except ValueError:
                 return StageTransition(
                     "hold", cur, "illegal final-stage completion", current_stage=cur,

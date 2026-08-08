@@ -150,6 +150,16 @@ def vertical_prepare_mission(
     )
 
 
+def vertical_stage_completion_issues(
+    mod: VerticalDefinition,
+    *,
+    stage: str,
+    project_root: Path,
+) -> tuple[str, ...]:
+    """Run the provider's deterministic pre-completion validator, if any."""
+    return _contract(mod).completion_issues(stage, project_root)
+
+
 __all__ = [
     "DEFAULT_VERTICAL",
     "VerticalContract",
@@ -168,4 +178,5 @@ __all__ = [
     "vertical_prepare_mission",
     "vertical_workflow_mode",
     "vertical_search_altitude",
+    "vertical_stage_completion_issues",
 ]
