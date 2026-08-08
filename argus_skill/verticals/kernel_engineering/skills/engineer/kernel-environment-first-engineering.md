@@ -78,6 +78,17 @@ ladder and its stop conditions.
    allowed and frozen files, target GPU, supported shapes/dtypes/options,
    correctness reference, benchmark command, and acceptance criterion. Check
    open upstream issues/PRs before choosing overlapping work.
+2a. **Discover the algorithm before choosing tools or editing kernels.** Write
+   `research/ALGORITHM_PLAN.md` with at least three materially different
+   mathematical or dataflow reformulations. For each, state the work or storage
+   removed, time/memory/communication complexity, exactness or error argument,
+   expected end-to-end ceiling, implementation risk, and closest primary prior
+   art. Tiling, warp/stage changes, split-count tuning, wrapper cleanup, and
+   autotune expansion are engineering options, not algorithm discoveries. Select
+   a prototype only when it plausibly offers at least 10% end-to-end gain,
+   meaningful memory/communication reduction, or an asymptotic/coverage
+   improvement. Do not edit production GPU code until Reviewer accepts this
+   plan.
 3. **Query the professional tool registry before choosing infrastructure.** Do
    not rely on memory or a generic web search. Query relevant platform and
    bottleneck categories, for example:

@@ -28,6 +28,20 @@ relevant public facts are unchanged.
 Never ask the Engineer to read `FRONTIER_WATCH.jsonl` in full. Audit the current
 snapshot and use `frontier_watch check` to verify the append-only ledger binding.
 
+## Algorithm-discovery gate
+
+During `discover`, require `research/ALGORITHM_PLAN.md` and a current primary-source
+frontier snapshot. The plan must derive at least three materially different
+reformulations and say what computation, storage, synchronization, launch, or
+communication each removes. Require complexity, exactness/error reasoning,
+expected end-to-end impact, implementation risk, and the closest prior-art
+difference. Reject ordinary tiling, warp/stage tuning, split-count changes,
+wrapper cleanup, and autotune expansion as algorithm novelty. Reject all
+production kernel edits during this stage. Advance only when a selected prototype
+has a credible route to at least 10% end-to-end gain, meaningful memory or
+communication reduction, or an asymptotic/coverage improvement; otherwise close
+the direction honestly.
+
 ## Hard execution-versus-idea gate
 
 Require every attempt to carry `OUTCOME.json` with separate `execution_status`,

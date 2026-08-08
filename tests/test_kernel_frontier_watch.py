@@ -225,12 +225,12 @@ def test_record_cli_accepts_stdin(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_frontier_gate_is_event_driven_not_required_at_every_stage() -> None:
-    for stage in ("scope", "report"):
+    for stage in ("scope", "discover", "report"):
         commands = "\n".join(command for _label, command in STAGE_CHECKS[stage])
         assert "frontier_watch check" in commands
         ids = {item.id for item in CHECKLIST_ITEMS[stage]}
         assert f"{stage}.frontier_current" in ids
-    for stage in set(STAGES) - {"scope", "report"}:
+    for stage in set(STAGES) - {"scope", "discover", "report"}:
         commands = "\n".join(command for _label, command in STAGE_CHECKS[stage])
         assert "frontier_watch check" not in commands
         ids = {item.id for item in CHECKLIST_ITEMS[stage]}

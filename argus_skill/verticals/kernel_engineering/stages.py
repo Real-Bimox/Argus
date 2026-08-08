@@ -15,6 +15,7 @@ from ..speedrun.stages import _PIPELINE_CHECK
 
 STAGE_ORDER = [
     "scope",
+    "discover",
     "environment",
     "baseline",
     "optimize",
@@ -89,6 +90,14 @@ STAGE_CHECKS: dict[str, list[tuple[str, str]]] = {
         ("Kernel mission contract present", "test -s research/KERNEL_SCOPE.md"),
         ("Repository instructions inspected", "test -s research/PROJECT_NATIVE_SETUP.md"),
     ],
+    "discover": [
+        _PIPELINE_CHECK,
+        (
+            "Online algorithm frontier validates",
+            f"{_FRONTIER} check --project-root . --stage discover",
+        ),
+        ("Algorithm plan present", "test -s research/ALGORITHM_PLAN.md"),
+    ],
     "environment": [
         _PIPELINE_CHECK,
         ("Environment audit present", "test -s research/ENVIRONMENT_AUDIT.json"),
@@ -156,6 +165,20 @@ REVIEWER_CHECKLISTS: dict[str, tuple[str, str, list[str]]] = {
         "must be explicit. The project-native install and benchmark instructions "
         "must have been read. Pass only when the task is narrow enough to measure.",
         ["research/KERNEL_SCOPE.md", "research/PROJECT_NATIVE_SETUP.md"],
+    ),
+    "discover": (
+        _REVIEWER_SKILL,
+        "Review algorithm discovery before any GPU implementation. Require at least "
+        "three materially different mathematical or dataflow reformulations. Each must "
+        "name the work, storage, synchronization, launch, or communication it removes; "
+        "state complexity and an exactness/error argument; estimate the end-to-end "
+        "ceiling; and distinguish itself from current primary prior art. Ordinary "
+        "tiling, warp/stage tuning, split-count changes, wrapper cleanup, or autotune "
+        "expansion do not satisfy this stage. Advance only when one selected prototype "
+        "plausibly offers at least 10% end-to-end gain, meaningful memory/communication "
+        "reduction, or an asymptotic/coverage improvement. No production kernel edits "
+        "are allowed in discover.",
+        ["research/ALGORITHM_PLAN.md", "research/frontier/discover.json"],
     ),
     "environment": (
         _ENGINEER_SKILL,
@@ -265,6 +288,27 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
             evidence_hint="research/PROJECT_NATIVE_SETUP.md",
         ),
     ),
+    "discover": (
+        ChecklistItem(
+            id="discover.algorithm_reformulations",
+            statement=(
+                "At least three materially different algorithm or dataflow "
+                "reformulations are derived before implementation, each identifying "
+                "the computation, storage, synchronization, launch, or communication "
+                "it removes and why the result remains exact or has a bounded error."
+            ),
+            evidence_hint="research/ALGORITHM_PLAN.md",
+        ),
+        ChecklistItem(
+            id="discover.novelty_and_value",
+            statement=(
+                "The selected prototype is distinguished from current primary prior "
+                "art and has a credible path to at least 10% end-to-end gain, meaningful "
+                "memory/communication reduction, or an asymptotic/coverage improvement."
+            ),
+            evidence_hint="research/ALGORITHM_PLAN.md and research/frontier/discover.json",
+        ),
+    ),
     "environment": (
         ChecklistItem(
             id="environment.capability_audit",
@@ -364,7 +408,7 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
     ),
 }
 
-for _stage in ("scope", "report"):
+for _stage in ("scope", "discover", "report"):
     CHECKLIST_ITEMS[_stage] = (
         ChecklistItem(
             id=f"{_stage}.frontier_current",
@@ -404,13 +448,18 @@ def role_banner(role: str) -> str:
     )
     if role == "planner":
         return common + (
-            "Install only the project-documented toolchain in an isolated environment, "
-            "then rerun the audit. During optimize, stop at the first correctness-passing "
+            "After scope, complete the discover stage before environment or code work: "
+            "derive and compare genuinely different algorithms, reject ordinary tuning "
+            "as novelty, and select a prototype only when its expected value clears the "
+            "discover bar. Then install only the project-documented toolchain in an "
+            "isolated environment and rerun the audit. During optimize, stop at the first correctness-passing "
             "candidate whose paired end-to-end benchmark clears both aggregate and worst-row "
             "thresholds. Validate, report, and deliver it before starting another cycle.\n"
         )
     if role == "reviewer":
         return common + (
+            "At discover, reject implementation work, routine kernel tuning, weak prior-art "
+            "search, or proposals with no explicit work-removal and value argument. "
             "Fail closed on mismatched/red environment audits, audits not refreshed after "
             "environment changes, missing project extras, "
             "unexplained fallbacks, mixed benchmark environments, or compile failures "
@@ -421,7 +470,10 @@ def role_banner(role: str) -> str:
         )
     if role == "engineer":
         return common + (
-            "Run the environment audit first. If a tool is missing, use the repository's "
+            "During discover, derive the equations/dataflow, compare at least three "
+            "reformulations against primary prior art, write ALGORITHM_PLAN.md, and do not "
+            "edit production GPU code. After Reviewer selection, run the environment audit. "
+            "If a tool is missing, use the repository's "
             "documented lockfile/extras in a local environment and rerun the audit. Profile, "
             "make one focused change, and use `kernel_engineering.campaign compare` for the "
             "paired result. Once it passes, stop tuning and deliver.\n"

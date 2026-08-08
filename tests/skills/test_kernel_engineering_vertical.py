@@ -23,6 +23,7 @@ def test_kernel_engineering_is_known_metric_vertical(tmp_path: Path) -> None:
     assert vertical_workflow_mode(mod) == "staged"
     assert tuple(mod.STAGE_ORDER) == (
         "scope",
+        "discover",
         "environment",
         "baseline",
         "optimize",
@@ -47,6 +48,9 @@ def test_kernel_engineering_checklist_is_not_paper_pipeline(tmp_path: Path) -> N
     persist_vertical(tmp_path, "kernel_engineering")
     text = format_full_pipeline_checklist(role="reviewer", project_root=tmp_path)
 
+    assert "### discover" in text
+    assert "discover.algorithm_reformulations" in text
+    assert "discover.novelty_and_value" in text
     assert "### environment" in text
     assert "environment.capability_audit" in text
     assert "environment.specialized_catalog" in text

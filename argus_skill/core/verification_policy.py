@@ -84,11 +84,13 @@ STAGE_PROFILES: dict[str, dict[str, str]] = {
     },
     "kernel_engineering": {
         "scope": "explore",
+        "discover": "explore",
         "environment": "explore",
         "baseline": "develop",
         "optimize": "develop",
         "validate": "certify",
         "report": "certify",
+        "deliver": "certify",
     },
 }
 
