@@ -44,14 +44,188 @@ not implementation convenience.
 | ARGUS-P0-02 | P0 | Critical | Done | Mission loop | P0-01 checkpoint invariants |
 | ARGUS-P0-03 | P0 | Critical | Done | Manager/contract | none |
 | ARGUS-P0-04 | P0 | High | Done | Planner/goal | P0-03 |
+| ARGUS-P0-05 | P0 | Critical | Investigating | Runtime/Planner | real FLA execution trace |
 | ARGUS-P1-01 | P1 | High | Done | Mission progress/evaluation | durable frontier + regression envelope |
 | ARGUS-P1-02 | P1 | High | Done | Agent/session integration | canary rejected mission default; keep fresh |
 | ARGUS-P1-03 | P1 | Medium | Done | Skill system | natural invocation 10/10; legacy migrated |
 | ARGUS-P1-04 | P1 | Medium | Done | Architecture/verticals | core-owned contract |
 | ARGUS-P1-05 | P1 | High | Done | Role prompts/UX | blind review preferred revised 10/10 |
 | ARGUS-P1-06 | P1 | High | Done | Runtime/architecture | behavior-free compatibility removed |
+| ARGUS-P1-07 | P1 | High | Unassigned | Specialist roles/verticals | P0-05 |
+| ARGUS-P1-08 | P1 | High | Unassigned | Experiment lifecycle | P0-05, P1-07 |
 | ARGUS-P2-01 | P2 | Medium | Later spike | Persistence | P0 state semantics stable |
 | ARGUS-P2-02 | P2 | Medium | Continuous | Evaluation/observability | supports all items |
+| ARGUS-P2-03 | P2 | Medium | Unassigned | Efficiency evaluation | P0-05, P1-07, P1-08 |
+
+---
+
+## Execution-efficiency program — make Argus an engineer, not an evidence collector
+
+The FLA campaign exposed a systemic failure mode: Planner, Engineer, Reviewer, and
+Manager repeatedly re-read the same repository and artifacts, while the useful action
+was obvious and remained undispatched. The control plane currently optimizes audit
+completeness more strongly than time-to-decision, experiment throughput, or delivery.
+This program must preserve correctness and authority while making action the default.
+
+### Non-negotiable design constraints
+
+- Do not add hash-binding evidence chains, strict model-facing JSON schemas, keyword
+  routing, or duplicate gates.
+- Budgets below are configurable execution defaults, not scientific quality thresholds.
+  Novel or uncertain ideas may proceed to a cheap decisive probe without forecasting a
+  universal percentage gain.
+- Keep one owner for each decision. A completed Reviewer decision is not re-litigated by
+  another model unless there is new evidence, a conflict, or an operator-owned change.
+- Add only a small number of end-to-end regression scenarios; do not replace real canary
+  evaluation with a large synthetic test matrix.
+
+## ARGUS-P0-05 — Make the control plane action-first
+
+**Status: investigating.** The motivating FLA traces show long Planner grounding,
+repeated file reads by every role, stale workdir/stage leakage, rejected legal tasks,
+and Manager re-audits after Reviewer completion.
+
+**Problem.** The control plane has no strong boundary between “enough information to
+act” and “one more file may be useful.” It rebuilds repository understanding inside
+each role, rewards stage artifacts over decisions, and routes normal transitions
+through another expensive semantic review.
+
+**Work packages**
+
+- [ ] Build one runtime-owned, in-memory `MissionBrief` containing canonical workdir,
+      stage, Git state, relevant changed paths, available hardware/tools, native test and
+      benchmark commands, latest decisive result, current deliverable, and missing gate.
+      It is context, not a project artifact or evidence ledger.
+- [ ] Make the task's resolved workdir the sole source for vertical, stage, policy, and
+      artifact resolution. Add a real replay covering a parent campaign repository plus
+      a nested target worktree.
+- [ ] Add a configurable Planner grounding budget (tool calls and wall time). Once the
+      Brief plus inspected facts are sufficient for a legal task, Planner must delegate;
+      extending the budget requires a named missing fact.
+- [ ] Cache unchanged read-only tool results within one planning cycle and surface
+      `unchanged since last read` instead of re-reading identical files.
+- [ ] Give each stage one primary deliverable and a direct host-authored task shape.
+      Missing scope artifacts should produce one bounded Scope Engineer task rather than
+      an open-ended Planner investigation.
+- [ ] Advance an ordinary stage deterministically when its checks pass and the required
+      Reviewer returns `done`. Invoke Manager semantic adjudication only for rollback,
+      conflicting evidence, scope/authority changes, or operator decisions.
+- [ ] Restrict Reviewer to the changed surface and decisive acceptance evidence. Do not
+      rerun the research process or reopen settled questions without new evidence.
+- [ ] Fix repository-local Skill discovery so a matching `.agents/skills/**/SKILL.md`
+      can be loaded directly without a failed native lookup followed by manual reading.
+- [ ] Establish a lightweight exploration/candidate/delivery evidence ladder: failed
+      probes keep one compact experiment card; full correctness, profiling, and reporting
+      are reserved for promotion candidates and final delivery.
+
+**Acceptance criteria**
+
+- On the captured FLA scope replay, one planning turn delegates the missing scope work;
+  there is no repeated-read loop or stale parent-stage rejection.
+- Reviewer `done` advances an uncontested stage without a second evidence-reading model
+  call.
+- Time to first useful action, duplicate-read rate, Planner Tokens, and wall time improve
+  materially against the frozen trace without reducing held-out task correctness.
+- Security, authority, isolation, and operator approval boundaries remain unchanged.
+
+---
+
+## ARGUS-P1-07 — Add specialist execution roles and a real Discover workflow
+
+**Problem.** A generic role currently performs mathematical research, environment
+setup, kernel coding, measurement, and release work. It naturally falls back to the
+safest common behavior: collecting evidence and making local implementation tweaks.
+
+**Work packages**
+
+- [ ] Add explicit work kinds: `scope`, `algorithm_discovery`, `environment_setup`,
+      `engineering_optimization`, `validation`, and `delivery`. Stage admission uses the
+      typed work kind, not keywords in task prose.
+- [ ] Route scope to a Scope Engineer that pins the API, editable surface, hardware,
+      oracle, benchmark, and read-only reference boundaries in one mission.
+- [ ] Route `discover` to an Algorithm Scientist. It must derive the current equations
+      and dataflow, compare at least three materially different reformulations, identify
+      work/storage/communication removed, discuss exactness or bounded error, compare
+      primary prior art, state uncertainty, and name the cheapest decisive probe.
+- [ ] Do not impose a universal expected-speedup threshold. Select a probe using
+      project-specific leverage, measurement noise, deployment frequency, implementation
+      cost, and possible latency, memory, communication, scalability, numerical, or
+      coverage value.
+- [ ] Route environment work to an Environment Engineer that uses repository-native
+      lockfiles/extras and proves the selected stack, rather than installing every tool.
+- [ ] Route implementation to a Kernel Engineer with the chosen algorithm and decisive
+      probe already pinned; route final packaging to a Release Engineer that cannot
+      reopen optimization.
+- [ ] For continuous projects, finish delivery before beginning a new Discover cycle.
+
+**Acceptance criteria**
+
+- Discover produces a Reviewer-accepted algorithm decision before production kernel
+  edits, and ordinary tiling/autotune work is not mislabeled as algorithm novelty.
+- An idea with unknown payoff can receive a bounded cheap probe when its mechanism is
+  sound; a broad 1% improvement is not rejected by a global threshold.
+- Delivery work never mutates the algorithm or starts another experiment.
+
+---
+
+## ARGUS-P1-08 — Use candidate portfolios and tiered experiment evidence
+
+**Problem.** Incremental attempts use shifting baselines, and the first supported result
+can be mistaken for the best deliverable. Failed ideas also accumulate the same ceremony
+as promotion candidates.
+
+**Work packages**
+
+- [ ] Keep a small candidate portfolio with mechanism, correctness status, comparable
+      metric, worst case, applicable scope, implementation cost, and unresolved risks.
+      Do not select by attempt name, completion time, or filesystem order.
+- [ ] Pin one common clean baseline per delivery cycle. Incremental measurements may guide
+      exploration, but final candidates are compared against the same baseline before
+      selection.
+- [ ] Replace automatic first-winner delivery with an explicit `continue`, `probe`,
+      `select`, or `deliver` decision owned by the appropriate role.
+- [ ] Store failed exploration as a compact card: hypothesis, work removed, decisive
+      probe, observation, and decision. Add full matrices only when a candidate advances.
+- [ ] Make uncertainty first-class. Record ranges when evidence supports them; otherwise
+      record `unknown` and the experiment that would resolve it.
+- [ ] Preserve honest negative results without injecting raw profiler logs into later
+      role prompts.
+
+**Acceptance criteria**
+
+- A later stronger candidate is selected over an earlier supported candidate when both
+  are compared on the common baseline.
+- Negative probes remain useful and cheap; they do not trigger full delivery evidence.
+- Candidate selection is understandable from engineering tradeoffs without opaque
+  identity metadata.
+
+---
+
+## ARGUS-P2-03 — Measure and adapt execution efficiency
+
+**Work packages**
+
+- [ ] Record disclosure-safe control-plane metrics: time to first task/write/test,
+      Planner reads before delegation, duplicate-read ratio, role wall time, Tokens and
+      cost per accepted candidate, experiments per hour, Reviewer re-audit count, and
+      winner-to-PR latency.
+- [ ] Separate useful execution from control-plane work in events so the product can
+      report an action ratio without inspecting private reasoning.
+- [ ] Establish baselines from real software, kernel, research, and proof trajectories;
+      set canary targets only after measuring their distributions.
+- [ ] Adapt Planner/Reviewer execution budgets by stage complexity and observed value.
+      Do not turn runtime budgets into scientific merit thresholds.
+- [ ] Publish a compact weekly comparison of baseline, candidate policy, correctness,
+      latency, cost, duplicate work, and ship/revise/stop decision.
+
+**Acceptance criteria**
+
+- Efficiency changes are evaluated on end-to-end goal completion and held-out quality,
+  not only lower Tokens or fewer files.
+- A regression in correctness, authority handling, or recovery blocks rollout even when
+  the action ratio improves.
+- The FLA replay demonstrates faster delegation and higher useful-experiment throughput
+  with no return to evidence-collection loops.
 
 ---
 
@@ -570,17 +744,19 @@ human inspection, debugging, Git-style recovery, and Agent tool access.
 
 ## Recommended execution order
 
-1. **Completed:** P0-01 through P0-04 — approval/resume consistency,
-   progress-aware continuation, revisable plans, and goal-level mission quality.
-2. **Next:** build the P1-01 cross-domain non-monotonic progress model and canary
-   P1-02 mission sessions on real projects. The repaired rotation handoff passed a
-   2/2 smoke; next rerun the full rolling matrix.
-3. **In parallel:** observe `8100d2ae` native Skill relevance decisions in normal
-   missions, add old-session migration tests, and continue P1-05 communication
-   improvements; do not launch another standalone model experiment.
-4. **After lifecycle stability:** P1-04 vertical/core cleanup and P1-06 runtime
-   simplification.
-5. **Only after state semantics settle:** P2-01 storage decision and migration.
+1. **Immediate:** implement P0-05 action-first control plane using the frozen FLA
+   trace; land canonical-workdir stage resolution, MissionBrief, repeated-read reuse,
+   bounded grounding, direct scope delegation, and deterministic uncontested stage
+   advancement as separate focused changes.
+2. **After P0-05 canary success:** implement P1-07 specialist work kinds and role
+   routing, then replay the FLA Scope → Discover → Prototype path.
+3. **Next:** implement P1-08 candidate portfolio and tiered evidence so exploration
+   remains cheap and delivery selects the strongest comparable candidate.
+4. **Continuously:** use P2-03 metrics and the existing P2-02 evaluation matrix to
+   compare end-to-end quality, latency, Tokens, cost, duplicate work, and delivery.
+5. **Completed foundation:** P0-01 through P1-06 remain regression constraints; do not
+   reopen them without a real trace. Keep P2-01 storage work after state semantics and
+   execution behavior are stable.
 
 ## P0 — Keep the synchronized baseline operational
 
