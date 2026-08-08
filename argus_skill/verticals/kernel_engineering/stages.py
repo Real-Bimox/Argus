@@ -43,6 +43,10 @@ STAGE_PRIMARY_DELIVERABLES = {
         "research/PROJECT_NATIVE_SETUP.md",
         "research/frontier/scope.json",
     ),
+    "discover": (
+        "research/ALGORITHM_PLAN.md",
+        "research/frontier/discover.json",
+    ),
 }
 
 

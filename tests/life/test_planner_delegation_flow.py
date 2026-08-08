@@ -169,6 +169,38 @@ def test_missing_kernel_scope_bundle_is_delegated_without_planner_call(
     assert "Online frontier snapshot validates" in item.acceptance_check
 
 
+def test_missing_kernel_discover_bundle_is_delegated_without_planner_call(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    life = tmp_path / "life"
+    planner = _PlannerBackend([])
+    supervisor = _kernel_supervisor(project, life, planner)
+    state_path = life / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["current_stage"] = "discover"
+    state["stages"] = {
+        "scope": {"status": "done"},
+        "discover": {"status": "in_progress"},
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    assert supervisor._plan_next_work() is True
+
+    assert planner.calls == []
+    pending = supervisor.memory.backlog.pending()
+    assert [item.title for item in pending] == [
+        "Complete the kernel_engineering discover deliverable"
+    ]
+    item = pending[0]
+    assert "stage:discover" in item.tags
+    assert "research/ALGORITHM_PLAN.md" in item.objective
+    assert "research/frontier/discover.json" in item.objective
+    assert "Online algorithm frontier validates" in item.acceptance_check
+    assert "edit production source code" in item.non_goals
+
+
 def test_task_policy_uses_isolated_stage_and_execution_evidence_root(
     tmp_path: Path,
 ) -> None:
