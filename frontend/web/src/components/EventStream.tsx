@@ -308,7 +308,7 @@ export function EventStream({
   query?: string;
   skipFirst?: number;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [following, setFollowing] = useState(true);
   const [activityTick, setActivityTick] = useState(() => Date.now());
   const scroller = useRef<HTMLDivElement>(null);
@@ -415,7 +415,7 @@ export function EventStream({
       embedded ? '' : 'rounded-lg border border-line/80'
     }`}>
       <PanelHeader
-        title="Activity"
+        title={t('panel.activity')}
         right={
           <div className="flex items-center gap-3">
             <button
@@ -470,8 +470,8 @@ export function EventStream({
       {!following && (
         <button
           onClick={jump}
-          aria-label="Jump to latest"
-          title="Jump to latest"
+          aria-label={t('stream.jumpToLatest')}
+          title={t('stream.jumpToLatest')}
           className="absolute bottom-4 left-1/2 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-line/60 bg-panel text-sm text-ink-dim shadow-glow transition-all duration-200 hover:border-ink-faint hover:text-ink"
         >
           ↓

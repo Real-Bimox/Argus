@@ -74,7 +74,7 @@ export function NewDaemonModal({
               value={workdir}
               onChange={(event) => setWorkdir(event.target.value)}
               disabled={busy}
-              placeholder="Blank → ~/.argus-skill/workspaces/<session>"
+              placeholder={t('newDaemon.workdirPlaceholder')}
               className="h-10 w-full rounded border border-line bg-bg/50 px-3 font-mono text-xs text-ink outline-none placeholder:text-ink-faint focus:border-blue-deep disabled:opacity-50"
             />
             <span className="mt-1 block text-[10px] leading-relaxed text-ink-faint">{t('new.workdirHint')}</span>
