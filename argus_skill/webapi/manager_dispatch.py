@@ -414,10 +414,10 @@ def _classify_operator_turn(
     # enqueued; otherwise the reusable decisions avoid a second route/lifetime
     # call. Classifier output is never an operator-facing reply; every SELF
     # message reaches the actual Manager model.
-    # Classification is stateless and must see ONLY the current operator
-    # message. Feeding it the startup/context-rotation handoff can make a
-    # greeting look like a complex systems task; the enriched body belongs
-    # only in the conversational reply session below.
+    # Classification is stateless. The caller normally passes only the current
+    # message, but may attach a small, explicitly bounded transcript block when
+    # the turn is clearly referential. Never feed the full startup/rotation
+    # handoff here: that can make a greeting look like a systems task.
     classify_kwargs = (
         {"root_task_id": root_task_id}
         if _accepts_keyword(_front_door_classify, "root_task_id")
