@@ -28,22 +28,44 @@ def _pipeline(root: Path, *, stage: str = "baseline") -> None:
     )
 
 
-def test_normalize_task_workdir_rejects_escape_and_absolute(tmp_path: Path) -> None:
+def test_normalize_task_workdir_accepts_escape_and_absolute(tmp_path: Path) -> None:
     assert normalize_task_workdir(".") == ""
     assert normalize_task_workdir("repo/") == "repo"
-    with pytest.raises(ValueError, match="project-relative"):
-        normalize_task_workdir("../repo")
-    with pytest.raises(ValueError, match="project-relative"):
-        normalize_task_workdir(str(tmp_path / "repo"))
+    assert normalize_task_workdir("../repo") == "../repo"
+    assert normalize_task_workdir(str(tmp_path / "repo")) == str(tmp_path / "repo")
 
 
-def test_resolve_task_workdir_stays_inside_workspace(tmp_path: Path) -> None:
+def test_resolve_task_workdir_accepts_directory(tmp_path: Path) -> None:
     child = tmp_path / "repo"
     child.mkdir()
 
     assert resolve_task_workdir(tmp_path, "repo") == child.resolve()
     with pytest.raises(ValueError, match="not a directory"):
         resolve_task_workdir(tmp_path, "missing")
+
+
+def test_resolve_task_workdir_allows_symlink_outside_workspace(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "workspace"
+    base.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+    (base / "target").symlink_to(external, target_is_directory=True)
+
+    assert resolve_task_workdir(base, "target") == external.resolve()
+
+
+def test_resolve_task_workdir_allows_parent_and_absolute_paths(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "workspace"
+    base.mkdir()
+    external = tmp_path / "external"
+    external.mkdir()
+
+    assert resolve_task_workdir(base, "../external") == external.resolve()
+    assert resolve_task_workdir(base, external) == external.resolve()
 
 
 def test_adopt_nested_git_root_and_copy_pipeline_state(tmp_path: Path) -> None:
@@ -68,6 +90,29 @@ def test_adopt_nested_git_root_and_copy_pipeline_state(tmp_path: Path) -> None:
     )
     assert copied["vertical"] == "kernel_engineering"
     assert copied["current_stage"] == "baseline"
+
+
+def test_adopt_git_root_through_symlink_outside_workspace(
+    tmp_path: Path,
+) -> None:
+    base = tmp_path / "workspace"
+    base.mkdir()
+    external = tmp_path / "external"
+    _git_init(external)
+    (base / "target").symlink_to(external, target_is_directory=True)
+    state = tmp_path / "life"
+    _pipeline(base)
+
+    adopted = adopt_campaign_workdir(
+        state_root=state,
+        base_root=base,
+        current_root=base,
+        requested="target",
+    )
+
+    assert adopted == external.resolve()
+    assert active_campaign_workdir(state, base) == external.resolve()
+    assert (external / "research" / "PIPELINE_STATE.json").is_file()
 
 
 def test_repeated_preplanned_child_path_is_idempotent_after_adoption(
@@ -95,18 +140,20 @@ def test_repeated_preplanned_child_path_is_idempotent_after_adoption(
     assert second == child.resolve()
 
 
-def test_adoption_requires_nested_git_toplevel(tmp_path: Path) -> None:
+def test_adoption_accepts_plain_directory(tmp_path: Path) -> None:
     base = tmp_path / "workspace"
     plain = base / "plain"
     plain.mkdir(parents=True)
 
-    with pytest.raises(ValueError, match="nested Git repository"):
-        adopt_campaign_workdir(
-            state_root=tmp_path / "life",
-            base_root=base,
-            current_root=base,
-            requested="plain",
-        )
+    adopted = adopt_campaign_workdir(
+        state_root=tmp_path / "life",
+        base_root=base,
+        current_root=base,
+        requested="plain",
+    )
+
+    assert adopted == plain.resolve()
+    assert active_campaign_workdir(tmp_path / "life", base) == plain.resolve()
 
 
 def test_conflicting_target_pipeline_state_fails_closed(tmp_path: Path) -> None:
