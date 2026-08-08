@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import ctypes
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -44,10 +45,13 @@ log = logging.getLogger(__name__)
 __all__ = [
     "DaemonAlreadyRunning",
     "DaemonLock",
+    "WINDOWS_DAEMON_LOCK_OFFSET",
     "acquire_global_daemon_lock",
     "read_daemon_pid",
     "is_pid_running",
 ]
+
+WINDOWS_DAEMON_LOCK_OFFSET = 0x7FFF_FFFF
 
 
 class DaemonAlreadyRunning(RuntimeError):
@@ -163,10 +167,24 @@ def is_pid_running(pid: int) -> bool:
     """
     if pid <= 0:
         return False
-    if os.name == "nt":  # pragma: no cover - Windows fallback
-        # Conservative: assume alive; the flock acquisition is the
-        # authoritative liveness check on POSIX too.
-        return True
+    if os.name == "nt":  # pragma: no cover - exercised on Windows CI
+        process_query_limited_information = 0x1000
+        still_active = 259
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(
+            process_query_limited_information,
+            False,
+            pid,
+        )
+        if not handle:
+            return ctypes.get_last_error() == 5
+        try:
+            exit_code = ctypes.c_ulong()
+            if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+                return False
+            return exit_code.value == still_active
+        finally:
+            kernel32.CloseHandle(handle)
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -187,7 +205,7 @@ def _lock_file(fd: int) -> None:
     if os.name == "nt":  # pragma: no cover - Windows
         if msvcrt is None:
             raise OSError("msvcrt not available")
-        os.lseek(fd, 0, os.SEEK_SET)
+        os.lseek(fd, WINDOWS_DAEMON_LOCK_OFFSET, os.SEEK_SET)
         msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
         return
     if fcntl is None:  # pragma: no cover - safety net
@@ -200,7 +218,7 @@ def _unlock_file(fd: int) -> None:
         if msvcrt is None:
             return
         try:
-            os.lseek(fd, 0, os.SEEK_SET)
+            os.lseek(fd, WINDOWS_DAEMON_LOCK_OFFSET, os.SEEK_SET)
             msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
         except OSError:
             pass

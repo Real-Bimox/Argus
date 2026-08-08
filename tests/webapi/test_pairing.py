@@ -29,7 +29,7 @@ def _plan(host="0.0.0.0", port=8799, **kwargs):
 
 # -- host classification ----------------------------------------------------
 
-@pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost", ""])
+@pytest.mark.parametrize("host", ["127.0.0.1", "127.0.0.2", "::1", "localhost", ""])
 def test_loopback_hosts_are_recognized(host) -> None:
     assert is_loopback_host(host) is True
 
@@ -48,6 +48,13 @@ def test_loopback_bind_needs_no_token() -> None:
     assert plan.minted is False
     assert plan.url == "http://127.0.0.1:8799/"
     assert plan.qr == ""
+
+
+def test_alternate_loopback_url_preserves_host() -> None:
+    plan = pairing_plan("127.0.0.2", 8799)
+
+    assert plan.token == ""
+    assert plan.url == "http://127.0.0.2:8799/"
 
 
 def test_loopback_bind_still_honours_a_configured_token(monkeypatch) -> None:

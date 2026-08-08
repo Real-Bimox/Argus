@@ -159,6 +159,7 @@ class CopilotAcpClient:
         lean: bool = False,
         read_only: bool = False,
         add_dirs: tuple[str, ...] = (),
+        startup_timeout_s: float = 30.0,
     ) -> None:
         self._agent_bin = agent_bin
         self._model = model
@@ -166,6 +167,7 @@ class CopilotAcpClient:
         self._lean = bool(lean)
         self._read_only = bool(read_only)
         self._add_dirs = tuple(str(path) for path in add_dirs if str(path).strip())
+        self._startup_timeout_s = max(1.0, float(startup_timeout_s))
         self._proc: subprocess.Popen[str] | None = None
         self._reader: threading.Thread | None = None
         self._alive = False
@@ -249,7 +251,9 @@ class CopilotAcpClient:
         )
         self._reader.start()
         resp = self._request(
-            "initialize", {"protocolVersion": 1, "clientCapabilities": {}}, timeout=20
+            "initialize",
+            {"protocolVersion": 1, "clientCapabilities": {}},
+            timeout=self._startup_timeout_s,
         )
         if resp is None or "error" in resp:
             self._alive = False

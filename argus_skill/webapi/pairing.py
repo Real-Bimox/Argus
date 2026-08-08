@@ -24,6 +24,7 @@ URL is still printed in full.
 from __future__ import annotations
 
 import io
+import ipaddress
 import os
 import secrets
 import socket
@@ -42,13 +43,18 @@ __all__ = [
     "stream_encoding",
 ]
 
-_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost", ""}
 _WILDCARD_HOSTS = {"0.0.0.0", "::"}
 
 
 def is_loopback_host(host: str) -> bool:
     """Whether *host* keeps the API reachable only from this machine."""
-    return str(host or "").strip().lower() in _LOOPBACK_HOSTS
+    normalized = str(host or "").strip().lower()
+    if normalized in {"localhost", ""}:
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
 
 
 def insecure_bind_allowed() -> bool:
@@ -168,7 +174,10 @@ def pairing_plan(
 
     if is_loopback_host(host):
         # Only reachable from this machine; a token stays optional.
-        url = f"http://127.0.0.1:{port}/"
+        browser_host = str(host or "").strip().lower() or "127.0.0.1"
+        if browser_host == "::1":
+            browser_host = "[::1]"
+        url = f"http://{browser_host}:{port}/"
         return PairingPlan(
             token=configured,
             url=url,

@@ -35,6 +35,44 @@ def _fake_codex(monkeypatch, version: str, *, auth_returncode: int = 0) -> None:
     monkeypatch.setattr(readiness, "_run_text", run)
 
 
+def test_default_timeout_allows_slow_cli_cold_start(monkeypatch) -> None:
+    seen_timeouts = []
+    monkeypatch.setattr(readiness, "resolve_runner_bin", lambda *_args: "/bin/copilot")
+
+    def run(command, *, timeout_s, input_text=None):
+        del command, input_text
+        seen_timeouts.append(timeout_s)
+        return _completed("GitHub Copilot CLI 1.0.78\n")
+
+    monkeypatch.setattr(readiness, "_run_text", run)
+
+    report = readiness.check_backend_readiness("copilot", probe_auth=False)
+
+    assert report.ok
+    assert seen_timeouts == [readiness.DEFAULT_READINESS_TIMEOUT_S]
+    assert readiness.DEFAULT_READINESS_TIMEOUT_S == 30.0
+
+
+def test_version_timeout_retries_once(monkeypatch) -> None:
+    calls = 0
+    monkeypatch.setattr(readiness, "resolve_runner_bin", lambda *_args: "/bin/copilot")
+
+    def run(command, *, timeout_s, input_text=None):
+        nonlocal calls
+        del input_text
+        calls += 1
+        if calls == 1:
+            raise subprocess.TimeoutExpired(command, timeout_s)
+        return _completed("GitHub Copilot CLI 1.0.78\n")
+
+    monkeypatch.setattr(readiness, "_run_text", run)
+
+    report = readiness.check_backend_readiness("copilot", probe_auth=False)
+
+    assert report.ok
+    assert calls == 2
+
+
 def test_codex_supported_floor_and_benign_stderr_pass(monkeypatch) -> None:
     _fake_codex(monkeypatch, "0.128.0")
 

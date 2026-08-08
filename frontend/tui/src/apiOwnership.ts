@@ -39,7 +39,12 @@ export interface ClaimApiOwnershipOptions extends ReadOwnedApiOptions {
 }
 
 export function isLocalApiHost(host: string): boolean {
-  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+  const normalized = host.trim().toLowerCase();
+  if (normalized === 'localhost' || normalized === '::1') return true;
+  const octets = normalized.split('.').map(Number);
+  return octets.length === 4
+    && octets[0] === 127
+    && octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255);
 }
 
 /**

@@ -27,6 +27,7 @@ from .state import (
 log = logging.getLogger(__name__)
 
 _DAEMON_PUBLISH_TIMEOUT_SECONDS = 5.0
+_WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS = 180.0
 _DAEMON_STABILITY_SECONDS = 0.5
 _DAEMON_POLL_INTERVAL_SECONDS = 0.1
 
@@ -121,17 +122,14 @@ def _spawn_windows_background_process(
                 close_fds=True,
                 creationflags=creationflags,
             )
-        deadline = time.monotonic() + 8.0
+        deadline = time.monotonic() + _WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             if pid_path.exists() and status_path.exists():
-                try:
-                    written_pid = int(pid_path.read_text().strip())
-                except (OSError, ValueError):
-                    written_pid = 0
-                if written_pid == process.pid and _process_alive(written_pid):
+                status = read_daemon_status(config.life_dir)
+                if status.alive and status.pid is not None:
                     if not quiet:
                         sys.stdout.write(
-                            f"argus-skill: daemon started (pid {written_pid}, "
+                            f"argus-skill: daemon started (pid {status.pid}, "
                             f"life_dir={config.life_dir}, log={log_path}).\n"
                         )
                     return 0
@@ -141,7 +139,8 @@ def _spawn_windows_background_process(
         if not quiet:
             sys.stderr.write(
                 "argus-skill: Windows worker did not publish its status within "
-                f"8s. Check {log_path} for errors.\n"
+                f"{_WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS:g}s. "
+                f"Check {log_path} for errors.\n"
             )
         return 2
     finally:

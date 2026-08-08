@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from ..core.daemon_lock import WINDOWS_DAEMON_LOCK_OFFSET, is_pid_running
 from ..core.usage import format_usage_cost
 from ..life.supervisor import LifeBudget, global_daily_spend, global_daily_usage_summary
 
@@ -22,6 +23,11 @@ try:
     import fcntl
 except ImportError:  # pragma: no cover - Windows fallback
     fcntl = None  # type: ignore[assignment]
+
+try:
+    import msvcrt
+except ImportError:  # pragma: no cover - POSIX
+    msvcrt = None  # type: ignore[assignment]
 
 log = logging.getLogger(__name__)
 _GLOBAL_DAILY_SPEND_IMPL = global_daily_spend
@@ -592,15 +598,7 @@ def wait_for_daemon_status(
 
 
 def _process_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
+    return is_pid_running(pid)
 
 
 def _descendant_pids(root_pid: int) -> tuple[int, ...]:
@@ -680,7 +678,28 @@ def _daemon_pid_lock_held(pid_path: Path) -> bool | None:
     ``None`` means the platform or filesystem could not answer reliably; the
     caller then keeps the conservative PID-only fallback.
     """
-    if fcntl is None:  # pragma: no cover - Windows fallback
+    if os.name == "nt":
+        if msvcrt is None:  # pragma: no cover - Windows safety net
+            return None
+        try:
+            fd = os.open(str(pid_path), os.O_RDWR)
+        except OSError:
+            return None
+        try:
+            try:
+                os.lseek(fd, WINDOWS_DAEMON_LOCK_OFFSET, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+            except OSError:
+                return True
+            try:
+                os.lseek(fd, WINDOWS_DAEMON_LOCK_OFFSET, os.SEEK_SET)
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            except OSError:
+                pass
+            return False
+        finally:
+            os.close(fd)
+    if fcntl is None:  # pragma: no cover - safety net
         return None
     try:
         fd = os.open(str(pid_path), os.O_RDWR)
