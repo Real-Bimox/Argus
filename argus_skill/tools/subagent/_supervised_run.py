@@ -34,7 +34,7 @@ from ._experiment_preflight import (
     experiment_launch_preflight,
     release_experiment_launch_claim,
 )
-from ._llm import _run_codex_with_usage
+from ._llm import _run_supervisor_with_usage
 from ._normalize import _clean_concern, _norm_decision, _norm_health
 from ._registry import (
     _ZERO_USAGE_TUPLE,
@@ -81,7 +81,7 @@ def _supervisor_check_with_usage(
     concern is a free-text note (possibly empty) the supervisor wants the
     engineer to re-discuss even when the run is progressing normally.
 
-    ``thread_id`` resumes a persistent codex session so the supervisor keeps the
+    ``thread_id`` resumes a persistent backend session so the supervisor keeps the
     whole run's observation history in context across checks; the (possibly new)
     thread id is returned for the next check.
     """
@@ -185,7 +185,7 @@ def _supervisor_check_with_usage(
     )
 
     try:
-        messages, thread_id, usage = _run_codex_with_usage(
+        messages, thread_id, usage = _run_supervisor_with_usage(
             prompt,
             model,
             cwd,
@@ -302,7 +302,7 @@ def _supervised_do_one_check(
         raw_usage,
     )
     # Rotate the persistent supervisor thread every N checks so a multi-hour
-    # run never overflows the codex context window; the next check seeds a
+    # run never overflows the backend context window; the next check seeds a
     # fresh thread from the current run signals.
     if check_number % SUPERVISOR_THREAD_MAX_CHECKS == 0:
         supervisor_thread_id = None

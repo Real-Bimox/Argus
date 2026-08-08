@@ -74,10 +74,12 @@ KNOBS: tuple[Knob, ...] = (
     Knob("ARGUS_SKILL_REVIEWER_BACKEND", "(=LIFE_BACKEND)", "per-role backend override for the reviewer", "backend", cockpit=True),
     Knob("ARGUS_SKILL_PLANNER_BACKEND", "(=LIFE_BACKEND)", "per-role backend override for the planner", "backend", cockpit=True),
     Knob("ARGUS_SKILL_MANAGER_BACKEND", "(=LIFE_BACKEND)", "per-role backend override for the manager", "backend", cockpit=True),
+    Knob("ARGUS_SKILL_SUPERVISOR_BACKEND", "(=LIFE_BACKEND)", "per-role backend override for the subagent supervisor", "backend", cockpit=True),
     Knob("ARGUS_SKILL_ENGINEER_RUNNER_BIN", "(=RUNNER_BIN)", "per-role CLI binary for the engineer", "backend"),
     Knob("ARGUS_SKILL_REVIEWER_RUNNER_BIN", "(=RUNNER_BIN)", "per-role CLI binary for the reviewer", "backend"),
     Knob("ARGUS_SKILL_PLANNER_RUNNER_BIN", "(=RUNNER_BIN)", "per-role CLI binary for the planner", "backend"),
     Knob("ARGUS_SKILL_MANAGER_RUNNER_BIN", "(=RUNNER_BIN)", "per-role CLI binary for the manager", "backend"),
+    Knob("ARGUS_SKILL_SUPERVISOR_RUNNER_BIN", "(=RUNNER_BIN)", "per-role CLI binary for the subagent supervisor", "backend"),
     # --- team Curator (resident pool + leaderboard strategy) ---
     Knob("ARGUS_SKILL_CURATOR_BACKEND", "(=LIFE_BACKEND)", "per-role backend override for the team Curator", "backend"),
     Knob("ARGUS_SKILL_CURATOR_RUNNER_BIN", "(=RUNNER_BIN)", "per-role CLI binary for the team Curator", "backend"),
@@ -95,6 +97,7 @@ KNOBS: tuple[Knob, ...] = (
     Knob("ARGUS_SKILL_MANAGER_MODEL", "gpt-5.5", "model for the Manager", "models", cockpit=True),
     Knob("ARGUS_SKILL_ENGINEER_MODEL", "gpt-5.5", "model for the L1 engineer", "models", cockpit=True),
     Knob("ARGUS_SKILL_REVIEWER_MODEL", "gpt-5.5", "model for the L2 reviewer", "models", cockpit=True),
+    Knob("ARGUS_SKILL_SUPERVISOR_MODEL", "gpt-5.5", "model for supervised subagent health decisions", "models", cockpit=True),
     Knob("ARGUS_SKILL_PLAN_MODEL", "gpt-5.5", "model for the L4 planner", "models", cockpit=True),
     Knob("ARGUS_SKILL_PLAN_PREVIEW_MODEL", "auto", "interactive /plan model: gpt-5.4-mini on codex/copilot, planner model otherwise; set an id to override", "models"),
     Knob("ARGUS_SKILL_REWRITE_MODEL", "auto", "interactive prompt rewrite model: gpt-5.5 on codex/copilot, Manager model otherwise; set an id to override", "models"),
@@ -109,6 +112,7 @@ KNOBS: tuple[Knob, ...] = (
     Knob("ARGUS_SKILL_ENGINEER_INITIAL_REASONING_EFFORT", "high", "direct-task first-round Engineer effort; later rounds use the Engineer effort", "reasoning", cockpit=True),
     Knob("ARGUS_SKILL_ENGINEER_REASONING_EFFORT", "xhigh", "engineer reasoning effort: low|medium|high|xhigh", "reasoning", cockpit=True),
     Knob("ARGUS_SKILL_REVIEWER_REASONING_EFFORT", "high", "reviewer reasoning effort", "reasoning", cockpit=True),
+    Knob("ARGUS_SKILL_SUPERVISOR_REASONING_EFFORT", "low", "subagent supervisor reasoning effort", "reasoning", cockpit=True),
     # --- budget ---
     Knob("ARGUS_SKILL_GLOBAL_DAILY_CAP_USD", BUDGET_KNOB_DEFAULTS["ARGUS_SKILL_GLOBAL_DAILY_CAP_USD"], "host-global daily USD cap across all projects", "budget", cockpit=True),
     Knob("ARGUS_SKILL_COST_CONTROL", "on", "host-global settled-cost admission and reconciliation", "budget"),
@@ -194,6 +198,7 @@ _BACKEND_KNOBS = frozenset(
         "ARGUS_SKILL_REVIEWER_BACKEND",
         "ARGUS_SKILL_PLANNER_BACKEND",
         "ARGUS_SKILL_MANAGER_BACKEND",
+        "ARGUS_SKILL_SUPERVISOR_BACKEND",
     }
 )
 _EFFORT_KNOBS = frozenset(
@@ -204,6 +209,7 @@ _EFFORT_KNOBS = frozenset(
         "ARGUS_SKILL_PLAN_PREVIEW_REASONING_EFFORT",
         "ARGUS_SKILL_ENGINEER_REASONING_EFFORT",
         "ARGUS_SKILL_REVIEWER_REASONING_EFFORT",
+        "ARGUS_SKILL_SUPERVISOR_REASONING_EFFORT",
     }
 )
 _TOGGLE_KNOBS = frozenset(
