@@ -31,6 +31,18 @@ Requirements:
 - Git
 - One supported Agent CLI
 
+Do not assume `python3` satisfies the requirement, especially on macOS where
+`/usr/bin/python3` may be 3.9. Validate it before creating a venv:
+
+```bash
+python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version'
+```
+
+If it fails and the user approves installing a user-scoped prerequisite, prefer
+uv's official installation path, then run `uv python install 3.12` and
+`uv venv --python 3.12 --seed .venv`. Keep using `.venv/bin/python` explicitly
+for the remaining install and verification commands.
+
 Check which supported backends are available:
 
 ```bash
@@ -79,10 +91,13 @@ For a new installation:
 git clone https://github.com/lbx154/Argus.git "$HOME/Argus"
 cd "$HOME/Argus"
 python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e .
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e .
 ```
+
+For an authorized private-preview installation, use
+`https://github.com/lbx154/argus-skill.git` and a matching directory instead.
+Do not silently substitute one repository for the other.
 
 If `$HOME/Argus` already exists:
 

@@ -57,6 +57,21 @@
 - Node.js 22+
 - 至少一个已按官方方式安装并完成登录鉴权的 Agent CLI
 
+创建虚拟环境前先检查实际解释器版本：
+
+```bash
+python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version'
+```
+
+macOS 的 `/usr/bin/python3` 可能仍是 Python 3.9。检查失败时，安装
+[uv](https://docs.astral.sh/uv/getting-started/installation/)，由它安装并选择
+隔离的 Python 3.12：
+
+```bash
+uv python install 3.12
+uv venv --python 3.12 --seed .venv
+```
+
 ### 🚀 Agent 一键接入（推荐）
 
 > [!TIP]
@@ -81,10 +96,13 @@ git clone https://github.com/lbx154/Argus.git
 cd Argus
 
 python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e .
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e .
 ```
+
+私有 Preview 协作者可以改用
+`https://github.com/lbx154/argus-skill.git`。两个仓库的 revision 可能不同，
+请按准备测试的版本选择 URL。
 
 ### 连接后端
 

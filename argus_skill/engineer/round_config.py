@@ -150,6 +150,9 @@ class SupervisedConfig:
     """Knobs for the round-loop control."""
 
     max_rounds: int = 500
+    # Keep the historical reviewed loop by default. Planner-classified
+    # low-risk bounded work may opt into an Engineer self-review completion.
+    require_independent_review: bool = True
     no_progress_threshold: int = 2  # consecutive rounds with no engineer message before bailing
     # Consecutive ``continue`` rounds for which the Reviewer explicitly reports
     # ``FORWARD_PROGRESS=false``. Missing signals never count: the harness does

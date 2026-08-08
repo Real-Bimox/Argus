@@ -69,6 +69,7 @@ class SkillLoopConfig:
     engineer_initial_reasoning_effort: str | None = "high"
     engineer_reasoning_effort: str | None = "xhigh"
     reviewer_reasoning_effort: str = "high"
+    require_independent_review: bool = True
     # Completed tasks may retain durable learning when the Agent judges it useful.
     require_post_task_learning: bool = field(
         default_factory=lambda: _knob_bool_setting(
@@ -339,6 +340,7 @@ class SkillLoop(
             engineer_prompt_builder=build_prompt,
             supervised_config=SupervisedConfig(
                 max_rounds=self.config.max_rounds,
+                require_independent_review=self.config.require_independent_review,
                 no_progress_threshold=self.config.no_progress_threshold,
                 soft_round_limit=self.config.soft_round_limit,
                 hard_escalate_rounds=self.config.hard_escalate_rounds,

@@ -531,6 +531,7 @@ class SkillLoopExecuteMixin:
         config_kwargs = {
             "engineer_model": args.engineer_model,
             "reviewer_model": args.reviewer_model,
+            "require_independent_review": effective_require_independent_review,
             "engineer_initial_reasoning_effort": os.environ.get(
                 "ARGUS_SKILL_ENGINEER_INITIAL_REASONING_EFFORT", "high"
             ),

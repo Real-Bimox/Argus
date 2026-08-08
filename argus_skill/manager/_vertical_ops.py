@@ -47,6 +47,13 @@ def _repository_workflow_mode(mode: str) -> str:
     return "staged" if require_planner else mode
 
 
+def _software_grounding_required(workflow_mode: str) -> bool:
+    raw = os.environ.get("ARGUS_SKILL_SOFTWARE_REQUIRE_GROUNDING", "").strip().lower()
+    if raw:
+        return raw in {"1", "true", "yes", "on"}
+    return workflow_mode != "direct"
+
+
 class _VerticalDecisionMixin:
     """Mixin: vertical selection, staging, and domain-commit methods."""
 
@@ -62,6 +69,8 @@ class _VerticalDecisionMixin:
         from ..core.role_slots import role_call_slot
         from .stage_decider import extract_answer
 
+        if not _software_grounding_required(workflow_mode):
+            return task.strip()
         if self.runner is None:
             return task.strip()
         manager_libraries = self.mission.libraries()

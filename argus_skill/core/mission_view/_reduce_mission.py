@@ -295,9 +295,11 @@ def reduce_round_event(
     elif event_type == EventType.ROUND_REVIEW_COMPLETED:
         status = _text(event, "status")
         reason = _text(event, "reason")
+        review_source = _text(event, "review_source") or "reviewer"
         view["review"] = {
             "status": status,
             "reason": reason,
+            "source": review_source,
             "rejected_attempts": int(view.get("review", {}).get("rejected_attempts") or 0)
             + (1 if status in {"continue", "blocked"} else 0),
         }
@@ -308,15 +310,27 @@ def reduce_round_event(
                 "summary": _text(event, "frontier_summary", 2000),
                 "updated_at": ts,
             }
-        _set_role(view, "reviewer", "done" if status == "done" else "rejected", "Accepted evidence" if status == "done" else "Requested another attempt", ts)
-        _timeline(
-            view,
-            event,
-            role="reviewer",
-            title="Evidence accepted" if status == "done" else "Attempt rejected",
-            detail=reason,
-            tone="success" if status == "done" else "error",
-        )
+        if review_source == "engineer_self_review" and status == "done":
+            _set_role(view, "engineer", "done", "Self-verified", ts)
+            _set_role(view, "reviewer", "done", "Independent review not required", ts)
+            _timeline(
+                view,
+                event,
+                role="engineer",
+                title="Engineer self-review accepted",
+                detail=reason,
+                tone="success",
+            )
+        else:
+            _set_role(view, "reviewer", "done" if status == "done" else "rejected", "Accepted evidence" if status == "done" else "Requested another attempt", ts)
+            _timeline(
+                view,
+                event,
+                role="reviewer",
+                title="Evidence accepted" if status == "done" else "Attempt rejected",
+                detail=reason,
+                tone="success" if status == "done" else "error",
+            )
         detail = reason
         next_action = _text(event, "next_action", 2000)
         if next_action:

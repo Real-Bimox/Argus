@@ -57,6 +57,21 @@ A project can stop, resume, survive a runtime replacement, and continue from its
 - Node.js 22+
 - One supported Agent CLI installed and authenticated through its official login flow
 
+Check the actual interpreter before creating the virtual environment:
+
+```bash
+python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version'
+```
+
+macOS may still provide Python 3.9 as `/usr/bin/python3`. If the check fails,
+install [uv](https://docs.astral.sh/uv/getting-started/installation/) and let it
+provision an isolated Python 3.12 environment:
+
+```bash
+uv python install 3.12
+uv venv --python 3.12 --seed .venv
+```
+
 ### 🚀 Agent-assisted installation (recommended)
 
 > [!TIP]
@@ -84,10 +99,13 @@ git clone https://github.com/lbx154/Argus.git
 cd Argus
 
 python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e .
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e .
 ```
+
+Private-preview collaborators can clone
+`https://github.com/lbx154/argus-skill.git` instead. The repositories may be at
+different revisions, so use the URL for the release you intend to test.
 
 ### Connect a backend
 

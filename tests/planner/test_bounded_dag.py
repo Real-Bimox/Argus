@@ -136,6 +136,8 @@ def test_bounded_planner_parses_real_fanout_fanin_dag(tmp_path) -> None:
     assert "TASK_CONTEXT_REFS" in call["prompt"]
     assert "TASK_STAGE_CLOSING" in call["prompt"]
     assert "TASK_REQUIRE_INDEPENDENT_REVIEW" in call["prompt"]
+    assert "low-risk direct repair" in call["prompt"]
+    assert "security, authentication, data loss, concurrency" in call["prompt"]
     assert "TASK_SKIP_STAGE_TRANSITION" in call["prompt"]
     assert "Every node pays for a full Engineer + Reviewer cycle" not in call["prompt"]
 
