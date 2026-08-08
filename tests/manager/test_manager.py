@@ -16,6 +16,7 @@ from argus_skill.manager.domain_author import (
     VerticalDecisionError,
     parse_vertical_decision,
 )
+from argus_skill.skills.stage_machine import ChecklistItem
 from argus_skill.verticals.research.stages import STAGE_ORDER as RESEARCH_STAGES
 
 
@@ -313,7 +314,14 @@ def test_vertical_commit_persists_generic_research_target_contract(
         lambda name, project_root=None: SimpleNamespace(
             STAGE_ORDER=("scope", "review"),
             CHECKLIST_STAGE_ORDER=("scope", "review"),
-            CHECKLIST_ITEMS={"scope": (), "review": ()},
+            CHECKLIST_ITEMS={
+                "scope": (
+                    ChecklistItem("scope.goal", "Goal is explicit", "goal"),
+                ),
+                "review": (
+                    ChecklistItem("review.result", "Result is reviewed", "result"),
+                ),
+            },
             completion_gate="none",
             RESEARCH_TARGET_LEVELS=("exploratory", "publishable", "doctoral"),
         ),
