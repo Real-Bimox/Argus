@@ -29,7 +29,7 @@ class PlanningCycleVerdictMixin:
 
     def _pc_prepare_direct_stage_task(self, state: _PlanCycleState) -> Any | None:
         """Bypass Planner when the vertical declares a plainly missing bundle."""
-        if state.revision_request is not None or state.operator_messages:
+        if state.revision_request is not None or state.fresh_operator_messages:
             return None
         task = self._direct_current_stage_task()
         if task is None:

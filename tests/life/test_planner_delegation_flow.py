@@ -145,6 +145,12 @@ def test_missing_kernel_scope_bundle_is_delegated_without_planner_call(
     life = tmp_path / "life"
     planner = _PlannerBackend([])
     supervisor = _kernel_supervisor(project, life, planner)
+    from argus_skill.manager.directive import set_active_manager_directive
+
+    set_active_manager_directive(
+        life,
+        "Keep the existing PR and reference worktree read-only.",
+    )
 
     assert supervisor._plan_next_work() is True
 
