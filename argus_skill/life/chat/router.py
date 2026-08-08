@@ -26,7 +26,6 @@ Commands:
 from __future__ import annotations
 
 import logging
-import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
