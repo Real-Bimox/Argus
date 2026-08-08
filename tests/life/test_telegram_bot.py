@@ -48,6 +48,12 @@ def _router(tmp_path):
     return router, life_dir, replies
 
 
+def test_router_uses_shared_backend(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_RUNNER_BACKEND", "copilot")
+    router, _life_dir, _replies = _router(tmp_path)
+    assert router._state["backend"] == "copilot"
+
+
 def _install_manager(monkeypatch, execution_for) -> None:
     class _Manager:
         def decide_vertical(self, text, **kwargs):

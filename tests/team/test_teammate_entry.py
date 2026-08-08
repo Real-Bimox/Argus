@@ -28,6 +28,12 @@ def test_build_runner_ns_has_required_fields(tmp_path: Path, monkeypatch) -> Non
         assert hasattr(ns, f), f
 
 
+def test_build_runner_ns_uses_shared_backend(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_RUNNER_BACKEND", "copilot")
+    ns = te._build_runner_ns(str(tmp_path), max_rounds=7, paper_mission=False)
+    assert ns.backend == "copilot"
+
+
 def test_build_runner_ns_uses_shared_default_model(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.delenv("ARGUS_SKILL_ENGINEER_MODEL", raising=False)
     monkeypatch.delenv("ARGUS_SKILL_REVIEWER_MODEL", raising=False)
