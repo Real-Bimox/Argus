@@ -96,6 +96,24 @@ def test_manager_intent_failure_is_not_labeled_as_grounding_failed(
     assert view["role_work"][-1]["title"] == "Manager routing failed"
 
 
+def test_load_normalizes_persisted_legacy_manager_failure_label(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "mission-view.json").write_text(
+        '{"schema_version":3,"bootstrapped":true,'
+        '"roles":[{"role":"manager","status":"error","label":"Grounding failed"}],'
+        '"timeline":[{"type":"life.manager.intent.failed","title":"Grounding failed"}],'
+        '"role_work":[{"role":"manager","status":"error","title":"Grounding failed"}]}',
+        encoding="utf-8",
+    )
+
+    view = load_mission_view(tmp_path)
+
+    assert view["roles"][0]["label"] == "Manager routing failed"
+    assert view["timeline"][0]["title"] == "Manager routing failed"
+    assert view["role_work"][0]["title"] == "Manager routing failed"
+
+
 def test_venue_and_idea_research_are_visible_as_engineer_work(tmp_path: Path) -> None:
     emit(
         tmp_path,
@@ -423,6 +441,71 @@ def test_new_mission_resets_prior_review_projection(tmp_path: Path) -> None:
     assert roles["reviewer"]["label"] == "Awaiting engineer handoff"
     assert roles["engineer"]["status"] == "active"
     assert view["active_role"] == "engineer"
+
+
+def test_snapshot_keeps_current_mission_owner_ahead_of_stale_pending_work(
+    tmp_path: Path,
+) -> None:
+    snapshot_mission_view(
+        tmp_path,
+        session={},
+        daemon={},
+        roles=[],
+        backlog=[],
+        continuous={},
+    )
+    emit(
+        tmp_path,
+        "life.mission.started",
+        10,
+        item_id="deploy-verify",
+        title="Verify deployed release",
+        objective="Verify the current deployed release.",
+    )
+    emit(
+        tmp_path,
+        "life.mission.completed",
+        20,
+        item_id="deploy-verify",
+        title="Verify deployed release",
+        objective="Verify the current deployed release.",
+        status="blocked",
+        success=False,
+        outcome_class="blocked",
+    )
+
+    view = snapshot_mission_view(
+        tmp_path,
+        session={"objective": ""},
+        daemon={"alive": True},
+        roles=[],
+        backlog=[
+            {
+                "id": "old-research",
+                "title": "Preparing exact-search foundations",
+                "objective": "Continue the old research task.",
+                "status": "pending",
+                "deps": [],
+            },
+            {
+                "id": "deploy-verify",
+                "title": "Verify deployed release",
+                "objective": "Verify the current deployed release.",
+                "status": "paused_operator",
+                "deps": [],
+            },
+        ],
+        continuous={
+            "enabled": False,
+            "objective": "",
+            "done_reason": "operator drain-stop",
+        },
+    )
+
+    assert view["mission"]["id"] == "deploy-verify"
+    assert view["mission"]["title"] == "Verify deployed release"
+    assert view["mission"]["objective"] == "Verify the current deployed release."
+    assert view["mission"]["status"] == "blocked"
 
 
 def test_review_deferral_projects_as_engineer_activity(tmp_path: Path) -> None:

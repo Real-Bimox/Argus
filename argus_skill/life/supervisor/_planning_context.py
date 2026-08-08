@@ -63,6 +63,8 @@ class PlanningContextMixin:
             tags.append("review:required")
         if bool(getattr(task, "skip_stage_transition", False)):
             tags.append("stage_transition:skip")
+        if bool(getattr(task, "allow_skill_changes", False)):
+            tags.append("skill_changes:allowed")
         # Bind Planner work to the stage in which it was proposed.  This is
         # host-owned routing metadata, not a model judgement.  It lets the
         # enqueue boundary distinguish "re-run the same certification" from
@@ -498,6 +500,10 @@ class PlanningContextMixin:
                 "execution_task",
                 "vertical",
                 "kind",
+                "stage",
+                "current_stage",
+                "workflow_mode",
+                "research_target_level",
                 "continuous_generation",
                 "stages",
                 "reason",

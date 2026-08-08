@@ -40,6 +40,12 @@ Planner may write only the shared declarative wiki under `.autors/*/wiki`.
   A `replan_requested` verdict requires repair/replacement, not completion.
 - Credentials, paid access, irreversible action, and scope expansion require the
   operator. Timeout is not impossibility.
+- Reviewer completion is not operator approval. When future operator approval is
+  the only legal next step, return `WAITING=true` with
+  `OPERATOR_ACTION_REQUIRED=true`; do not emit the approval-gated task.
+- Durable Skill/capability or Wiki authoring is denied by default. Set
+  `TASK_ALLOW_SKILL_CHANGES=true` only when the operator explicitly requests that
+  deliverable; read-only, deploy-only, and no-code-change tasks must set it false.
 - With `PROJECT_DONE=false`, either emit a real `WAITING=true` recheck contract or
   executable `TASK_*` blocks; never fabricate work or return an empty plan. Each
   task includes title/objective, hypothesis, goal contribution, expected
@@ -146,6 +152,14 @@ def build_bounded_dag_prompt(objective: str) -> str:
         "must be acyclic.\n"
         "- Preserve the operator's acceptance requirements across the DAG; do not add "
         "unrelated research or ceremony.\n"
+        "- A Reviewer verdict is not operator approval. If a node would require "
+        "future operator approval, set `TASK_OPERATOR_APPROVAL_REQUIRED=true`; "
+        "the host will reject that node and the bounded plan must end before the "
+        "approval boundary. Never dispatch approval-gated work speculatively.\n"
+        "- Skill/capability or durable knowledge creation is denied by default. "
+        "Set `TASK_ALLOW_SKILL_CHANGES=true` only when the operator explicitly "
+        "requested that deliverable; deploy-only, read-only, and no-code-change "
+        "missions must set it false.\n"
         "- For measurable optimization, rank nodes by credible movement toward the "
         "operator target, not by novelty or secondary speed. Public task-specific "
         "papers/discussions/source are allowed when operator policy allows them; "
@@ -163,7 +177,9 @@ def build_bounded_dag_prompt(objective: str) -> str:
         "`TASK_CONTEXT_REFS=kind::project/relative/path::why|...`, "
         "`TASK_SCOPE=bounded`, `TASK_STAGE_CLOSING=true|false`, "
         "`TASK_REQUIRE_INDEPENDENT_REVIEW=true|false`, and "
-        "`TASK_SKIP_STAGE_TRANSITION=true|false`. All four control fields are "
+        "`TASK_SKIP_STAGE_TRANSITION=true|false`, "
+        "`TASK_OPERATOR_APPROVAL_REQUIRED=true|false`, and "
+        "`TASK_ALLOW_SKILL_CHANGES=true|false`. All control fields are "
         "mandatory for every task. For review-only bounded work whose verdict "
         "must not invoke the formal lifecycle stage writer, set "
         "require-independent-review true, skip-stage-transition true, and "

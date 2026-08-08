@@ -17,9 +17,9 @@ run concurrently.
 """
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
-import ctypes
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any

@@ -19,7 +19,6 @@ from .state import (
     _daemon_status_payload,
     _new_boot_id,
     _point_active_daemon_log,
-    _process_alive,
     _redirect_std_to_log,
     read_daemon_status,
 )

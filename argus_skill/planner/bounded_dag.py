@@ -34,6 +34,7 @@ class BoundedDagNode:
     stage_closing: bool = False
     require_independent_review: bool = False
     skip_stage_transition: bool = False
+    allow_skill_changes: bool = False
 
 
 @dataclass(frozen=True)
@@ -67,7 +68,8 @@ _PLAN_LINE = re.compile(
     r"TASK_DECISION_RULE|TASK_WORKDIR|TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS|"
     r"TASK_CONTEXT_REFS|TASK_SCOPE|"
     r"TASK_STAGE_CLOSING|TASK_REQUIRE_INDEPENDENT_REVIEW|"
-    r"TASK_SKIP_STAGE_TRANSITION)"
+    r"TASK_SKIP_STAGE_TRANSITION|TASK_OPERATOR_APPROVAL_REQUIRED|"
+    r"TASK_ALLOW_SKILL_CHANGES)"
     r"\s*[:=]\s*(?P<value>.*)$",
     re.IGNORECASE,
 )
@@ -135,6 +137,14 @@ def _parse_key_value_plan(text: str) -> dict[str, Any]:
             current["skip_stage_transition"] = _parse_task_boolean(
                 value, "TASK_SKIP_STAGE_TRANSITION"
             )
+        elif key == "TASK_OPERATOR_APPROVAL_REQUIRED":
+            current["operator_approval_required"] = _parse_task_boolean(
+                value, "TASK_OPERATOR_APPROVAL_REQUIRED"
+            )
+        elif key == "TASK_ALLOW_SKILL_CHANGES":
+            current["allow_skill_changes"] = _parse_task_boolean(
+                value, "TASK_ALLOW_SKILL_CHANGES"
+            )
         else:
             current[field_map[key]] = value
     if current is not None:
@@ -163,6 +173,8 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
             "stage_closing",
             "require_independent_review",
             "skip_stage_transition",
+            "operator_approval_required",
+            "allow_skill_changes",
         )
         missing_controls = [field for field in required_controls if field not in row]
         if missing_controls:
@@ -199,6 +211,11 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
             row.get("require_independent_review", False)
         )
         skip_stage_transition = bool(row.get("skip_stage_transition", False))
+        if bool(row.get("operator_approval_required", False)):
+            raise ValueError(
+                "bounded Planner must stop before work requiring future "
+                "operator approval"
+            )
         if skip_stage_transition and (
             stage_closing or not require_independent_review
         ):
@@ -240,6 +257,7 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
                 stage_closing=stage_closing,
                 require_independent_review=require_independent_review,
                 skip_stage_transition=skip_stage_transition,
+                allow_skill_changes=bool(row.get("allow_skill_changes", False)),
             )
         )
     for node in nodes:

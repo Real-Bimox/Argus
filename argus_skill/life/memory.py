@@ -1462,6 +1462,7 @@ class Backlog:
                 expected_regressions=blocked.expected_regressions,
                 decision_rule=blocked.decision_rule,
                 non_goals=non_goals,
+                manager_decision=dict(blocked.manager_decision),
             )
             blocked.status = "failed"
             blocked.finished_ts = time.time()

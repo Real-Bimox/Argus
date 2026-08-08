@@ -28,6 +28,10 @@ class _Runner:
                 f"{task.get('require_independent_review', 'false')}",
                 "TASK_SKIP_STAGE_TRANSITION="
                 f"{task.get('skip_stage_transition', 'false')}",
+                "TASK_OPERATOR_APPROVAL_REQUIRED="
+                f"{task.get('operator_approval_required', 'false')}",
+                "TASK_ALLOW_SKILL_CHANGES="
+                f"{task.get('allow_skill_changes', 'false')}",
             ])
             for key in (
                 "acceptance_check",
@@ -136,6 +140,28 @@ def test_bounded_planner_parses_real_fanout_fanin_dag(tmp_path) -> None:
     assert "Every node pays for a full Engineer + Reviewer cycle" not in call["prompt"]
 
 
+def test_bounded_planner_rejects_future_operator_gated_nodes(tmp_path) -> None:
+    runner = _Runner(
+        {
+            "reason": "stop before the operator approval boundary",
+            "tasks": [
+                {
+                    "key": "statement-lock",
+                    "deps": [],
+                    "title": "Lock statement",
+                    "objective": "Lock the statement after the operator approves it.",
+                    "operator_approval_required": "true",
+                },
+            ],
+        }
+    )
+
+    plan = plan_bounded_dag(runner, "prepare work up to operator approval", workdir=tmp_path)
+
+    assert plan.tasks == ()
+    assert "operator approval" in plan.error
+
+
 def test_bounded_planner_rejects_cycle(tmp_path) -> None:
     runner = _Runner(
         {
@@ -205,6 +231,8 @@ def test_bounded_planner_repairs_invalid_absolute_context_ref_once(tmp_path) -> 
         "TASK_STAGE_CLOSING=false\n"
         "TASK_REQUIRE_INDEPENDENT_REVIEW=false\n"
         "TASK_SKIP_STAGE_TRANSITION=false\n"
+        "TASK_OPERATOR_APPROVAL_REQUIRED=false\n"
+        "TASK_ALLOW_SKILL_CHANGES=false\n"
     )
     corrected = invalid.replace(str(tmp_path), "./")
     runner = _SequenceRunner(invalid, corrected)
@@ -237,6 +265,8 @@ def test_bounded_planner_parses_nested_execution_workdir(tmp_path) -> None:
         "TASK_STAGE_CLOSING=false\n"
         "TASK_REQUIRE_INDEPENDENT_REVIEW=false\n"
         "TASK_SKIP_STAGE_TRANSITION=false\n"
+        "TASK_OPERATOR_APPROVAL_REQUIRED=false\n"
+        "TASK_ALLOW_SKILL_CHANGES=false\n"
     )
     runner = _SequenceRunner(payload)
 
@@ -261,6 +291,8 @@ def test_bounded_planner_repairs_invalid_stage_skip_contract_once(tmp_path) -> N
         "TASK_STAGE_CLOSING=false\n"
         "TASK_REQUIRE_INDEPENDENT_REVIEW=false\n"
         "TASK_SKIP_STAGE_TRANSITION=true\n"
+        "TASK_OPERATOR_APPROVAL_REQUIRED=false\n"
+        "TASK_ALLOW_SKILL_CHANGES=false\n"
     )
     corrected = invalid.replace(
         "TASK_SKIP_STAGE_TRANSITION=true",

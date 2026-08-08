@@ -150,6 +150,29 @@ def _read_unlocked(root: Path) -> dict[str, Any]:
     mission = payload.setdefault("mission", {})
     mission.setdefault("campaign_started_at", None)
     mission.setdefault("campaign_elapsed_seconds", 0.0)
+    for role in payload.setdefault("roles", []):
+        if (
+            isinstance(role, dict)
+            and role.get("role") == "manager"
+            and role.get("status") == "error"
+            and role.get("label") == "Grounding failed"
+        ):
+            role["label"] = "Manager routing failed"
+    for row in payload.setdefault("timeline", []):
+        if (
+            isinstance(row, dict)
+            and row.get("type") == EventType.LIFE_MANAGER_INTENT_FAILED
+            and row.get("title") == "Grounding failed"
+        ):
+            row["title"] = "Manager routing failed"
+    for row in payload.setdefault("role_work", []):
+        if (
+            isinstance(row, dict)
+            and row.get("role") == "manager"
+            and row.get("status") == "error"
+            and row.get("title") == "Grounding failed"
+        ):
+            row["title"] = "Manager routing failed"
     achievement = payload.get("achievement")
     if (
         isinstance(achievement, dict)

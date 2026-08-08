@@ -153,6 +153,33 @@ def test_framework_maintenance_uses_private_worktree_and_review(
     assert runner.kwargs["maintenance_mission"] is True
     assert runner.kwargs["vertical_override"] == "argus_maintenance"
     assert runner.kwargs["require_independent_review"] is True
+    assert runner.kwargs["allow_skill_changes"] is False
+
+
+def test_skill_changes_require_explicit_mission_permission(tmp_path) -> None:
+    memory = LifeMemory.open(tmp_path / "life")
+    sink = _RecordingSink(memory.root)
+    runner = _MaintenanceRunner()
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=runner,
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=tmp_path,
+            artifact_root=tmp_path,
+        ),
+    )
+    memory.backlog.add(BacklogItem.new(
+        title="author reusable capability",
+        objective="Create the explicitly requested reusable Skill.",
+        tags=["planner", "scope:bounded", "skill_changes:allowed"],
+        manager_decision={"routed": True, "vertical": "software"},
+    ))
+
+    result = supervisor.tick()
+
+    assert result is not None and result["status"] == "done"
+    assert runner.kwargs["allow_skill_changes"] is True
 
 
 def test_regular_task_adopts_nested_repository_as_campaign_root(tmp_path) -> None:

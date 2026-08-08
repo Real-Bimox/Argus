@@ -286,6 +286,90 @@ test('completed mission preserves terminal role verdicts', () => {
   );
 });
 
+test('current mission owner is not replaced by an older pending backlog item', () => {
+  const current = snapshot();
+  current.session.objective = '';
+  current.roles = [];
+  current.continuous = {
+    enabled: false,
+    objective: '',
+    done_reason: 'operator drain-stop',
+  };
+  current.backlog = [
+    {
+      id: 'old-research',
+      title: 'Preparing exact-search foundations',
+      objective: 'Continue old research',
+      status: 'pending',
+      priority: 1,
+      deps: [],
+      finished_ts: 999,
+      outcome: {
+        execution_status: 'completed',
+        review_status: 'done',
+        stage_certification: 'certified',
+        interruption_kind: 'none',
+        resumable: false,
+      },
+    },
+    {
+      id: 'deploy-verify',
+      title: 'Verify deployed release',
+      objective: 'Verify the current deployed release',
+      status: 'paused_operator',
+      priority: 1,
+      deps: [],
+      finished_ts: 20,
+      outcome: {
+        execution_status: 'blocked',
+        review_status: 'blocked',
+        stage_certification: 'intentionally_skipped',
+        interruption_kind: 'operator_input_required',
+        resumable: true,
+      },
+    },
+  ];
+  current.mission_view = emptyMissionView();
+  current.mission_view.mission = {
+    ...current.mission_view.mission,
+    id: 'deploy-verify',
+    title: 'Verify deployed release',
+    objective: 'Verify the current deployed release',
+    status: 'blocked',
+    started_at: 10,
+    completed_at: 20,
+  };
+
+  const view = projectMissionView(current);
+
+  assert.equal(view.mission.id, 'deploy-verify');
+  assert.equal(view.mission.title, 'Verify deployed release');
+  assert.equal(view.mission.objective, 'Verify the current deployed release');
+  assert.equal(view.mission.status, 'blocked');
+  assert.equal(view.outcome.execution_status, 'blocked');
+  assert.equal(view.outcome.review_status, 'blocked');
+});
+
+test('client reducer distinguishes manager routing failure from grounding', () => {
+  let view = reduceMissionViewEvent(emptyMissionView(), {
+    type: 'life.manager.intent.started',
+    ts: 1,
+    item_id: 'task-1',
+    objective: 'Route this task',
+  });
+  view = reduceMissionViewEvent(view, {
+    type: 'life.manager.intent.failed',
+    ts: 2,
+    item_id: 'task-1',
+    objective: 'Route this task',
+    error: 'VerticalDecisionError: no backend',
+  });
+
+  assert.equal(view.mission.status, 'failed');
+  assert.equal(view.roles.find((role) => role.role === 'manager')?.label, 'Manager routing failed');
+  assert.equal(view.timeline.at(-1)?.title, 'Manager routing failed');
+});
+
 test('budget summary is always visible with global spend and cap', () => {
   assert.equal(
     budgetSummary(0.26285125, 'priced', 300),

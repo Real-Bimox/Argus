@@ -103,6 +103,7 @@ class TaskSpec:
     authorization_action: str = ""
     require_independent_review: bool = False
     skip_stage_transition: bool = False
+    allow_skill_changes: bool = False
 
 
 @dataclass(frozen=True)
@@ -480,6 +481,7 @@ _KEY_VALUE_KEYS = (
     "TASK_SKIP_STAGE_TRANSITION",
     "TASK_AUTHORIZATION_ID",
     "TASK_AUTHORIZATION_ACTION",
+    "TASK_ALLOW_SKILL_CHANGES",
 )
 _KEY_VALUE_LINE = re.compile(
     r"^(?:[-*]\s*)?(?:ARGUS_)?(?P<key>" + "|".join(_KEY_VALUE_KEYS) + r")\s*[:=]\s*(?P<value>.*)$",
@@ -687,7 +689,10 @@ def _build_no_task_repair_prompt(
         "- Preserve task review semantics explicitly when needed: "
         "`TASK_STAGE_CLOSING=true|false`, "
         "`TASK_REQUIRE_INDEPENDENT_REVIEW=true|false`, and "
-        "`TASK_SKIP_STAGE_TRANSITION=true|false`. A skipped transition requires "
+        "`TASK_SKIP_STAGE_TRANSITION=true|false`. Set "
+        "`TASK_ALLOW_SKILL_CHANGES=true` only when the operator explicitly "
+        "requested reusable Skill/capability authoring; otherwise set it false. "
+        "A skipped transition requires "
         "bounded scope, independent review, and a non-stage-closing task.\n"
         "- If used, format context refs exactly as "
         "`TASK_CONTEXT_REFS=kind::project/relative/path::why|...`. Refs must be "
@@ -844,6 +849,9 @@ def parse_planner_text(text: str) -> PlannerVerdict:
                 authorization_action=row.get("TASK_AUTHORIZATION_ACTION", "").strip(),
                 require_independent_review=require_independent_review,
                 skip_stage_transition=skip_stage_transition,
+                allow_skill_changes=_key_value_bool(
+                    row.get("TASK_ALLOW_SKILL_CHANGES", "")
+                ),
             )
         )
 

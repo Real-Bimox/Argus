@@ -366,6 +366,10 @@ class MissionExecutionRuntimeMixin:
                 maintenance_mission = "framework_maintenance" in state.item_tags
                 if "maintenance_mission" in params or _accepts_kw:
                     execute_kwargs["maintenance_mission"] = maintenance_mission
+                if "allow_skill_changes" in params or _accepts_kw:
+                    execute_kwargs["allow_skill_changes"] = (
+                        "skill_changes:allowed" in state.item_tags
+                    )
                 if "vertical_override" in params or _accepts_kw:
                     manager_decision = (
                         item.manager_decision
@@ -405,6 +409,9 @@ class MissionExecutionRuntimeMixin:
                     self._item_skips_stage_transition(item)
                 )
                 execute_kwargs["stage_closing"] = self._item_is_stage_closing(item)
+                execute_kwargs["allow_skill_changes"] = (
+                    "skill_changes:allowed" in state.item_tags
+                )
                 execute_kwargs["context_packet_path"] = (
                     str(state.context_packet_path) if state.context_packet_path else ""
                 )

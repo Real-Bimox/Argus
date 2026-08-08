@@ -241,6 +241,38 @@ def test_operator_blocked_dependency_keeps_downstream_unrunnable(
     assert rows["formalization"].last_error == ""
 
 
+def test_operator_pause_dependency_remains_blocked_after_restart(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "backlog.jsonl"
+    backlog = Backlog(path)
+    approval = BacklogItem.new(
+        title="operator approval",
+        objective="Wait for explicit operator approval.",
+        manager_decision={"routed": True, "vertical": "software"},
+    )
+    approval.status = "paused_operator"
+    approval.pending_question = "Approve the next phase?"
+    parent = backlog.add(approval)
+    backlog.add(
+        BacklogItem.new(
+            title="dependent work",
+            objective="Run only after approval.",
+            deps=[parent.id],
+            manager_decision={"routed": True, "vertical": "software"},
+        )
+    )
+
+    reopened = Backlog(path)
+
+    assert reopened.next_pending() is None
+    assert reopened.claim_next() is None
+    assert {item.title: item.status for item in reopened.all()} == {
+        "operator approval": "paused_operator",
+        "dependent work": "pending",
+    }
+
+
 def test_self_and_cyclic_deps_are_reconciled_to_terminal_skips(tmp_path: Path) -> None:
     # Legacy/corrupt state can still contain a cycle even though new batch
     # commits reject one. The scheduler must make that state terminal instead
@@ -297,6 +329,11 @@ def test_operator_answer_rewires_pending_dependents(tmp_path: Path) -> None:
     blocked.execution_workdir = "/private/framework"
     blocked.authorization_id = "maintenance-auth"
     blocked.authorization_action = "repair"
+    blocked.manager_decision = {
+        "routed": True,
+        "vertical": "software",
+        "workflow_mode": "staged",
+    }
     b.add(blocked)
     downstream = b.add(
         BacklogItem.new(
@@ -316,6 +353,7 @@ def test_operator_answer_rewires_pending_dependents(tmp_path: Path) -> None:
     assert continuation.execution_workdir == "/private/framework"
     assert continuation.authorization_id == "maintenance-auth"
     assert continuation.authorization_action == "repair"
+    assert continuation.manager_decision == blocked.manager_decision
     stored_downstream = next(item for item in b.all() if item.id == downstream.id)
     assert stored_downstream.deps == [continuation.id]
     assert b.claim_next().id == continuation.id

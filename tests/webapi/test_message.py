@@ -1163,6 +1163,8 @@ def test_manager_decided_math_vertical_web_enqueue_enters_backlog(
                         "TASK_STAGE_CLOSING=false",
                         "TASK_REQUIRE_INDEPENDENT_REVIEW=false",
                         "TASK_SKIP_STAGE_TRANSITION=false",
+                        "TASK_OPERATOR_APPROVAL_REQUIRED=false",
+                        "TASK_ALLOW_SKILL_CHANGES=false",
                     ])
                 ],
             )

@@ -89,6 +89,28 @@ def test_reviewer_learning_ab_switch_targets_reviewer_bucket(tmp_path) -> None:
     assert str((tmp_path / "skills" / "reviewer").resolve()) in treatment
 
 
+def test_reviewer_protected_resource_evidence_requires_a_traceable_mutation(
+    tmp_path,
+) -> None:
+    prompt = Reviewer(
+        runner=None,
+        skill_store=SkillStore(tmp_path / "skills"),
+        memory_maintenance_enabled=False,
+    )._build_prompt(
+        objective="Verify deployment without operating the protected service.",
+        operator_messages=[],
+        planner_review_instruction="",
+        round_index=1,
+        session_id=None,
+        main_summary="The protected service identity changed between observations.",
+        main_error=None,
+        working_dir=tmp_path,
+    )
+
+    assert "Identity drift alone means external change or unknown provenance" in prompt
+    assert "mutation command attributable to this mission" in prompt
+
+
 def test_planner_learning_ab_switch_targets_planner_bucket(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     store = SkillStore(tmp_path / "skills")

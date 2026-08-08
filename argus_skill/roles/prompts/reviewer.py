@@ -126,11 +126,12 @@ def _format_academic_paper_review_skill_block(*, include: bool) -> str:
 def _verification_directive() -> str:
     """Compact trust-first verification stance."""
     return (
-        "Trust consistent shown results. Re-open raw material only for a missing, "
-        "stale, contradictory, or implausible material fact; otherwise judge the "
-        "work and its next step. An empty git diff proves nothing for an untracked "
-        "or outside-repository artifact: check tracking first, then use direct "
-        "content, schema, command output, or another scoped observation.\n\n"
+        "Trust consistent shown results. Re-open only for missing, stale, contradictory, "
+        "or implausible facts; otherwise judge work and next step. Empty git diff proves "
+        "nothing for untracked/outside-repo artifacts: inspect content/output. A resource "
+        "violation requires a mutation command attributable to this mission. Identity "
+        "drift alone means external change or unknown provenance; do not fail independent "
+        "verification.\n\n"
     )
 
 

@@ -49,23 +49,42 @@ def merge_mission_view_snapshot(
     mission = view.setdefault("mission", {})
     active = next((item for item in backlog if str(item.get("status")) in {"running", "in_progress", "claimed"}), None)
     queued = next((item for item in backlog if str(item.get("status")) == "pending"), None)
+    owner_id = str(mission.get("id") or "")
+    owner = next(
+        (item for item in backlog if str(item.get("id") or "") == owner_id),
+        None,
+    )
+    selected = active or owner
     objective = str(
-        (continuous or {}).get("objective")
+        (selected or {}).get("objective")
+        or (selected or {}).get("title")
+        or (
+            (continuous or {}).get("objective")
+            if (continuous or {}).get("enabled")
+            else ""
+        )
         or session.get("objective")
-        or (active or {}).get("objective")
-        or (active or {}).get("title")
-        or (queued or {}).get("objective")
-        or (queued or {}).get("title")
+        or ((queued or {}).get("objective") if not owner_id else "")
+        or ((queued or {}).get("title") if not owner_id else "")
         or mission.get("objective")
         or ""
     ).strip()
     if objective:
         mission["objective"] = objective
-        mission["title"] = mission.get("title") or objective.splitlines()[0][:240]
+        if selected:
+            mission["title"] = str(
+                selected.get("title") or objective.splitlines()[0]
+            )[:240]
+        else:
+            mission["title"] = mission.get("title") or objective.splitlines()[0][:240]
     if active:
         mission["id"] = str(active.get("id") or mission.get("id") or "")
         mission["status"] = "working"
         mission["started_at"] = mission.get("started_at") or active.get("started_ts")
+    elif owner:
+        owner_status = str(owner.get("status") or "")
+        if owner_status == "pending":
+            mission["status"] = "queued"
     elif (continuous or {}).get("done_reason") or (continuous or {}).get("done_at"):
         mission["status"] = "complete"
     elif queued or (continuous or {}).get("enabled"):

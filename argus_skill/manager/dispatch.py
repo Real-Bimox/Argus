@@ -380,6 +380,11 @@ def enqueue_mission(
                         if skip_stage_transition
                         else []
                     ),
+                    *(
+                        ["skill_changes:allowed"]
+                        if bool(getattr(node, "allow_skill_changes", False))
+                        else []
+                    ),
                     *([f"stage:{stage}"] if stage else []),
                 ],
                 iterate=False,

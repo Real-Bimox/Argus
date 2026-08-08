@@ -590,6 +590,9 @@ class PlanningCycleEnqueueMixin:
                 ),
                 authorization_id=authorization_id,
                 authorization_action=authorization_action,
+                manager_decision=self._manager_decision_evidence(
+                    state.manager_intent
+                ),
             )
             # Reserve the signature now so a later sibling in the SAME batch
             # with an identical title/objective still de-dupes against this
@@ -603,6 +606,25 @@ class PlanningCycleEnqueueMixin:
         state.key_map = key_map
         state.pending_items = pending_items
         return None
+
+    @staticmethod
+    def _manager_decision_evidence(intent: Any) -> dict[str, Any]:
+        if not isinstance(intent, dict):
+            return {}
+        evidence = {
+            "vertical": str(intent.get("vertical") or "").strip(),
+            "stage": str(
+                intent.get("stage") or intent.get("current_stage") or ""
+            ).strip(),
+            "workflow_mode": str(intent.get("workflow_mode") or "").strip(),
+            "research_target_level": str(
+                intent.get("research_target_level") or ""
+            ).strip(),
+        }
+        evidence = {key: value for key, value in evidence.items() if value}
+        if evidence:
+            evidence["routed"] = True
+        return evidence
 
     def _pc_record_revision_rejection(
         self,

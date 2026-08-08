@@ -367,6 +367,7 @@ class SkillLoopExecuteMixin:
         stage_closing: bool = False,
         working_dir_override: str = "",
         maintenance_mission: bool = False,
+        allow_skill_changes: bool = False,
         vertical_override: str = "",
     ) -> _Outcome:
         # Chat fast-path (operator-front-door-only; gated by _allow_chat_fast_path).
@@ -389,6 +390,7 @@ class SkillLoopExecuteMixin:
             ex_state,
             working_dir_override=working_dir_override,
             maintenance_mission=maintenance_mission,
+            allow_skill_changes=allow_skill_changes,
             vertical_override=vertical_override,
             require_independent_review=require_independent_review,
             max_rounds_override=max_rounds_override,
@@ -459,6 +461,7 @@ class SkillLoopExecuteMixin:
         *,
         working_dir_override: str,
         maintenance_mission: bool,
+        allow_skill_changes: bool,
         vertical_override: str,
         require_independent_review: bool,
         max_rounds_override: int | None,
@@ -542,13 +545,17 @@ class SkillLoopExecuteMixin:
                 if max_rounds_override is not None
                 else args.max_rounds
             ),
-            "wiki_enabled": _env_flag(
-                "ARGUS_SKILL_WIKI",
-                default=True,
+            "require_post_task_learning": bool(
+                allow_skill_changes
+                and getattr(self, "_role_memory_maintenance_enabled", True)
             ),
-            "auto_init_wiki": _env_flag(
-                "ARGUS_SKILL_AUTO_INIT_WIKI",
-                default=True,
+            "wiki_enabled": bool(
+                allow_skill_changes
+                and _env_flag("ARGUS_SKILL_WIKI", default=True)
+            ),
+            "auto_init_wiki": bool(
+                allow_skill_changes
+                and _env_flag("ARGUS_SKILL_AUTO_INIT_WIKI", default=True)
             ),
             "dangerous_yolo": not safe_mode,
             "full_auto": safe_mode,
