@@ -88,12 +88,13 @@ def reduce_manager_event(
 
     elif event_type == EventType.LIFE_MANAGER_INTENT_FAILED:
         mission["status"] = "failed"
-        _set_role(view, "manager", "error", "Grounding failed", ts)
+        title = "Manager routing failed"
+        _set_role(view, "manager", "error", title, ts)
         _timeline(
             view,
             event,
             role="manager",
-            title="Project grounding failed",
+            title=title,
             detail=_text(event, "error") or _text(event, "reason"),
             tone="error",
         )
@@ -102,7 +103,7 @@ def reduce_manager_event(
             event,
             role="manager",
             kind="grounding",
-            title="Project grounding failed",
+            title=title,
             detail=_text(event, "error", 4000)
             or _text(event, "reason", 4000),
             status="error",

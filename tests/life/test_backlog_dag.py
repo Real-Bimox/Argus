@@ -177,6 +177,70 @@ def test_cascade_does_not_touch_items_with_live_deps(tmp_path: Path) -> None:
     assert rows["B"].last_error == ""
 
 
+def test_pending_operator_question_is_not_claimable_without_approval(
+    tmp_path: Path,
+) -> None:
+    b = Backlog(tmp_path / "backlog.jsonl")
+    statement_lock = BacklogItem.new(
+        title="statement-lock",
+        objective="Lock the statement only after operator approval.",
+        manager_decision={"routed": True, "vertical": "argus_maintenance"},
+    )
+    statement_lock.pending_question = "Approve this statement before locking it?"
+    b.add(statement_lock)
+
+    assert b.ready() == []
+    assert b.next_pending() is None
+    assert b.claim_next() is None
+
+    stored = b.all()[0]
+    assert stored.status == "pending"
+    assert stored.pending_question == "Approve this statement before locking it?"
+
+
+def test_operator_blocked_dependency_keeps_downstream_unrunnable(
+    tmp_path: Path,
+) -> None:
+    b = Backlog(tmp_path / "backlog.jsonl")
+    statement_lock = BacklogItem.new(
+        title="statement-lock",
+        objective="Lock the statement only after operator approval.",
+        priority=10,
+        manager_decision={"routed": True, "vertical": "argus_maintenance"},
+    )
+    statement_lock.pending_question = "Approve this statement before locking it?"
+    lock = b.add(statement_lock)
+    exact_search = b.add(
+        BacklogItem.new(
+            title="exact-search",
+            objective="Search only after the statement is locked.",
+            priority=1,
+            deps=[lock.id],
+            manager_decision={"routed": True, "vertical": "argus_maintenance"},
+        )
+    )
+    b.add(
+        BacklogItem.new(
+            title="formalization",
+            objective="Formalize only after exact search.",
+            priority=2,
+            deps=[exact_search.id],
+            manager_decision={"routed": True, "vertical": "argus_maintenance"},
+        )
+    )
+
+    assert b.ready() == []
+    assert b.next_pending() is None
+    assert b.claim_next() is None
+
+    rows = {it.title: it for it in b.all()}
+    assert rows["statement-lock"].status == "pending"
+    assert rows["exact-search"].status == "pending"
+    assert rows["formalization"].status == "pending"
+    assert rows["exact-search"].last_error == ""
+    assert rows["formalization"].last_error == ""
+
+
 def test_self_and_cyclic_deps_are_reconciled_to_terminal_skips(tmp_path: Path) -> None:
     # Legacy/corrupt state can still contain a cycle even though new batch
     # commits reject one. The scheduler must make that state terminal instead

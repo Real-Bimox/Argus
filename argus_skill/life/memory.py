@@ -964,7 +964,11 @@ class Backlog:
         always ready — this is what guarantees the no-deps behaviour is
         identical to the pre-DAG flat backlog.
         """
-        return item.status == "pending" and all(d in done for d in item.deps)
+        return (
+            item.status == "pending"
+            and not str(item.pending_question or "").strip()
+            and all(d in done for d in item.deps)
+        )
 
     @staticmethod
     def _dependency_cycle_components(

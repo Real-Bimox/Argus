@@ -68,6 +68,34 @@ def test_manager_grounding_lifecycle_is_visible(tmp_path: Path) -> None:
     assert roles["manager"]["status"] == "done"
 
 
+def test_manager_intent_failure_is_not_labeled_as_grounding_failed(
+    tmp_path: Path,
+) -> None:
+    emit(
+        tmp_path,
+        "life.manager.intent.started",
+        1,
+        item_id="task-1",
+        objective="Route this task",
+    )
+
+    view = emit(
+        tmp_path,
+        "life.manager.intent.failed",
+        2,
+        item_id="task-1",
+        objective="Route this task",
+        error="VerticalDecisionError: no runnable vertical",
+    )
+
+    roles = {role["role"]: role for role in view["roles"]}
+    assert view["mission"]["status"] == "failed"
+    assert roles["manager"]["status"] == "error"
+    assert roles["manager"]["label"] == "Manager routing failed"
+    assert view["timeline"][-1]["title"] == "Manager routing failed"
+    assert view["role_work"][-1]["title"] == "Manager routing failed"
+
+
 def test_venue_and_idea_research_are_visible_as_engineer_work(tmp_path: Path) -> None:
     emit(
         tmp_path,

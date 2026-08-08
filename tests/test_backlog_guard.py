@@ -15,6 +15,7 @@ shipped with all three missing and became dead code that nothing called.
 from __future__ import annotations
 
 import inspect
+from types import SimpleNamespace
 
 from argus_skill.life.memory import BacklogItem
 from argus_skill.life.supervisor.backlog_guard import (
@@ -168,3 +169,73 @@ def test_status_reports_bypassed_items() -> None:
     # Nothing errors when the Manager is bypassed, so --status has to say it
     # or the blindness stays invisible.
     assert "describe_undecided" in source
+
+
+def test_bounded_dispatch_records_manager_decision_on_planner_nodes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from argus_skill.life import MemoryBundle
+    from argus_skill.manager import dispatch, front_door
+
+    mem = MemoryBundle.for_cwd(
+        tmp_path,
+        global_root=tmp_path / "root",
+        fingerprint="s-backlog-guard",
+    )
+    mem.init()
+
+    class Manager:
+        def decide_vertical(self, body: str, **_kwargs):
+            return SimpleNamespace(
+                execution_task=f"managed: {body}",
+                vertical="argus_maintenance",
+                stage="scope",
+                workflow_mode="bounded",
+            )
+
+        def commit_vertical_decision(self, _body: str, decision, **_kwargs):
+            return SimpleNamespace(
+                execution_task=decision.execution_task,
+                vertical=decision.vertical,
+                stage=decision.stage,
+                workflow_mode=decision.workflow_mode,
+            )
+
+    plan = SimpleNamespace(
+        reason="two generic DAG nodes",
+        error="",
+        tasks=(
+            SimpleNamespace(
+                key="statement-lock",
+                deps=(),
+                title="Lock statement",
+                objective="Wait for operator approval before locking.",
+            ),
+            SimpleNamespace(
+                key="exact-search",
+                deps=("statement-lock",),
+                title="Exact search",
+                objective="Search only after the statement is approved.",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        front_door,
+        "_ensure_manager_runner",
+        lambda _state, _mem: SimpleNamespace(manager=Manager()),
+    )
+    monkeypatch.setattr(dispatch, "_plan_bounded_execution", lambda *a, **k: plan)
+
+    dispatch.enqueue_mission(
+        mem,
+        "operator-approved maintenance increment",
+        {"backend": "memory"},
+        root_task_id="root-manager-decision",
+    )
+
+    items = mem.backlog.all()
+    assert [item.node_key for item in items] == ["statement-lock", "exact-search"]
+    assert all(item.manager_decision.get("routed") is True for item in items)
+    assert all(item.manager_decision.get("workflow_mode") == "bounded" for item in items)
+    assert all(needs_manager_decision(item) is False for item in items)

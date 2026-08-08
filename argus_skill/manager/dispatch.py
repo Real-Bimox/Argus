@@ -329,6 +329,9 @@ def enqueue_mission(
         from ..life.memory import BacklogItem
 
         plan_id = f"bounded-{uuid.uuid4().hex[:12]}"
+        from ..life.supervisor.backlog_guard import decision_evidence
+
+        manager_decision = decision_evidence(_division) or {"routed": True}
         ids = {
             node.key: (
                 str(root_task_id)
@@ -399,6 +402,7 @@ def enqueue_mission(
                     getattr(node, "execution_workdir", "")
                 ),
                 non_goals=list(getattr(node, "non_goals", ()) or ()),
+                manager_decision=manager_decision,
             )
             item.original_objective = execution_body
             items.append(item)
