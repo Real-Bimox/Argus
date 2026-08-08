@@ -844,7 +844,7 @@ def test_backend_turn_uses_accounted_agent_backend(monkeypatch, tmp_path) -> Non
             calls["run_exec"] = kwargs
             return RunnerResult(exit_code=0, agent_messages=["ok"], thread_id="T")
 
-    monkeypatch.setattr(_sub._llm, "_codex_backend", lambda: _Backend())
+    monkeypatch.setattr(_sub._llm, "_supervisor_backend", lambda: _Backend())
     monkeypatch.setenv("ARGUS_SKILL_HOME", str(tmp_path / "argus-home"))
 
     result = _ORIGINAL_RUN_BACKEND_TURN(
@@ -868,6 +868,38 @@ def test_backend_turn_uses_accounted_agent_backend(monkeypatch, tmp_path) -> Non
     assert run_call["run_label"] == "subagent:train-1:health"
     assert run_call["options"].reasoning_effort == "low"
     assert run_call["options"].working_dir == str(tmp_path)
+
+
+def test_supervisor_backend_inherits_configured_runner(monkeypatch) -> None:
+    constructed: dict[str, object] = {}
+
+    class _Backend:
+        def __init__(self, **kwargs) -> None:
+            constructed.update(kwargs)
+
+    monkeypatch.setattr(_sub._llm, "_SUPERVISOR_BACKENDS", {})
+    monkeypatch.setattr(_sub._llm, "AgentCliBackend", _Backend)
+    monkeypatch.setattr(
+        _sub._llm,
+        "resolve_role_backend",
+        lambda role: "copilot" if role == "supervisor" else "codex",
+    )
+    monkeypatch.setattr(
+        _sub._llm,
+        "resolve_runner_bin_setting",
+        lambda role: "/opt/copilot" if role == "supervisor" else "",
+    )
+    monkeypatch.setattr(
+        _sub._llm,
+        "resolve_available_runner",
+        lambda backend, configured: (backend, configured),
+    )
+
+    backend = _sub._llm._supervisor_backend()
+
+    assert isinstance(backend, _Backend)
+    assert constructed["backend"] == "copilot"
+    assert constructed["runner_bin"] == "/opt/copilot"
 
 
 def test_run_supervised_persists_supervisor_usage_totals(monkeypatch, tmp_path) -> None:

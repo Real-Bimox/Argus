@@ -54,6 +54,17 @@ class VerticalContract:
     search_altitude: Callable[[object], str] | None = None
     mission_prelude: Callable[[str, Path, Path], str] | None = None
     library_preparer: Callable[[VerticalLibraryContext], None] | None = None
+    stage_completion_validator: Callable[[str, Path], object] | None = None
+    planner_task_validator: Callable[[str, Path, Any], object] | None = None
+    stage_checks: dict[str, tuple[tuple[str, str], ...]] | None = None
+
+    @property
+    def assurance_level(self) -> str:
+        if self.stage_checks or self.stage_completion_validator is not None:
+            return "hybrid"
+        if self.checklist_optional_stages == frozenset(self.stage_order):
+            return "runtime-authored"
+        return "reviewer"
 
     def banner(self, role: str) -> str:
         if self.role_guidance is None:
@@ -70,6 +81,36 @@ class VerticalContract:
     def prepare_libraries(self, context: VerticalLibraryContext) -> None:
         if self.library_preparer is not None:
             self.library_preparer(context)
+
+    def completion_issues(self, stage: str, project_root: Path) -> tuple[str, ...]:
+        if self.stage_completion_validator is None:
+            return ()
+        value = self.stage_completion_validator(stage, project_root)
+        if value is None:
+            return ()
+        if isinstance(value, str):
+            raise VerticalContractError(
+                f"vertical {self.name!r} completion validator returned a string"
+            )
+        try:
+            return tuple(
+                text
+                for issue in value
+                if (text := str(issue or "").strip())
+            )
+        except TypeError as exc:
+            raise VerticalContractError(
+                f"vertical {self.name!r} completion validator returned a non-iterable"
+            ) from exc
+
+    def planner_task_issues(self, stage: str, project_root: Path, task: Any) -> tuple[str, ...]:
+        if self.planner_task_validator is None:
+            return ()
+        return tuple(
+            str(issue).strip()
+            for issue in self.planner_task_validator(stage, project_root, task)
+            if str(issue).strip()
+        )
 
     def prepare_mission(
         self,
@@ -95,6 +136,8 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
     gate = str(getattr(provider, "completion_gate", "") or "").strip().lower()
     if not stage_order:
         raise VerticalContractError(f"vertical {name!r} declares no stage order")
+    if len(set(stage_order)) != len(stage_order):
+        raise VerticalContractError(f"vertical {name!r} declares duplicate stages")
     if not isinstance(checklist_items, dict):
         raise VerticalContractError(f"vertical {name!r} declares no checklist items")
     if gate not in _COMPLETION_GATES:
@@ -106,6 +149,17 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         for stage in (getattr(provider, "CHECKLIST_OPTIONAL_STAGES", ()) or ())
         if str(stage).strip()
     )
+    unknown_optional = sorted(optional_stages - set(stage_order))
+    if unknown_optional:
+        raise VerticalContractError(
+            f"vertical {name!r} has unknown optional stages: {', '.join(unknown_optional)}"
+        )
+    unknown_checklists = sorted(set(checklist_items) - set(stage_order))
+    if unknown_checklists:
+        raise VerticalContractError(
+            f"vertical {name!r} has checklists for unknown stages: "
+            f"{', '.join(unknown_checklists)}"
+        )
     missing = [
         stage
         for stage in stage_order
@@ -115,6 +169,34 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         raise VerticalContractError(
             f"vertical {name!r} has no checklist for: {', '.join(missing)}"
         )
+    empty_required = [
+        stage
+        for stage in stage_order
+        if stage not in optional_stages and not checklist_items.get(stage)
+    ]
+    if empty_required:
+        raise VerticalContractError(
+            f"vertical {name!r} has empty required checklists for: "
+            f"{', '.join(empty_required)}"
+        )
+    for stage, items in checklist_items.items():
+        if not isinstance(items, (list, tuple)):
+            raise VerticalContractError(
+                f"vertical {name!r} checklist {stage!r} is not a sequence"
+            )
+        seen_ids: set[str] = set()
+        for item in items:
+            item_id = str(getattr(item, "id", "") or "").strip()
+            statement = str(getattr(item, "statement", "") or "").strip()
+            if not item_id or not statement:
+                raise VerticalContractError(
+                    f"vertical {name!r} checklist {stage!r} has a malformed item"
+                )
+            if item_id in seen_ids:
+                raise VerticalContractError(
+                    f"vertical {name!r} checklist {stage!r} repeats item {item_id!r}"
+                )
+            seen_ids.add(item_id)
     mode = str(getattr(provider, "WORKFLOW_MODE", "staged") or "staged").strip().lower()
     if mode not in _WORKFLOW_MODES:
         raise VerticalContractError(
@@ -133,6 +215,48 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         for source, target in aliases.items()
         if str(source).strip() and str(target).strip()
     } if isinstance(aliases, dict) else {}
+    stage_completion_validator = getattr(provider, "stage_completion_issues", None)
+    if stage_completion_validator is not None and not callable(stage_completion_validator):
+        raise VerticalContractError(
+            f"vertical {name!r} has a non-callable stage completion validator"
+        )
+    planner_task_validator = getattr(provider, "planner_task_issues", None)
+    if planner_task_validator is not None and not callable(planner_task_validator):
+        raise VerticalContractError(
+            f"vertical {name!r} has a non-callable planner task validator"
+        )
+    raw_stage_checks = getattr(provider, "STAGE_CHECKS", {}) or {}
+    if not isinstance(raw_stage_checks, dict):
+        raise VerticalContractError(f"vertical {name!r} stage checks are not a mapping")
+    unknown_stage_checks = sorted(set(raw_stage_checks) - set(stage_order))
+    if unknown_stage_checks:
+        raise VerticalContractError(
+            f"vertical {name!r} has checks for unknown stages: "
+            f"{', '.join(unknown_stage_checks)}"
+        )
+    stage_checks: dict[str, tuple[tuple[str, str], ...]] = {}
+    for stage, checks in raw_stage_checks.items():
+        if not isinstance(checks, (list, tuple)):
+            raise VerticalContractError(
+                f"vertical {name!r} checks for {stage!r} are not a sequence"
+            )
+        normalized_checks: list[tuple[str, str]] = []
+        for check in checks:
+            if not isinstance(check, (list, tuple)) or len(check) != 2:
+                raise VerticalContractError(
+                    f"vertical {name!r} check for {stage!r} is not a label-command pair"
+                )
+            label, command = check
+            if not isinstance(label, str) or not label.strip():
+                raise VerticalContractError(
+                    f"vertical {name!r} check for {stage!r} has an empty label"
+                )
+            if not isinstance(command, str) or not command.strip():
+                raise VerticalContractError(
+                    f"vertical {name!r} check for {stage!r} has an empty command"
+                )
+            normalized_checks.append((label.strip(), command.strip()))
+        stage_checks[stage] = tuple(normalized_checks)
     return VerticalContract(
         name=str(name or "").strip().lower(),
         stage_order=stage_order,
@@ -177,6 +301,9 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
             if callable(getattr(provider, "LIBRARY_PREPARER", None))
             else None
         ),
+        stage_completion_validator=stage_completion_validator,
+        planner_task_validator=planner_task_validator,
+        stage_checks=stage_checks,
     )
 
 

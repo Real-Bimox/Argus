@@ -47,8 +47,9 @@ __all__ = [
     "DaemonLock",
     "WINDOWS_DAEMON_LOCK_OFFSET",
     "acquire_global_daemon_lock",
-    "read_daemon_pid",
     "is_pid_running",
+    "is_process_group_running",
+    "read_daemon_pid",
 ]
 
 WINDOWS_DAEMON_LOCK_OFFSET = 0x7FFF_FFFF
@@ -159,12 +160,28 @@ def read_daemon_pid(pid_path: Path | str) -> int | None:
     return value if value > 0 else None
 
 
-def is_pid_running(pid: int) -> bool:
-    """Return True if a process with the given pid currently exists.
+def _linux_proc_identity(pid: int) -> tuple[str, int] | None:
+    """Return ``(state, process_group)`` from Linux procfs when readable."""
+    try:
+        raw = (Path("/proc") / str(pid) / "stat").read_text(
+            encoding="utf-8", errors="replace"
+        )
+    except OSError:
+        return None
+    rparen = raw.rfind(")")  # comm may itself contain spaces or parentheses
+    if rparen < 0:
+        return None
+    fields = raw[rparen + 2 :].split()
+    if len(fields) < 3:
+        return None
+    try:
+        return fields[0], int(fields[2])
+    except ValueError:
+        return None
 
-    Mirrors the helper in ``daemon/bus.py`` but kept local to avoid an
-    import cycle (paths/bus shouldn't depend on daemon/*).
-    """
+
+def is_pid_running(pid: int) -> bool:
+    """Return True if *pid* is executing, excluding unreaped zombies."""
     if pid <= 0:
         return False
     if os.name == "nt":  # pragma: no cover - exercised on Windows CI
@@ -185,6 +202,11 @@ def is_pid_running(pid: int) -> bool:
             return exit_code.value == still_active
         finally:
             kernel32.CloseHandle(handle)
+    identity = _linux_proc_identity(pid)
+    if identity is not None and identity[0] in {"Z", "X"}:
+        # kill(pid, 0) succeeds for a zombie. Treat it as exited even when a
+        # minimal container's PID 1 has not reaped it yet.
+        return False
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -194,6 +216,41 @@ def is_pid_running(pid: int) -> bool:
         return True
     except OSError:
         return False
+    return True
+
+
+def is_process_group_running(process_group_id: int) -> bool:
+    """Return whether a POSIX process group has any non-zombie members."""
+    if process_group_id <= 0 or os.name == "nt":
+        return False
+    try:
+        os.killpg(process_group_id, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        pass
+    except OSError:
+        return False
+
+    proc_root = Path("/proc")
+    if proc_root.is_dir():
+        try:
+            entries = tuple(proc_root.iterdir())
+        except OSError:
+            entries = ()
+        if entries:
+            for entry in entries:
+                if not entry.name.isdigit():
+                    continue
+                identity = _linux_proc_identity(int(entry.name))
+                if identity is None:
+                    continue
+                state, group = identity
+                if group == process_group_id and state not in {"Z", "X"}:
+                    return True
+            # killpg can still find a group made exclusively of zombies. Such
+            # a group cannot execute or hold pipes and is operationally dead.
+            return False
     return True
 
 

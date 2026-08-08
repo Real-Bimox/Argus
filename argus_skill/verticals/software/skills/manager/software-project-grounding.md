@@ -7,7 +7,10 @@ description: "Inspect the repository before handing software work to Planner or 
 
 ## When to use
 
-Use for every formal software repair or feature before execution begins.
+Use for staged software repairs/features, or when
+`ARGUS_SKILL_SOFTWARE_REQUIRE_GROUNDING=1`. Direct software tasks normally let
+the fresh Engineer perform the bounded repository inspection once, avoiding a
+duplicate Manager pass.
 
 ## Grounding method
 

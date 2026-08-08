@@ -224,9 +224,11 @@ class SupervisedEngineer(
             control = self._handle_progress_and_self_review(
                 round_index=round_index,
                 supervised_config=supervised_config,
+                workdir=workdir,
                 outcome=outcome,
                 state=state,
                 review_completed_hook=review_completed_hook,
+                continue_adaptor=continue_adaptor,
                 on_event=on_event,
             )
             if control.action == "return":

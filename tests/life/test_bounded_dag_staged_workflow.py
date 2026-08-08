@@ -147,7 +147,7 @@ def test_bounded_dag_node_keeps_vertical_stage_workflow(tmp_path) -> None:
     assert "workflow_mode_override" not in runner.kwargs
     assert runner.kwargs["preplanned"] is True
     assert runner.kwargs["require_independent_review"] is False
-    assert runner.kwargs["max_rounds_override"] >= 2
+    assert "max_rounds_override" not in runner.kwargs
     packet_path = runner.kwargs["context_packet_path"]
     packet = json.loads(open(packet_path, encoding="utf-8").read())
     assert packet["mission_id"] == item.id
@@ -159,7 +159,7 @@ def test_bounded_dag_node_keeps_vertical_stage_workflow(tmp_path) -> None:
     assert outcome["context_packet"] == str(Path(packet_path).parent / "latest.json")
 
 
-def test_experiment_matrix_is_not_limited_by_bounded_node_rounds(
+def test_experiment_matrix_uses_the_same_progress_based_round_policy(
     tmp_path,
 ) -> None:
     memory = LifeMemory.open(tmp_path / "life")
@@ -187,7 +187,7 @@ def test_experiment_matrix_is_not_limited_by_bounded_node_rounds(
     supervisor.tick()
 
     assert runner.kwargs is not None
-    assert runner.kwargs["progressive_experiment_matrix"] is True
+    assert "progressive_experiment_matrix" not in runner.kwargs
     assert "max_rounds_override" not in runner.kwargs
 
 

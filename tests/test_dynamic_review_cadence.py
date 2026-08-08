@@ -1,4 +1,4 @@
-"""Every Engineer turn is reviewed; the old deferral sentinel is inert."""
+"""Reviewer cadence follows the explicit independent-review contract."""
 from __future__ import annotations
 
 import json
@@ -75,3 +75,35 @@ def test_continue_work_text_does_not_skip_reviewer(tmp_path: Path) -> None:
         resume for label, resume in backend.resume_history
         if label in {"engineer-r1", "reviewer"}
     ] == [None, None]
+
+
+def test_low_risk_task_can_finish_with_engineer_self_review(tmp_path: Path) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message="Implemented the bounded fix.\n## Verification\n3 tests passed",
+            thread_id="t1",
+        ),
+    )
+
+    events: list[dict] = []
+    status, rounds, _final, reason, tid = _engineer(backend).run(
+        objective="low-risk repair with decisive tests",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(
+            max_rounds=1,
+            require_independent_review=False,
+        ),
+        workdir=tmp_path,
+        on_event=events.append,
+    )
+
+    assert [label for label, _prompt, _options in backend.history] == ["engineer-r1"]
+    assert status == "done"
+    assert len(rounds) == 1
+    assert rounds[0].review.review_source == "engineer_self_review"
+    review_events = [event for event in events if event["type"] == "round.review.completed"]
+    assert review_events[0]["review_source"] == "engineer_self_review"
+    assert "without an independent Reviewer call" in reason
+    assert tid is None

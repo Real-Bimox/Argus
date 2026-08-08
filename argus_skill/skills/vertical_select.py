@@ -60,7 +60,7 @@ log = logging.getLogger(__name__)
 #:   kernelbench      — Task 3: maximize SOL score (B200 kernels)
 VERTICALS: tuple[str, ...] = (
     "software", "argus_maintenance", "digital_circuit", "digital_circuit_benchmark", "chip_design",
-    "research", "math", "physics", "materials", "quant", "speedrun",
+    "research", "math", "math_synth", "physics", "materials", "quant", "speedrun",
     "kernel_engineering", "nanochat", "nanogpt_speedrun", "kernelbench",
     "learning", "ale_last_exam", "fiction_writing", "classical_poetry",
     "modern_poetry", "prose", "literary_editor",
@@ -93,6 +93,9 @@ VERTICAL_PURPOSES: dict[str, str] = {
     "choose background retrieval, examples/counterexamples, computation, natural-language "
     "proof, and Lean formalization as appropriate; not a paper pipeline or a "
     "metric-optimization vertical",
+    "math_synth": "math-reasoning data synthesis benchmark: maximize the measured "
+    "pass@4-minus-pass@1 gap by improving only the editable generation pipeline while "
+    "keeping the solver, verifier, metric, seeds, and evaluation runner frozen",
     "physics": "physics tasks on a real physical system; dynamically choose theoretical "
     "derivation, numerical simulation, data analysis, literature synthesis, or experiment "
     "design (or an honest negative result) as appropriate, reporting bounded provenance-tracked "

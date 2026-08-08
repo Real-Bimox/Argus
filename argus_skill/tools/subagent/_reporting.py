@@ -11,10 +11,9 @@ from typing import Any
 from ._discussion_log import (
     _discussion_path,
 )
-from ._llm import _run_codex_with_usage
+from ._llm import _run_supervisor_with_usage, resolve_supervisor_model
 from ._registry import (
     REGISTRY_DIR,
-    SUPERVISOR_MODEL,
     _add_usage_totals,
     _apply_supervisor_usage_fields,
     _effective_run_dir,
@@ -148,13 +147,13 @@ def _supervisor_summarize_report(task_id: str, event: str, task_data: dict[str, 
         and str(persisted_before.get("run_id") or "") != expected_run_id
     ):
         return ""
-    model = str(task_data.get("supervisor_usage_model") or SUPERVISOR_MODEL)
+    model = str(task_data.get("supervisor_usage_model") or resolve_supervisor_model())
     cwd = str(
         task_data.get("cwd")
         or (persisted_before or {}).get("cwd")
         or Path.cwd()
     )
-    messages, _thread_id, usage = _run_codex_with_usage(
+    messages, _thread_id, usage = _run_supervisor_with_usage(
         prompt,
         model,
         cwd,

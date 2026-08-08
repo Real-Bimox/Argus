@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import {
   mkdir,
   readFile,
@@ -22,6 +23,8 @@ export interface ApiOwnershipRecord {
 export interface ProcessInspection {
   alive: boolean;
   argv: string[];
+  /** Flat command line used on platforms that do not expose NUL-delimited argv. */
+  commandLine?: string;
 }
 
 export interface ReadOwnedApiOptions {
@@ -64,7 +67,7 @@ export function defaultApiOwnershipPath(
   return join(stateRoot, 'runtime', `webapi-${endpoint}-${port}.owner.json`);
 }
 
-// ── Default Linux inspector ─────────────────────────────────────────────────
+// ── Default platform inspectors ─────────────────────────────────────────────
 
 async function linuxInspect(pid: number): Promise<ProcessInspection> {
   // Liveness check: signal 0 throws when process does not exist.
@@ -85,6 +88,48 @@ async function linuxInspect(pid: number): Promise<ProcessInspection> {
     // Process may have exited between the kill(0) and the read.
     return { alive: false, argv: [] };
   }
+}
+
+async function darwinInspect(pid: number): Promise<ProcessInspection> {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return { alive: false, argv: [] };
+  }
+
+  return new Promise((resolveInspection) => {
+    execFile(
+      '/bin/ps',
+      ['-ww', '-p', String(pid), '-o', 'command='],
+      { encoding: 'utf-8' },
+      (error, stdout) => {
+        const commandLine = error ? '' : stdout.trim();
+        resolveInspection({
+          alive: Boolean(commandLine),
+          argv: [],
+          commandLine: commandLine || undefined,
+        });
+      },
+    );
+  });
+}
+
+function defaultInspect(pid: number): Promise<ProcessInspection> {
+  return process.platform === 'darwin' ? darwinInspect(pid) : linuxInspect(pid);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function commandHasArgument(commandLine: string, argument: string): boolean {
+  return new RegExp(`(?:^|\\s)${escapeRegExp(argument)}(?=\\s|$)`).test(commandLine);
+}
+
+function commandHasOptionValue(commandLine: string, option: string, value: string): boolean {
+  return new RegExp(
+    `(?:^|\\s)${escapeRegExp(option)}\\s+${escapeRegExp(value)}(?=\\s|$)`,
+  ).test(commandLine);
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
@@ -108,15 +153,28 @@ export async function verifyApiProcess(
   opts: Omit<ReadOwnedApiOptions, 'path'> & { pid: number },
 ): Promise<boolean> {
   const { pid, host, port, backendBin } = opts;
-  const inspect = opts.inspect ?? linuxInspect;
+  const inspect = opts.inspect ?? defaultInspect;
   if (!Number.isInteger(pid) || pid <= 0) return false;
 
-  const { alive, argv } = await inspect(pid);
-  if (!alive || !argv.includes(backendBin) || !argv.includes('--web')) return false;
-  const webPortIdx = argv.indexOf('--web-port');
-  if (webPortIdx === -1 || argv[webPortIdx + 1] !== String(port)) return false;
-  const webHostIdx = argv.indexOf('--web-host');
-  if (webHostIdx !== -1 && argv[webHostIdx + 1] !== host) return false;
+  const { alive, argv, commandLine } = await inspect(pid);
+  if (!alive) return false;
+  if (argv.length > 0) {
+    if (!argv.includes(backendBin) || !argv.includes('--web')) return false;
+    const webPortIdx = argv.indexOf('--web-port');
+    if (webPortIdx === -1 || argv[webPortIdx + 1] !== String(port)) return false;
+    const webHostIdx = argv.indexOf('--web-host');
+    if (webHostIdx !== -1 && argv[webHostIdx + 1] !== host) return false;
+    return true;
+  }
+  if (!commandLine) return false;
+  if (!commandHasArgument(commandLine, backendBin) || !commandHasArgument(commandLine, '--web')) {
+    return false;
+  }
+  if (!commandHasOptionValue(commandLine, '--web-port', String(port))) return false;
+  if (
+    commandHasArgument(commandLine, '--web-host')
+    && !commandHasOptionValue(commandLine, '--web-host', host)
+  ) return false;
   return true;
 }
 
@@ -171,7 +229,7 @@ export async function readOwnedApi(
   opts: ReadOwnedApiOptions,
 ): Promise<ApiOwnershipRecord | null> {
   const { path, host, port, backendBin } = opts;
-  const inspect = opts.inspect ?? linuxInspect;
+  const inspect = opts.inspect ?? defaultInspect;
 
   try {
     const raw = await readFile(path, 'utf-8');

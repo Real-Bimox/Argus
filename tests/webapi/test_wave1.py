@@ -1366,24 +1366,27 @@ def test_dispatch_ack_raises_on_transcript_write_failure(
     """Transcript persistence failure must NOT be swallowed."""
     life_dir = tmp_path / "projects" / "s-ack-fail"
     life_dir.mkdir(parents=True)
-    # Make transcript file unwritable
     transcript = life_dir / "transcript.jsonl"
     transcript.write_text("")
-    transcript.chmod(0o000)
+    real_open = Path.open
 
+    def deny_transcript_append(path: Path, *args, **kwargs):
+        mode = args[0] if args else kwargs.get("mode", "r")
+        if path == transcript and "a" in mode:
+            raise PermissionError("simulated transcript write failure")
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", deny_transcript_append)
     result: dict = {
         "kind": "task",
         "daemon_alive": False,
         "daemon": {"rc": 0, "pid": 99},
         "reply": None,
     }
-    try:
-        with pytest.raises(PermissionError):
-            manager_pending_question.record_task_dispatch_ack(
-                "s-ack-fail",
-                result,
-                global_root=tmp_path,
-                on_fragment=None,
-            )
-    finally:
-        transcript.chmod(0o644)
+    with pytest.raises(PermissionError):
+        manager_pending_question.record_task_dispatch_ack(
+            "s-ack-fail",
+            result,
+            global_root=tmp_path,
+            on_fragment=None,
+        )

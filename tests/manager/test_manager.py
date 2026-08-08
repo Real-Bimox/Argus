@@ -16,6 +16,7 @@ from argus_skill.manager.domain_author import (
     VerticalDecisionError,
     parse_vertical_decision,
 )
+from argus_skill.skills.stage_machine import ChecklistItem
 from argus_skill.verticals.research.stages import STAGE_ORDER as RESEARCH_STAGES
 
 
@@ -44,7 +45,7 @@ class _DecisionRunner:
         return _DecisionResult(json.dumps(self._decision))
 
 
-def test_software_grounding_brief_is_appended_to_execution_handoff(
+def test_direct_software_handoff_skips_duplicate_manager_grounding(
     tmp_path,
 ) -> None:
     class GroundingRunner:
@@ -67,7 +68,35 @@ def test_software_grounding_brief_is_appended_to_execution_handoff(
         root_task_id="route-1",
     )
 
-    assert handoff.startswith("Repair parser behavior.")
+    assert handoff == "Repair parser behavior."
+    assert runner.calls == []
+
+
+def test_direct_software_grounding_can_be_forced(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    class GroundingRunner:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def run_exec(self, **kwargs):
+            self.calls.append(kwargs)
+            return _DecisionResult(
+                "Architecture: parser -> loader. Closest analogue: sibling loader. "
+                "Verify exact return type and boundary behavior."
+            )
+
+    monkeypatch.setenv("ARGUS_SKILL_SOFTWARE_REQUIRE_GROUNDING", "1")
+    runner = GroundingRunner()
+    manager = Manager(project_root=tmp_path, runner=runner)
+
+    handoff = manager._ground_execution_task(
+        "Repair parser behavior.",
+        workflow_mode="direct",
+        root_task_id="route-1",
+    )
+
     assert "## Manager project grounding" in handoff
     assert "Closest analogue" in handoff
     assert runner.calls[0]["run_label"] == "manager-project-grounding"
@@ -285,7 +314,14 @@ def test_vertical_commit_persists_generic_research_target_contract(
         lambda name, project_root=None: SimpleNamespace(
             STAGE_ORDER=("scope", "review"),
             CHECKLIST_STAGE_ORDER=("scope", "review"),
-            CHECKLIST_ITEMS={"scope": (), "review": ()},
+            CHECKLIST_ITEMS={
+                "scope": (
+                    ChecklistItem("scope.goal", "Goal is explicit", "goal"),
+                ),
+                "review": (
+                    ChecklistItem("review.result", "Result is reviewed", "result"),
+                ),
+            },
             completion_gate="none",
             RESEARCH_TARGET_LEVELS=("exploratory", "publishable", "doctoral"),
         ),
@@ -604,7 +640,6 @@ def test_low_confidence_fast_route_escalates_once_and_preserves_original_task(
     assert [call["run_label"] for call in runner.calls] == [
         "manager-classify-fast",
         "manager-classify-grounded",
-        "manager-project-grounding",
     ]
     assert "--available-tools=" in runner.calls[0]["options"].extra_args
     assert runner.calls[0]["options"].sandbox_mode is None
@@ -628,7 +663,6 @@ def test_fast_route_prompt_cap_skips_directly_to_one_grounded_call(
     assert decision.workflow_mode == "direct"
     assert [call["run_label"] for call in runner.calls] == [
         "manager-classify-grounded",
-        "manager-project-grounding",
     ]
 
 

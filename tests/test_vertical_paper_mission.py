@@ -15,7 +15,7 @@ from argus_skill.apps._runtime import _paper_mission_for_project_root
 from argus_skill.skills.vertical_select import persist_vertical
 from argus_skill.verticals._base import load_vertical, vertical_completion_gate
 
-OPTIMIZE = ["kernelbench", "speedrun", "nanochat", "nanogpt_speedrun"]
+OPTIMIZE = ["kernelbench", "speedrun", "nanochat", "nanogpt_speedrun", "math_synth"]
 
 
 @pytest.mark.parametrize("vertical", OPTIMIZE)

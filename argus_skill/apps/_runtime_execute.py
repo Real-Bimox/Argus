@@ -360,7 +360,6 @@ class SkillLoopExecuteMixin:
         usage_mission_id: str | None = None,
         context_packet_path: str = "",
         max_rounds_override: int | None = None,
-        progressive_experiment_matrix: bool = False,
         workflow_mode_override: str = "",
         require_independent_review: bool = False,
         skip_stage_transition: bool = False,
@@ -394,7 +393,6 @@ class SkillLoopExecuteMixin:
             vertical_override=vertical_override,
             require_independent_review=require_independent_review,
             max_rounds_override=max_rounds_override,
-            progressive_experiment_matrix=progressive_experiment_matrix,
             context_packet_path=context_packet_path,
             mission_id=mission_id,
             workflow_mode_override=workflow_mode_override,
@@ -465,7 +463,6 @@ class SkillLoopExecuteMixin:
         vertical_override: str,
         require_independent_review: bool,
         max_rounds_override: int | None,
-        progressive_experiment_matrix: bool,
         context_packet_path: str,
         mission_id: str | None,
         workflow_mode_override: str,
@@ -531,6 +528,7 @@ class SkillLoopExecuteMixin:
         config_kwargs = {
             "engineer_model": args.engineer_model,
             "reviewer_model": args.reviewer_model,
+            "require_independent_review": effective_require_independent_review,
             "engineer_initial_reasoning_effort": os.environ.get(
                 "ARGUS_SKILL_ENGINEER_INITIAL_REASONING_EFFORT", "high"
             ),
@@ -581,13 +579,6 @@ class SkillLoopExecuteMixin:
             # (``<life_dir>/events.jsonl``) so it can grep HOW the result was
             # produced. This runtime log remains outside the worktree.
         }
-        if progressive_experiment_matrix:
-            # Matrix closure is governed by measurable progress/stall detection,
-            # not an arbitrary round count. This value is practically unbounded
-            # while preserving the existing integer config/event schema.
-            config_kwargs["max_rounds"] = 2_147_483_647
-            config_kwargs["soft_round_limit"] = 0
-            config_kwargs["hard_escalate_rounds"] = 0
         maintenance_checkpoint_dir: Path | None = None
         if context_packet_path:
             config_kwargs["checkpoint_path"] = (

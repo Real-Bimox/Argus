@@ -59,6 +59,21 @@ A project can stop, resume, survive a runtime replacement, and continue from its
 - Node.js 22+
 - One supported Agent CLI installed and authenticated through its official login flow
 
+Check the actual interpreter before creating the virtual environment:
+
+```bash
+python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version'
+```
+
+macOS may still provide Python 3.9 as `/usr/bin/python3`. If the check fails,
+install [uv](https://docs.astral.sh/uv/getting-started/installation/) and let it
+provision an isolated Python 3.12 environment:
+
+```bash
+uv python install 3.12
+uv venv --python 3.12 --seed .venv
+```
+
 ### 🚀 Agent-assisted installation (recommended)
 
 > [!TIP]
@@ -86,10 +101,13 @@ git clone https://github.com/lbx154/Argus.git
 cd Argus
 
 python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e .
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e .
 ```
+
+Private-preview collaborators can clone
+`https://github.com/lbx154/argus-skill.git` instead. The repositories may be at
+different revisions, so use the URL for the release you intend to test.
 
 ### Connect a backend
 
@@ -100,6 +118,33 @@ argus --setup --non-interactive \
 ```
 
 Use `copilot`, `pi`, `codex`, `claude`, or `opencode` for `--backend`.
+
+#### Choosing a provider on the multi-provider CLIs
+
+Pi and OpenCode are provider-agnostic fronts: which account they bill depends on
+what you authenticated them against (a native DeepSeek key, Anthropic, Azure, a
+local vLLM, a Copilot proxy). Argus passes your configured model id straight
+through, so a bare id like `deepseek-chat` is resolved by the CLI itself.
+
+Name the provider when a bare id is ambiguous or when the CLI requires it:
+
+```bash
+# Pi — only needed when two authenticated catalogs carry the same model id
+export ARGUS_SKILL_PI_PROVIDER=deepseek
+
+# OpenCode — required: `opencode run --model` only accepts provider/id
+export ARGUS_SKILL_OPENCODE_PROVIDER=deepseek
+```
+
+Both are also settable from the cockpit `/config` view, and persist across
+restarts once set there.
+
+`argus --doctor` reads the CLI's authenticated catalog and tells you when the
+configured provider is not one you hold a key for, or when a model id you
+selected is not on offer.
+
+Full details, including the breaking change for Pi deployments that relied on
+the old implicit `github-copilot` prefix: **[backend providers](docs/backend-providers.md)**.
 
 ### Launch
 

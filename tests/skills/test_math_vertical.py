@@ -148,9 +148,42 @@ def test_generic_roles_load_math_skill_context_only_for_math() -> None:
     assert "without\nsolving the current instance" in create
     assert "concrete approach has failed" in adapt
 
-    direct = load_vertical("direct")
-    assert "MATHEMATICS" not in vertical_role_banner(direct, "engineer")
-    assert "MATHEMATICS" not in vertical_role_banner(direct, "reviewer")
+    software = load_vertical("software")
+    assert "MATHEMATICS" not in vertical_role_banner(software, "engineer")
+    assert "MATHEMATICS" not in vertical_role_banner(software, "reviewer")
+
+
+def test_math_completion_hook_requires_objective_and_policy_graph(tmp_path: Path) -> None:
+    from argus_skill.verticals.math import objective_mode
+    from argus_skill.verticals.math.stages import stage_completion_issues
+
+    persist_vertical(tmp_path, "math")
+    assert "objective mode" in " ".join(stage_completion_issues("scope", tmp_path))
+
+    objective_mode.set_objective(tmp_path, mode="targeted", goal="G")
+    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["verification_profile"] = "develop"
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    assert "PROOF_GRAPH.json" in " ".join(stage_completion_issues("solve", tmp_path))
+
+    (tmp_path / "research" / "PROOF_GRAPH.json").write_text(
+        json.dumps({
+            "goal": "G",
+            "routes": [{"name": "route", "status": "current", "evidence": ""}],
+            "nodes": {
+                "G": {
+                    "statement": "G",
+                    "status": "proved",
+                    "is_goal": True,
+                    "depends_on": [],
+                    "reviewer_confirmed": True,
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+    assert stage_completion_issues("solve", tmp_path) == ()
 
 
 def test_math_engineer_uses_one_checkpoint_without_process_artifacts() -> None:

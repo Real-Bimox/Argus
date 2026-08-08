@@ -10,10 +10,6 @@ phases live in two sibling mixins so no single module grows unwieldy:
   dynamic-plan stage guard, final status resolution against the backlog, and
   the journal event + return-dict emission.
 
-``bounded_dag_node_max_rounds`` / ``is_progressive_experiment_matrix`` are
-re-exported here (from ``_mission_execution_helpers``) for backward-compatible
-imports (``tests/life/test_bounded_dag_round_budget.py`` imports them from
-this module path).
 """
 
 from __future__ import annotations
@@ -22,20 +18,12 @@ import logging
 from typing import Any
 
 from ..memory import BacklogItem
-from ._mission_execution_helpers import (
-    bounded_dag_node_max_rounds,
-    is_progressive_experiment_matrix,
-)
 from ._mission_execution_runtime import MissionExecutionRuntimeMixin
 from ._mission_execution_settlement import MissionExecutionSettlementMixin
 
 log = logging.getLogger(__name__)
 
-__all__ = [
-    "MissionExecutionMixin",
-    "bounded_dag_node_max_rounds",
-    "is_progressive_experiment_matrix",
-]
+__all__ = ["MissionExecutionMixin"]
 
 
 from .backlog_guard import ensure_manager_decision

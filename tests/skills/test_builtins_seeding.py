@@ -74,6 +74,7 @@ def test_iter_vertical_skill_texts_unknown_or_skill_less_is_empty() -> None:
     assert list(iter_vertical_skill_texts("nope")) == []
     software = dict(iter_vertical_skill_texts("software"))
     assert set(software) == {
+        "engineer/software-change-implementation.md",
         "manager/software-project-grounding.md",
         "planner/software-project-grounding.md",
         "reviewer/software-change-review.md",

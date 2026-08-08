@@ -25,15 +25,12 @@ _VERTICALS = Path(__file__).resolve().parents[2] / "argus_skill" / "verticals"
 def _selectable_verticals() -> list[str]:
     """Vertical package names that a project can actually resolve to.
 
-    ``direct`` is excluded on purpose: it is a retired capability name that
-    ``_known_vertical`` migrates to ``software`` + direct workflow mode, so no
-    project can resolve to it and its stage module is never read.
+    The retired ``direct`` package no longer exists. Persisted ``direct`` state
+    is still migrated to ``software`` + direct workflow mode by the selector.
     """
     names = []
     for path in sorted(_VERTICALS.glob("*/stages.py")):
         name = path.parent.name
-        if name == "direct":
-            continue
         names.append(name)
     return names
 

@@ -390,6 +390,35 @@ def test_free_text_is_display_only_and_never_changes_review_state(tmp_path: Path
     assert view["active_role"] == "engineer"
 
 
+def test_engineer_self_review_is_not_presented_as_independent_review(
+    tmp_path: Path,
+) -> None:
+    emit(
+        tmp_path,
+        "life.mission.started",
+        1,
+        item_id="mission-1",
+        title="Small repair",
+        objective="Fix one covered boundary",
+    )
+    view = emit(
+        tmp_path,
+        "round.review.completed",
+        2,
+        round_index=1,
+        status="done",
+        reason="Decisive tests passed.",
+        review_source="engineer_self_review",
+    )
+
+    roles = {row["role"]: row for row in view["roles"]}
+    assert view["review"]["source"] == "engineer_self_review"
+    assert roles["engineer"]["label"] == "Self-verified"
+    assert roles["reviewer"]["label"] == "Independent review not required"
+    assert view["timeline"][-1]["role"] == "engineer"
+    assert view["timeline"][-1]["title"] == "Engineer self-review accepted"
+
+
 def test_new_mission_resets_prior_review_projection(tmp_path: Path) -> None:
     emit(
         tmp_path,

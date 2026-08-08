@@ -28,6 +28,7 @@ def test_kernel_engineering_is_known_metric_vertical(tmp_path: Path) -> None:
         "optimize",
         "validate",
         "report",
+        "deliver",
     )
 
 
@@ -76,8 +77,9 @@ def test_kernel_engineering_vertical_skills_are_packaged(tmp_path: Path) -> None
     assert "ncu counter replay" in engineer_text
     assert "low-overhead timeline" in reviewer_text
     assert "focused ncu sections after the leverage gate" in reviewer_text
-    assert "reviewer-controlled try recall" in reviewer_text
-    assert "before the final round" in reviewer_text
+    assert "reviewer-controlled try accounting" in reviewer_text
+    assert "round count is not candidate try count" in reviewer_text
+    assert "decide exhaustion from evidence" in reviewer_text
     assert "replan_requested" in reviewer_text
 
 

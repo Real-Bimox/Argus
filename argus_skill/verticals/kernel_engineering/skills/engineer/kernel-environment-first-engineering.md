@@ -142,9 +142,10 @@ ladder and its stop conditions.
      target architecture.
 
    Never blindly upgrade torch, Triton, CUDA, or the whole environment to make
-   one import pass. Re-run the audit after an environment change, not after an
-   unchanged failed attempt. Record the
-   commands and versions; do not record secrets.
+   one import pass. Install from the repository's documented lockfile or extras
+   into a local environment, then rerun the audit. If a system compiler, driver,
+   GPU, or profiler is missing, report that concrete blocker instead of building
+   a substitute. Record commands and versions; do not record secrets.
 7. **Reproduce the unmodified baseline.** Correctness first, timing second.
    Record `research/BASELINE_PROTOCOL.md` and
    `research/BASELINE_RESULT.json`: command, environment hash/versions, GPU,
@@ -184,13 +185,14 @@ ladder and its stop conditions.
    Record `execution_status`, `failure_class`, and `idea_status` separately.
    Source editing is unlocked only when `LEVERAGE.json` says `proceed`, unless
    new evidence changes the measured end-to-end share or the required MDE.
-   Use the full reviewed Engineer–Reviewer exploration budget (normally three
-   rounds; follow the live `Round: x/y`) for a direction whose candidate is
-   correct and path-covered but not yet faster. Try 1 builds the functional
-   candidate; intermediate Tries use measured regression/profile evidence and
-   current primary sources to change a material mechanism; the final Try
-   implements the strongest remaining evidence-backed design. Do not spend
-   later Tries on an unchanged rerun or cosmetic knob sweep.
+   Round count is not candidate Try count. A Try begins only when a candidate is
+   correct, path-covered, and validly measured; environment, dependency, command,
+   toolchain, benchmark, or measurement-infrastructure repair rounds do not
+   consume one. Continue the same mission while Reviewer-classified evidence is
+   progressing. After a failed candidate, use measured regression/profile
+   evidence and current primary sources to justify a materially distinct
+   mechanism. Do not spend later Tries on an unchanged rerun or cosmetic knob
+   sweep, and do not wait for a final numbered round to decide exhaustion.
    Before the run, check the ledger for an equivalent mechanism/config and write
    the one-line claim being tested. After the run, retain a compact result and
    reusable insight; do not paste raw logs into the next Engineer prompt.
@@ -213,7 +215,10 @@ ladder and its stop conditions.
    `untested` or `inconclusive`; never reject the mechanism from those failures.
    Validate the ledger with `attempt_outcome check --project-root .`. The full
    correctness suite is reserved for baseline/candidate certification; iterate
-   with the focused failing case.
+   with the focused failing case. When a candidate wins, run one final paired
+   comparison with `python -m argus_skill.verticals.kernel_engineering.campaign
+   compare`. It must pass correctness, geomean speedup, and the worst-row floor.
+   Then stop optimizing and move to validation.
 10. **Validate the retained candidate.** Cover forward/backward as applicable,
    fp16/bf16/fp32 policy, aligned and irregular dimensions, varlen/options,
    non-contiguous inputs when supported, determinism/races, memory, missing
@@ -222,7 +227,9 @@ ladder and its stop conditions.
 11. **Prepare upstream evidence.** `RESULTS.md` must include exact commands,
     versions, raw correctness/latency summaries, uncertainty, regressions,
     fallback/dispatch boundary, limitations, and why the selected infrastructure
-    was reused. Do not claim generic GPU speedup from one architecture.
+    was reused. Do not claim generic GPU speedup from one architecture. Isolate
+    the winner on a clean feature branch; commit only with operator authorization
+    and never push without approval.
 
 ## Infrastructure selection ladder
 

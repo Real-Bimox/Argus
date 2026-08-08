@@ -118,26 +118,32 @@ Do not reward a large speedup until the baseline agrees with the canonical
 runner/reference and contention is excluded. Compile time must be excluded from
 steady-state latency unless compile latency is the declared metric.
 Reject a performance conclusion when the benchmark matrix does not exercise the
-changed dispatch/code path, or when a dirty candidate is labeled only by the
-unchanged base commit without a diff hash/snapshot identity.
+changed dispatch/code path. Require one paired end-to-end comparison with the
+same rows, a passing correctness gate, an aggregate speedup threshold, and a
+worst-row floor.
 
-## Reviewer-controlled Try recall
+Once a candidate passes those checks, optimize is finished. Require validation,
+reporting, and a clean feature-branch delivery before permitting another tuning
+attempt.
 
-The prompt states `Round: x/y` (normally three rounds). A correct, path-covered
-candidate that is slower or within noise before the final round `y` is only a
-candidate failure. Do not return `done`, certify optimize, or advance it to
-validation/report. Return `continue`; require a compact regression diagnosis and
-a materially distinct next implementation based on profile evidence, current
-primary sources, and plausible headroom. Distinct means a changed mechanism—
-tiling, layout, fusion, launch structure, tensorization, or reuse—not an unchanged
-rerun or blind parameter sweep.
+## Reviewer-controlled Try accounting
 
-In the final available round, independently decide whether the direction has a
-retained winner or is genuinely exhausted. Exhaustion requires concrete evidence:
-the tested implementations, regression attribution, remaining plausible
-mechanisms, and why none can reasonably clear the end-to-end noise/MDE. If
-exhausted, return `replan_requested` with
-`next_action` asking Planner to select a new mechanism;
+Round count is not candidate Try count. A Try exists only after a candidate is
+correct, path-covered, and validly measured. Environment, dependency, command,
+toolchain, benchmark, or measurement-infrastructure repair rounds do not consume
+a Try and do not justify ending the mission.
+
+A correct candidate that is slower or within noise is one candidate failure. Do
+not return `done`, certify optimize, or advance it to validation/report. Return
+`continue` only when profile evidence and plausible headroom support a materially
+distinct implementation. Distinct means a changed mechanism—tiling, layout,
+fusion, launch structure, tensorization, or reuse—not an unchanged rerun or blind
+parameter sweep.
+
+Decide exhaustion from evidence, never from `Round: x/y`. Exhaustion requires the
+tested implementations, regression attribution, remaining plausible mechanisms,
+and why none can reasonably clear the end-to-end noise/MDE. If exhausted, return
+`replan_requested` with `next_action` asking Planner to select a new mechanism;
 do not mark a failed candidate `done` merely to send it through validate/report.
 
 ## Upstream readiness
@@ -156,4 +162,4 @@ contributor. Require `RESULTS.md` to state:
 
 Return `done` only when a maintainer can reproduce the result without guessing
 which hidden package, compiler, profiler permission, or environment mutation
-made it work.
+made it work. Reporting is followed by delivery; do not reopen optimization.
