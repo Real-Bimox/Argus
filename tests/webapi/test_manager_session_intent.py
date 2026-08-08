@@ -288,7 +288,15 @@ def test_contextual_turn_is_supplied_to_classification_and_dispatch(
         chat_state["_frontdoor_lifetime"] = "bounded"
         return None, None, "complex"
 
-    def dispatch(_mem, body, _state, _root_task_id, _cancelled, _emitter):
+    def dispatch(
+        _mem,
+        body,
+        _state,
+        _root_task_id,
+        _cancelled,
+        _emitter,
+        **_kwargs,
+    ):
         seen["dispatch"] = body
         return SimpleNamespace(id="task-1", title="repair parser", status="pending"), False, None
 
