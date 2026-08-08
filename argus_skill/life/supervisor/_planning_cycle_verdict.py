@@ -29,19 +29,27 @@ class PlanningCycleVerdictMixin:
 
     def _pc_prepare_direct_stage_task(self, state: _PlanCycleState) -> Any | None:
         """Bypass Planner when the vertical declares a plainly missing bundle."""
-        if state.revision_request is not None or state.fresh_operator_messages:
+        if state.fresh_operator_messages:
             return None
-        task = self._direct_current_stage_task()
+        if state.revision_request is not None:
+            task = self._direct_stage_revision_task(state.revision_request)
+            reason = (
+                "host dispatched the Manager-approved same-stage revision "
+                "without another repository audit"
+            )
+        else:
+            task = self._direct_current_stage_task()
+            reason = (
+                "host dispatched the missing primary current-stage deliverable "
+                "without another repository audit"
+            )
         if task is None:
             return None
         from ...planner import PlannerVerdict
 
         state.verdict = PlannerVerdict(
             project_done=False,
-            reason=(
-                "host dispatched the missing primary current-stage deliverable "
-                "without another repository audit"
-            ),
+            reason=reason,
             new_tasks=[task],
         )
         self._emit_status(f"planner: directly delegated {task.title}")

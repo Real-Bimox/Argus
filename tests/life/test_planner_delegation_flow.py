@@ -201,6 +201,78 @@ def test_missing_kernel_discover_bundle_is_delegated_without_planner_call(
     assert "edit production source code" in item.non_goals
 
 
+def test_manager_approved_discover_revision_bypasses_planner(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    research = project / "research"
+    (research / "frontier").mkdir(parents=True)
+    (research / "ALGORITHM_PLAN.md").write_text("# rejected plan\n", encoding="utf-8")
+    (research / "frontier" / "discover.json").write_text("{}\n", encoding="utf-8")
+    life = tmp_path / "life"
+    planner = _PlannerBackend([])
+    supervisor = _kernel_supervisor(project, life, planner)
+    state_path = life / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["current_stage"] = "discover"
+    state["stages"] = {
+        "scope": {"status": "done"},
+        "discover": {"status": "in_progress"},
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    prior = supervisor.memory.backlog.add(BacklogItem.new(
+        title="Complete the kernel_engineering discover deliverable",
+        objective="Select the first algorithm candidate.",
+        tags=[
+            "planner",
+            "scope:bounded",
+            "bounded_dag_node",
+            "stage_closing",
+            "review:required",
+            "stage:discover",
+        ],
+        plan_id="plan-old",
+        plan_version=1,
+        node_key="stage-discover",
+    ))
+    revision = {
+        "item_id": prior.id,
+        "review_status": "replan_requested",
+        "review_reason": (
+            "The selected grouped-token dataflow already exists in the Gluon backend."
+        ),
+        "expected_plan_id": "plan-old",
+        "expected_plan_version": 1,
+        "plan_challenge": {
+            "manager_action": "replace",
+            "manager_reason": "Later evidence refuted the novelty premise.",
+            "challenge": "Grouped-token reduction was treated as a new algorithm.",
+            "alternative": (
+                "Evaluate omitted implementations and select a materially distinct "
+                "reformulation, or record that none survives."
+            ),
+            "authority_impact": "technical",
+        },
+    }
+
+    assert supervisor._plan_next_work(revision_request=revision) is True
+
+    assert planner.calls == []
+    rows = {item.id: item for item in supervisor.memory.backlog.all()}
+    assert rows[prior.id].status == "superseded"
+    replacement = next(item for item in rows.values() if item.status == "pending")
+    assert replacement.title == "Revise the kernel_engineering discover decision"
+    assert replacement.plan_id != "plan-old"
+    assert replacement.plan_version == 2
+    assert "already exists in the Gluon backend" in replacement.objective
+    assert "materially distinct reformulation" in replacement.objective
+    assert any(
+        "rerun settled repository research" in item
+        for item in replacement.non_goals
+    )
+
+
 def test_task_policy_uses_isolated_stage_and_execution_evidence_root(
     tmp_path: Path,
 ) -> None:

@@ -22,6 +22,90 @@ _PLANNER_RECENT_HISTORY_WINDOW = 20
 
 
 class PlannerOrchestrationMixin:
+    def _direct_stage_revision_task(self, revision: dict[str, Any]) -> Any | None:
+        """Turn a Manager-approved technical challenge into bounded repair."""
+        challenge = revision.get("plan_challenge")
+        challenge = challenge if isinstance(challenge, dict) else {}
+        action = str(challenge.get("manager_action") or "").strip().lower()
+        authority = str(challenge.get("authority_impact") or "").strip().lower()
+        if action not in {"revise", "replace"} or authority == "operator":
+            return None
+
+        state_root = self._artifact_root()
+        try:
+            from ...planner import TaskSpec
+            from ...skills.stage_machine import current_stage
+            from ...skills.vertical_select import resolve_vertical
+            from ...verticals._base import load_vertical_contract
+
+            vertical = resolve_vertical(state_root)
+            stage = current_stage(state_root)
+            contract = load_vertical_contract(vertical, project_root=state_root)
+            deliverables = contract.primary_deliverables(stage)
+        except Exception:  # noqa: BLE001 - ordinary Planner remains the fallback
+            log.exception("failed to resolve direct stage revision")
+            return None
+        if not deliverables:
+            return None
+
+        reason = str(
+            revision.get("review_reason")
+            or revision.get("reason")
+            or challenge.get("manager_reason")
+            or ""
+        ).strip()
+        challenged = str(challenge.get("challenge") or reason).strip()
+        alternative = str(challenge.get("alternative") or "").strip()
+        checks = tuple((contract.stage_checks or {}).get(stage, ()))
+        check_text = " | ".join(
+            f"{label}: `{command}`" for label, command in checks
+        ) or "the current-stage checklist reports no unresolved issue"
+        paths = ", ".join(f"`{path}`" for path in deliverables)
+        return TaskSpec(
+            key=f"stage-{stage}-revision",
+            title=f"Revise the {vertical} {stage} decision",
+            objective=(
+                f"Repair only the current `{stage}` decision and its bundle {paths}. "
+                f"Independent review rejected the prior route: {reason or challenged}. "
+                f"Challenged assumption: {challenged or '(not specified)'}. "
+                f"Replacement direction: {alternative or 'reassess from the recorded evidence'}. "
+                "Preserve valid derivations and verified evidence, but replace the "
+                "invalid selection rather than renaming it. Inspect only evidence "
+                "needed to resolve this challenge. If no materially distinct candidate "
+                "survives, record that honest result instead of forcing a prototype. "
+                "Do not edit production source, pipeline state, or downstream artifacts."
+            ),
+            impact_score=5,
+            impact_area="decision quality and revision latency",
+            evidence=reason or challenged,
+            hypothesis=(
+                alternative
+                or "The Reviewer challenge identifies a bounded same-stage correction."
+            ),
+            goal_contribution=(
+                f"Replace a refuted `{stage}` choice before downstream execution."
+            ),
+            expected_regressions=(
+                "Previously valid stage evidence remains; only the challenged decision "
+                "and directly affected frontier claims should change."
+            ),
+            decision_rule=(
+                "Advance only if independent review confirms a materially distinct, "
+                "falsifiable current-stage decision; otherwise report no surviving candidate."
+            ),
+            acceptance_check=f"All revised `{stage}` checks pass — {check_text}",
+            non_goals=[
+                "rerun settled repository research unrelated to the challenge",
+                "edit production source code",
+                "advance or edit pipeline state",
+                "perform downstream implementation or benchmarking",
+            ],
+            scope="bounded",
+            stage_closing=True,
+            require_independent_review=True,
+            skip_stage_transition=False,
+        )
+
     def _direct_current_stage_task(self) -> Any | None:
         """Return one host-authored task for a plainly missing stage bundle."""
         state_root = self._artifact_root()
