@@ -272,7 +272,10 @@ class PlanningCycleMixin(
 
         decision = self._bound_manager().decide_stage_transition(
             review=review,
-            planner_verdict=verdict,
+            # This path replays previously unassessed Reviewer evidence. The
+            # empty Planner verdict only triggered recovery; it is not new
+            # stage evidence and must not force another semantic adjudication.
+            planner_verdict=None,
             project_root=root,
             on_event=getattr(self.sink, "handle_event", None),
             open_ended=True,
@@ -290,7 +293,7 @@ class PlanningCycleMixin(
             "trigger": "reviewed_stage_empty_plan_reconciliation",
             "recovered_item_id": item.id,
         })
-        if decision.source == "manager_llm":
+        if decision.source in {"manager_llm", "reviewer_certified_policy"}:
             outcome = dict(item.outcome)
             outcome["stage_certification"] = {
                 "advance": "certified",
