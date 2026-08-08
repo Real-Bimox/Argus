@@ -398,7 +398,10 @@ class PlanningCycleEnqueueMixin:
             from ...verticals._base import load_vertical, vertical_planner_task_issues
 
             policy_root = Path(context_root or self._project_workdir()).resolve()
-            policy_stage = str(self._current_pipeline_stage() or "").strip().lower()
+            stage_reader = getattr(self, "_current_pipeline_stage", None)
+            policy_stage = str(
+                stage_reader() if callable(stage_reader) else ""
+            ).strip().lower()
             policy_vertical = resolve_vertical(policy_root)
             policy_issues = vertical_planner_task_issues(
                 load_vertical(policy_vertical, project_root=policy_root),

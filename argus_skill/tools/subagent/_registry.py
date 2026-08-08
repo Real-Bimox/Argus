@@ -18,6 +18,7 @@ try:
 except ImportError:  # pragma: no cover - non-POSIX fallback
     fcntl = None  # type: ignore[assignment]
 
+from ...core.daemon_lock import is_pid_running
 from ._text import _tail_file
 
 # ---------------------------------------------------------------------------
@@ -193,11 +194,7 @@ def _list_tasks() -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 def _is_pid_alive(pid: int) -> bool:
-    try:
-        os.kill(pid, 0)
-        return True
-    except (OSError, ProcessLookupError):
-        return False
+    return is_pid_running(pid)
 
 
 def _read_exit_code(task_id: str, run_id: str | None = None) -> int | None:
