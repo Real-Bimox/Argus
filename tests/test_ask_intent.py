@@ -112,7 +112,7 @@ def test_the_web_bridge_intercepts_before_classification() -> None:
     from argus_skill.webapi import manager_bridge
 
     source = inspect.getsource(manager_bridge.manager_message)
-    ask_at = source.index("strip_ask_prefix(body)")
+    ask_at = source.index("strip_ask_prefix(operator_text)")
     lock_at = source.index("lock = _lock_for(sid)")
 
     # Classification happens inside the Manager session lock. Intercepting
