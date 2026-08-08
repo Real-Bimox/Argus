@@ -363,22 +363,18 @@ class MissionExecutionRuntimeMixin:
                         if state.configured_execution_workdir
                         else ""
                     )
+                maintenance_mission = "framework_maintenance" in state.item_tags
                 if "maintenance_mission" in params or _accepts_kw:
-                    execute_kwargs["maintenance_mission"] = (
-                        "framework_maintenance" in state.item_tags
-                    )
-                manager_decision = (
-                    item.manager_decision
-                    if isinstance(item.manager_decision, dict)
-                    else {}
-                )
+                    execute_kwargs["maintenance_mission"] = maintenance_mission
                 if "vertical_override" in params or _accepts_kw:
+                    manager_decision = (
+                        item.manager_decision
+                        if maintenance_mission
+                        and isinstance(item.manager_decision, dict)
+                        else {}
+                    )
                     execute_kwargs["vertical_override"] = str(
                         manager_decision.get("vertical") or ""
-                    ).strip()
-                if "stage_override" in params or _accepts_kw:
-                    execute_kwargs["stage_override"] = str(
-                        manager_decision.get("stage") or ""
                     ).strip()
                 progressive_matrix = is_progressive_experiment_matrix(item)
                 if (
@@ -414,14 +410,12 @@ class MissionExecutionRuntimeMixin:
                 )
                 manager_decision = (
                     item.manager_decision
-                    if isinstance(item.manager_decision, dict)
+                    if "framework_maintenance" in state.item_tags
+                    and isinstance(item.manager_decision, dict)
                     else {}
                 )
                 execute_kwargs["vertical_override"] = str(
                     manager_decision.get("vertical") or ""
-                ).strip()
-                execute_kwargs["stage_override"] = str(
-                    manager_decision.get("stage") or ""
                 ).strip()
                 if state.repair_capability is not None:
                     execute_kwargs["max_rounds_override"] = 1

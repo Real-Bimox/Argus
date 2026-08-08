@@ -31,7 +31,7 @@ class SkillLibraryMixin:
             from ..verticals._base import load_vertical_contract
             from .stage_machine import current_stage
 
-            stage = self.config.active_stage or current_stage(mission.workdir) or ""
+            stage = current_stage(mission.workdir) or ""
             contract = load_vertical_contract(
                 mission.active_vertical,
                 project_root=mission.workdir,

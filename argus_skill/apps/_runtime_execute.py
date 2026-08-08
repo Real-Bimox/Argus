@@ -368,7 +368,6 @@ class SkillLoopExecuteMixin:
         working_dir_override: str = "",
         maintenance_mission: bool = False,
         vertical_override: str = "",
-        stage_override: str = "",
     ) -> _Outcome:
         # Chat fast-path (operator-front-door-only; gated by _allow_chat_fast_path).
         # The classifier + reply logic lives in ``_maybe_chat_outcome``; here we
@@ -391,7 +390,6 @@ class SkillLoopExecuteMixin:
             working_dir_override=working_dir_override,
             maintenance_mission=maintenance_mission,
             vertical_override=vertical_override,
-            stage_override=stage_override,
             require_independent_review=require_independent_review,
             max_rounds_override=max_rounds_override,
             progressive_experiment_matrix=progressive_experiment_matrix,
@@ -462,7 +460,6 @@ class SkillLoopExecuteMixin:
         working_dir_override: str,
         maintenance_mission: bool,
         vertical_override: str,
-        stage_override: str,
         require_independent_review: bool,
         max_rounds_override: int | None,
         progressive_experiment_matrix: bool,
@@ -562,7 +559,6 @@ class SkillLoopExecuteMixin:
             # undecided task is bounded/non-paper.
             "paper_mission": False,
             "active_vertical": active_vertical,
-            "active_stage": str(stage_override or "").strip(),
             # Shared Markdown checkpoint in internal project state. Engineer
             # and Reviewer receive its absolute path and edit it in sequence;
             # output workdirs contain deliverables only.
@@ -783,10 +779,7 @@ class SkillLoopExecuteMixin:
             from ..roles.prompts.planner import preview_request
 
             planner_role_banner = resolve_role_prompt(
-                preview_request(
-                    workdir,
-                    vertical=config.active_vertical or None,
-                )
+                preview_request(workdir)
             ).role_banner
             sink.handle_event(
                 {

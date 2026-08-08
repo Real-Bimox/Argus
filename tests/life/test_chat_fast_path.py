@@ -702,7 +702,6 @@ def test_execute_uses_full_pipeline_on_real_task(
         skip_git_repo_check: bool = True
         workflow_mode: str = "staged"
         active_vertical: str = ""
-        active_stage: str = ""
 
     runner._SkillLoopConfig = _StubConfig
 

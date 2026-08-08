@@ -285,7 +285,6 @@ def render_reviewer_prompt(
     preselected_skill_block: str | None = None,
     working_dir: str | Path | None = None,
     vertical: str = "",
-    stage_override: str = "",
 ) -> tuple[str, str]:
     """Render the complete Reviewer prompt as ``(static_preamble, round_delta)``."""
     from ...core.project import resolve_project_root
@@ -301,13 +300,16 @@ def render_reviewer_prompt(
     _proot = resolve_project_root(working_dir)
     scope_normalized = (scope or "").strip().lower().replace("-", "_")
     _persisted = _persisted_vertical(_proot)
-    routed_vertical = str(vertical or "").strip() or _persisted
+    explicit_vertical = str(vertical or "").strip()
+    routed_vertical = explicit_vertical or _persisted
     prompt_context = resolve_role_prompt(
         evaluate_request(
             _proot,
             scope=scope_normalized,
-            stage=str(stage_override or "").strip() or None,
             vertical=routed_vertical,
+            checklist_mode=(
+                ChecklistMode.NONE if explicit_vertical else ChecklistMode.AUTO
+            ),
         )
     )
     persisted_prompt_context = (

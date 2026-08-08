@@ -793,7 +793,6 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             manager_decision={
                 "routed": True,
                 "vertical": "argus_maintenance",
-                "stage": "verify",
                 "workflow_mode": "direct",
             },
         ))
