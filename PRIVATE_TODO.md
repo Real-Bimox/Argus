@@ -121,6 +121,13 @@ bounded, productive local regression into an unrelated replacement mission.
       external blocker and to state the progress judgment explicitly.
 - [x] Added a real 26-round regression test: round 24 temporarily regresses, the
       mission recovers, and Reviewer accepts it at round 26.
+- [x] Removed the bounded-DAG node's fixed three-round override, its 2–8 clamp,
+      and the pseudo-unbounded exception inferred from a `matrix` keyword. Bounded
+      nodes now use the same progress, stall, and global emergency `max_rounds`
+      policy as other missions.
+- [x] Defined rounds separately from candidate Tries: environment, command,
+      toolchain, benchmark, and measurement-infrastructure repair rounds consume
+      no Try and cannot establish exhaustion from a counter.
 
 **Acceptance criteria**
 
@@ -129,6 +136,8 @@ bounded, productive local regression into an unrelated replacement mission.
 - A truly stagnant loop still terminates under budget/no-progress policy.
 - Continuation preserves the objective and durable checkpoint while exposing why the
   boundary was crossed.
+- A bounded DAG node is not replaced at round three; true stalls still stop through
+  existing no-progress, timeout, budget, backend, and global emergency-cap policy.
 
 ---
 

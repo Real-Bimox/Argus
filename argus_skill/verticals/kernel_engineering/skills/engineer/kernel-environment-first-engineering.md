@@ -184,13 +184,14 @@ ladder and its stop conditions.
    Record `execution_status`, `failure_class`, and `idea_status` separately.
    Source editing is unlocked only when `LEVERAGE.json` says `proceed`, unless
    new evidence changes the measured end-to-end share or the required MDE.
-   Use the full reviewed Engineer–Reviewer exploration budget (normally three
-   rounds; follow the live `Round: x/y`) for a direction whose candidate is
-   correct and path-covered but not yet faster. Try 1 builds the functional
-   candidate; intermediate Tries use measured regression/profile evidence and
-   current primary sources to change a material mechanism; the final Try
-   implements the strongest remaining evidence-backed design. Do not spend
-   later Tries on an unchanged rerun or cosmetic knob sweep.
+   Round count is not candidate Try count. A Try begins only when a candidate is
+   correct, path-covered, and validly measured; environment, dependency, command,
+   toolchain, benchmark, or measurement-infrastructure repair rounds do not
+   consume one. Continue the same mission while Reviewer-classified evidence is
+   progressing. After a failed candidate, use measured regression/profile
+   evidence and current primary sources to justify a materially distinct
+   mechanism. Do not spend later Tries on an unchanged rerun or cosmetic knob
+   sweep, and do not wait for a final numbered round to decide exhaustion.
    Before the run, check the ledger for an equivalent mechanism/config and write
    the one-line claim being tested. After the run, retain a compact result and
    reusable insight; do not paste raw logs into the next Engineer prompt.

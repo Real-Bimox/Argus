@@ -121,23 +121,24 @@ Reject a performance conclusion when the benchmark matrix does not exercise the
 changed dispatch/code path, or when a dirty candidate is labeled only by the
 unchanged base commit without a diff hash/snapshot identity.
 
-## Reviewer-controlled Try recall
+## Reviewer-controlled Try accounting
 
-The prompt states `Round: x/y` (normally three rounds). A correct, path-covered
-candidate that is slower or within noise before the final round `y` is only a
-candidate failure. Do not return `done`, certify optimize, or advance it to
-validation/report. Return `continue`; require a compact regression diagnosis and
-a materially distinct next implementation based on profile evidence, current
-primary sources, and plausible headroom. Distinct means a changed mechanism—
-tiling, layout, fusion, launch structure, tensorization, or reuse—not an unchanged
-rerun or blind parameter sweep.
+Round count is not candidate Try count. A Try exists only after a candidate is
+correct, path-covered, and validly measured. Environment, dependency, command,
+toolchain, benchmark, or measurement-infrastructure repair rounds do not consume
+a Try and do not justify ending the mission.
 
-In the final available round, independently decide whether the direction has a
-retained winner or is genuinely exhausted. Exhaustion requires concrete evidence:
-the tested implementations, regression attribution, remaining plausible
-mechanisms, and why none can reasonably clear the end-to-end noise/MDE. If
-exhausted, return `replan_requested` with
-`next_action` asking Planner to select a new mechanism;
+A correct candidate that is slower or within noise is one candidate failure. Do
+not return `done`, certify optimize, or advance it to validation/report. Return
+`continue` only when profile evidence and plausible headroom support a materially
+distinct implementation. Distinct means a changed mechanism—tiling, layout,
+fusion, launch structure, tensorization, or reuse—not an unchanged rerun or blind
+parameter sweep.
+
+Decide exhaustion from evidence, never from `Round: x/y`. Exhaustion requires the
+tested implementations, regression attribution, remaining plausible mechanisms,
+and why none can reasonably clear the end-to-end noise/MDE. If exhausted, return
+`replan_requested` with `next_action` asking Planner to select a new mechanism;
 do not mark a failed candidate `done` merely to send it through validate/report.
 
 ## Upstream readiness

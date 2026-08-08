@@ -164,18 +164,19 @@ def test_explicit_no_progress_keeps_decision_timeout_clock(
     assert "1800 seconds without decision progress" in control.terminal[3]
 
 
-def test_explicit_progress_resets_stall_streak_on_real_run(tmp_path) -> None:
+def test_explicit_progress_continues_beyond_three_rounds(tmp_path) -> None:
     backend = MemoryBackend()
     _queue_round(backend, 1, forward_progress=False)
     _queue_round(backend, 2, forward_progress=True)
     _queue_round(backend, 3, forward_progress=False)
-    _queue_round(backend, 4, status="done", forward_progress=True)
+    _queue_round(backend, 4, forward_progress=True)
+    _queue_round(backend, 5, status="done", forward_progress=True)
 
     status, rounds, _final, _reason, _thread = _engineer(backend).run(
         objective="Converge one residual at a time.",
         engineer_prompt_builder=lambda _next, _static=True: "Do the task.",
         supervised_config=SupervisedConfig(
-            max_rounds=4,
+            max_rounds=5,
             stall_threshold=2,
             soft_round_limit=0,
             hard_escalate_rounds=0,
@@ -185,7 +186,7 @@ def test_explicit_progress_resets_stall_streak_on_real_run(tmp_path) -> None:
     )
 
     assert status == "done"
-    assert len(rounds) == 4
+    assert len(rounds) == 5
 
 
 def test_productive_mission_crosses_round_24_with_a_local_regression(

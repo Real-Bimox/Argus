@@ -108,12 +108,19 @@ invariant 可能暂时破坏已经通过的 obligations；一次完整重构可�
 - [x] 继续使用 `CHECKPOINT.md` 传递同一个 mission；不能只因为轮数到了就替换目标。
 - [x] 更新 Reviewer 指引，区分仍有产出的内部工作和真正外部阻塞，并明确写出进展判断。
 - [x] 增加真实 26 轮回归测试：第 24 轮局部回退，后续恢复，第 26 轮通过 Reviewer。
+- [x] 删除 bounded DAG node 的固定三轮 override、2–8 clamp，以及依赖任务标题中
+      `matrix` 关键词启用的伪无限轮数例外；bounded node 现在复用同一套进展、停滞和
+      全局 emergency `max_rounds` 策略。
+- [x] 明确 round 不是 candidate Try；环境、命令、toolchain、benchmark 或 measurement
+      infrastructure 修复轮次不消耗 Try，也不因轮数触发方向穷尽。
 
 **验收标准**
 
 - 即使一个或多个局部指标暂时回退，有产出的长程 mission 也能超过 24 轮而不被替换。
 - 真正停滞的循环仍会按预算或无进展策略终止。
 - continuation 保留原目标和持久 checkpoint，同时能说明为什么允许越过边界。
+- bounded DAG node 不会在第三轮被强制替换；真实停滞仍由已有 no-progress、timeout、
+  budget、backend 和最终全局上限终止。
 
 ---
 

@@ -235,10 +235,10 @@ class SupervisedConfig:
 
         ``stall_threshold`` / ``soft_round_limit`` / ``hard_escalate_rounds``
         are ABSOLUTE round counts sized for the default ``max_rounds`` (500).
-        A caller may lower the budget far below them for one mission —
-        ``bounded_dag_node_max_rounds()`` yields 3 — and a guard whose
-        threshold is not strictly reachable within the budget can then never
-        fire. Nothing reports this: the value stays in the config, is passed
+        A specialized caller may explicitly lower the budget for one mission,
+        and a guard whose threshold is not strictly reachable within that
+        budget can then never fire. Nothing reports this: the value stays in
+        the config, is passed
         to the classifier, and evaluates to ``False`` on every round.
 
         Semantic stall is counted only from the Reviewer's structured

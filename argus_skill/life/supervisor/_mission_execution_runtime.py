@@ -22,11 +22,7 @@ from ...core.usage import UsageLedger, UsageRecord
 from ..memory import BacklogItem
 from ..mission_outcome import mission_outcome_class, mission_outcome_dimensions
 from ._cost import _CostTrackingSink
-from ._mission_execution_helpers import (
-    _MissionRunState,
-    bounded_dag_node_max_rounds,
-    is_progressive_experiment_matrix,
-)
+from ._mission_execution_helpers import _MissionRunState
 
 log = logging.getLogger(__name__)
 
@@ -380,19 +376,6 @@ class MissionExecutionRuntimeMixin:
                     execute_kwargs["vertical_override"] = str(
                         manager_decision.get("vertical") or ""
                     ).strip()
-                progressive_matrix = is_progressive_experiment_matrix(item)
-                if (
-                    "progressive_experiment_matrix" in params
-                    or _accepts_kw
-                ):
-                    execute_kwargs["progressive_experiment_matrix"] = (
-                        progressive_matrix
-                    )
-                if "bounded_dag_node" in state.item_tags and not progressive_matrix:
-                    if "max_rounds_override" in params or _accepts_kw:
-                        execute_kwargs["max_rounds_override"] = (
-                            bounded_dag_node_max_rounds()
-                        )
                 if state.repair_capability is not None:
                     if "max_rounds_override" in params or _accepts_kw:
                         execute_kwargs["max_rounds_override"] = 1
