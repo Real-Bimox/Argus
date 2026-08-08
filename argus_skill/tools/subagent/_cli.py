@@ -16,9 +16,9 @@ from ._discussion_log import (
     _engineer_turn_count,
     _mirror_discussion_md,
 )
+from ._llm import resolve_supervisor_model
 from ._registry import (
     DISCUSSION_STALE_AFTER_S,
-    SUPERVISOR_MODEL,
     _append_experiment_history,
     _effective_run_dir,
     _format_metric_line,
@@ -276,7 +276,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
             description=args.description,
             timeout=args.timeout,
             monitor_interval=getattr(args, "monitor_interval", 120) or 120,
-            model=getattr(args, "model", SUPERVISOR_MODEL) or SUPERVISOR_MODEL,
+            model=getattr(args, "model", None) or resolve_supervisor_model(),
             cwd=cwd,
             run_dir=run_dir,
             preflight=not getattr(args, "no_preflight", False),
@@ -501,7 +501,11 @@ def main() -> int:
     p_submit.add_argument("--monitor-interval", type=int, default=120,
                           help="Base seconds between supervisor checks; backs off "
                                "while healthy, tightens when degrading (supervised mode)")
-    p_submit.add_argument("--model", default=SUPERVISOR_MODEL, help="Supervisor model (supervised mode)")
+    p_submit.add_argument(
+        "--model",
+        default=None,
+        help="Supervisor model (defaults to configured supervisor/shared model)",
+    )
     p_submit.add_argument("--run-dir", default=None,
                           help="Run directory whose progress.jsonl/status.json the "
                                "supervisor reads and where it writes STOP on early-stop")

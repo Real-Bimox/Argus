@@ -58,7 +58,12 @@ from ._discussion_log import (
     _render_discussion,
     _reset_discussion,
 )
-from ._llm import _run_codex
+from ._llm import (
+    _run_codex,
+    _run_supervisor,
+    resolve_supervisor_model,
+    resolve_supervisor_reasoning_effort,
+)
 from ._normalize import (
     _EMPTY_CONCERN_PREFIXES,
     _EMPTY_CONCERNS,
@@ -176,7 +181,10 @@ __all__ = [
     "_list_tasks",
     "_is_pid_alive",
     "_run_direct",
+    "_run_supervisor",
     "_run_codex",
+    "resolve_supervisor_model",
+    "resolve_supervisor_reasoning_effort",
     "_terminate_proc",
     "_mirror_discussion_md",
     "_append_experiment_history",

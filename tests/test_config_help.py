@@ -56,6 +56,9 @@ def test_registry_covers_the_key_operator_knobs() -> None:
     # HAPI's per-role backend knobs are registered too (so they stop being invisible).
     assert "ARGUS_SKILL_REVIEWER_BACKEND" in names
     assert "ARGUS_SKILL_PLANNER_RUNNER_BIN" in names
+    assert "ARGUS_SKILL_SUPERVISOR_BACKEND" in names
+    assert "ARGUS_SKILL_SUPERVISOR_RUNNER_BIN" in names
+    assert "ARGUS_SKILL_SUPERVISOR_MODEL" in names
 
 
 def test_config_help_does_not_advertise_formal_vertical_override() -> None:

@@ -28,7 +28,7 @@ REGISTRY_DIR = Path(".argus_subagents")
 SUPERVISOR_MODEL = "gpt-5.5"
 SUPERVISOR_INTERVAL_CAP = 900
 
-# Reuse one persistent codex supervisor thread for at most this many checks,
+# Reuse one persistent supervisor thread for at most this many checks,
 # then rotate to a fresh thread seeded with a short summary so a multi-hour
 # run never overflows the context window.
 SUPERVISOR_THREAD_MAX_CHECKS = 12
@@ -36,7 +36,7 @@ SUPERVISOR_THREAD_MAX_CHECKS = 12
 # A parked supervisor refreshes ``last_heartbeat`` every poll. A discussion
 # whose heartbeat is older than this is treated as abandoned (worker hung/dead)
 # so it never wedges the relaunch gate forever. Sized to clear the worst-case
-# gap between heartbeats: one poll plus a resume-then-fresh codex retry
+# gap between heartbeats: one poll plus a resume-then-fresh backend retry
 # (~2×120s).
 DISCUSSION_STALE_AFTER_S = 600
 
