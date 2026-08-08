@@ -106,6 +106,54 @@ test('rejects an unknown or mismatched process', async () => {
   }), null);
 });
 
+test('accepts a matching macOS ps command line', async () => {
+  const ownerFile = await tmpOwner(BASE_RECORD);
+  const owned = await readOwnedApi({
+    path: ownerFile,
+    host: BASE_RECORD.host,
+    port: BASE_RECORD.port,
+    backendBin: BASE_RECORD.backendBin,
+    inspect: async () => ({
+      alive: true,
+      argv: [],
+      commandLine: `/usr/bin/python3 ${BASE_RECORD.backendBin} --web --web-host ${BASE_RECORD.host} --web-port ${BASE_RECORD.port}`,
+    }),
+  });
+  assert.equal(owned?.pid, BASE_RECORD.pid);
+});
+
+test('accepts a matching macOS command line when the backend path contains spaces', async () => {
+  const record = { ...BASE_RECORD, backendBin: '/Users/Alex Smith/Argus/.venv/bin/argus-skill' };
+  const ownerFile = await tmpOwner(record);
+  const owned = await readOwnedApi({
+    path: ownerFile,
+    host: record.host,
+    port: record.port,
+    backendBin: record.backendBin,
+    inspect: async () => ({
+      alive: true,
+      argv: [],
+      commandLine: `/usr/bin/python3 ${record.backendBin} --web --web-port ${record.port}`,
+    }),
+  });
+  assert.equal(owned?.pid, record.pid);
+});
+
+test('rejects a macOS ps command line with the wrong port', async () => {
+  const ownerFile = await tmpOwner(BASE_RECORD);
+  assert.equal(await readOwnedApi({
+    path: ownerFile,
+    host: BASE_RECORD.host,
+    port: BASE_RECORD.port,
+    backendBin: BASE_RECORD.backendBin,
+    inspect: async () => ({
+      alive: true,
+      argv: [],
+      commandLine: `/usr/bin/python3 ${BASE_RECORD.backendBin} --web --web-port 7777`,
+    }),
+  }), null);
+});
+
 // ── Negative tests ─────────────────────────────────────────────────────────
 
 test('rejects malformed JSON', async () => {
