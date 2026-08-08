@@ -1,5 +1,13 @@
 import { isImeComposing } from '../lib/ime';
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+} from 'react';
 import { spinnerFrame } from '../lib/soul';
 import { thinkingStatusLine } from '../../../core/src/thinking';
 import { slashCompletions, applyCompletion } from '../../../core/src/commands';
@@ -18,6 +26,17 @@ import {
   SLASH_COMPLETION_VISIBLE_ROWS,
 } from './SlashCompletionMenu';
 import { useI18n } from '../i18n';
+import {
+  addComposerFiles,
+  dataTransferHasFiles,
+  extractFilesFromDataTransfer,
+  MESSAGE_ATTACHMENT_ACCEPT,
+  MESSAGE_ATTACHMENT_MAX_BYTES,
+  MESSAGE_ATTACHMENT_MAX_COUNT,
+  MESSAGE_ATTACHMENT_TOTAL_MAX_BYTES,
+} from '../lib/attachments';
+import { formatBytes } from '../lib/format';
+import { ComposerAttachmentChip } from './ComposerAttachmentChip';
 
 interface RewriteShortcutEvent {
   key: string;
@@ -81,7 +100,7 @@ export function ChatBox({
 }: {
   value: string;
   onChange: (text: string) => void;
-  onSend: (text: string) => boolean | Promise<boolean>;
+  onSend: (text: string, attachments?: File[]) => boolean | Promise<boolean>;
   onCancel: () => void;
   disabled: boolean;
   pending: boolean;
@@ -100,9 +119,13 @@ export function ChatBox({
 }) {
   const { t } = useI18n();
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [thinkTick, setThinkTick] = useState(0);
   // Track whether the user explicitly dismissed the menu for the current value.
   const [menuDismissed, setMenuDismissed] = useState(false);
+  const [attachments, setAttachments] = useState<Array<{ id: string; file: File }>>([]);
+  const [attachmentNotice, setAttachmentNotice] = useState('');
+  const [dragDepth, setDragDepth] = useState(0);
 
   useEffect(() => {
     if (!pending && !rewriting) return;
@@ -141,12 +164,91 @@ export function ChatBox({
   const submit = async () => {
     const t = value.trim();
     if (!t || pending || disabled) return;
-    const accepted = await onSend(t);
+    const accepted = await onSend(t, attachments.map((entry) => entry.file));
     if (accepted) {
       onChange('');
       onSlashSelectionChange(0);
       setMenuDismissed(false);
+      setAttachments([]);
+      setAttachmentNotice('');
     }
+  };
+
+  const attachmentError = (code: string, payload: Record<string, string | number>) => {
+    if (code === 'unsupported') return t('chat.attachUnsupported', payload);
+    if (code === 'too-large') return t('chat.attachTooLarge', payload);
+    if (code === 'too-many') return t('chat.attachTooMany', payload);
+    return t('chat.attachTotalTooLarge', payload);
+  };
+
+  const addFiles = (incoming: File[]) => {
+    if (!incoming.length || disabled || pending) return;
+    const { accepted, issues } = addComposerFiles(
+      attachments.map((entry) => entry.file),
+      incoming,
+    );
+    if (accepted.length) {
+      setAttachments((current) => [
+        ...current,
+        ...accepted.map((file) => ({
+          id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+          file,
+        })),
+      ]);
+    }
+    setAttachmentNotice(
+      issues.map((issue) => {
+        if (issue.code === 'unsupported') {
+          return attachmentError(issue.code, { name: issue.fileName });
+        }
+        if (issue.code === 'too-large') {
+          return attachmentError(issue.code, {
+            name: issue.fileName,
+            size: formatBytes(issue.limitBytes),
+          });
+        }
+        if (issue.code === 'too-many') {
+          return attachmentError(issue.code, { count: issue.limitCount });
+        }
+        return attachmentError(issue.code, { size: formatBytes(issue.limitBytes) });
+      }).join(' '),
+    );
+  };
+
+  const onFilePick = (event: ChangeEvent<HTMLInputElement>) => {
+    addFiles(Array.from(event.target.files ?? []));
+    event.target.value = '';
+  };
+
+  const onPasteFiles = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = extractFilesFromDataTransfer(event.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    addFiles(files);
+  };
+
+  const onDragEnterFiles = (event: DragEvent<HTMLDivElement>) => {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    setDragDepth((depth) => depth + 1);
+  };
+
+  const onDragOverFiles = (event: DragEvent<HTMLDivElement>) => {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+  };
+
+  const onDragLeaveFiles = (event: DragEvent<HTMLDivElement>) => {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    setDragDepth((depth) => Math.max(0, depth - 1));
+  };
+
+  const onDropFiles = (event: DragEvent<HTMLDivElement>) => {
+    if (!dataTransferHasFiles(event.dataTransfer)) return;
+    event.preventDefault();
+    setDragDepth(0);
+    addFiles(extractFilesFromDataTransfer(event.dataTransfer));
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -186,9 +288,15 @@ export function ChatBox({
   };
 
   return (
-    <div className={`glass-card glass-panel--raised flex flex-col overflow-hidden rounded-2xl ${
-      embedded ? 'shadow-[0_12px_36px_-22px_rgb(var(--spectral-violet)/0.7)] backdrop-blur-md' : ''
-    }`}>
+    <div
+      onDragEnter={onDragEnterFiles}
+      onDragOver={onDragOverFiles}
+      onDragLeave={onDragLeaveFiles}
+      onDrop={onDropFiles}
+      className={`glass-card glass-panel--raised flex flex-col overflow-hidden rounded-2xl ${
+        embedded ? 'shadow-[0_12px_36px_-22px_rgb(var(--spectral-violet)/0.7)] backdrop-blur-md' : ''
+      } ${dragDepth > 0 ? 'ring-2 ring-manager/60 ring-offset-0' : ''}`}
+    >
       {pending ? (
         <div className="border-b border-line/40 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2 text-xs">
@@ -231,8 +339,59 @@ export function ChatBox({
           onSelect={applySelected}
         />
       ) : null}
+      {(attachments.length || attachmentNotice || dragDepth > 0) ? (
+        <div className="border-b border-line/30 px-3 py-2">
+          {dragDepth > 0 ? (
+            <div className="mb-2 text-xs font-medium text-manager">{t('chat.attachDrop')}</div>
+          ) : null}
+          {attachments.length ? (
+            <div className="flex flex-wrap gap-2">
+              {attachments.map((entry) => (
+                <ComposerAttachmentChip
+                  key={entry.id}
+                  file={entry.file}
+                  removeLabel={t('chat.attachRemove', { name: entry.file.name })}
+                  onRemove={() => {
+                    setAttachments((current) => current.filter((item) => item.id !== entry.id));
+                    setAttachmentNotice('');
+                  }}
+                />
+              ))}
+            </div>
+          ) : null}
+          <div className={`mt-2 text-xs ${attachmentNotice ? 'text-err' : 'text-ink-faint'}`}>
+            {attachmentNotice || t('chat.attachHint', {
+              count: MESSAGE_ATTACHMENT_MAX_COUNT,
+              perFile: formatBytes(MESSAGE_ATTACHMENT_MAX_BYTES),
+              total: formatBytes(MESSAGE_ATTACHMENT_TOTAL_MAX_BYTES),
+            })}
+          </div>
+        </div>
+      ) : null}
       <div className="flex items-end gap-2 px-3 py-2">
         <span className="pb-2 font-mono text-lg text-blue" title={t('chat.messageArgus')}>›</span>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={MESSAGE_ATTACHMENT_ACCEPT}
+          onChange={onFilePick}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled || pending}
+          title={`${t('chat.attach')} · ${t('chat.attachHint', {
+            count: MESSAGE_ATTACHMENT_MAX_COUNT,
+            perFile: formatBytes(MESSAGE_ATTACHMENT_MAX_BYTES),
+            total: formatBytes(MESSAGE_ATTACHMENT_TOTAL_MAX_BYTES),
+          })}`}
+          aria-label={t('chat.attach')}
+          className="send-control h-9 w-9 shrink-0 rounded-full border-line/70 bg-panel/80 text-base text-ink-faint hover:border-blue/50 hover:bg-blue/10 hover:text-blue disabled:opacity-40"
+        >
+          📎
+        </button>
         <textarea
           ref={taRef}
           value={value}
@@ -241,6 +400,7 @@ export function ChatBox({
             onSlashSelectionChange(0);
             setMenuDismissed(false);
           }}
+          onPaste={onPasteFiles}
           onKeyDown={onKey}
           aria-keyshortcuts="Control+R Meta+R"
           rows={1}

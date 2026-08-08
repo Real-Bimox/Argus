@@ -228,6 +228,50 @@ def test_bounded_dispatch_rejects_context_ref_outside_worktree(memory, monkeypat
     assert commit_calls == []
 
 
+def test_bounded_dispatch_merges_operator_attachment_context_refs(memory, monkeypatch):
+    payload = memory.project_worktree / ".argus" / "attachments" / "s-dispatch01" / "att-deadbeefcafe" / "brief.md"
+    payload.parent.mkdir(parents=True)
+    payload.write_text("# brief\n", encoding="utf-8")
+    plan = SimpleNamespace(
+        reason="single task",
+        error="",
+        tasks=(
+            SimpleNamespace(
+                key="a",
+                deps=(),
+                title="Inspect upload",
+                objective="Read the operator attachment.",
+            ),
+        ),
+    )
+    monkeypatch.setattr(dispatch, "_plan_bounded_execution", lambda *args, **kwargs: plan)
+
+    item, _, _ = dispatch.enqueue_mission(
+        memory,
+        "operator request",
+        {"backend": "codex"},
+        context_refs=[{
+            "kind": "attachment",
+            "ref": ".argus/attachments/s-dispatch01/att-deadbeefcafe/brief.md",
+            "why": "operator-uploaded attachment in the canonical project workdir",
+            "attachment_id": "att-deadbeefcafe",
+            "original_name": "brief.md",
+            "mime": "text/markdown",
+            "size_bytes": "8",
+            "integrity": "01234567 89abcdef 01234567 89abcdef 01234567 89abcdef 01234567 89abcdef",
+        }],
+    )
+
+    assert item is not None
+    stored = memory.backlog.all()[0].context_refs[0]
+    assert stored["kind"] == "attachment"
+    assert stored["ref"].endswith("/brief.md")
+    assert stored["original_name"] == "brief.md"
+    assert stored["mime"] == "text/markdown"
+    assert stored["size_bytes"] == "8"
+    assert stored["integrity"].startswith("01234567")
+
+
 def test_bounded_dispatch_rejects_context_revision_changed_before_commit(
     memory,
     monkeypatch,

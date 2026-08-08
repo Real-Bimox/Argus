@@ -356,15 +356,17 @@ export default function App() {
     toggleSidebarCollapse: () => setLeftPanelOpen((value) => !value),
   });
 
-  const sendMessage = async (text: string): Promise<boolean> => {
+  const sendMessage = async (text: string, attachments: File[] = []): Promise<boolean> => {
     const requestSid = activeSid;
     if (!requestSid || messageRequestRef.current) return false;
 
-    const command = await dispatchWebCommand(text, commandHandlers);
-    if (command.kind === 'handled') return true;
-    if (command.kind === 'error') {
-      notify('error', command.message);
-      return false;
+    if (!attachments.length) {
+      const command = await dispatchWebCommand(text, commandHandlers);
+      if (command.kind === 'handled') return true;
+      if (command.kind === 'error') {
+        notify('error', command.message);
+        return false;
+      }
     }
 
     const requestId = ++messageEpochRef.current;
@@ -380,13 +382,44 @@ export default function App() {
         && !controller.signal.aborted
       );
     };
+    const resetCurrentRequest = () => {
+      if (messageRequestRef.current?.id === requestId) {
+        messageRequestRef.current = null;
+        setChatPending(false);
+        setManagerPhase('');
+        setManagerPhaseHeartbeat(false);
+        setManagerPhaseQuietS(0);
+        setManagerStartedAt(0);
+        setManagerSteps([]);
+      }
+    };
 
     setChatPending(true);
-    setManagerPhase('');
+    setManagerPhase(attachments.length ? t('chat.uploadingAttachments') : '');
     setManagerPhaseHeartbeat(false);
     setManagerPhaseQuietS(0);
     setManagerSteps([]);
     setManagerStartedAt(Date.now());
+    let attachmentRefs: Array<{ attachment_id: string }> = [];
+    if (attachments.length) {
+      try {
+        const uploaded = await api.uploadAttachments(
+          requestSid,
+          attachments,
+          controller.signal,
+        );
+        if (!isCurrent()) return false;
+        attachmentRefs = uploaded.attachments.map((attachment) => ({
+          attachment_id: attachment.attachment_id,
+        }));
+      } catch (error) {
+        if (isCurrent()) {
+          notify('error', t('chat.attachmentUploadFailed', { error: errorText(error) }));
+          resetCurrentRequest();
+        }
+        return false;
+      }
+    }
     setLocalConversationEvents((current) => [
       ...current,
       optimisticOperatorEvent(requestSid, requestId, text),
@@ -492,7 +525,10 @@ export default function App() {
             onError: (err) => {
               if (isCurrent()) streamErr = err;
             },
-          }, controller.signal);
+          }, {
+            signal: controller.signal,
+            attachments: attachmentRefs,
+          });
         } catch (error) {
           if (isCurrent()) streamErr = error as Error;
         }
@@ -502,7 +538,10 @@ export default function App() {
         // Fallback to the blocking endpoint only if streaming produced nothing.
         if (streamErr && !gotDelta) {
           try {
-            const result = await api.message(requestSid, text, controller.signal);
+            const result = await api.message(requestSid, text, {
+              signal: controller.signal,
+              attachments: attachmentRefs,
+            });
             if (!isCurrent()) return;
             showManagerText(result.reply);
             finishMessage(result);
@@ -512,15 +551,7 @@ export default function App() {
           }
         }
       } finally {
-        if (messageRequestRef.current?.id === requestId) {
-          messageRequestRef.current = null;
-          setChatPending(false);
-          setManagerPhase('');
-          setManagerPhaseHeartbeat(false);
-          setManagerPhaseQuietS(0);
-          setManagerStartedAt(0);
-          setManagerSteps([]);
-        }
+        resetCurrentRequest();
       }
     })();
 
@@ -692,6 +723,7 @@ export default function App() {
                     onAnswer={() => setPendingReplyOpen(true)}
                   />
                   <ChatBox
+                    key={activeSid || 'no-session'}
                     value={composerDraft}
                     onChange={setComposerDraft}
                     onSend={sendMessage}

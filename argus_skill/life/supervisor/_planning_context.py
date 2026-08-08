@@ -276,6 +276,16 @@ class PlanningContextMixin:
                 why = str(ref.get("why") or "").strip()
                 suffix = f" — {why}" if why else ""
                 lines.append(f"- [{kind}] {target}{suffix}")
+                attachment_fields = (
+                    ("attachment_id", str(ref.get("attachment_id") or "").strip()),
+                    ("original_name", str(ref.get("original_name") or "").strip()),
+                    ("mime", str(ref.get("mime") or "").strip()),
+                    ("size_bytes", str(ref.get("size_bytes") or "").strip()),
+                    ("integrity", str(ref.get("integrity") or "").strip()),
+                )
+                for label, value in attachment_fields:
+                    if value:
+                        lines.append(f"  {label}: {value}")
         return "\n".join(lines)
 
     def _journal_has_final_certification(self) -> bool:

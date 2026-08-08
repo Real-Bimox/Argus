@@ -163,6 +163,36 @@ def test_agent_task_context_hides_host_content_hash() -> None:
     assert "sha256" not in rendered
 
 
+def test_attachment_context_ref_renders_structured_metadata() -> None:
+    supervisor = LifeSupervisor.__new__(LifeSupervisor)
+    supervisor.config = SimpleNamespace(paper_mission=False)
+    item = BacklogItem.new(
+        title="Inspect upload",
+        objective="Read the operator attachment.",
+        context_refs=[
+            {
+                "kind": "attachment",
+                "ref": ".argus/attachments/s-demo/att-123456789abc/brief.md",
+                "why": "operator-uploaded attachment in the canonical project workdir",
+                "attachment_id": "att-123456789abc",
+                "original_name": "brief.md",
+                "mime": "text/markdown",
+                "size_bytes": "9",
+                "integrity": "01234567 89abcdef 01234567 89abcdef 01234567 89abcdef 01234567 89abcdef",
+            }
+        ],
+    )
+
+    rendered = supervisor._render_backlog_item_metadata(item)
+
+    assert ".argus/attachments/s-demo/att-123456789abc/brief.md" in rendered
+    assert "attachment_id: att-123456789abc" in rendered
+    assert "original_name: brief.md" in rendered
+    assert "mime: text/markdown" in rendered
+    assert "size_bytes: 9" in rendered
+    assert "integrity: 01234567 89abcdef" in rendered
+
+
 def test_planner_context_ref_hash_tracks_project_file_revision(tmp_path: Path) -> None:
     artifact = tmp_path / "research" / "chem_playground" / "x" / "QUESTION.md"
     artifact.parent.mkdir(parents=True)

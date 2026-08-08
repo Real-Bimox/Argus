@@ -247,4 +247,54 @@ describe('web API protocol handshake', () => {
     expect(result.reply).toBe('executor started');
     expect(result.kind).toBe('task');
   });
+
+  it('uploads attachments as multipart and reuses attachment ids in message requests', async () => {
+    const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/api/meta') return Response.json(currentMeta);
+      if (path === '/api/projects/s-test/attachments') {
+        expect(init?.method).toBe('POST');
+        expect(init?.body).toBeInstanceOf(FormData);
+        const entries = Array.from((init?.body as FormData).entries());
+        expect(entries).toHaveLength(1);
+        expect(entries[0][0]).toBe('files');
+        expect((entries[0][1] as File).name).toBe('notes.md');
+        return Response.json({
+          attachments: [{
+            attachment_id: 'att-123456789abc',
+            relative_path: '.argus/attachments/s-test/att-123456789abc/notes.md',
+            original_name: 'notes.md',
+            stored_name: 'notes.md',
+            mime: 'text/markdown',
+            size_bytes: 7,
+            sha256: 'a'.repeat(64),
+            integrity: 'aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa',
+          }],
+          limits: {
+            max_count: 5,
+            max_bytes_per_file: 10 * 1024 * 1024,
+            max_total_bytes: 25 * 1024 * 1024,
+          },
+        });
+      }
+      expect(path).toBe('/api/projects/s-test/message');
+      expect(JSON.parse(String(init?.body))).toEqual({
+        text: 'summarize the note',
+        attachments: [{ attachment_id: 'att-123456789abc' }],
+      });
+      return Response.json({ kind: 'chat', reply: 'ok' });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { api } = await import('../api');
+    const file = new File(['# note\n'], 'notes.md', { type: 'text/markdown' });
+
+    const upload = await api.uploadAttachments('s-test', [file]);
+    const result = await api.message('s-test', 'summarize the note', {
+      attachments: upload.attachments.map((attachment) => ({
+        attachment_id: attachment.attachment_id,
+      })),
+    });
+
+    expect(upload.attachments[0].attachment_id).toBe('att-123456789abc');
+    expect(result.reply).toBe('ok');
+  });
 });
