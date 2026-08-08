@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any
 
 from ..apps._life_actions import DEFAULT_LIFE_CONFIG
-from ..core.knobs import resolve_role_backend
 from .chat.render import TELEGRAM_LIMIT, chunk_html
 from .chat.router import COMMAND_MENU, CommandRouter, _esc, _fmt_duration, help_text
 from .chat.transport import ChatTransport
@@ -265,7 +264,7 @@ class TelegramPoller:
         self._stop = stop_event or threading.Event()
         self._thread: threading.Thread | None = None
         self._state: dict[str, Any] = {
-            "backend": resolve_role_backend(""),
+            "backend": os.environ.get("ARGUS_SKILL_LIFE_BACKEND", "codex"),
             "config": dict(DEFAULT_LIFE_CONFIG),
             "continuous_objective": "",
             "last_thread_id": None,

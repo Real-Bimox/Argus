@@ -26,6 +26,7 @@ Commands:
 from __future__ import annotations
 
 import logging
+import os
 import shlex
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,7 +49,6 @@ from ...apps._life_actions import (
     render_skills_cmd,
     stop_iteration,
 )
-from ...core.knobs import resolve_role_backend
 from ..status import (
     count_backlog_statuses,
     describe_continuous_state,
@@ -138,7 +138,7 @@ class CommandRouter:
         self.transport = transport
         self.channel = transport.channel
         self._state: dict[str, Any] = {
-            "backend": resolve_role_backend(""),
+            "backend": os.environ.get("ARGUS_SKILL_LIFE_BACKEND", "codex"),
             "config": dict(DEFAULT_LIFE_CONFIG),
             "continuous_objective": "",
             "last_thread_id": None,
@@ -487,8 +487,7 @@ class CommandRouter:
             objective = requested_objective or current_obj
             backend = (
                 read_daemon_status(self.life_dir).backend
-                or self._state.get("backend")
-                or resolve_role_backend("")
+                or os.environ.get("ARGUS_SKILL_LIFE_BACKEND", "codex")
             )
             error = continuous_mode_error(backend, True, objective)
             if error:
