@@ -42,13 +42,15 @@ class PlannerConfig:
     """Knobs the supervisor passes down to a Planner.plan_next() call."""
 
     model: str | None = None
-    reasoning_effort: str | None = "xhigh"
+    reasoning_effort: str | None = "high"
     working_dir: str | None = None
     add_dirs: list[str] = field(default_factory=list)
     extra_args: list[str] = field(default_factory=list)
     skip_git_repo_check: bool = True
     full_auto: bool = False
-    dangerous_yolo: bool = True
+    # Retained for configuration compatibility. Continuous Planner execution
+    # is always forced through the read-only tool boundary in ``plan_next``.
+    dangerous_yolo: bool = False
     open_ended: bool = False
     external_interrupt_reason_provider: Any = None
     role_session_policy: str = field(default_factory=configured_role_session_policy)
@@ -231,20 +233,17 @@ class Planner:
         )
         if session.prompt_block():
             prompt = session.prompt_block() + "\n\n" + prompt
-        dangerous_yolo = bool(cfg.dangerous_yolo)
         planner_options = RunnerOptions(
             model=cfg.model,
             reasoning_effort=cfg.reasoning_effort or "xhigh",
             working_dir=cfg.working_dir,
             add_dirs=list(cfg.add_dirs) if cfg.add_dirs else None,
-            # Permission policy belongs to the composition root. Overwriting a
-            # production ``dangerous_yolo=True`` here downgraded Copilot to
-            # ``--allow-all-tools``, which still asks interactive shell
-            # permission and fails in a headless daemon. Safe/default callers
-            # retain the prior workspace-write/full-auto behavior.
-            dangerous_yolo=dangerous_yolo,
-            full_auto=False if dangerous_yolo else True,
-            sandbox_mode=None if dangerous_yolo else "workspace-write",
+            # Planner chooses and delegates work; it does not execute it. Keep
+            # the boundary role-owned so an upstream yolo setting cannot grant
+            # shell, network, build, test, or write tools to this call.
+            dangerous_yolo=False,
+            full_auto=False,
+            sandbox_mode="read-only",
             skip_git_repo_check=cfg.skip_git_repo_check,
             extra_args=list(cfg.extra_args) if cfg.extra_args else None,
             skill_paths=[

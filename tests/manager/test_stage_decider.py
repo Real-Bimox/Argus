@@ -157,3 +157,46 @@ def test_no_second_machine_value_guard_overrides_manager() -> None:
     )
     assert manager.action == "advance"
     assert manager.target_stage == "plan"
+
+
+def test_reviewer_certified_final_stage_skips_manager_model(
+    tmp_path,
+) -> None:
+    from argus_skill.manager import Manager
+    from argus_skill.skills.stage_machine import completion_contract_fingerprint
+    from argus_skill.skills.vertical_select import persist_vertical
+    from argus_skill.verticals._base import (
+        load_vertical,
+        vertical_completion_contract_version,
+    )
+
+    persist_vertical(tmp_path, "software", workflow_mode="staged")
+    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["current_stage"] = "delivery"
+    state["stages"] = {"delivery": {"status": "in_progress"}}
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    version = vertical_completion_contract_version(
+        load_vertical("software", project_root=tmp_path)
+    )
+    state["stages"]["delivery"].update({
+        "completion_contract_version": version,
+        "completion_contract_sha256": completion_contract_fingerprint(
+            tmp_path,
+            "delivery",
+            version=version,
+        ),
+    })
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    decision = Manager(project_root=tmp_path, runner=None).decide_stage_transition(
+        review=_review(),
+        project_root=tmp_path,
+        mission_scope="bounded",
+        run_exec=lambda _prompt: (_ for _ in ()).throw(
+            AssertionError("deterministic final completion must not call Manager")
+        ),
+    )
+
+    assert decision.action == "complete"
+    assert decision.source == "reviewer_certified_policy"

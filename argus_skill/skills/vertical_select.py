@@ -296,6 +296,44 @@ def _load_state_payload(project_root: object) -> dict:
     return payload
 
 
+def migrate_legacy_manager_state(
+    state_root: Path | str,
+    legacy_root: Path | str,
+) -> bool:
+    """Import pre-isolation Manager state once without mutating the workspace."""
+    target_root = Path(state_root).expanduser()
+    source_root = Path(legacy_root).expanduser()
+    try:
+        if target_root.resolve() == source_root.resolve():
+            return False
+    except OSError:
+        return False
+    target = _state_path(target_root)
+    source = _state_path(source_root)
+    if target.exists() or not source.is_file():
+        return False
+    payload = _load_state_payload(source_root)
+    if not payload:
+        return False
+
+    from ..verticals._data_domain import migrate_data_domains
+
+    migrate_data_domains(source_root, target_root)
+    if _known_vertical(payload.get("vertical"), target_root) is None:
+        raise VerticalResolutionError(
+            "legacy Manager state does not name a resolvable vertical"
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_suffix(target.suffix + f".migrate.{os.getpid()}.tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, target)
+    resolve_vertical(target_root)
+    return True
+
+
 def _persisted_vertical(project_root: object) -> str | None:
     """Return the persisted ``vertical`` from PIPELINE_STATE.json, or ``None``.
 
@@ -665,6 +703,7 @@ def reset_stage_for_new_intent(
     old_vertical: str | None,
     new_vertical: str,
     force_replacement: bool = False,
+    evidence_root: Path | str | None = None,
 ) -> bool:
     """Reset ``current_stage`` to ``new_vertical``'s first stage when a
     genuinely NEW, operator-issued intent supersedes an already-finished prior
@@ -738,6 +777,7 @@ def reset_stage_for_new_intent(
                     f"of {new_vertical!r} instead of preserving incompatible progress."
                 ),
                 reset_by="manager",
+                evidence_root=evidence_root,
             )
         else:
             from .stage_machine import rollback_stage  # late (cycle)
@@ -753,6 +793,7 @@ def reset_stage_for_new_intent(
                     f"silently inheriting the completed prior run's stale stage."
                 ),
                 rolled_back_by="manager",
+                evidence_root=evidence_root,
             )
     except ValueError:
         log.debug(

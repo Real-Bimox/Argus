@@ -546,14 +546,11 @@ def prepare_manager_execution_task(
     })
     try:
         runner = (ensure_runner or _ensure_manager_runner)(chat_state, mem)
-        manager = getattr(runner, "manager", None) if runner is not None else None
+        if runner is None:
+            raise ManagerHandoffError("Manager runner unavailable")
+        manager = runner.manager
         if manager is None:
-            from ..manager import Manager
-
-            manager = Manager(
-                project_root=getattr(mem, "project_root", None) or Path.cwd(),
-                runner=None,
-            )
+            raise ManagerHandoffError("runner was constructed without a Manager")
 
         if root_task_id is None or not _accepts_keyword(
             manager.decide_vertical,

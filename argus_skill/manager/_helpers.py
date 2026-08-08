@@ -16,7 +16,7 @@ from ..core.runner_errors import result_has_missing_resume_target  # noqa: F401 
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_MANAGER_REASONING_EFFORT = "xhigh"
+_DEFAULT_MANAGER_REASONING_EFFORT = "high"
 _DEFAULT_FAST_ROUTE_MIN_CONFIDENCE = 0.75
 _DEFAULT_FAST_ROUTE_MAX_TASK_CHARS = 12_000
 _DEFAULT_FAST_ROUTE_MAX_PROMPT_CHARS = 24_000

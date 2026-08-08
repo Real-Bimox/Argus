@@ -84,6 +84,7 @@ class _MemoryRunner:
 
     def __init__(self) -> None:
         self.workdir: Path | None = None
+        self.manager: Any = None
 
     def execute(
         self,

@@ -161,7 +161,7 @@ def _front_door_classify(
                         "bounded_increment", "bounded", "standing",
                     }
                 ),
-                "standing",
+                "bounded",
             )
             chat_state["_frontdoor_lifetime"] = lifetime
         elif intent is None and control not in {"abort", "pause", "no_dispatch", "steer"}:

@@ -209,6 +209,7 @@ class LifeSupervisor(
     ) -> None:
         self.memory = memory
         self.runner = runner
+        self.manager = getattr(runner, "manager", None)
         self.sink = sink
         self.config = config or LifeSupervisorConfig()
         self.engineer_model = engineer_model
@@ -261,6 +262,11 @@ class LifeSupervisor(
         # escalates to the operator (surface, don't loop invisibly).
         self._consecutive_no_progress_missions = 0
         self._reap_orphans_on_startup()
+
+    def _bound_manager(self) -> Any:
+        if self.manager is None:
+            raise RuntimeError("LifeSupervisor requires a composed Manager")
+        return self.manager.bind_execution_workdir(self._project_workdir())
 
     def _reap_orphans_on_startup(self) -> None:
         """Recover items left ``running`` by a crashed process.
@@ -338,17 +344,7 @@ class LifeSupervisor(
         return base
 
     def _artifact_root(self) -> Path:
-        # Once a campaign adopts a nested repository, stage state and evidence
-        # must resolve there too.  Keeping artifact_root at the parent is what
-        # creates duplicate outer/nested research trees.
-        configured_worktree = self._configured_worktree()
-        active_worktree = self._project_workdir()
-        if configured_worktree is not None:
-            try:
-                if active_worktree.resolve() != configured_worktree.resolve():
-                    return active_worktree
-            except OSError:
-                pass
+        """Return the stable session root for Manager-owned harness state."""
         configured = getattr(self.config, "artifact_root", None)
         if configured is not None:
             return Path(configured).expanduser()
@@ -381,10 +377,8 @@ class LifeSupervisor(
 
     def _planner_config(self):
         from ...core.knobs import resolve_role_model
-        from ...planner import PlannerConfig
-
-        safe_mode = self._safe_mode_enabled()
         from ...daemon.state import read_continuous_state
+        from ...planner import PlannerConfig
 
         expected = read_continuous_state(self.memory.root)
 
@@ -406,13 +400,12 @@ class LifeSupervisor(
             model=resolve_role_model("planner", role_env="ARGUS_SKILL_PLAN_MODEL")
             or self.reviewer_model,
             reasoning_effort=os.environ.get(
-                "ARGUS_SKILL_PLANNER_REASONING_EFFORT", "xhigh"
+                "ARGUS_SKILL_PLANNER_REASONING_EFFORT", "high"
             ),
             working_dir=str(workdir),
             add_dirs=([str(state_root)] if state_root != workdir else []),
             skip_git_repo_check=True,
-            full_auto=safe_mode,
-            dangerous_yolo=not safe_mode,
+            dangerous_yolo=False,
             open_ended=bool(getattr(self.config, "open_ended", False)),
             external_interrupt_reason_provider=_semantic_interrupt,
             role_session_path=state_root / "role-sessions" / "planner.json",
@@ -661,6 +654,13 @@ class LifeSupervisor(
                         })
                         self._emit_status(gate_reason)
                         stopped_by = gate_reason
+                        break
+                    bounded_completion = self._bounded_completion_reason()
+                    if bounded_completion:
+                        self._emit_status(
+                            f"auto-stop: {bounded_completion}"
+                        )
+                        stopped_by = "project_done"
                         break
                     # Auto-stop: if the EMNLP gate already passes, the
                     # project is done — don't ask the planner to invent

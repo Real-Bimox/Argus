@@ -85,6 +85,18 @@ def test_max_active_daemons_defaults_to_64(
     assert life_worker_mod._max_active_daemons(LifeWorkerConfig(life_dir=tmp_path)) == 64
 
 
+def test_runner_namespace_uses_bounded_round_default_with_env_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = LifeWorkerConfig(life_dir=tmp_path, backend="memory")
+
+    assert _runner_namespace(config).max_rounds == 32
+
+    monkeypatch.setenv("ARGUS_SKILL_MAX_ROUNDS", "7")
+    assert _runner_namespace(config).max_rounds == 7
+
+
 def test_daemon_strict_release_preflight_fails_before_backend_probe(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

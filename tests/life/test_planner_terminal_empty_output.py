@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from argus_skill.core.event_catalog import EventType
 from argus_skill.core.models import RunnerResult
 from argus_skill.life.context_packet import (
     create_mission_context,
@@ -22,6 +23,7 @@ from argus_skill.life.supervisor._constants import (
     PLAN_TERMINAL_IDLE,
 )
 from argus_skill.life.supervisor._core import LifeSupervisor
+from argus_skill.manager import Manager
 from argus_skill.planner import NO_CONCRETE_TASKS_ERROR
 
 
@@ -266,9 +268,15 @@ def _make_supervisor(
         memory = LifeMemory.open(tmp_path / "life")
     sink = _RecordingSink()
     backend = backend or _EmptyPlannerThenManagerRunner()
+    runner = _NullRunner()
+    runner.manager = Manager(
+        project_root=project,
+        execution_workdir=project,
+        runner=backend,
+    )
     supervisor = LifeSupervisor(
         memory=memory,
-        runner=_NullRunner(),
+        runner=runner,
         sink=sink,
         config=LifeSupervisorConfig(
             continuous=True,
@@ -291,6 +299,58 @@ def _make_supervisor(
     monkeypatch.setattr(supervisor, "_effective_final_certification_gate", lambda *_a, **_k: False)
     monkeypatch.setattr(supervisor, "_planner_runtime_with_idle_note", lambda: "")
     return supervisor, backend, sink
+
+
+def test_bounded_completed_campaign_stops_before_planner_cycle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    supervisor, _backend, sink = _make_supervisor(
+        tmp_path,
+        monkeypatch,
+        terminal_stage_done=True,
+    )
+    supervisor.config.open_ended = False
+    monkeypatch.setattr(
+        supervisor,
+        "_plan_next_work",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("completed bounded campaign must not enter Planner")
+        ),
+    )
+
+    result = supervisor.run()
+
+    assert result["stopped_by"] == "project_done"
+    assert result["planning_cycles"] == 0
+    assert not any(
+        event.get("type") == EventType.LIFE_PLANNER_START
+        for event in sink.events
+    )
+
+
+def test_standing_campaign_is_not_stopped_by_bounded_completion_certificate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    supervisor, _backend, _sink = _make_supervisor(
+        tmp_path,
+        monkeypatch,
+        terminal_stage_done=True,
+    )
+    planner_calls = 0
+
+    def plan_once(*args, **kwargs):
+        nonlocal planner_calls
+        planner_calls += 1
+        return PLAN_TERMINAL_IDLE
+
+    monkeypatch.setattr(supervisor, "_plan_next_work", plan_once)
+
+    result = supervisor.run()
+
+    assert result["stopped_by"] == PLAN_TERMINAL_IDLE
+    assert planner_calls == 1
 
 
 def test_content_filtered_planner_disarms_campaign_instead_of_retrying(

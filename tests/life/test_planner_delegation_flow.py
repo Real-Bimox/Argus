@@ -102,9 +102,37 @@ def test_planner_delegates_to_engineer_and_continues_after_one_increment(
     assert [item.title for item in pending] == ["Deduplicate Manager reply rows"]
 
     assert len(planner.calls) == 3
-    assert all(call["options"].sandbox_mode is None for call in planner.calls)
-    assert all(call["options"].dangerous_yolo is True for call in planner.calls)
+    assert all(call["options"].sandbox_mode == "read-only" for call in planner.calls)
+    assert all(call["options"].dangerous_yolo is False for call in planner.calls)
     assert not list(project.glob("**/*.py")), "Planner must not create implementation files"
+
+
+def test_planner_receives_host_current_reality_without_rediscovery(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    planner = _PlannerBackend([])
+    supervisor = _supervisor(project, tmp_path / "life", planner)
+    checkpoint = project / "CHECKPOINT.md"
+    checkpoint.write_text(
+        "# Open Questions / Blockers\n\n- verify the production artifact\n",
+        encoding="utf-8",
+    )
+    supervisor.memory.backlog.add(BacklogItem.new(
+        title="pending repair",
+        objective="repair the active path",
+    ))
+
+    note = supervisor._planner_current_reality_note()
+
+    assert note.count("## Host current-reality digest") == 1
+    assert "- vertical: software" in note
+    assert "- current_stage:" in note
+    assert '"pending": 1' in note
+    assert "git_changed_paths" in note
+    assert "verify the production artifact" in note
+    assert "Do not spend tools rereading those sources" in note
 
 
 def test_0d3_later_no_gap_evidence_replaces_skip_zero_plan(

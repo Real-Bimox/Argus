@@ -183,8 +183,9 @@ def test_skill_changes_require_explicit_mission_permission(tmp_path) -> None:
 
 
 def test_regular_task_adopts_nested_repository_as_campaign_root(tmp_path) -> None:
-    import json
     import subprocess
+
+    from argus_skill.skills.vertical_select import persist_vertical, resolve_vertical
 
     memory = LifeMemory.open(tmp_path / "life")
     sink = _RecordingSink(memory.root)
@@ -193,22 +194,20 @@ def test_regular_task_adopts_nested_repository_as_campaign_root(tmp_path) -> Non
     target = workspace / "target-repo"
     workspace.mkdir()
     subprocess.run(["git", "init", "-q", str(target)], check=True)
-    pipeline = workspace / "research" / "PIPELINE_STATE.json"
-    pipeline.parent.mkdir(parents=True)
-    pipeline.write_text(
-        json.dumps({
-            "vertical": "software",
-            "current_stage": "delivery",
-        }),
-        encoding="utf-8",
-    )
+    (target / "user.bin").write_bytes(b"\x00user-owned\xff")
+    before = {
+        path.relative_to(target): path.read_bytes()
+        for path in target.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(target).parts
+    }
+    persist_vertical(memory.root, "software", workflow_mode="direct")
     supervisor = LifeSupervisor(
         memory=memory,
         runner=runner,
         sink=sink,
         config=LifeSupervisorConfig(
             project_worktree=workspace,
-            artifact_root=workspace,
+            artifact_root=memory.root,
         ),
     )
     memory.backlog.add(BacklogItem.new(
@@ -224,11 +223,13 @@ def test_regular_task_adopts_nested_repository_as_campaign_root(tmp_path) -> Non
     assert runner.kwargs["working_dir_override"] == str(target.resolve())
     assert runner.kwargs["maintenance_mission"] is False
     assert supervisor._project_workdir() == target.resolve()
-    assert supervisor._artifact_root() == target.resolve()
-    copied = json.loads(
-        (target / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
-    )
-    assert copied["current_stage"] == "delivery"
+    assert resolve_vertical(supervisor._artifact_root()) == "software"
+    after = {
+        path.relative_to(target): path.read_bytes()
+        for path in target.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(target).parts
+    }
+    assert after == before
 
 
 def test_kernel_baseline_mission_receives_clean_reference_without_revert(

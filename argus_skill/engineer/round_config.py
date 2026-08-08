@@ -149,7 +149,7 @@ def _fit_stall_guard(threshold: int, budget: int) -> int:
 class SupervisedConfig:
     """Knobs for the round-loop control."""
 
-    max_rounds: int = 500
+    max_rounds: int = 32
     # Keep the historical reviewed loop by default. Planner-classified
     # low-risk bounded work may opt into an Engineer self-review completion.
     require_independent_review: bool = True
@@ -234,7 +234,7 @@ class SupervisedConfig:
         """Keep the round-budget guards reachable when ``max_rounds`` shrinks.
 
         ``stall_threshold`` / ``soft_round_limit`` / ``hard_escalate_rounds``
-        are ABSOLUTE round counts sized for the default ``max_rounds`` (500).
+        are ABSOLUTE round counts sized for the default ``max_rounds`` (32).
         A specialized caller may explicitly lower the budget for one mission,
         and a guard whose threshold is not strictly reachable within that
         budget can then never fire. Nothing reports this: the value stays in

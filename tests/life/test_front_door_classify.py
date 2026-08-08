@@ -55,6 +55,7 @@ def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     assert "BOUNDED_INCREMENT" in prompt
     assert "BOUNDED" in prompt
     assert "STANDING" in prompt
+    assert "default BOUNDED" in prompt
 
 
 def test_name_axis_reports_concise_title_without_changing_route_contract() -> None:
@@ -147,7 +148,7 @@ def test_front_door_preserves_explicit_bounded_increment_for_team() -> None:
     assert lifetimes == ["bounded_increment"]
 
 
-def test_front_door_missing_lifetime_defaults_team_to_standing() -> None:
+def test_front_door_missing_lifetime_defaults_team_to_bounded() -> None:
     lifetimes: list[str] = []
     decision = classify_front_door(
         "continue useful work",
@@ -156,7 +157,7 @@ def test_front_door_missing_lifetime_defaults_team_to_standing() -> None:
     )
 
     assert decision == (None, None, "complex")
-    assert lifetimes == ["standing"]
+    assert lifetimes == ["bounded"]
 
 
 def test_front_door_pure_greeting_can_finish_from_one_model_call() -> None:

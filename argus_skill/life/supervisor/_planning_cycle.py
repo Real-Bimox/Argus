@@ -147,13 +147,7 @@ class PlanningCycleMixin(
         if not vertical_has_current_completion_certificate(root, vertical):
             return ""
 
-        from ...manager import Manager
-
-        manager = Manager(
-            project_root=root,
-            runner=self.planner_runner,
-            skill_store=self.skill_store,
-        )
+        manager = self._bound_manager()
         on_event = getattr(self.sink, "handle_event", None)
         decision = manager.decide_stage_transition(
             review=None,
@@ -276,13 +270,7 @@ class PlanningCycleMixin(
         item, review, mission_scope = recovered
         root = self._artifact_root()
 
-        from ...manager import Manager
-
-        decision = Manager(
-            project_root=root,
-            runner=self.planner_runner,
-            skill_store=self.skill_store,
-        ).decide_stage_transition(
+        decision = self._bound_manager().decide_stage_transition(
             review=review,
             planner_verdict=verdict,
             project_root=root,
@@ -453,13 +441,7 @@ class PlanningCycleMixin(
             # how often an unchanged wait is re-adjudicated.
             contract_state = None
 
-        from ...manager import Manager
-
-        manager = Manager(
-            project_root=root,
-            runner=self.planner_runner,
-            skill_store=self.skill_store,
-        )
+        manager = self._bound_manager()
         on_event = getattr(self.sink, "handle_event", None)
         decision = manager.decide_stage_transition(
             review=None,
@@ -592,9 +574,7 @@ class PlanningCycleMixin(
                 # Legacy research campaigns predate the target field. At this clean
                 # planning boundary, ask the Manager once and persist its judgment;
                 # never infer the target from objective keywords.
-                from ...manager import Manager
-
-                mgr = Manager(project_root=artifact_root, runner=self.planner_runner)
+                mgr = self._bound_manager()
                 target = mgr._decide_research_target(
                     self.config.continuous_objective,
                     root_task_id=None,
@@ -618,9 +598,7 @@ class PlanningCycleMixin(
         if not self.config.continuous_objective:
             return
 
-        from ...manager import Manager
-
-        mgr = Manager(project_root=artifact_root, runner=self.planner_runner)
+        mgr = self._bound_manager()
         division = mgr.divide(self.config.continuous_objective)
         self._emit({
             "type": "life.vertical.resolved",

@@ -77,7 +77,7 @@ class SkillLoopConfig:
             True,
         )
     )
-    max_rounds: int = 500
+    max_rounds: int = 32
     no_progress_threshold: int = 2
     # Anti-livelock thresholds threaded into SupervisedConfig: at
     # ``soft_round_limit`` the reviewer is told to escalate an unresolvable

@@ -150,7 +150,7 @@ def _prewarm_manager_context(
             model=resolve_manager_reply_model(),
             reasoning_effort=resolve_role_reasoning_effort(
                 "ARGUS_SKILL_SELF_REASONING_EFFORT",
-                default="xhigh",
+                default="high",
             ),
             lean=False,
             cwd=cwd,

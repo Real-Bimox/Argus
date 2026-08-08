@@ -172,8 +172,7 @@ argus --web
 默认地址：[http://127.0.0.1:8799](http://127.0.0.1:8799)
 
 ```bash
-argus --web --no-open    # 只启动，不打开浏览器
-argus --web --port 8800  # 使用其他端口
+argus --web --web-port 8800  # 使用其他端口
 ```
 
 #### 通过 SSH 使用远程服务器
@@ -181,7 +180,7 @@ argus --web --port 8800  # 使用其他端口
 在服务器上：
 
 ```bash
-argus --web --no-open
+argus --web
 ```
 
 在自己的电脑上：
@@ -198,7 +197,7 @@ ssh -L 8799:127.0.0.1:8799 user@server
 非本机监听始终受 Bearer Token 保护：设置了 `ARGUS_SKILL_WEB_TOKEN` 就用它，没设置则为本次运行自动生成一个。
 
 ```bash
-argus --web --host 0.0.0.0 --port 8799 --no-open
+argus --web --web-host 0.0.0.0 --web-port 8799
 ```
 
 命令会打印其他设备可达的地址、Token，以及一个二维码。想让 Token 在重启后保持不变，自己设置即可：
@@ -226,7 +225,7 @@ export ARGUS_SKILL_ENABLE_TELEGRAM=1
 export ARGUS_SKILL_TELEGRAM_BOT_TOKEN=... ARGUS_SKILL_TELEGRAM_CHAT_ID=...
 ```
 
-两个机器人提供完全相同的命令（`/add`、`/status`、`/nudge`、`/backlog` 等）。网页版可以添加到手机主屏幕，扫描 `argus --web --host 0.0.0.0` 打印的二维码即可完成配对。
+两个机器人提供完全相同的命令（`/add`、`/status`、`/nudge`、`/backlog` 等）。网页版可以添加到手机主屏幕，扫描 `argus --web --web-host 0.0.0.0` 打印的二维码即可完成配对。
 
 完整配置见 **[docs/mobile.md](docs/mobile.md)**。
 
@@ -271,7 +270,7 @@ Vertical 可以为你的领域提供专属阶段、Skill、数据集、工具、
 ```bash
 argus --doctor
 argus --status
-argus --web --no-open
+argus --web
 ```
 
 最强大的 Argus 往往是一套被你认真改造成更适合自己伟大领域与工作方式的 Argus。

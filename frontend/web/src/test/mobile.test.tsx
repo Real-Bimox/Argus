@@ -122,7 +122,7 @@ describe('QR pairing token adoption', () => {
     expect(stored.argus_web_token).toBeUndefined();
   });
 
-  it('still loads when storage is unavailable', async () => {
+  it('keeps authenticated requests working when storage is unavailable', async () => {
     stubBrowser('?token=abc123');
     vi.stubGlobal('localStorage', {
       getItem: () => null,
@@ -130,10 +130,24 @@ describe('QR pairing token adoption', () => {
         throw new Error('private mode');
       },
     });
-    const { adoptTokenFromUrl } = await import('../api');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      sid: 'demo',
+      rc: 0,
+      daemon: {},
+      objective: '',
+      workdir: '',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { adoptTokenFromUrl, api } = await import('../api');
 
-    // The in-URL token authenticates this session either way; a storage
-    // failure must not take down the app.
     expect(() => adoptTokenFromUrl()).not.toThrow();
+    await api.createDaemon('');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/daemons', expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: 'Bearer abc123' }),
+    }));
   });
 });

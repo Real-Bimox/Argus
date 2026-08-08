@@ -199,6 +199,22 @@ def list_data_domains(project_root: object = ".") -> list[str]:
     return out
 
 
+def migrate_data_domains(source_root: object, target_root: object) -> None:
+    """Copy valid legacy domains into an empty session state root."""
+    for name in list_data_domains(source_root):
+        source = _domain_path(source_root, name)
+        target = _domain_path(target_root, name)
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or DataDomain(payload).STAGE_ORDER == ():
+            raise ValueError(f"invalid legacy data domain: {name}")
+        if target.exists():
+            existing = json.loads(target.read_text(encoding="utf-8"))
+            if existing != payload:
+                raise ValueError(f"conflicting migrated data domain: {name}")
+            continue
+        _atomic_write_json(target, payload)
+
+
 def write_data_domain(
     project_root: object,
     name: str,
@@ -287,6 +303,7 @@ __all__ = [
     "load_data_domain",
     "data_domain_exists",
     "list_data_domains",
+    "migrate_data_domains",
     "write_data_domain",
     "mark_promoted",
 ]

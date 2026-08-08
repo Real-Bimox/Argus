@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import time
+import uuid
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -477,7 +478,15 @@ def normalize_event_envelope(
     if canonical_event_type(out.get("type")) == EventType.LIFE_MANAGER_INTENT_COMPLETED:
         # Daemon-boot handoffs historically predated the shared Manager intent
         # payload and recorded the same values under intent/execution names.
-        out.setdefault("item_id", out.get("intent_id"))
+        correlation_id = str(
+            out.get("item_id") or out.get("intent_id") or ""
+        ).strip()
+        if not correlation_id:
+            correlation_id = f"legacy-{uuid.uuid4().hex}"
+        if not str(out.get("intent_id") or "").strip():
+            out["intent_id"] = correlation_id
+        if not str(out.get("item_id") or "").strip():
+            out["item_id"] = correlation_id
         out.setdefault("objective", out.get("execution_task"))
     out.setdefault("ts", time.time() if timestamp is None else float(timestamp))
     out.setdefault("event_schema_version", EVENT_ENVELOPE_VERSION)

@@ -99,40 +99,28 @@ class _Probe:
     def _apply_manager_wait_resolution(self, *a, **k):
         return None
 
+    def _bound_manager(self):
+        probe = self
+
+        class _Marker:
+            def decide_stage_transition(self, **kwargs):
+                probe.manager_calls += 1
+                return SimpleNamespace(
+                    action="hold",
+                    target_stage="scope",
+                    reason="held",
+                    current_stage="scope",
+                    source="manager_llm",
+                    diagnostic="",
+                    resolves_wait=False,
+                )
+
+        return _Marker()
+
 
 def _reconciles(probe: _Probe, verdict) -> bool:
-    """Did the reconciliation actually reach the Manager?
-
-    Asserted by counting a real call rather than by "it did not return early":
-    my first version of this test passed while a *second* guard — persisting a
-    contract that does not exist — still short-circuited the review, and only a
-    live run caught it. Marking the Manager construction is the one signal that
-    cannot be satisfied by an early return.
-    """
-    import argus_skill.manager as manager_mod
-
-    original = manager_mod.Manager
-
-    class _Marker:
-        def __init__(self, **kwargs):
-            probe.manager_calls += 1
-
-        def decide_stage_transition(self, **kwargs):
-            return SimpleNamespace(
-                action="hold",
-                target_stage="scope",
-                reason="held",
-                current_stage="scope",
-                source="manager_llm",
-                diagnostic="",
-                resolves_wait=False,
-            )
-
-    manager_mod.Manager = _Marker
-    try:
-        probe._reconcile(verdict)
-    finally:
-        manager_mod.Manager = original
+    """Did reconciliation invoke the composed Manager's stage decision?"""
+    probe._reconcile(verdict)
     return probe.manager_calls > 0
 
 

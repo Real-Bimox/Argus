@@ -163,6 +163,7 @@ export interface MetricsSnapshot {
 }
 
 const TOKEN_KEY = 'argus_web_token';
+let inMemoryToken: string | null = null;
 
 /** Persist a token handed over in the URL, then drop it from the address bar.
  *
@@ -172,11 +173,22 @@ const TOKEN_KEY = 'argus_web_token';
  * unauthenticated. Clearing the query afterwards keeps the credential out of
  * the address bar, screenshots, and the back/forward history entry. */
 export function adoptTokenFromUrl(): void {
+  let params: URLSearchParams;
   try {
-    const params = new URLSearchParams(window.location.search);
-    const fromUrl = params.get('token');
-    if (!fromUrl) return;
+    params = new URLSearchParams(window.location.search);
+  } catch {
+    return;
+  }
+  const fromUrl = params.get('token');
+  if (!fromUrl) return;
+  inMemoryToken = fromUrl;
+  try {
     localStorage.setItem(TOKEN_KEY, fromUrl);
+  } catch {
+    // The in-memory copy keeps this page authenticated when storage is
+    // unavailable, including browsers that block storage for LAN origins.
+  }
+  try {
     params.delete('token');
     const query = params.toString();
     window.history.replaceState(
@@ -185,14 +197,19 @@ export function adoptTokenFromUrl(): void {
       `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
     );
   } catch {
-    // Private-mode storage failures shouldn't stop the app from loading; the
-    // in-URL token still authenticates this session.
+    // Failure to scrub the address bar must not stop the app from loading.
   }
 }
 
-const token = (): string | null =>
-  new URLSearchParams(window.location.search).get('token') ||
-  localStorage.getItem(TOKEN_KEY);
+const token = (): string | null => {
+  if (inMemoryToken) return inMemoryToken;
+  try {
+    return new URLSearchParams(window.location.search).get('token') ||
+      localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+};
 
 function authHeaders(): Record<string, string> {
   const t = token();
@@ -658,10 +675,22 @@ export const api = {
 };
 
 /** Open the live event stream for a project. Returns a close() fn. */
+export type StreamCloseInfo = {
+  code: number;
+  reason: string;
+  retryable: boolean;
+};
+
+const NON_RETRYABLE_STREAM_CLOSE_CODES = new Set([4401, 4404]);
+
 export function openStream(
   sid: string,
   onEvent: (ev: EventMsg) => void,
-  opts: { replay?: number; onOpen?: () => void; onClose?: () => void } = {},
+  opts: {
+    replay?: number;
+    onOpen?: () => void;
+    onClose?: (info: StreamCloseInfo) => void;
+  } = {},
 ): () => void {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const q = new URLSearchParams();
@@ -685,9 +714,10 @@ export function openStream(
         /* ignore malformed frame */
       }
     };
-    ws.onclose = () => {
-      opts.onClose?.();
-      if (!closed) retry = setTimeout(connect, 1000); // reconnect with backoff
+    ws.onclose = (event) => {
+      const retryable = !NON_RETRYABLE_STREAM_CLOSE_CODES.has(event.code);
+      opts.onClose?.({ code: event.code, reason: event.reason, retryable });
+      if (!closed && retryable) retry = setTimeout(connect, 1000); // reconnect with backoff
     };
     ws.onerror = () => ws?.close();
   };
