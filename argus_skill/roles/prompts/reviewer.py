@@ -499,6 +499,21 @@ def render_reviewer_prompt(
         skill_used=active_skill_id,
         prev_review_summary=prev_review_summary,
     )
+    incremental_review_block = ""
+    if round_index > 1 and prev_review_summary.strip():
+        incremental_review_block = (
+            "## Incremental re-review boundary\n"
+            "The previous Reviewer verdict below is settled context for this "
+            "mission. Inspect the prior `next_action`, the current Engineer "
+            "summary, the artifacts changed to satisfy that action, and the "
+            "implicated acceptance checks. Do not restart repository research, "
+            "reopen accepted findings, or repeat unchanged online/source checks. "
+            "Repeat a broader check only when the current delta changed its input, "
+            "the previous verdict explicitly left it unresolved, or a named "
+            "contradiction/security/authority issue requires it. If the requested "
+            "delta now passes and no such contradiction exists, return `done`; do "
+            "not invent a new unrelated repair round.\n\n"
+        )
     # Prefer direct runtime and verifier evidence over the Engineer's summary
     # when callers provide it. Omit the block when no such evidence exists.
     evidence_block = (
@@ -659,6 +674,7 @@ def render_reviewer_prompt(
         + (f"Round: {round_index}/{round_max}\n" if round_max > 0 else f"Round: {round_index}\n")
         + f"Session ID: {session_id or 'none'}\n"
         + f"{shared_context_block}"
+        + f"{incremental_review_block}"
         + f"{background_block}"
         + f"Main agent fatal error: {error_text}\n\n"
         + "Main agent last summary:\n"
@@ -683,7 +699,7 @@ def render_reviewer_prompt(
             "checkpoint": checkpoint_block,
             "execution_log_audit": engineer_log_audit_block,
             "background": background_block,
-            "shared_context": shared_context_block,
+            "shared_context": shared_context_block + incremental_review_block,
             "main_summary": main_summary,
             "raw_evidence": evidence_block,
         }

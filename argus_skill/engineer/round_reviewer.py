@@ -49,6 +49,27 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def _previous_review_summary(state: RoundLoopState) -> str:
+    """Render the settled prior verdict as a compact re-review boundary."""
+    if not state.rounds:
+        return ""
+    review = state.rounds[-1].review
+    lines = [
+        f"status: {str(review.status or '').strip()}",
+        f"reason: {str(review.reason or '').strip()}",
+        f"next_action: {str(review.next_action or '').strip() or '(none)'}",
+    ]
+    frontier = review.frontier_report if isinstance(review.frontier_report, dict) else {}
+    for key in ("resolved_obligations", "remaining_work", "new_obligations"):
+        values = frontier.get(key)
+        if isinstance(values, list) and values:
+            lines.append(
+                f"{key}: "
+                + "; ".join(str(value).strip() for value in values if str(value).strip())
+            )
+    return "\n".join(lines)
+
+
 def _active_manager_directive_for_reviewer(
     supervised_config: "SupervisedConfig",
 ) -> list[str]:
@@ -167,7 +188,7 @@ class RoundReviewerMixin:
                 ),
                 main_error=safe_fatal_error,
                 config=replace(self.reviewer_config, working_dir=str(workdir)),
-                prev_review_summary="",
+                prev_review_summary=_previous_review_summary(state),
                 scope=scope,
                 checkpoint_path=str(checkpoint_path or ""),
                 background_context=reviewer_background_context,

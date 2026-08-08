@@ -194,6 +194,15 @@ def test_reviewer_is_fresh_across_rounds(tmp_path: Path) -> None:
         (label, tid) for label, tid in backend.resume_history if label == "reviewer"
     ]
     assert reviewer_resumes == [("reviewer", None), ("reviewer", None)]
+    reviewer_prompts = [
+        prompt for label, prompt, _options in backend.history if label == "reviewer"
+    ]
+    assert "previous_review_summary" not in reviewer_prompts[0]
+    assert "## Incremental re-review boundary" in reviewer_prompts[1]
+    assert "status: continue" in reviewer_prompts[1]
+    assert "reason: r" in reviewer_prompts[1]
+    assert "next_action: do the next thing" in reviewer_prompts[1]
+    assert "do not invent a new unrelated repair round" in reviewer_prompts[1]
 
 
 def test_reviewer_retry_after_backend_death_starts_fresh_session(
