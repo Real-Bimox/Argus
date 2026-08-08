@@ -174,10 +174,13 @@ REVIEWER_CHECKLISTS: dict[str, tuple[str, str, list[str]]] = {
         "state complexity and an exactness/error argument; estimate the end-to-end "
         "ceiling; and distinguish itself from current primary prior art. Ordinary "
         "tiling, warp/stage tuning, split-count changes, wrapper cleanup, or autotune "
-        "expansion do not satisfy this stage. Advance only when one selected prototype "
-        "plausibly offers at least 10% end-to-end gain, meaningful memory/communication "
-        "reduction, or an asymptotic/coverage improvement. No production kernel edits "
-        "are allowed in discover.",
+        "expansion do not satisfy this stage. Advance when one selected prototype has a "
+        "clear, falsifiable value hypothesis and a bounded experiment can resolve it at "
+        "reasonable cost. Judge value against project-specific measurement noise, usage "
+        "frequency, implementation cost, and possible latency, memory, communication, "
+        "scalability, numerical, or coverage benefits. A defensible impact range is useful "
+        "but not mandatory; honest uncertainty must lead to a cheap decisive probe, not a "
+        "fabricated estimate. No production kernel edits are allowed in discover.",
         ["research/ALGORITHM_PLAN.md", "research/frontier/discover.json"],
     ),
     "environment": (
@@ -302,9 +305,12 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="discover.novelty_and_value",
             statement=(
-                "The selected prototype is distinguished from current primary prior "
-                "art and has a credible path to at least 10% end-to-end gain, meaningful "
-                "memory/communication reduction, or an asymptotic/coverage improvement."
+                "The selected prototype is distinguished from current primary prior art, "
+                "states a falsifiable value hypothesis and its uncertainty, and has a "
+                "bounded experiment whose cost is justified by project-specific leverage, "
+                "measurement noise, deployment frequency, implementation complexity, and "
+                "possible latency, memory, communication, scalability, numerical, or "
+                "coverage benefits. No universal percentage threshold is used."
             ),
             evidence_hint="research/ALGORITHM_PLAN.md and research/frontier/discover.json",
         ),
@@ -450,8 +456,9 @@ def role_banner(role: str) -> str:
         return common + (
             "After scope, complete the discover stage before environment or code work: "
             "derive and compare genuinely different algorithms, reject ordinary tuning "
-            "as novelty, and select a prototype only when its expected value clears the "
-            "discover bar. Then install only the project-documented toolchain in an "
+            "as novelty, and select a prototype through a project-specific value/cost and "
+            "measurement-noise judgment rather than a universal speedup threshold. Then "
+            "install only the project-documented toolchain in an "
             "isolated environment and rerun the audit. During optimize, stop at the first correctness-passing "
             "candidate whose paired end-to-end benchmark clears both aggregate and worst-row "
             "thresholds. Validate, report, and deliver it before starting another cycle.\n"

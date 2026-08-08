@@ -37,10 +37,13 @@ communication each removes. Require complexity, exactness/error reasoning,
 expected end-to-end impact, implementation risk, and the closest prior-art
 difference. Reject ordinary tiling, warp/stage tuning, split-count changes,
 wrapper cleanup, and autotune expansion as algorithm novelty. Reject all
-production kernel edits during this stage. Advance only when a selected prototype
-has a credible route to at least 10% end-to-end gain, meaningful memory or
-communication reduction, or an asymptotic/coverage improvement; otherwise close
-the direction honestly.
+production kernel edits during this stage. Do not impose a universal percentage
+threshold or demand a precise forecast unsupported by evidence. Judge whether a
+bounded prototype is worth its cost using project-specific leverage, measurement
+noise, deployment frequency, implementation complexity, and potential latency,
+memory, communication, scalability, numerical, or coverage benefits. A 1% gain
+can matter on a ubiquitous path; an uncertain idea can proceed to a cheap decisive
+probe when the hypothesis is falsifiable. Otherwise close the direction honestly.
 
 ## Hard execution-versus-idea gate
 
