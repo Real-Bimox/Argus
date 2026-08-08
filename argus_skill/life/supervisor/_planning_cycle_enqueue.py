@@ -399,10 +399,12 @@ class PlanningCycleEnqueueMixin:
             from ...verticals._base import load_vertical, vertical_planner_task_issues
 
             policy_root = Path(context_root or self._project_workdir()).resolve()
-            policy_stage = current_stage(policy_root)
-            policy_vertical = resolve_vertical(policy_root)
+            state_reader = getattr(self, "_artifact_root", None)
+            state_root = state_reader() if callable(state_reader) else policy_root
+            policy_stage = current_stage(state_root)
+            policy_vertical = resolve_vertical(state_root)
             policy_issues = vertical_planner_task_issues(
-                load_vertical(policy_vertical, project_root=policy_root),
+                load_vertical(policy_vertical, project_root=state_root),
                 stage=policy_stage,
                 project_root=policy_root,
                 task=task,

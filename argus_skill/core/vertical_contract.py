@@ -57,6 +57,7 @@ class VerticalContract:
     stage_completion_validator: Callable[[str, Path], object] | None = None
     planner_task_validator: Callable[[str, Path, Any], object] | None = None
     stage_checks: dict[str, tuple[tuple[str, str], ...]] | None = None
+    stage_primary_deliverables: dict[str, tuple[str, ...]] | None = None
 
     @property
     def assurance_level(self) -> str:
@@ -81,6 +82,9 @@ class VerticalContract:
     def prepare_libraries(self, context: VerticalLibraryContext) -> None:
         if self.library_preparer is not None:
             self.library_preparer(context)
+
+    def primary_deliverables(self, stage: str) -> tuple[str, ...]:
+        return tuple((self.stage_primary_deliverables or {}).get(stage, ()))
 
     def completion_issues(self, stage: str, project_root: Path) -> tuple[str, ...]:
         if self.stage_completion_validator is None:
@@ -257,6 +261,29 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
                 )
             normalized_checks.append((label.strip(), command.strip()))
         stage_checks[stage] = tuple(normalized_checks)
+    raw_primary_deliverables = (
+        getattr(provider, "STAGE_PRIMARY_DELIVERABLES", {}) or {}
+    )
+    if not isinstance(raw_primary_deliverables, dict):
+        raise VerticalContractError(
+            f"vertical {name!r} primary deliverables are not a mapping"
+        )
+    unknown_primary_stages = sorted(
+        set(raw_primary_deliverables) - set(stage_order)
+    )
+    if unknown_primary_stages:
+        raise VerticalContractError(
+            f"vertical {name!r} has primary deliverables for unknown stages: "
+            f"{', '.join(unknown_primary_stages)}"
+        )
+    stage_primary_deliverables = {
+        str(stage): tuple(
+            path
+            for value in values
+            if (path := str(value or "").strip())
+        )
+        for stage, values in raw_primary_deliverables.items()
+    }
     return VerticalContract(
         name=str(name or "").strip().lower(),
         stage_order=stage_order,
@@ -304,6 +331,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         stage_completion_validator=stage_completion_validator,
         planner_task_validator=planner_task_validator,
         stage_checks=stage_checks,
+        stage_primary_deliverables=stage_primary_deliverables,
     )
 
 

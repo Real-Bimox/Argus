@@ -107,6 +107,116 @@ def test_planner_delegates_to_engineer_and_continues_after_one_increment(
     assert not list(project.glob("**/*.py")), "Planner must not create implementation files"
 
 
+def _kernel_supervisor(
+    project: Path,
+    life: Path,
+    planner: _PlannerBackend,
+) -> LifeSupervisor:
+    memory = LifeMemory.open(life)
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=_MissionRunner(),
+        sink=JsonlEventSink(None, life_dir=memory.root, verbosity="full"),
+        config=LifeSupervisorConfig(
+            budget=LifeBudget(),
+            continuous=True,
+            continuous_objective="run the kernel algorithm campaign",
+            open_ended=True,
+            project_worktree=project,
+            artifact_root=life,
+        ),
+        planner_runner=planner,
+    )
+    persist_vertical(life, "kernel_engineering", workflow_mode="staged")
+    supervisor._vertical_resolved = True
+    supervisor._planner_config = lambda: PlannerConfig(  # type: ignore[method-assign]
+        working_dir=str(project),
+        add_dirs=[str(life)],
+        open_ended=True,
+    )
+    return supervisor
+
+
+def test_missing_kernel_scope_bundle_is_delegated_without_planner_call(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    life = tmp_path / "life"
+    planner = _PlannerBackend([])
+    supervisor = _kernel_supervisor(project, life, planner)
+
+    assert supervisor._plan_next_work() is True
+
+    assert planner.calls == []
+    pending = supervisor.memory.backlog.pending()
+    assert [item.title for item in pending] == [
+        "Complete the kernel_engineering scope deliverable"
+    ]
+    item = pending[0]
+    assert "stage:scope" in item.tags
+    assert "stage_closing" in item.tags
+    assert "review:required" in item.tags
+    assert "research/KERNEL_SCOPE.md" in item.objective
+    assert "research/PROJECT_NATIVE_SETUP.md" in item.objective
+    assert "research/frontier/scope.json" in item.objective
+    assert "Online frontier snapshot validates" in item.acceptance_check
+
+
+def test_task_policy_uses_isolated_stage_and_execution_evidence_root(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    research = project / "research"
+    (research / "frontier").mkdir(parents=True)
+    (research / "KERNEL_SCOPE.md").write_text("# scope\n", encoding="utf-8")
+    (research / "PROJECT_NATIVE_SETUP.md").write_text("# setup\n", encoding="utf-8")
+    (research / "frontier" / "scope.json").write_text("{}\n", encoding="utf-8")
+    # Deliberately stale workspace state must not override Manager-owned state.
+    (research / "PIPELINE_STATE.json").write_text(
+        json.dumps({"vertical": "kernel_engineering", "current_stage": "optimize"}),
+        encoding="utf-8",
+    )
+    attempt = project / "attempts" / "winner"
+    attempt.mkdir(parents=True)
+    (attempt / "OUTCOME.json").write_text(
+        json.dumps({
+            "attempt_id": "winner",
+            "execution_status": "completed",
+            "failure_class": "none",
+            "idea_status": "supported",
+        }),
+        encoding="utf-8",
+    )
+    (research / "PERFORMANCE_RESULT.json").write_text(
+        json.dumps({"passed": True}),
+        encoding="utf-8",
+    )
+    planner = _PlannerBackend([
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=finish the authoritative scope stage",
+            "TASK_KEY=scope-repair",
+            "TASK_TITLE=Reconcile the scope contract",
+            "TASK_OBJECTIVE=Repair the current scope evidence only.",
+            "TASK_HYPOTHESIS=The scope contract has one remaining inconsistency.",
+            "TASK_GOAL_CONTRIBUTION=Make the campaign ready for discovery.",
+            "TASK_EXPECTED_REGRESSIONS=None; implementation is unchanged.",
+            "TASK_DECISION_RULE=Stop if the scope is already internally consistent.",
+            "TASK_ACCEPTANCE_CHECK=scope artifacts agree",
+        ])
+    ])
+    supervisor = _kernel_supervisor(project, tmp_path / "life", planner)
+
+    assert supervisor._plan_next_work() is True
+
+    assert len(planner.calls) == 1
+    assert [item.title for item in supervisor.memory.backlog.pending()] == [
+        "Reconcile the scope contract"
+    ]
+
+
 def test_planner_receives_host_current_reality_without_rediscovery(
     tmp_path: Path,
 ) -> None:

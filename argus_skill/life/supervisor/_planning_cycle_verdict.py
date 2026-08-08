@@ -27,6 +27,26 @@ def _is_content_filter_failure(*values: Any) -> bool:
 class PlanningCycleVerdictMixin:
     """Planner invocation and error/overlap normalization."""
 
+    def _pc_prepare_direct_stage_task(self, state: _PlanCycleState) -> Any | None:
+        """Bypass Planner when the vertical declares a plainly missing bundle."""
+        if state.revision_request is not None or state.operator_messages:
+            return None
+        task = self._direct_current_stage_task()
+        if task is None:
+            return None
+        from ...planner import PlannerVerdict
+
+        state.verdict = PlannerVerdict(
+            project_done=False,
+            reason=(
+                "host dispatched the missing primary current-stage deliverable "
+                "without another repository audit"
+            ),
+            new_tasks=[task],
+        )
+        self._emit_status(f"planner: directly delegated {task.title}")
+        return None
+
     def _pause_empty_plan_for_operator(
         self,
         state: _PlanCycleState,
@@ -99,6 +119,8 @@ class PlanningCycleVerdictMixin:
         return PLAN_AWAITING
 
     def _pc_invoke_planner(self, state: _PlanCycleState) -> Any | None:
+        if state.verdict is not None:
+            return None
         revision_request = state.revision_request
         journal_tail = self._render_journal_for_planner()
 

@@ -35,6 +35,16 @@ WORKFLOW_MODE = "staged"
 completion_gate = "metric"
 MISSION_KIND = "optimize"
 
+# When these files are absent, the host can dispatch one bounded Scope
+# Engineer task immediately instead of asking Planner to rediscover the gate.
+STAGE_PRIMARY_DELIVERABLES = {
+    "scope": (
+        "research/KERNEL_SCOPE.md",
+        "research/PROJECT_NATIVE_SETUP.md",
+        "research/frontier/scope.json",
+    ),
+}
+
 
 def search_altitude_context(project_root) -> str:
     from .campaign import planner_context
@@ -494,6 +504,7 @@ __all__ = [
     "REVIEWER_CHECKLISTS",
     "STAGE_CHECKS",
     "STAGE_ORDER",
+    "STAGE_PRIMARY_DELIVERABLES",
     "WORKFLOW_MODE",
     "completion_gate",
     "planner_task_issues",

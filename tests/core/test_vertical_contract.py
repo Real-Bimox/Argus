@@ -103,6 +103,28 @@ def test_empty_required_checklist_fails_but_runtime_authored_is_explicit() -> No
     assert contract.assurance_level == "runtime-authored"
 
 
+def test_primary_stage_deliverables_are_exposed_by_contract() -> None:
+    provider = SimpleNamespace(
+        CHECKLIST_STAGE_ORDER=("scope", "work"),
+        CHECKLIST_ITEMS={
+            "scope": (_item("scope.output"),),
+            "work": (_item("work.output"),),
+        },
+        STAGE_PRIMARY_DELIVERABLES={
+            "scope": ("research/SCOPE.md", "research/setup.md"),
+        },
+        completion_gate="none",
+    )
+
+    contract = vertical_contract("scoped", provider)
+
+    assert contract.primary_deliverables("scope") == (
+        "research/SCOPE.md",
+        "research/setup.md",
+    )
+    assert contract.primary_deliverables("work") == ()
+
+
 def test_stage_checks_are_validated_and_mark_contract_hybrid() -> None:
     provider = SimpleNamespace(
         CHECKLIST_STAGE_ORDER=("work",),

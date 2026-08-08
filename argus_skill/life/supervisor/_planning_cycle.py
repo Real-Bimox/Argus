@@ -634,6 +634,7 @@ class PlanningCycleMixin(
         for phase in (
             self._pc_intake_gate,
             self._pc_preflight_shortcircuits,
+            self._pc_prepare_direct_stage_task,
             self._pc_invoke_planner,
             self._pc_normalize_verdict,
             self._pc_handle_waiting,

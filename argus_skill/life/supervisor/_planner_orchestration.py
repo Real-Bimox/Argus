@@ -22,6 +22,87 @@ _PLANNER_RECENT_HISTORY_WINDOW = 20
 
 
 class PlannerOrchestrationMixin:
+    def _direct_current_stage_task(self) -> Any | None:
+        """Return one host-authored task for a plainly missing stage bundle."""
+        state_root = self._artifact_root()
+        project_root = self._project_workdir()
+        try:
+            from ...planner import TaskSpec
+            from ...skills.stage_machine import current_stage
+            from ...skills.vertical_select import resolve_vertical
+            from ...verticals._base import load_vertical_contract
+
+            vertical = resolve_vertical(state_root)
+            stage = current_stage(state_root)
+            contract = load_vertical_contract(vertical, project_root=state_root)
+            deliverables = contract.primary_deliverables(stage)
+        except Exception:  # noqa: BLE001 - ordinary Planner remains the fallback
+            log.exception("failed to resolve direct current-stage deliverable")
+            return None
+        if not deliverables:
+            return None
+
+        missing: list[str] = []
+        for relative in deliverables:
+            path = project_root / relative
+            try:
+                present = path.is_file() and path.stat().st_size > 0
+            except OSError:
+                present = False
+            if not present:
+                missing.append(relative)
+        if not missing:
+            return None
+
+        checks = tuple((contract.stage_checks or {}).get(stage, ()))
+        check_text = " | ".join(
+            f"{label}: `{command}`" for label, command in checks
+        ) or "the current-stage checklist reports no missing deliverable"
+        all_paths = ", ".join(f"`{path}`" for path in deliverables)
+        missing_paths = ", ".join(f"`{path}`" for path in missing)
+        return TaskSpec(
+            key=f"stage-{stage}",
+            title=f"Complete the {vertical} {stage} deliverable",
+            objective=(
+                f"Complete only the current `{stage}` stage in `{project_root}`. "
+                f"Produce and reconcile the stage bundle {all_paths}; the host "
+                f"currently finds these files missing or empty: {missing_paths}. "
+                "Inspect repository-native instructions and the target implementation "
+                "only as needed to make those artifacts concrete. Do not edit "
+                "Manager-owned pipeline state, production implementation, or any "
+                "downstream-stage artifact."
+            ),
+            impact_score=5,
+            impact_area="time-to-first-action",
+            evidence=f"host-observed missing current-stage files: {', '.join(missing)}",
+            hypothesis=(
+                "One bounded stage pass can produce the declared primary bundle "
+                "without an additional Planner repository audit."
+            ),
+            goal_contribution=(
+                f"Unblock the `{stage}` gate so the campaign can advance to its "
+                "next substantive stage."
+            ),
+            expected_regressions=(
+                "None outside the declared stage artifacts; source code and "
+                "downstream evidence remain unchanged."
+            ),
+            decision_rule=(
+                "Stop and report blocked if repository reality prevents an honest "
+                "stage artifact; otherwise finish all declared files in this task."
+            ),
+            acceptance_check=f"All `{stage}` checks pass — {check_text}",
+            non_goals=[
+                "edit production source code",
+                "advance or edit pipeline state",
+                "perform downstream-stage implementation or benchmarking",
+            ],
+            scope="bounded",
+            stage_closing=True,
+            require_independent_review=True,
+            skip_stage_transition=False,
+        )
+
     def _planner_cycle_gate_reason(self) -> str:
         gate = self.config.planner_cycle_gate
         if gate is None:

@@ -160,6 +160,14 @@ def vertical_planner_task_issues(
     return _contract(mod).planner_task_issues(stage, project_root, task)
 
 
+def vertical_stage_primary_deliverables(
+    mod: VerticalDefinition,
+    *,
+    stage: str,
+) -> tuple[str, ...]:
+    return _contract(mod).primary_deliverables(stage)
+
+
 def vertical_stage_completion_issues(
     mod: VerticalDefinition,
     *,
@@ -190,4 +198,5 @@ __all__ = [
     "vertical_workflow_mode",
     "vertical_search_altitude",
     "vertical_stage_completion_issues",
+    "vertical_stage_primary_deliverables",
 ]
