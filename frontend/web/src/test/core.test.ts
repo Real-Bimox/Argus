@@ -594,6 +594,7 @@ describe('shared frontend core', () => {
     expect(html).toContain('<h2');
     expect(html).toContain('<strong');
     expect(html).toContain('<code');
+    expect(html).toContain('aria-label="Copy code"');
     expect(html).toContain('whitespace-pre-wrap');
     expect(html).not.toContain('min-w-max');
     expect(html).not.toContain('<script>');

@@ -10,6 +10,7 @@ import { PanelHeader, EmptyHint } from './primitives';
 import { MarkdownContent } from './MarkdownContent';
 import { ArgusMark } from './Wordmark';
 import { useI18n } from '../i18n';
+import { CopyButton } from './CopyButton';
 
 type ActivityRow = { ev: EventMsg; r: Rendered; key: string };
 type ConversationGroup = { key: string; operator: ActivityRow; rows: ActivityRow[] };
@@ -67,6 +68,7 @@ function EventRow({ ev, r, first, last }: { ev: EventMsg; r: Rendered; first: bo
 }
 
 function ConversationRow({ ev, r }: { ev: EventMsg; r: Rendered }) {
+  const { t } = useI18n();
   const operator = String(ev.type) === 'ui.operator';
   const responseLatencyMs = Number(ev.response_latency_ms ?? 0);
   const responseLatency = !operator && responseLatencyMs >= 100
@@ -93,6 +95,12 @@ function ConversationRow({ ev, r }: { ev: EventMsg; r: Rendered }) {
     <article ref={rowRef} className="group mx-auto w-full max-w-full px-4 py-3 sm:px-6 lg:max-w-[61.8vw]">
       {operator ? (
         <div className="flex items-end justify-end gap-2">
+          <CopyButton
+            text={r.text}
+            label={t('copy.message')}
+            copiedLabel={t('copy.copied')}
+            className="opacity-60 sm:opacity-0 sm:group-hover:opacity-100"
+          />
           <time className="shrink-0 pb-1 font-mono text-[10px] tabular-nums text-ink-faint">{clockOf(ev)}</time>
           <div className="max-w-[calc(100%_-_3rem)] rounded-[18px] bg-conversation-user px-4 py-2.5 text-[15px] leading-relaxed text-ink ring-1 ring-line/35 sm:max-w-[82%]">
             <MarkdownContent>{r.text}</MarkdownContent>
@@ -104,10 +112,16 @@ function ConversationRow({ ev, r }: { ev: EventMsg; r: Rendered }) {
             <ArgusMark size={26} className="text-blue" />
           </span>
           <div className="relative min-w-0 flex-1 text-[15px] leading-relaxed text-ink">
-            <div className="mb-1 flex items-center">
+            <div className="mb-1 flex items-center gap-2">
               <span className="text-xs font-semibold text-blue">Argus</span>
+              <CopyButton
+                text={r.text}
+                label={t('copy.message')}
+                copiedLabel={t('copy.copied')}
+                className="ml-auto opacity-60 sm:opacity-0 sm:group-hover:opacity-100"
+              />
+              <time className="font-mono text-[10px] tabular-nums text-ink-faint">{clockOf(ev)}{responseLatency}</time>
             </div>
-            <time className="absolute right-0 top-0 font-mono text-[10px] tabular-nums text-ink-faint">{clockOf(ev)}{responseLatency}</time>
             <MarkdownContent>{r.text}</MarkdownContent>
           </div>
         </div>
