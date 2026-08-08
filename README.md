@@ -1,9 +1,9 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/argus-logo-horizontal-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="docs/assets/argus-logo-horizontal.svg">
-  <img src="docs/assets/argus-logo-horizontal.svg" width="420" alt="Argus">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/brand/svg/argus-logo-horizontal-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/brand/svg/argus-logo-horizontal.svg">
+  <img src="docs/assets/brand/svg/argus-logo-horizontal.svg" width="420" alt="Argus">
 </picture>
 
 ### Persistent, reviewed autonomy for research and engineering
