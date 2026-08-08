@@ -163,6 +163,7 @@ export interface MetricsSnapshot {
 }
 
 const TOKEN_KEY = 'argus_web_token';
+let inMemoryToken: string | null = null;
 
 /** Persist a token handed over in the URL, then drop it from the address bar.
  *
@@ -172,11 +173,22 @@ const TOKEN_KEY = 'argus_web_token';
  * unauthenticated. Clearing the query afterwards keeps the credential out of
  * the address bar, screenshots, and the back/forward history entry. */
 export function adoptTokenFromUrl(): void {
+  let params: URLSearchParams;
   try {
-    const params = new URLSearchParams(window.location.search);
-    const fromUrl = params.get('token');
-    if (!fromUrl) return;
+    params = new URLSearchParams(window.location.search);
+  } catch {
+    return;
+  }
+  const fromUrl = params.get('token');
+  if (!fromUrl) return;
+  inMemoryToken = fromUrl;
+  try {
     localStorage.setItem(TOKEN_KEY, fromUrl);
+  } catch {
+    // The in-memory copy keeps this page authenticated when storage is
+    // unavailable, including browsers that block storage for LAN origins.
+  }
+  try {
     params.delete('token');
     const query = params.toString();
     window.history.replaceState(
@@ -185,14 +197,19 @@ export function adoptTokenFromUrl(): void {
       `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
     );
   } catch {
-    // Private-mode storage failures shouldn't stop the app from loading; the
-    // in-URL token still authenticates this session.
+    // Failure to scrub the address bar must not stop the app from loading.
   }
 }
 
-const token = (): string | null =>
-  new URLSearchParams(window.location.search).get('token') ||
-  localStorage.getItem(TOKEN_KEY);
+const token = (): string | null => {
+  if (inMemoryToken) return inMemoryToken;
+  try {
+    return new URLSearchParams(window.location.search).get('token') ||
+      localStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
+};
 
 function authHeaders(): Record<string, string> {
   const t = token();

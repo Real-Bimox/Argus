@@ -530,13 +530,13 @@ body {
  * clears the tab bar. Single declaration per breakpoint — two classes both
  * setting padding-bottom would be decided by stylesheet order. */
 .composer-dock {
-  padding-bottom: var(--keyboard-inset);
+  padding-bottom: calc(var(--keyboard-inset) + 1.5rem);
   transition: padding-bottom 120ms ease-out;
 }
 
 @media (max-width: 1023px) {
   .composer-dock {
-    padding-bottom: calc(var(--mobile-tabbar-height) + var(--keyboard-inset) + 0.5rem);
+    padding-bottom: calc(var(--mobile-tabbar-height) + var(--keyboard-inset) + 1.5rem);
   }
 }
 

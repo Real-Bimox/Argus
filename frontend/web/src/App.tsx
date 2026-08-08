@@ -715,7 +715,7 @@ export default function App() {
                 />
               )}
               {!kiosk ? (
-                <div className="composer-dock shrink-0 px-4 pb-6 pt-3">
+                <div className="composer-dock shrink-0 px-4 pt-3">
                   <div className="mx-auto w-full max-w-full lg:max-w-[61.8vw]">
                   <PendingBanner
                     questions={snap.pending_questions ?? []}
