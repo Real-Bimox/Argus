@@ -97,6 +97,7 @@ def manager_message(
     text: str,
     *,
     global_root: Path | str | None = None,
+    attachments: list[dict[str, Any]] | None = None,
     on_fragment: Any = None,
     cancelled: Any = None,
     source_channel: str = "web",
@@ -126,10 +127,14 @@ def manager_message(
     from ..core.transcript import append_turn
     from ..life.memory import MemoryBundle
     from ..manager.front_door import mission_is_running
+    from .attachments import attachment_context_refs, compose_message_body
 
-    body = (text or "").strip()
+    resolved_attachments = list(attachments or [])
+    operator_text = str(text or "").strip()
+    body = compose_message_body(operator_text, resolved_attachments).strip()
     if not body:
         return {"kind": "error", "reply": "empty message"}
+    message_attachment_refs = attachment_context_refs(resolved_attachments)
 
     control_generation = manager_control_generation(sid)
     turn_id = f"web-{time.time_ns()}"
@@ -181,17 +186,17 @@ def manager_message(
     from ..life.router import looks_like_pause_request
     from ..manager.ask_intent import strip_ask_prefix
 
-    if looks_like_pause_request(body):
+    if looks_like_pause_request(operator_text):
         interrupt_manager_turns(sid)
         try:
             append_turn(life_dir, "operator", body)
         except Exception:  # noqa: BLE001
             pass
         _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
-        return _handle_pause_control(body, None, life_dir, emitter)
+        return _handle_pause_control(operator_text, None, life_dir, emitter)
 
-    if looks_like_status_query(body):
-        reply = build_status_snapshot_reply(life_dir, body)
+    if looks_like_status_query(operator_text):
+        reply = build_status_snapshot_reply(life_dir, operator_text)
         if reply:
             try:
                 append_turn(life_dir, "operator", body)
@@ -204,14 +209,18 @@ def manager_message(
     # the guess is what we are removing — queue nothing, and involve no role
     # beyond the Manager. This is what lets the automatic classifier stay
     # biased toward "task": anyone who wants a plain answer can say so.
-    _question = strip_ask_prefix(body)
+    _question = strip_ask_prefix(operator_text)
     if _question is not None:
         try:
             append_turn(life_dir, "operator", body)
         except Exception:  # noqa: BLE001
             pass
         _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
-        reply = _answer_inline(sid, life_dir, _question)
+        reply = _answer_inline(
+            sid,
+            life_dir,
+            compose_message_body(_question, resolved_attachments),
+        )
         return emitter.respond(reply, {"kind": "chat"})
 
     lock = _lock_for(sid)
@@ -272,13 +281,13 @@ def manager_message(
         try:
             session_intent = maybe_handle_session_intent(
                 sid=sid,
-                body=body,
+                body=operator_text,
                 life_dir=life_dir,
                 global_root=Path(mem.global_root),
                 prior_turns=prior_turns,
             )
         except (OSError, RuntimeError, ValueError) as exc:
-            chinese = any("\u3400" <= char <= "\u9fff" for char in body)
+            chinese = any("\u3400" <= char <= "\u9fff" for char in operator_text)
             reply = (
                 f"无法创建或切换工作目录：{exc}。没有派发软件任务。"
                 if chinese
@@ -291,7 +300,10 @@ def manager_message(
         if session_intent is not None:
             return emitter.respond(session_intent.reply, session_intent.result)
 
-        routing_body = contextualize_operator_turn(body, prior_turns)
+        routing_body = compose_message_body(
+            contextualize_operator_turn(operator_text, prior_turns),
+            resolved_attachments,
+        ).strip()
 
         # A web-process restart necessarily loses the live ACP process. Resume
         # seamlessly by opening one new warm conversation session with a
@@ -350,7 +362,7 @@ def manager_message(
             if _cancelled():
                 return _cancelled_result()
             interrupt_manager_turns(sid)
-            return _handle_pause_control(body, chat_state, life_dir, emitter)
+            return _handle_pause_control(operator_text, chat_state, life_dir, emitter)
 
         if control == "no_dispatch":
             route = "simple"
@@ -358,7 +370,7 @@ def manager_message(
         if control == "abort":
             if _cancelled():
                 return _cancelled_result()
-            return _handle_abort_control(body, life_dir, emitter)
+            return _handle_abort_control(operator_text, life_dir, emitter)
 
         config_result = _maybe_apply_config_intent(
             mem,
@@ -402,7 +414,13 @@ def manager_message(
             return _cancelled_result()
         try:
             item, daemon_alive, daemon_pid = _dispatch_team_mission(
-                mem, routing_body, chat_state, root_task_id, _cancelled, emitter
+                mem,
+                routing_body,
+                chat_state,
+                root_task_id,
+                _cancelled,
+                emitter,
+                attachment_context_refs=message_attachment_refs,
             )
         except Exception as exc:  # noqa: BLE001
             if _cancelled():
@@ -413,7 +431,7 @@ def manager_message(
     if _cancelled():
         return _cancelled_result()
 
-    item_payload = _item_to_dict(item, body)
+    item_payload = _item_to_dict(item, operator_text or body)
     result = {
         "kind": "task",
         "reply": None,
@@ -425,6 +443,7 @@ def manager_message(
     title = str(
         (item_payload or {}).get("title")
         or (item_payload or {}).get("objective")
+        or operator_text
         or body
     )
     emitter.emit_only(f"Queued · {title}")

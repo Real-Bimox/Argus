@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TaskIn(BaseModel):
@@ -17,8 +17,13 @@ class NudgeIn(BaseModel):
     text: str
 
 
+class AttachmentRefIn(BaseModel):
+    attachment_id: str
+
+
 class MessageIn(BaseModel):
     text: str
+    attachments: list[AttachmentRefIn] = Field(default_factory=list)
 
 
 class AnswerIn(BaseModel):

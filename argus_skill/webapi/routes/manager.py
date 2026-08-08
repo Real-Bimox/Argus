@@ -14,12 +14,92 @@ import threading
 from contextlib import suppress
 from typing import Any
 
-from fastapi import Depends, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import Depends, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
 from starlette.concurrency import run_in_threadpool
 from starlette.responses import StreamingResponse
 
 from .context import ServerContext
 from .models import MessageIn
+
+_UPLOAD_READ_CHUNK_BYTES = 64 * 1024
+
+
+async def _read_uploaded_attachments(
+    files: list[UploadFile],
+) -> list[tuple[str, str, bytes]]:
+    from ..attachments import attachment_limits
+
+    uploads = list(files or [])
+    limits = attachment_limits()
+
+    payload: list[tuple[str, str, bytes]] = []
+    total_bytes = 0
+    primary_error: BaseException | None = None
+    try:
+        if not uploads:
+            raise ValueError("no attachments were uploaded")
+        if len(uploads) > limits["max_count"]:
+            raise ValueError(
+                f"too many attachments; limit is {limits['max_count']} files per message"
+            )
+        for upload in uploads:
+            file_name = str(upload.filename or "")
+            file_mime = str(upload.content_type or "")
+            buffer = bytearray()
+            file_bytes = 0
+            while True:
+                remaining_file_bytes = limits["max_bytes_per_file"] - file_bytes
+                remaining_total_bytes = limits["max_total_bytes"] - total_bytes
+                if remaining_file_bytes <= 0:
+                    overflow = await upload.read(1)
+                    if overflow:
+                        label = file_name or "attachment"
+                        raise ValueError(
+                            f"{label} exceeds the {limits['max_bytes_per_file']} byte per-file limit"
+                        )
+                    break
+                if remaining_total_bytes <= 0:
+                    overflow = await upload.read(1)
+                    if overflow:
+                        raise ValueError(
+                            "combined attachments exceed the "
+                            f"{limits['max_total_bytes']} byte total limit"
+                        )
+                    break
+                read_size = min(
+                    _UPLOAD_READ_CHUNK_BYTES,
+                    remaining_file_bytes,
+                    remaining_total_bytes,
+                )
+                try:
+                    chunk = await upload.read(read_size)
+                except Exception as exc:  # noqa: BLE001 - explicit client-facing upload error
+                    label = file_name or "uploaded attachment"
+                    raise RuntimeError(f"failed to read {label}: {exc}") from exc
+                if not chunk:
+                    break
+                buffer.extend(chunk)
+                file_bytes += len(chunk)
+                total_bytes += len(chunk)
+            payload.append((file_name, file_mime, bytes(buffer)))
+    except BaseException as exc:
+        primary_error = exc
+
+    close_errors: list[str] = []
+    for upload in uploads:
+        try:
+            await upload.close()
+        except Exception as exc:  # noqa: BLE001 - preserve explicit close failures
+            label = str(upload.filename or "uploaded attachment")
+            close_errors.append(f"{label}: {type(exc).__name__}: {exc}")
+    if close_errors:
+        detail = "failed to close upload stream(s): " + "; ".join(close_errors)
+        if primary_error is not None:
+            raise RuntimeError(f"{primary_error}; {detail}") from primary_error
+        raise RuntimeError(detail)
+    if primary_error is not None:
+        raise primary_error
+    return payload
 
 
 def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
@@ -28,6 +108,45 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
 
         life_dir = ctx.resolve_or_404(sid)
         return daemon_dict(server_mod.read_daemon_status(life_dir), life_dir=life_dir)
+
+    async def _resolve_message_attachments(
+        sid: str,
+        body: MessageIn,
+        *,
+        global_root,
+    ) -> list[dict[str, Any]]:
+        if not body.attachments:
+            return []
+        from ..attachments import resolve_attachment_refs
+
+        try:
+            return await run_in_threadpool(
+                resolve_attachment_refs,
+                sid,
+                [row.model_dump() for row in body.attachments],
+                global_root=global_root,
+            )
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/projects/{sid}/attachments", dependencies=[Depends(ctx.require_auth)])
+    async def _upload_attachments(
+        sid: str,
+        files: list[UploadFile] = File(...),
+    ) -> dict[str, Any]:
+        project_root = ctx.project_root_or_404(sid)
+        from ..attachments import upload_attachments
+
+        try:
+            payload = await _read_uploaded_attachments(files)
+            return await run_in_threadpool(
+                upload_attachments,
+                sid,
+                payload,
+                global_root=project_root,
+            )
+        except (FileNotFoundError, OSError, RuntimeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/projects/{sid}/message", dependencies=[Depends(ctx.require_auth)])
     async def _post_message(sid: str, body: MessageIn) -> dict[str, Any]:
@@ -41,9 +160,18 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         project_root = ctx.project_root_or_404(sid)
         from ..manager_bridge import manager_message
         from ..manager_pending_question import record_task_dispatch_ack
+        attachments = await _resolve_message_attachments(
+            sid,
+            body,
+            global_root=project_root,
+        )
+
+        kwargs = {"global_root": project_root}
+        if attachments:
+            kwargs["attachments"] = attachments
 
         result = await run_in_threadpool(
-            manager_message, sid, body.text, global_root=project_root
+            manager_message, sid, body.text, **kwargs,
         )
         # A task classification lazily spawns the executor, mirroring /tasks.
         starts_executor = (
@@ -69,7 +197,7 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         return result
 
     @app.post("/api/projects/{sid}/message/stream", dependencies=[Depends(ctx.require_auth)])
-    def _post_message_stream(sid: str, body: MessageIn):
+    async def _post_message_stream(sid: str, body: MessageIn):
         """Streaming twin of ``/message`` (Server-Sent Events).
 
         The Manager turn is a blocking CLI call, but copilot/codex emit the reply
@@ -90,6 +218,11 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         project_root = ctx.project_root_or_404(sid)
         from ..manager_bridge import manager_message
         from ..manager_pending_question import record_task_dispatch_ack
+        attachments = await _resolve_message_attachments(
+            sid,
+            body,
+            global_root=project_root,
+        )
 
         q: "queue.Queue[dict | None]" = queue.Queue()
         cancel_event = threading.Event()
@@ -98,12 +231,17 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
             def _on_fragment(kind: str, payload: dict) -> None:
                 q.put({"type": kind, **payload})
             try:
+                kwargs = {
+                    "global_root": project_root,
+                    "on_fragment": _on_fragment,
+                    "cancelled": cancel_event.is_set,
+                }
+                if attachments:
+                    kwargs["attachments"] = attachments
                 result = manager_message(
                     sid,
                     body.text,
-                    global_root=project_root,
-                    on_fragment=_on_fragment,
-                    cancelled=cancel_event.is_set,
+                    **kwargs,
                 )
                 # Mirror the blocking endpoint: a task classification lazily spawns
                 # the executor so streamed dispatch behaves like /message + /tasks.

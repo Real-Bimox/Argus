@@ -867,6 +867,8 @@ def _dispatch_team_mission(
     root_task_id: str,
     cancelled: Callable[[], bool],
     emitter: _TurnEmitter,
+    *,
+    attachment_context_refs: list[dict[str, str]] | None = None,
 ) -> tuple[Any, bool, int | None]:
     """Apply the Manager's lifetime decision, resume a done lifecycle, and
     enqueue the operator's TEAM mission. Raises on failure — the caller
@@ -915,4 +917,5 @@ def _dispatch_team_mission(
         root_task_id=root_task_id,
         cancelled=cancelled,
         prepared_handoff=prepared,
+        context_refs=attachment_context_refs,
     )

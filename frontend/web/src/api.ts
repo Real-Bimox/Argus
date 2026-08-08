@@ -122,6 +122,27 @@ export interface PromptRewrite {
   questions: string[];
   error: string;
 }
+export interface UploadedAttachment {
+  attachment_id: string;
+  relative_path: string;
+  original_name: string;
+  stored_name: string;
+  mime: string;
+  size_bytes: number;
+  sha256: string;
+  integrity: string;
+}
+export interface MessageAttachmentRef {
+  attachment_id: string;
+}
+export interface AttachmentUploadResponse {
+  attachments: UploadedAttachment[];
+  limits: {
+    max_count: number;
+    max_bytes_per_file: number;
+    max_total_bytes: number;
+  };
+}
 export interface TrashEntry {
   trash_id: string;
   sid: string;
@@ -199,6 +220,21 @@ async function postJson<T = Record<string, unknown>>(
   return (await r.json()) as T;
 }
 
+async function postMultipart<T>(
+  path: string,
+  body: FormData,
+  signal?: AbortSignal,
+): Promise<T> {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: authHeaders(),
+    body,
+    signal,
+  });
+  await ensureResponseOk(r, 'POST', path);
+  return (await r.json()) as T;
+}
+
 function requireDaemonCommand<T>(result: T): T {
   const row = result && typeof result === 'object'
     ? result as Record<string, unknown>
@@ -233,6 +269,19 @@ async function getBlob(path: string, signal?: AbortSignal): Promise<Blob> {
 const P = (sid: string, path = '') => `/api/projects/${encodeURIComponent(sid)}${path}`;
 const commandId = (): string => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 let apiMetaPromise: Promise<ApiMeta> | undefined;
+
+function isAbortSignal(value: unknown): value is AbortSignal {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && 'aborted' in value
+    && typeof (value as AbortSignal).aborted === 'boolean',
+  );
+}
+
+function messageBody(text: string, attachments?: MessageAttachmentRef[]): Record<string, unknown> {
+  return attachments?.length ? { text, attachments } : { text };
+}
 
 export function compatibleApiMeta(): Promise<ApiMeta> {
   if (!apiMetaPromise) {
@@ -451,13 +500,33 @@ export const api = {
     P(sid, `/decisions/${encodeURIComponent(decisionId)}/resolve`),
     { option_id: optionId, note },
   ),
+  uploadAttachments: async (
+    sid: string,
+    files: File[],
+    signal?: AbortSignal,
+  ) => {
+    await compatibleApiMeta();
+    const form = new FormData();
+    files.forEach((file) => form.append('files', file, file.name));
+    return postMultipart<AttachmentUploadResponse>(P(sid, '/attachments'), form, signal);
+  },
   /** The Manager front-door: NL message → chat reply or an enqueued mission. */
-  message: (sid: string, text: string, signal?: AbortSignal) =>
-    postJson<{ kind: 'chat' | 'task' | 'pending_question' | 'pending_question_choice' | 'error'; reply: string | null; resolved?: boolean; item?: BacklogItem | null; daemon_alive?: boolean }>(
+  message: (
+    sid: string,
+    text: string,
+    signalOrOptions?: AbortSignal | {
+      signal?: AbortSignal;
+      attachments?: MessageAttachmentRef[];
+    },
+  ) => {
+    const signal = isAbortSignal(signalOrOptions) ? signalOrOptions : signalOrOptions?.signal;
+    const attachments = isAbortSignal(signalOrOptions) ? undefined : signalOrOptions?.attachments;
+    return postJson<{ kind: 'chat' | 'task' | 'pending_question' | 'pending_question_choice' | 'error'; reply: string | null; resolved?: boolean; item?: BacklogItem | null; daemon_alive?: boolean }>(
       P(sid, '/message'),
-      { text },
+      messageBody(text, attachments),
       signal,
-    ),
+    );
+  },
   /**
    * Streaming Manager front-door (SSE): ``onPhase`` per real step, ``onDelta``
    * per reply block as it's produced, ``onDone`` with the final classification,
@@ -477,12 +546,17 @@ export const api = {
       onDone?: (result: StreamDone) => void;
       onError?: (err: Error) => void;
     },
-    signal?: AbortSignal,
+    signalOrOptions?: AbortSignal | {
+      signal?: AbortSignal;
+      attachments?: MessageAttachmentRef[];
+    },
   ): Promise<void> => {
+    const signal = isAbortSignal(signalOrOptions) ? signalOrOptions : signalOrOptions?.signal;
+    const attachments = isAbortSignal(signalOrOptions) ? undefined : signalOrOptions?.attachments;
     const res = await fetch(P(sid, '/message/stream'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(messageBody(text, attachments)),
       signal,
     });
     await ensureResponseOk(res, 'POST', P(sid, '/message/stream'));

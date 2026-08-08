@@ -52,6 +52,36 @@ def _stable_topological_nodes(tasks: tuple[Any, ...]) -> list[Any]:
     return ordered
 
 
+def _merge_context_refs(
+    *groups: list[dict[str, Any]] | None,
+) -> list[dict[str, str]]:
+    merged: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for group in groups:
+        for raw_ref in group or []:
+            if not isinstance(raw_ref, dict):
+                continue
+            ref = {
+                str(key): str(value)
+                for key, value in raw_ref.items()
+                if str(key).strip() and str(value).strip()
+            }
+            target = str(ref.get("ref") or "").strip()
+            if not target:
+                continue
+            key = (
+                str(ref.get("kind") or "").strip(),
+                target,
+                str(ref.get("attachment_id") or "").strip(),
+                str(ref.get("why") or "").strip(),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(ref)
+    return merged
+
+
 def _plan_bounded_execution(
     mem: Any,
     execution_body: str,
@@ -190,6 +220,7 @@ def enqueue_mission(
     root_task_id: str | None = None,
     cancelled: Callable[[], bool] | None = None,
     prepared_handoff: front_door.PreparedManagerHandoff | None = None,
+    context_refs: list[dict[str, str]] | None = None,
 ) -> tuple[Any | None, bool, int | None]:
     """Persist one Manager-authored mission and report executor availability."""
     if chat_state.get("blocked_item_id"):
@@ -354,7 +385,10 @@ def enqueue_mission(
             skip_stage_transition = bool(
                 getattr(node, "skip_stage_transition", False)
             )
-            context_refs = hydrated_refs.get(node.key, [])
+            item_context_refs = _merge_context_refs(
+                hydrated_refs.get(node.key, []),
+                context_refs,
+            )
             item = BacklogItem.new(
                 item_id=ids[node.key],
                 title=node.title,
@@ -393,7 +427,7 @@ def enqueue_mission(
                 plan_id=plan_id,
                 plan_version=1,
                 node_key=node.key,
-                context_refs=context_refs,
+                context_refs=item_context_refs,
                 acceptance_check=str(getattr(node, "acceptance_check", "") or ""),
                 plan_hypothesis=str(getattr(node, "hypothesis", "") or ""),
                 goal_contribution=str(
