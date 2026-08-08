@@ -32,6 +32,24 @@ def test_card_is_readable_and_uses_item_identity() -> None:
     }]
 
 
+def test_chinese_decision_uses_operator_language_and_human_reason() -> None:
+    card = build_operator_decision(
+        item_id="i-zh",
+        title="验证内核性能",
+        reason="row exceeded timeout_s=300",
+        question="是否继续使用更小的诊断 shape？",
+        recommendation="先运行单行诊断。",
+    )
+
+    assert [row["label"] for row in card["options"]] == [
+        "按建议继续",
+        "给出其他指示",
+        "保留当前结果并停止",
+    ]
+    assert "300 秒" in card["reason"]
+    assert "不代表方案错误" in card["reason"]
+
+
 def test_option_selection_is_direct_and_custom_requires_text() -> None:
     card = build_operator_decision(
         item_id="i",

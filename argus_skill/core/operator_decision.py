@@ -6,7 +6,14 @@ labels; revisions are plain integers.
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Iterable, Mapping
+
+
+def _human_reason(reason: str, *, language_hint: str) -> str:
+    from .operator_messages import humanize_runtime_reason
+
+    return humanize_runtime_reason(reason, language_hint=language_hint)
 
 
 def build_operator_decision(
@@ -19,25 +26,36 @@ def build_operator_decision(
     evidence: Iterable[Mapping[str, Any]] = (),
     project_id: str = "",
 ) -> dict[str, Any]:
+    operator_language_is_chinese = bool(
+        re.search(r"[\u3400-\u9fff]", f"{title}\n{question}")
+    )
     options: list[dict[str, Any]] = []
     if recommendation.strip():
         options.append({
             "id": "recommended",
-            "label": "Use the recommended next step",
+            "label": (
+                "按建议继续"
+                if operator_language_is_chinese
+                else "Use the recommended next step"
+            ),
             "description": recommendation.strip(),
             "requires_note": False,
         })
     options.extend([
         {
             "id": "custom",
-            "label": "Give different guidance",
+            "label": "给出其他指示" if operator_language_is_chinese else "Give different guidance",
             "description": question.strip(),
             "requires_note": True,
         },
         {
             "id": "stop",
-            "label": "Stop this campaign",
-            "description": "Keep the current work and stop automatic continuation.",
+            "label": "保留当前结果并停止" if operator_language_is_chinese else "Stop this campaign",
+            "description": (
+                "保留当前工作，停止自动继续。"
+                if operator_language_is_chinese
+                else "Keep the current work and stop automatic continuation."
+            ),
             "requires_note": False,
         },
     ])
@@ -47,7 +65,10 @@ def build_operator_decision(
         "revision": 1,
         "status": "pending",
         "title": title.strip() or "Operator decision required",
-        "reason": reason.strip(),
+        "reason": _human_reason(
+            reason,
+            language_hint=f"{title}\n{question}",
+        ),
         "question": question.strip(),
         "evidence": [
             {

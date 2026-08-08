@@ -52,13 +52,26 @@ def adjudicate_plan_challenge(
             authority_impact=authority,
         )
     if authority == "operator" or str(operator_question or "").strip():
-        return PlanChallengeDecision(
-            action="ask_operator",
-            reason="The challenge changes an operator-owned constraint",
-            challenge=challenge,
-            alternative=alternative,
-            authority_impact="operator",
+        from ..core.autonomy import assess_operator_intervention
+
+        intervention = assess_operator_intervention(
+            question=(
+                str(operator_question or "").strip()
+                or challenge
+                or "Please decide this operator-owned constraint."
+            ),
+            reason=challenge,
+            next_action=alternative,
+            planner_report={"authority_impact": authority},
         )
+        if intervention.required:
+            return PlanChallengeDecision(
+                action="ask_operator",
+                reason=intervention.reason,
+                challenge=challenge,
+                alternative=alternative,
+                authority_impact="operator",
+            )
     if alternative:
         return PlanChallengeDecision(
             action="replace",

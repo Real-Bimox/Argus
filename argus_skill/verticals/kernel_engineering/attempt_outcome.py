@@ -80,6 +80,34 @@ def validate_outcome(record: dict[str, Any]) -> list[str]:
         errors.append(f"unsupported schema_version: {record.get('schema_version')!r}")
     if is_placeholder_text(record.get("attempt_id")):
         errors.append("attempt_id is empty or templated")
+    shapes = record.get("benchmark_shapes")
+    if shapes is not None:
+        if not isinstance(shapes, dict):
+            errors.append("benchmark_shapes must map shape ids to dimension objects")
+        else:
+            from .benchmark_preflight import preflight_shape
+
+            for shape_id, shape in shapes.items():
+                if not isinstance(shape, dict):
+                    errors.append(f"benchmark shape {shape_id!r} is not an object")
+                    continue
+                try:
+                    result = preflight_shape(
+                        str(shape_id),
+                        shape,
+                        dtype=str(record.get("benchmark_dtype") or "bf16"),
+                    )
+                except (TypeError, ValueError) as exc:
+                    errors.append(f"benchmark shape {shape_id!r}: {exc}")
+                    continue
+                if not result.declared:
+                    errors.append(
+                        f"benchmark shape {shape_id!r}: id has no parseable dimensions"
+                    )
+                errors.extend(
+                    f"benchmark shape {shape_id!r}: {mismatch}"
+                    for mismatch in result.mismatches
+                )
     errors.extend(validate_evidence(record, KERNEL_EVIDENCE))
     return list(dict.fromkeys(errors))
 

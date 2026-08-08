@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from argus_skill.core.operator_messages import (
+    humanize_runtime_reason,
     publish_operator_message,
     render_operator_update,
 )
@@ -44,6 +45,39 @@ def test_operator_update_explains_blocker_and_next_action() -> None:
     assert "Reason: The H100 runner is unavailable." in text
     assert "Your decision:" in text
     assert text.strip() not in {"BLOCKED", "NO-GO", "REVISE"}
+
+
+def test_runtime_timeout_is_explained_without_claiming_the_idea_failed() -> None:
+    text = humanize_runtime_reason(
+        "row exceeded timeout_s=300",
+        language_hint="优化内核",
+    )
+
+    assert "300 秒" in text
+    assert "不代表方案错误" in text
+    assert "最小诊断" in text
+
+
+def test_stale_decision_and_workspace_lock_are_humanized() -> None:
+    assert "latest state" in humanize_runtime_reason(
+        "stale decision: campaign changed since the question was created"
+    )
+    assert "starting a duplicate" in humanize_runtime_reason(
+        "executor failed to start: workdir /tmp/p is already owned by active session s-1"
+    )
+
+
+def test_operator_update_follows_chinese_project_language() -> None:
+    text = render_operator_update(
+        title="验证内核性能",
+        status="blocked",
+        reason="row exceeded timeout_s=300",
+        next_action="先运行单行诊断。",
+    )
+
+    assert text.splitlines()[0] == "暂时无法继续：验证内核性能。"
+    assert "原因：" in text
+    assert "下一步：先运行单行诊断。" in text
 
 
 def test_operator_update_leads_with_result() -> None:

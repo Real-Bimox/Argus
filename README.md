@@ -203,6 +203,18 @@ See **[docs/mobile.md](docs/mobile.md)** for the full setup.
 
 Argus is designed to be changed, not merely configured.
 
+### Autonomy level
+
+The default `pragmatic` mode handles recoverable engineering choices—timeouts, failed tests, benchmark sizing, and technical routes—without interrupting you. It asks only for credentials, more spending, irreversible/outward-facing actions, or changes to an operator-owned acceptance boundary.
+
+```bash
+export ARGUS_SKILL_AUTONOMY_MODE=cautious    # ask on every explicit question
+export ARGUS_SKILL_AUTONOMY_MODE=pragmatic   # default: recover technical issues
+export ARGUS_SKILL_AUTONOMY_MODE=autonomous  # maximize reversible execution
+```
+
+The Web configuration view and `/config` expose the same setting.
+
 ### Adapt the runtime
 
 If you are an agent enthusiast, deploy Argus locally and make the complete loop fit the way you work. Tune role prompts, workflow boundaries, review policy, tools, and operating conventions; connect your own infrastructure; preserve the behavior you care about with tests.

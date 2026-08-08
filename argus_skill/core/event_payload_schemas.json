@@ -235,7 +235,8 @@
             null
           ]
         },
-        "recoverable": {"type": "boolean"}
+        "recoverable": {"type": "boolean"},
+        "operator_question": {"type": "string"}
       }
     },
     "round.start": {
