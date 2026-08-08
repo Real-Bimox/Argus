@@ -118,8 +118,13 @@ Do not reward a large speedup until the baseline agrees with the canonical
 runner/reference and contention is excluded. Compile time must be excluded from
 steady-state latency unless compile latency is the declared metric.
 Reject a performance conclusion when the benchmark matrix does not exercise the
-changed dispatch/code path, or when a dirty candidate is labeled only by the
-unchanged base commit without a diff hash/snapshot identity.
+changed dispatch/code path. Require one paired end-to-end comparison with the
+same rows, a passing correctness gate, an aggregate speedup threshold, and a
+worst-row floor.
+
+Once a candidate passes those checks, optimize is finished. Require validation,
+reporting, and a clean feature-branch delivery before permitting another tuning
+attempt.
 
 ## Reviewer-controlled Try accounting
 
@@ -157,4 +162,4 @@ contributor. Require `RESULTS.md` to state:
 
 Return `done` only when a maintainer can reproduce the result without guessing
 which hidden package, compiler, profiler permission, or environment mutation
-made it work.
+made it work. Reporting is followed by delivery; do not reopen optimization.

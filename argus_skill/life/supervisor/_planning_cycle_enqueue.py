@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -393,6 +394,28 @@ class PlanningCycleEnqueueMixin:
                 ),
                 require_independent_review=canonical_require_review,
             )
+            from ...skills.vertical_select import resolve_vertical
+            from ...verticals._base import load_vertical, vertical_planner_task_issues
+
+            policy_root = Path(context_root or self._project_workdir()).resolve()
+            policy_stage = str(self._current_pipeline_stage() or "").strip().lower()
+            policy_vertical = resolve_vertical(policy_root)
+            policy_issues = vertical_planner_task_issues(
+                load_vertical(policy_vertical, project_root=policy_root),
+                stage=policy_stage,
+                project_root=policy_root,
+                task=task,
+            )
+            if policy_issues:
+                self._emit({
+                    "type": EventType.LIFE_PLANNER_TASK_SKIPPED,
+                    "cycle": self._planning_cycles,
+                    "title": task.title,
+                    "objective": task.objective,
+                    "skip_category": "vertical_task_policy",
+                    "reason": "; ".join(policy_issues),
+                })
+                continue
             certification_blocker = self._stage_closing_reproposal_blocker(task)
             if certification_blocker is not None:
                 prior_item, blocker_reason = certification_blocker

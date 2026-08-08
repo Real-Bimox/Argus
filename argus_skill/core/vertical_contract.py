@@ -55,6 +55,7 @@ class VerticalContract:
     mission_prelude: Callable[[str, Path, Path], str] | None = None
     library_preparer: Callable[[VerticalLibraryContext], None] | None = None
     stage_completion_validator: Callable[[str, Path], object] | None = None
+    planner_task_validator: Callable[[str, Path, Any], object] | None = None
     stage_checks: dict[str, tuple[tuple[str, str], ...]] | None = None
 
     @property
@@ -101,6 +102,15 @@ class VerticalContract:
             raise VerticalContractError(
                 f"vertical {self.name!r} completion validator returned a non-iterable"
             ) from exc
+
+    def planner_task_issues(self, stage: str, project_root: Path, task: Any) -> tuple[str, ...]:
+        if self.planner_task_validator is None:
+            return ()
+        return tuple(
+            str(issue).strip()
+            for issue in self.planner_task_validator(stage, project_root, task)
+            if str(issue).strip()
+        )
 
     def prepare_mission(
         self,
@@ -210,6 +220,11 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         raise VerticalContractError(
             f"vertical {name!r} has a non-callable stage completion validator"
         )
+    planner_task_validator = getattr(provider, "planner_task_issues", None)
+    if planner_task_validator is not None and not callable(planner_task_validator):
+        raise VerticalContractError(
+            f"vertical {name!r} has a non-callable planner task validator"
+        )
     raw_stage_checks = getattr(provider, "STAGE_CHECKS", {}) or {}
     if not isinstance(raw_stage_checks, dict):
         raise VerticalContractError(f"vertical {name!r} stage checks are not a mapping")
@@ -287,6 +302,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
             else None
         ),
         stage_completion_validator=stage_completion_validator,
+        planner_task_validator=planner_task_validator,
         stage_checks=stage_checks,
     )
 

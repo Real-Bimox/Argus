@@ -20,6 +20,7 @@ STAGE_ORDER = [
     "optimize",
     "validate",
     "report",
+    "deliver",
 ]
 
 # Profiling is the first phase inside optimize, not a standalone pipeline stage.
@@ -34,8 +35,28 @@ completion_gate = "metric"
 MISSION_KIND = "optimize"
 
 
+def search_altitude_context(project_root) -> str:
+    from .campaign import planner_context
+
+    return planner_context(project_root)
+
+
+def planner_task_issues(stage: str, project_root, task) -> tuple[str, ...]:
+    from .campaign import planner_task_issues as check_task
+
+    return check_task(stage, project_root, task)
+
+
+def stage_completion_issues(stage: str, project_root) -> tuple[str, ...]:
+    from .campaign import stage_completion_issues as check_stage
+
+    return check_stage(stage, project_root)
+
+
 def prepare_mission(stage: str, project_root, state_root) -> str:
-    """Prepare the immutable baseline workspace for the baseline stage."""
+    """Prepare baseline isolation or current campaign control."""
+    if stage in {"optimize", "validate", "report", "deliver"}:
+        return search_altitude_context(project_root)
     if stage != "baseline":
         return ""
     from .baseline_workspace import prepare_baseline_workspace
@@ -57,6 +78,9 @@ _OUTCOME = (
 )
 _LEVERAGE = (
     "${ARGUS_SKILL_PYTHON:-python} -m argus_skill.verticals.kernel_engineering.leverage_gate"
+)
+_CAMPAIGN = (
+    "${ARGUS_SKILL_PYTHON:-python} -m argus_skill.verticals.kernel_engineering.campaign"
 )
 
 STAGE_CHECKS: dict[str, list[tuple[str, str]]] = {
@@ -90,6 +114,7 @@ STAGE_CHECKS: dict[str, list[tuple[str, str]]] = {
             "--glob 'experiments/*/*' --glob 'experiments/*/*/*'",
         ),
         ("Attempt outcome taxonomy is valid", f"{_OUTCOME} check --project-root ."),
+        ("A retained winner has real paired speedup", f"{_CAMPAIGN} check --project-root ."),
     ],
     "validate": [
         _PIPELINE_CHECK,
@@ -102,6 +127,11 @@ STAGE_CHECKS: dict[str, list[tuple[str, str]]] = {
         _PIPELINE_CHECK,
         ("Results report present", "test -s RESULTS.md"),
         ("Environment provenance retained", "test -s research/ENVIRONMENT_AUDIT.json"),
+    ],
+    "deliver": [
+        _PIPELINE_CHECK,
+        ("Feature branch is active", "test \"$(git branch --show-current)\" != main"),
+        ("Tracked worktree is clean", "git diff --quiet && git diff --cached --quiet"),
     ],
 }
 
@@ -183,12 +213,15 @@ REVIEWER_CHECKLISTS: dict[str, tuple[str, str, list[str]]] = {
     ),
     "report": (
         _REVIEWER_SKILL,
-        "Require an upstream-ready report: exact baseline/candidate commands, target "
-        "hardware and stack, correctness matrix, latency quantiles and uncertainty, "
-        "memory, regressions/fallbacks, limitations, and a claim no broader than the "
-        "evidence. If the result is intended for a PR, the diff must stay narrow and "
-        "the report must explain why the chosen mature infrastructure was reused.",
+        "Require an upstream-ready report with exact commands, measured speedup, "
+        "regressions, limits, and a narrow diff. Then move to delivery; do not reopen optimization.",
         ["RESULTS.md", "research/ENVIRONMENT_AUDIT.json", "research/VALIDATION_RESULT.json"],
+    ),
+    "deliver": (
+        _REVIEWER_SKILL,
+        "Confirm the validated winner is isolated on a clean feature branch. Commit only "
+        "with operator authorization and never push without approval.",
+        ["RESULTS.md", "research/PERFORMANCE_RESULT.json"],
     ),
 }
 
@@ -322,6 +355,13 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
             evidence_hint="RESULTS.md",
         ),
     ),
+    "deliver": (
+        ChecklistItem(
+            id="deliver.clean_change",
+            statement="The validated winner is on a clean feature branch, ready for review.",
+            evidence_hint="git status, branch, commit, RESULTS.md",
+        ),
+    ),
 }
 
 for _stage in ("scope", "report"):
@@ -364,16 +404,10 @@ def role_banner(role: str) -> str:
     )
     if role == "planner":
         return common + (
-            "Plan environment and baseline work before implementation. Require a reuse "
-            "decision, capability audit, and trigger-fresh frontier search; schedule custom "
-            "infrastructure only after the canonical project/vendor path and current "
-            "public frontier are shown insufficient. If unmodified baseline correctness "
-            "is reproducibly red, close the impossible no-edit mission with replan and "
-            "create a scoped correctness-repair task that may edit only the selected "
-            "kernel/backend/autotune surface. Never queue another unchanged full gate. "
-            "For optimize, keep one bounded mission open across its full reviewed Try budget; "
-            "a first correct-but-slower candidate does not close the direction or justify "
-            "validate/report. Follow the final Reviewer retain-or-exhaust decision.\n"
+            "Install only the project-documented toolchain in an isolated environment, "
+            "then rerun the audit. During optimize, stop at the first correctness-passing "
+            "candidate whose paired end-to-end benchmark clears both aggregate and worst-row "
+            "thresholds. Validate, report, and deliver it before starting another cycle.\n"
         )
     if role == "reviewer":
         return common + (
@@ -387,9 +421,10 @@ def role_banner(role: str) -> str:
         )
     if role == "engineer":
         return common + (
-            "Run the environment audit first, repair the audited environment in an "
-            "isolated/pinned way, refresh frontier evidence only when a real trigger "
-            "applies, reproduce baseline, then profile and optimize.\n"
+            "Run the environment audit first. If a tool is missing, use the repository's "
+            "documented lockfile/extras in a local environment and rerun the audit. Profile, "
+            "make one focused change, and use `kernel_engineering.campaign compare` for the "
+            "paired result. Once it passes, stop tuning and deliver.\n"
         )
     return common
 
@@ -402,6 +437,9 @@ __all__ = [
     "STAGE_ORDER",
     "WORKFLOW_MODE",
     "completion_gate",
+    "planner_task_issues",
     "prepare_mission",
     "role_banner",
+    "search_altitude_context",
+    "stage_completion_issues",
 ]

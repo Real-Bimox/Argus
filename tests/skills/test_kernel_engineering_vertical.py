@@ -28,6 +28,7 @@ def test_kernel_engineering_is_known_metric_vertical(tmp_path: Path) -> None:
         "optimize",
         "validate",
         "report",
+        "deliver",
     )
 
 
