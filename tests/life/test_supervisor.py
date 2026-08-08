@@ -629,7 +629,7 @@ def test_blocked_verdict_persists_operator_question_onto_backlog_item(
     assert rows[item.id].status == "paused_operator"
     assert rows[item.id].pending_question == "fp16 精度损失可以接受吗，还是必须 fp32？"
     assert rows[item.id].operator_decision["project_id"] == mem.root.name
-    assert rows[item.id].operator_decision["campaign_generation"] == 0
+    assert "campaign_generation" not in rows[item.id].operator_decision
     pending_events = [
         event
         for event in sink.events

@@ -18,7 +18,6 @@ def build_operator_decision(
     recommendation: str = "",
     evidence: Iterable[Mapping[str, Any]] = (),
     project_id: str = "",
-    campaign_generation: int | None = None,
 ) -> dict[str, Any]:
     options: list[dict[str, Any]] = []
     if recommendation.strip():
@@ -65,8 +64,6 @@ def build_operator_decision(
     }
     if project_id.strip():
         card["project_id"] = project_id.strip()
-    if campaign_generation is not None:
-        card["campaign_generation"] = max(0, int(campaign_generation))
     return card
 
 

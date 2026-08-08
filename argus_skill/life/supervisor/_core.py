@@ -502,7 +502,6 @@ class LifeSupervisor(
         if action == "ask_operator" and item_id:
             try:
                 from ...core.operator_decision import build_operator_decision
-                from ...daemon.state import read_continuous_state
 
                 item = next(
                     row for row in self.memory.backlog.all() if row.id == item_id
@@ -518,9 +517,6 @@ class LifeSupervisor(
                     question=question,
                     recommendation="Keep the current operator-owned constraint.",
                     project_id=self.memory.root.name,
-                    campaign_generation=read_continuous_state(
-                        self.memory.root
-                    ).generation,
                 )
                 self.memory.backlog.update(
                     item.id,

@@ -1368,15 +1368,14 @@ class Backlog:
         manager_decision: str = "",
         decision_option: str = "custom",
         decision_id: str = "",
-        expected_revision: int | None = None,
         decision_note: str = "",
         manager_reply: str = "",
     ) -> tuple[BacklogItem | None, BacklogItem | None]:
         """Atomically consume one pending question and enqueue its continuation.
 
-        Decision-card callers may bind the update to the card id and revision.
-        A mismatch makes no change; the web layer then reports the request as
-        stale or as an idempotent replay of an already-applied choice.
+        A decision id binds typed-card requests to the pending card. The backlog
+        lock and resolved card provide idempotency without a separate revision
+        or campaign-generation gate.
         """
         with self._locked():
             items = self._load()
@@ -1384,18 +1383,11 @@ class Backlog:
             if blocked is None:
                 return None, None
             card = blocked.operator_decision
-            if decision_id:
-                if (
-                    str(card.get("id") or "") != decision_id
-                    or str(card.get("status") or "") != "pending"
-                ):
-                    return blocked, None
-                current_revision = int(card.get("revision", 1) or 1)
-                if (
-                    expected_revision is not None
-                    and current_revision != int(expected_revision)
-                ):
-                    return blocked, None
+            if decision_id and (
+                str(card.get("id") or "") != decision_id
+                or str(card.get("status") or "") != "pending"
+            ):
+                return blocked, None
             if not str(blocked.pending_question or "").strip():
                 return blocked, None
             answer = answer.strip()
@@ -1512,7 +1504,6 @@ class Backlog:
         *,
         note: str = "",
         decision_id: str = "",
-        expected_revision: int | None = None,
     ) -> BacklogItem | None:
         """Resolve one pending decision by stopping its campaign item."""
         with self._locked():
@@ -1521,18 +1512,11 @@ class Backlog:
             if item is None:
                 return None
             card = item.operator_decision
-            if decision_id:
-                if (
-                    str(card.get("id") or "") != decision_id
-                    or str(card.get("status") or "") != "pending"
-                ):
-                    return None
-                current_revision = int(card.get("revision", 1) or 1)
-                if (
-                    expected_revision is not None
-                    and current_revision != int(expected_revision)
-                ):
-                    return None
+            if decision_id and (
+                str(card.get("id") or "") != decision_id
+                or str(card.get("status") or "") != "pending"
+            ):
+                return None
             if not item.pending_question:
                 return None
             item.status = "aborted"

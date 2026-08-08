@@ -1222,7 +1222,7 @@ def test_message_unknown_project_404(client: TestClient, monkeypatch) -> None:
     assert client.post("/api/projects/s-nope/message", json={"text": "hi"}).status_code == 404
 
 
-def test_pending_answer_routes_through_manager_and_continues_blocked_task(
+def test_explicit_pending_answer_continues_without_a_model_call(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -1239,12 +1239,9 @@ def test_pending_answer_routes_through_manager_and_continues_blocked_task(
     monkeypatch.setattr(
         front_door,
         "manager_triage",
-        lambda *args, **kwargs: json.dumps({
-            "is_answer": True,
-            "resolved": True,
-            "decision": "Include the appendix after the references.",
-            "reply": "I have sent that decision to the team.",
-        }),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("the explicit answer endpoint must not call a model")
+        ),
     )
     started: list[str] = []
     monkeypatch.setattr(
@@ -1270,7 +1267,7 @@ def test_pending_answer_routes_through_manager_and_continues_blocked_task(
     assert original.pending_question == ""
     assert continuation.objective.startswith(
         "Authoritative Manager operator-answer decision:\n"
-        "Include the appendix after the references."
+        "Yes, include it after the references."
     )
     assert "Operator response" in continuation.objective
     assert "include it after the references" in continuation.objective
@@ -1348,12 +1345,9 @@ def test_concurrent_pending_answers_create_one_continuation(
     monkeypatch.setattr(
         front_door,
         "manager_triage",
-        lambda *args, **kwargs: json.dumps({
-            "is_answer": True,
-            "resolved": True,
-            "decision": "Use the operator-selected option.",
-            "reply": "Decision delivered.",
-        }),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("the explicit answer endpoint must not call a model")
+        ),
     )
 
     with ThreadPoolExecutor(max_workers=2) as pool:

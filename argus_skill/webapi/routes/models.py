@@ -28,7 +28,6 @@ class AnswerIn(BaseModel):
 class DecisionIn(BaseModel):
     option_id: str
     note: str = ""
-    expected_revision: int | None = None
 
 
 class AbortMissionIn(BaseModel):
