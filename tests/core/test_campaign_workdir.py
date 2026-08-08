@@ -28,11 +28,13 @@ def _pipeline(root: Path, *, stage: str = "baseline") -> None:
     )
 
 
-def test_normalize_task_workdir_accepts_escape_and_absolute(tmp_path: Path) -> None:
+def test_normalize_task_workdir_rejects_escape_and_absolute(tmp_path: Path) -> None:
     assert normalize_task_workdir(".") == ""
     assert normalize_task_workdir("repo/") == "repo"
-    assert normalize_task_workdir("../repo") == "../repo"
-    assert normalize_task_workdir(str(tmp_path / "repo")) == str(tmp_path / "repo")
+    with pytest.raises(ValueError, match="project-relative"):
+        normalize_task_workdir("../repo")
+    with pytest.raises(ValueError, match="project-relative"):
+        normalize_task_workdir(str(tmp_path / "repo"))
 
 
 def test_resolve_task_workdir_accepts_directory(tmp_path: Path) -> None:
@@ -54,18 +56,6 @@ def test_resolve_task_workdir_allows_symlink_outside_workspace(
     (base / "target").symlink_to(external, target_is_directory=True)
 
     assert resolve_task_workdir(base, "target") == external.resolve()
-
-
-def test_resolve_task_workdir_allows_parent_and_absolute_paths(
-    tmp_path: Path,
-) -> None:
-    base = tmp_path / "workspace"
-    base.mkdir()
-    external = tmp_path / "external"
-    external.mkdir()
-
-    assert resolve_task_workdir(base, "../external") == external.resolve()
-    assert resolve_task_workdir(base, external) == external.resolve()
 
 
 def test_adopt_nested_git_root_and_copy_pipeline_state(tmp_path: Path) -> None:
@@ -140,20 +130,18 @@ def test_repeated_preplanned_child_path_is_idempotent_after_adoption(
     assert second == child.resolve()
 
 
-def test_adoption_accepts_plain_directory(tmp_path: Path) -> None:
+def test_adoption_requires_git_toplevel(tmp_path: Path) -> None:
     base = tmp_path / "workspace"
     plain = base / "plain"
     plain.mkdir(parents=True)
 
-    adopted = adopt_campaign_workdir(
-        state_root=tmp_path / "life",
-        base_root=base,
-        current_root=base,
-        requested="plain",
-    )
-
-    assert adopted == plain.resolve()
-    assert active_campaign_workdir(tmp_path / "life", base) == plain.resolve()
+    with pytest.raises(ValueError, match="real Git repository"):
+        adopt_campaign_workdir(
+            state_root=tmp_path / "life",
+            base_root=base,
+            current_root=base,
+            requested="plain",
+        )
 
 
 def test_conflicting_target_pipeline_state_fails_closed(tmp_path: Path) -> None:

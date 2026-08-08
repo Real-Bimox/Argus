@@ -1,16 +1,18 @@
-"""Persist and validate a campaign's primary execution root.
+"""Persist and validate a campaign's primary repository root.
 
 A session can start in a parent workspace, clone the real target repository, and
 then spend the rest of its life operating in that child repository.  Keeping the
 parent as the execution/artifact root creates two ``research/`` trees and makes
 Manager/Reviewer evidence invisible to one another.  This module lets a
-Planner-selected directory become the campaign root without changing the stable
-Argus state directory.
+Planner-selected, project-relative Git root become the campaign root without
+changing the stable Argus state directory. The relative path may resolve through
+a symlink to a repository outside the session workspace.
 """
 from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -22,26 +24,25 @@ def campaign_workdir_path(state_root: Path | str) -> Path:
 
 
 def normalize_task_workdir(value: object) -> str:
-    """Normalize a Planner-authored execution root."""
+    """Normalize a Planner-authored project-relative execution root."""
     raw = str(value or "").strip()
     if not raw or raw == ".":
         return ""
-    return Path(raw).as_posix()
+    candidate = Path(raw)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ValueError("TASK_WORKDIR must be a project-relative path without '..'")
+    normalized = candidate.as_posix().strip("/")
+    if not normalized:
+        return ""
+    return normalized
 
 
 def resolve_task_workdir(base_root: Path | str, value: object) -> Path:
-    """Resolve an ordinary task root from *base_root*, without adopting it."""
+    """Resolve a task root from *base_root*, allowing external symlink targets."""
     base = Path(base_root).expanduser().resolve(strict=True)
-    requested = normalize_task_workdir(value)
+    relative = normalize_task_workdir(value)
     try:
-        candidate = Path(requested).expanduser()
-        target = (
-            base
-            if not requested
-            else (candidate if candidate.is_absolute() else base / candidate).resolve(
-                strict=True
-            )
-        )
+        target = base if not relative else (base / relative).resolve(strict=True)
     except OSError as exc:
         raise ValueError(f"TASK_WORKDIR is not a directory: {value!r}") from exc
     if not target.is_dir():
@@ -49,12 +50,31 @@ def resolve_task_workdir(base_root: Path | str, value: object) -> Path:
     return target
 
 
+def _git_toplevel(path: Path) -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    try:
+        return Path(result.stdout.strip()).resolve(strict=True)
+    except OSError:
+        return None
+
+
 def active_campaign_workdir(
     state_root: Path | str,
     base_root: Path | str,
 ) -> Path | None:
-    """Return a valid persisted campaign root, otherwise ``None``."""
-    _ = base_root
+    """Return a valid persisted campaign repository root, otherwise ``None``."""
+    base = Path(base_root).expanduser().resolve()
     try:
         payload = json.loads(
             campaign_workdir_path(state_root).read_text(encoding="utf-8")
@@ -70,7 +90,9 @@ def active_campaign_workdir(
         target = Path(raw).expanduser().resolve(strict=True)
     except OSError:
         return None
-    if not target.is_dir():
+    if target == base or not target.is_dir():
+        return None
+    if _git_toplevel(target) != target:
         return None
     return target
 
@@ -136,15 +158,19 @@ def adopt_campaign_workdir(
     current_root: Path | str,
     requested: object,
 ) -> Path:
-    """Validate and persist a Planner-selected directory as campaign root."""
+    """Validate and persist a Planner-selected Git repository as campaign root."""
     base = Path(base_root).expanduser().resolve(strict=True)
     current = Path(current_root).expanduser().resolve(strict=True)
     relative = normalize_task_workdir(requested)
-    # Relative DAG paths remain anchored to the original session root even
-    # after an earlier sibling has adopted another campaign directory.
+    # Persisted DAG nodes remain relative to the original session root even
+    # after an earlier sibling has adopted another campaign repository.
     target = current if not relative else resolve_task_workdir(base, relative)
     if target == current:
         return current
+    if _git_toplevel(target) != target:
+        raise ValueError(
+            "TASK_WORKDIR adoption requires the root of a real Git repository"
+        )
 
     _copy_pipeline_state(current, target)
     payload = {
