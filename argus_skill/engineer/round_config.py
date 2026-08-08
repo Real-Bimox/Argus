@@ -149,7 +149,7 @@ def _fit_stall_guard(threshold: int, budget: int) -> int:
 class SupervisedConfig:
     """Knobs for the round-loop control."""
 
-    max_rounds: int = 500
+    max_rounds: int = 32
     # Keep the historical reviewed loop by default. Planner-classified
     # low-risk bounded work may opt into an Engineer self-review completion.
     require_independent_review: bool = True

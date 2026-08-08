@@ -151,7 +151,12 @@ def current_stage(project_root: Path | str = ".") -> str:
     return fallback
 
 
-def _ensure_stage_completion(project_root: Path | str, stage: str) -> None:
+def _ensure_stage_completion(
+    project_root: Path | str,
+    stage: str,
+    *,
+    evidence_root: Path | str | None = None,
+) -> None:
     """Fail closed on the active vertical's deterministic completion hook."""
     from ..verticals._base import load_vertical, vertical_stage_completion_issues
     from .vertical_select import resolve_vertical
@@ -161,7 +166,7 @@ def _ensure_stage_completion(project_root: Path | str, stage: str) -> None:
         issues = vertical_stage_completion_issues(
             load_vertical(vertical, project_root=project_root),
             stage=_normalize_stage(stage),
-            project_root=Path(project_root),
+            project_root=Path(evidence_root or project_root),
         )
     except StageCompletionError:
         raise
@@ -219,6 +224,7 @@ def _set_stage(
     completion_contract_sha256: str = "",
     downgrade_downstream: bool = False,
     legacy_rollback_history: bool = False,
+    evidence_root: Path | str | None = None,
 ) -> str:
     """Single vertical-aware read-modify-write of the pipeline stage state.
 
@@ -391,7 +397,7 @@ def _set_stage(
         encoding="utf-8",
     )
     _os.replace(_tmp, state_path)
-    _sync_status_stage(root, target)
+    _sync_status_stage(Path(evidence_root or root), target)
     return str(state_path)
 
 
@@ -401,6 +407,7 @@ def advance_stage(
     target_stage: str,
     reason: str,
     advanced_by: str = "manager",
+    evidence_root: Path | str | None = None,
 ) -> str:
     """Move the pipeline state machine **forward** to the next stage.
 
@@ -428,7 +435,6 @@ def advance_stage(
                 f"advance target {target!r} must be the immediate next stage "
                 f"after {cur_norm!r}"
             )
-            _ensure_stage_completion(project_root, cur_norm)
     return _set_stage(
         project_root,
         target_stage=target,
@@ -436,6 +442,7 @@ def advance_stage(
         by=advanced_by,
         direction="advance",
         mark_current_done=True,
+        evidence_root=evidence_root,
     )
 
 
@@ -445,6 +452,7 @@ def rollback_stage(
     target_stage: str,
     reason: str,
     rolled_back_by: str = "reviewer",
+    evidence_root: Path | str | None = None,
 ) -> str:
     """Move the pipeline state machine **backward** to an earlier stage.
 
@@ -480,6 +488,7 @@ def rollback_stage(
         direction="rollback",
         downgrade_downstream=True,
         legacy_rollback_history=True,
+        evidence_root=evidence_root,
     )
 
 
@@ -489,6 +498,7 @@ def reset_stage_for_replacement_intent(
     target_stage: str,
     reason: str,
     reset_by: str = "manager",
+    evidence_root: Path | str | None = None,
 ) -> str:
     """Restart a staged pipeline for a Manager-confirmed replacement objective.
 
@@ -504,6 +514,7 @@ def reset_stage_for_replacement_intent(
         direction="reset",
         downgrade_downstream=True,
         legacy_rollback_history=True,
+        evidence_root=evidence_root,
     )
 
 
@@ -512,6 +523,7 @@ def complete_final_stage(
     *,
     reason: str,
     completed_by: str = "manager",
+    evidence_root: Path | str | None = None,
 ) -> str:
     """Mark the FINAL pipeline stage ``done`` without moving ``current_stage``.
 
@@ -534,7 +546,11 @@ def complete_final_stage(
             f"complete target must be the final stage {order[-1] if order else '?'!r}; "
             f"current stage is {cur!r}"
         )
-    _ensure_stage_completion(project_root, cur)
+    _ensure_stage_completion(
+        project_root,
+        cur,
+        evidence_root=evidence_root,
+    )
     from ..verticals._base import (
         load_vertical,
         vertical_completion_contract_version,
@@ -567,6 +583,7 @@ def complete_final_stage(
         mark_current_done=True,
         completion_contract_version=completion_contract_version,
         completion_contract_sha256=completion_contract_sha256,
+        evidence_root=evidence_root,
     )
 
 

@@ -61,6 +61,27 @@ def test_registry_covers_the_key_operator_knobs() -> None:
     assert "ARGUS_SKILL_SUPERVISOR_MODEL" in names
 
 
+def test_mission_round_default_is_bounded_and_consistent() -> None:
+    from argus_skill.engineer.round_config import SupervisedConfig
+    from argus_skill.loop import SkillLoopConfig
+
+    max_rounds_knob = next(
+        knob for knob in KNOBS if knob.name == "ARGUS_SKILL_MAX_ROUNDS"
+    )
+
+    assert max_rounds_knob.default == "32"
+    assert SkillLoopConfig().max_rounds == 32
+    assert SupervisedConfig().max_rounds == 32
+
+
+def test_manager_planner_and_self_reasoning_defaults_are_high() -> None:
+    defaults = {knob.name: knob.default for knob in KNOBS}
+
+    assert defaults["ARGUS_SKILL_MANAGER_REASONING_EFFORT"] == "high"
+    assert defaults["ARGUS_SKILL_PLANNER_REASONING_EFFORT"] == "high"
+    assert defaults["ARGUS_SKILL_SELF_REASONING_EFFORT"] == "high"
+
+
 def test_config_help_does_not_advertise_formal_vertical_override() -> None:
     assert all(k.name != "ARGUS_SKILL_VERTICAL" for k in KNOBS)
     assert "ARGUS_SKILL_VERTICAL" not in format_config_help(env={})

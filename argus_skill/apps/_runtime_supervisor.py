@@ -185,19 +185,9 @@ def run_life_supervisor(
         # routing/presentation instructions never reach Planner/Engineer.
         if continuous and str(continuous_objective).strip():
             try:
-                # Prefer the runner's single Manager instance (manager backend);
-                # fall back to an ad-hoc Manager only when the runner has none
-                # (e.g. the memory runner used in tests).
-                mgr = getattr(runner, "manager", None)
+                mgr = runner.manager
                 if mgr is None:
-                    from ..manager import Manager
-
-                    mgr = Manager(
-                        project_root=artifact_root or project_root,
-                        runner=getattr(runner, "manager_backend", None)
-                        or getattr(runner, "backend", None),
-                        skill_store=getattr(runner, "_manager_skill_store", None),
-                    )
+                    raise RuntimeError("runner was constructed without a Manager")
                 division = mgr.divide(
                     continuous_objective,
                     ask_on_new_domain=_env_flag("ARGUS_SKILL_DOMAIN_ASK", False),
@@ -310,10 +300,10 @@ def _invoke_supervisor(
     except Exception:  # noqa: BLE001
         ns.manager_session_root = None
         ns.project_state_dir = None
-    # Life-mode default: 500 engineer rounds. The earlier low cap was
-    # too small for "implement + test + polish" tasks that need many
-    # tool calls. Override via ARGUS_SKILL_MAX_ROUNDS.
-    ns.max_rounds = int(os.environ.get("ARGUS_SKILL_MAX_ROUNDS", "500"))
+    # Keep enough room for multi-round implementation and review without
+    # allowing one mission to consume an effectively unbounded campaign.
+    # Override via ARGUS_SKILL_MAX_ROUNDS for exceptional long-horizon work.
+    ns.max_rounds = int(os.environ.get("ARGUS_SKILL_MAX_ROUNDS", "32"))
 
     # Runtime context injected into every mission prelude so the agent
     # knows its own backend, models, and budget constraints at runtime.

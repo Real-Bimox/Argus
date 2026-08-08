@@ -35,7 +35,79 @@ describe('web API protocol handshake', () => {
     vi.stubGlobal('localStorage', { getItem: () => null });
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('does not reconnect a stream after the server rejects an unknown project', async () => {
+    vi.useFakeTimers();
+    const sockets: MockWebSocket[] = [];
+
+    class MockWebSocket {
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onclose: ((event: { code: number; reason: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      constructor(readonly url: string) {
+        sockets.push(this);
+      }
+
+      close() {}
+    }
+
+    vi.stubGlobal('window', {
+      location: { protocol: 'http:', host: '127.0.0.1:8801', search: '' },
+    });
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    const { openStream } = await import('../api');
+    const onClose = vi.fn();
+    const close = openStream('s-missing', () => undefined, { onClose });
+
+    expect(sockets).toHaveLength(1);
+    sockets[0].onclose?.({ code: 4404, reason: 'unknown project' });
+    await vi.advanceTimersByTimeAsync(1_001);
+
+    expect(sockets).toHaveLength(1);
+    expect(onClose).toHaveBeenCalledWith({
+      code: 4404,
+      reason: 'unknown project',
+      retryable: false,
+    });
+    close();
+  });
+
+  it('still reconnects a stream after a transient network close', async () => {
+    vi.useFakeTimers();
+    const sockets: MockWebSocket[] = [];
+
+    class MockWebSocket {
+      onopen: (() => void) | null = null;
+      onmessage: ((event: { data: string }) => void) | null = null;
+      onclose: ((event: { code: number; reason: string }) => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      constructor(readonly url: string) {
+        sockets.push(this);
+      }
+
+      close() {}
+    }
+
+    vi.stubGlobal('window', {
+      location: { protocol: 'http:', host: '127.0.0.1:8801', search: '' },
+    });
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    const { openStream } = await import('../api');
+    const close = openStream('s-live', () => undefined);
+
+    sockets[0].onclose?.({ code: 1006, reason: '' });
+    await vi.advanceTimersByTimeAsync(1_001);
+
+    expect(sockets).toHaveLength(2);
+    close();
+  });
 
   it('rejects an old backend before requesting projects', async () => {
     const fetchMock = vi.fn(async () => new Response('not found', { status: 404 }));

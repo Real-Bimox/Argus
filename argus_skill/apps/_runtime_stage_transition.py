@@ -42,16 +42,8 @@ class StageTransitionMixin:
         stage write itself already happened inside ``decide_stage_transition``.
         """
         try:
-            from ..manager import Manager
-
             final_review = getattr(rounds_list[-1], "review", None) if rounds_list else None
-            st = Manager(
-                project_root=getattr(self, "_artifact_root", workdir),
-                runner=getattr(self, "manager_backend", None) or self._backend,
-                skill_store=getattr(self, "_manager_skill_store", None),
-                manager_session_root=getattr(self, "_manager_session_root", workdir),
-                usage_context=self.task_usage_context,
-            ).decide_stage_transition(
+            st = self.manager.bind_execution_workdir(workdir).decide_stage_transition(
                 review=final_review,
                 project_root=getattr(self, "_artifact_root", workdir),
                 on_event=sink.handle_event,

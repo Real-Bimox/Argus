@@ -451,10 +451,10 @@ def classify_front_door(
         )
         if lifetime_token == "BOUNDED_INCREMENT":
             lifetime = "bounded_increment"
-        elif lifetime_token == "BOUNDED":
-            lifetime = "bounded"
-        else:
+        elif lifetime_token == "STANDING":
             lifetime = "standing"
+        else:
+            lifetime = "bounded"
     if callable(lifetime_sink) and lifetime is not None:
         try:
             lifetime_sink(lifetime)

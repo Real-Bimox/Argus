@@ -182,8 +182,7 @@ and Simplified Chinese. Use the language button in the session sidebar to
 switch; the selection is saved in the browser.
 
 ```bash
-argus --web --no-open    # start without opening a browser
-argus --web --port 8800  # use another port
+argus --web --web-port 8800  # use another port
 ```
 
 #### Remote server over SSH
@@ -191,7 +190,7 @@ argus --web --port 8800  # use another port
 On the server:
 
 ```bash
-argus --web --no-open
+argus --web
 ```
 
 On your computer:
@@ -209,7 +208,7 @@ A non-loopback bind is always protected by a bearer token. If
 `ARGUS_SKILL_WEB_TOKEN` is set it is used; otherwise one is minted for that run:
 
 ```bash
-argus --web --host 0.0.0.0 --port 8799 --no-open
+argus --web --web-host 0.0.0.0 --web-port 8799
 ```
 
 This prints the address other devices can reach, the token, and a QR code.
@@ -242,7 +241,7 @@ export ARGUS_SKILL_TELEGRAM_BOT_TOKEN=... ARGUS_SKILL_TELEGRAM_CHAT_ID=...
 
 Both bots serve the same commands (`/add`, `/status`, `/nudge`, `/backlog`, …).
 The web UI is installable to the home screen and pairs by scanning the QR code
-printed by `argus --web --host 0.0.0.0`.
+printed by `argus --web --web-host 0.0.0.0`.
 
 See **[docs/mobile.md](docs/mobile.md)** for the full setup.
 
@@ -282,7 +281,7 @@ Useful entry points:
 ```bash
 argus --doctor
 argus --status
-argus --web --no-open
+argus --web
 ```
 
 The most capable setup is often an Argus instance deliberately adapted to your own ambitious field and way of working.

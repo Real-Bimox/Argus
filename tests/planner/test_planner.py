@@ -119,7 +119,7 @@ class _SequenceRunner:
         return RunnerResult(exit_code=0, agent_messages=[self.messages.pop(0)])
 
 
-def test_plan_next_disables_schema_and_planner_timeouts(monkeypatch) -> None:
+def test_plan_next_disables_schema_and_forces_read_only_tools(monkeypatch) -> None:
     runner = _Runner()
     monkeypatch.setattr(
         Planner,
@@ -143,13 +143,13 @@ def test_plan_next_disables_schema_and_planner_timeouts(monkeypatch) -> None:
     assert not hasattr(options, "output_schema_path")
     assert options.external_interrupt_reason_provider is None
     assert options.watchdog_hard_idle_seconds == 0
-    assert options.dangerous_yolo is True
+    assert options.dangerous_yolo is False
     assert options.full_auto is False
-    assert options.sandbox_mode is None
+    assert options.sandbox_mode == "read-only"
     assert options.add_dirs == ["/tmp/project-state"]
 
 
-def test_plan_next_defaults_to_full_tool_access(monkeypatch) -> None:
+def test_plan_next_defaults_to_read_only_tool_access(monkeypatch) -> None:
     runner = _Runner()
     monkeypatch.setattr(
         Planner,
@@ -163,9 +163,9 @@ def test_plan_next_defaults_to_full_tool_access(monkeypatch) -> None:
     )
 
     options = runner.calls[0]["options"]
-    assert options.dangerous_yolo is True
+    assert options.dangerous_yolo is False
     assert options.full_auto is False
-    assert options.sandbox_mode is None
+    assert options.sandbox_mode == "read-only"
 
 
 def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:

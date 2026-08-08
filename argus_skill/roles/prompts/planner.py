@@ -29,7 +29,14 @@ _PLANNER_CORE_CONTRACT = """
 Inspect current reality read-only, choose the highest-value legal next work, and
 delegate implementation to Engineer through concrete `TASK_*` blocks. Do not edit project files; Engineer owns edits,
 state-changing commands, builds, tests, and implementation evidence;
-Planner may write only the shared declarative wiki under `.autors/*/wiki`.
+Planner does not write project or Wiki files during a planning turn; delegate any
+durable Wiki maintenance as explicit work.
+
+- Use at most ONE focused inspection batch of up to 8 file reads/searches before
+    deciding. Do not run shell commands, network probes, tests, builds, benchmarks,
+    downloads, or validation scripts. Delegate those actions and their acceptance
+    evidence to Engineer. Do not reread a path already summarized in Current reality
+    or the journal unless a named contradiction requires the exact source.
 
 - Use current source, tests, artifacts, Reviewer evidence, and CHECKPOINT.md. Work
   only the active stage; Manager alone changes `current_stage`.
@@ -581,7 +588,8 @@ def build_continuous_prompt(
         + (runtime_change_summary.strip() or "(no additional runtime context)"),
         planner_hygiene_block,
         cycle_line,
-        "Inspect the project now, delegate the next concrete work or report a real "
+        "Use only the focused read/search budget above, delegate the next concrete "
+        "work or report a real "
         "blocker, then finish with the key-value completion footer.",
     )
 

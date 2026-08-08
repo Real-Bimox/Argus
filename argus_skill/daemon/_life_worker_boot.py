@@ -337,19 +337,9 @@ class LifeWorkerBootMixin:
                 }
             )
             try:
-                # Prefer the rf_state.runner's single Manager instance (manager backend);
-                # fall back to an ad-hoc Manager only when the rf_state.runner has none
-                # (e.g. the memory rf_state.runner in tests).
-                mgr = getattr(rf_state.runner, "manager", None)
+                mgr = rf_state.runner.manager
                 if mgr is None:
-                    from ..manager import Manager
-
-                    mgr = Manager(
-                        project_root=rf_state.cfg.project_workdir or rf_state.runtime_root,
-                        runner=getattr(rf_state.runner, "manager_backend", None)
-                        or getattr(rf_state.runner, "backend", None),
-                        manager_session_root=rf_state.runtime_root,
-                    )
+                    raise RuntimeError("runner was constructed without a Manager")
                 from ..manager.front_door import (
                     require_manager_execution_task,
                 )
@@ -361,10 +351,10 @@ class LifeWorkerBootMixin:
                 decision = mgr.decide_vertical(source_objective)
                 execution_task = require_manager_execution_task(decision)
                 prior_vertical = _persisted_vertical(
-                    rf_state.cfg.project_workdir or rf_state.runtime_root
+                    rf_state.runtime_root
                 )
                 prior_domain = _persisted_domain(
-                    rf_state.cfg.project_workdir or rf_state.runtime_root
+                    rf_state.runtime_root
                 )
                 prior_handoff = _read_manager_handoff_identity(rf_state.runtime_root)
                 if prior_handoff is None and prior_vertical:
@@ -378,7 +368,7 @@ class LifeWorkerBootMixin:
                 next_vertical_name = str(getattr(decision, "vertical", "") or "").strip()
                 next_domain_name = str(getattr(decision, "domain", "") or "").strip()
                 replacement_intent = _daemon_objective_requires_stage_reset(
-                    project_root=rf_state.cfg.project_workdir or rf_state.runtime_root,
+                    project_root=rf_state.runtime_root,
                     prior_vertical=prior_vertical_name,
                     next_vertical=next_vertical_name,
                     prior_domain=str(prior_domain or ""),

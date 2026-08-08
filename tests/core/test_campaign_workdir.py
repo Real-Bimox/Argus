@@ -12,6 +12,7 @@ from argus_skill.core.campaign_workdir import (
     normalize_task_workdir,
     resolve_task_workdir,
 )
+from argus_skill.skills.vertical_select import persist_vertical, resolve_vertical
 
 
 def _git_init(path: Path) -> None:
@@ -19,13 +20,12 @@ def _git_init(path: Path) -> None:
     subprocess.run(["git", "init", "-q", str(path)], check=True)
 
 
-def _pipeline(root: Path, *, stage: str = "baseline") -> None:
-    path = root / "research" / "PIPELINE_STATE.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps({"vertical": "kernel_engineering", "current_stage": stage}),
-        encoding="utf-8",
-    )
+def _workspace_snapshot(root: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file() and ".git" not in path.relative_to(root).parts
+    }
 
 
 def test_normalize_task_workdir_rejects_escape_and_absolute(tmp_path: Path) -> None:
@@ -58,40 +58,25 @@ def test_resolve_task_workdir_allows_symlink_outside_workspace(
     assert resolve_task_workdir(base, "target") == external.resolve()
 
 
-def test_adopt_nested_git_root_and_copy_pipeline_state(tmp_path: Path) -> None:
-    base = tmp_path / "workspace"
-    base.mkdir()
-    child = base / "target"
-    _git_init(child)
-    state = tmp_path / "life"
-    _pipeline(base)
-
-    adopted = adopt_campaign_workdir(
-        state_root=state,
-        base_root=base,
-        current_root=base,
-        requested="target",
-    )
-
-    assert adopted == child.resolve()
-    assert active_campaign_workdir(state, base) == child.resolve()
-    copied = json.loads(
-        (child / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
-    )
-    assert copied["vertical"] == "kernel_engineering"
-    assert copied["current_stage"] == "baseline"
-
-
-def test_adopt_git_root_through_symlink_outside_workspace(
+@pytest.mark.parametrize("external", [False, True], ids=["nested", "symlinked"])
+def test_adoption_preserves_execution_workspace(
     tmp_path: Path,
+    external: bool,
 ) -> None:
     base = tmp_path / "workspace"
     base.mkdir()
-    external = tmp_path / "external"
-    _git_init(external)
-    (base / "target").symlink_to(external, target_is_directory=True)
+    target = tmp_path / "external" if external else base / "target"
+    _git_init(target)
+    requested = base / "target"
+    if external:
+        requested.symlink_to(target, target_is_directory=True)
+    (target / "src").mkdir()
+    (target / "src" / "module.py").write_bytes(b"VALUE = 1\n")
+    (target / "notes").mkdir()
+    (target / "notes" / "research.txt").write_bytes(b"user-owned\x00content")
     state = tmp_path / "life"
-    _pipeline(base)
+    persist_vertical(state, "software")
+    before = _workspace_snapshot(target)
 
     adopted = adopt_campaign_workdir(
         state_root=state,
@@ -100,9 +85,10 @@ def test_adopt_git_root_through_symlink_outside_workspace(
         requested="target",
     )
 
-    assert adopted == external.resolve()
-    assert active_campaign_workdir(state, base) == external.resolve()
-    assert (external / "research" / "PIPELINE_STATE.json").is_file()
+    assert adopted == target.resolve()
+    assert active_campaign_workdir(state, base) == target.resolve()
+    assert _workspace_snapshot(target) == before
+    assert resolve_vertical(state) == "software"
 
 
 def test_repeated_preplanned_child_path_is_idempotent_after_adoption(
@@ -141,23 +127,6 @@ def test_adoption_requires_git_toplevel(tmp_path: Path) -> None:
             base_root=base,
             current_root=base,
             requested="plain",
-        )
-
-
-def test_conflicting_target_pipeline_state_fails_closed(tmp_path: Path) -> None:
-    base = tmp_path / "workspace"
-    base.mkdir()
-    child = base / "target"
-    _git_init(child)
-    _pipeline(base, stage="baseline")
-    _pipeline(child, stage="optimize")
-
-    with pytest.raises(ValueError, match="conflicts on current_stage"):
-        adopt_campaign_workdir(
-            state_root=tmp_path / "life",
-            base_root=base,
-            current_root=base,
-            requested="target",
         )
 
 

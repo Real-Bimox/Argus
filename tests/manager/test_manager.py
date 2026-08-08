@@ -567,6 +567,8 @@ def test_vertical_decision_pins_manager_model(tmp_path, monkeypatch) -> None:
     assert decision.workflow_mode == "direct"
     assert runner.last_options.model == "gpt-5.5"
     assert runner.calls[0]["options"].external_interrupt_reason_provider is None
+    assert "multiple independent evidence tracks" in runner.calls[0]["prompt"]
+    assert "A single final report does not make multi-track work direct" in runner.calls[0]["prompt"]
 
 
 def test_software_planner_requirement_overrides_direct_route(

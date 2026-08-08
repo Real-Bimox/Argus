@@ -76,6 +76,21 @@ def test_daemon_manager_intent_legacy_fields_are_normalized() -> None:
     assert "event_validation" not in event
 
 
+def test_manager_intent_legacy_event_without_ids_gets_local_correlation() -> None:
+    event = normalize_event_envelope({
+        "type": EventType.LIFE_MANAGER_INTENT_COMPLETED,
+        "execution_task": "Audit the runtime",
+        "vertical": "software",
+        "kind": "software",
+        "stages": ["delivery"],
+    })
+
+    assert event["intent_id"] == event["item_id"]
+    assert event["intent_id"].startswith("legacy-")
+    assert event["objective"] == "Audit the runtime"
+    assert "event_validation" not in event
+
+
 def test_payload_schema_validates_types_and_payload_versions() -> None:
     invalid = normalize_event_envelope({
         "type": EventType.AGENT_IO_COMPLETE,

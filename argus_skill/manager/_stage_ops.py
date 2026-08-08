@@ -38,6 +38,50 @@ class _StageDecisionMixin:
     # Private helpers — each covers one logical phase of decide_stage_transition
     # ------------------------------------------------------------------
 
+    def _deterministic_final_completion(
+        self,
+        *,
+        review: Any,
+        cur: str,
+        order: list[str],
+        mission_scope: str,
+        checklist_contract: Any,
+        root: Path,
+    ) -> "StageTransition | None":  # noqa: F821
+        """Close a finite final stage when the host policy already decides it."""
+        from ..core.external_completion_gate import external_completion_gate_issue
+        from ..core.research_contract import resolve_research_target_level
+        from ..skills.vertical_select import resolve_vertical
+        from ._core import StageTransition
+        from .stage_decider import final_stage_completion_decision
+
+        decision = final_stage_completion_decision(
+            review,
+            current_stage=cur,
+            stage_order=order,
+            vertical=resolve_vertical(root),
+            mission_scope=mission_scope,
+            research_target_level=resolve_research_target_level(root),
+            checklist_contract=checklist_contract,
+            completion_blocker=external_completion_gate_issue(
+                self.execution_workdir
+            ),
+        )
+        if decision is None:
+            return None
+        transition = self._apply_stage_decision_to_disk(decision, cur, root)
+        if transition.action != "complete":
+            return transition
+        return StageTransition(
+            transition.action,
+            transition.target_stage,
+            transition.reason,
+            transition.current_stage,
+            "reviewer_certified_policy",
+            transition.diagnostic,
+            transition.resolves_wait,
+        )
+
     def _gather_stage_context(
         self,
         root: Path,
@@ -118,8 +162,9 @@ class _StageDecisionMixin:
                 options=RunnerOptions(
                     model=_manager_model(),
                     reasoning_effort=_manager_reasoning_effort(),
-                    working_dir=str(root),
-                    dangerous_yolo=True,
+                    working_dir=str(self.execution_workdir),
+                    dangerous_yolo=False,
+                    sandbox_mode="read-only",
                     skip_git_repo_check=True,
                 ),
                 run_label="manager-stage",
@@ -174,7 +219,7 @@ class _StageDecisionMixin:
                 time.sleep(1.0)
                 raw = self._extract_answer_safe(run_exec(prompt))
             if str(raw or "").strip() and manager_checkpoint_refresh_required(
-                root,
+                self.execution_workdir,
                 raw,
                 manifest_root=self.manager_session_root,
             ):
@@ -185,12 +230,12 @@ class _StageDecisionMixin:
                 if str(candidate or "").strip():
                     raw = candidate
             if str(raw or "").strip() and manager_checkpoint_refresh_required(
-                root,
+                self.execution_workdir,
                 raw,
                 manifest_root=self.manager_session_root,
             ):
                 raw = repair_manager_checkpoint_response(
-                    root,
+                    self.execution_workdir,
                     raw,
                     manifest_root=self.manager_session_root,
                 )
@@ -252,7 +297,9 @@ class _StageDecisionMixin:
                 mission_scope=mission_scope,
                 research_target_level=_research_target_level,
                 checklist_contract=checklist_contract,
-                completion_blocker=external_completion_gate_issue(root),
+                completion_blocker=external_completion_gate_issue(
+                    self.execution_workdir
+                ),
                 trigger_diagnostic=decision.diagnostic,
                 trigger_reason=decision.reason,
             )
@@ -264,7 +311,7 @@ class _StageDecisionMixin:
                 review,
                 current_stage=cur,
                 stage_order=order,
-                project_root=root,
+                project_root=self.execution_workdir,
             )
             if rework_decision is not None:
                 decision = rework_decision
@@ -273,7 +320,7 @@ class _StageDecisionMixin:
                 decision,
                 current_stage=cur,
                 stage_order=order,
-                project_root=root,
+                project_root=self.execution_workdir,
             )
             from .stage_decider import StageDecision
             if planner_wait_reconciliation and decision.action in {"advance", "complete"}:
@@ -294,7 +341,7 @@ class _StageDecisionMixin:
 
             live_decided, _live_view = parse_live_view_response(raw)
             live_view = apply_manager_rendering_response(
-                root,
+                self.execution_workdir,
                 raw,
                 manifest_root=self.manager_session_root,
             )
@@ -341,7 +388,9 @@ class _StageDecisionMixin:
             mission_scope=mission_scope,
             research_target_level=_research_target_level,
             checklist_contract=checklist_contract,
-            completion_blocker=external_completion_gate_issue(root),
+            completion_blocker=external_completion_gate_issue(
+                self.execution_workdir
+            ),
             trigger_diagnostic=(
                 "" if decision.action == "hold" else decision.diagnostic
             ),
@@ -357,7 +406,7 @@ class _StageDecisionMixin:
             review,
             current_stage=cur,
             stage_order=order,
-            project_root=root,
+            project_root=self.execution_workdir,
         )
         if rework_decision is not None:
             decision = rework_decision
@@ -366,7 +415,7 @@ class _StageDecisionMixin:
             decision,
             current_stage=cur,
             stage_order=order,
-            project_root=root,
+            project_root=self.execution_workdir,
         )
 
         from .stage_decider import StageDecision
@@ -403,7 +452,8 @@ class _StageDecisionMixin:
         if decision.action == "advance":
             try:
                 _advance(root, target_stage=decision.target_stage,
-                         reason=decision.reason, advanced_by="manager")
+                         reason=decision.reason, advanced_by="manager",
+                         evidence_root=self.execution_workdir)
             except StageCompletionError as exc:
                 return StageTransition(
                     "hold", cur, str(exc), current_stage=cur,
@@ -422,7 +472,8 @@ class _StageDecisionMixin:
 
         if decision.action == "complete":
             try:
-                _complete(root, reason=decision.reason, completed_by="manager")
+                _complete(root, reason=decision.reason, completed_by="manager",
+                          evidence_root=self.execution_workdir)
             except StageCompletionError as exc:
                 return StageTransition(
                     "hold", cur, str(exc), current_stage=cur,
@@ -442,7 +493,8 @@ class _StageDecisionMixin:
         if decision.action == "rollback":
             try:
                 _rollback(root, target_stage=decision.target_stage,
-                          reason=decision.reason, rolled_back_by="manager")
+                          reason=decision.reason, rolled_back_by="manager",
+                          evidence_root=self.execution_workdir)
             except ValueError:
                 return StageTransition(
                     "hold", cur, "illegal rollback target", current_stage=cur,
@@ -553,6 +605,18 @@ class _StageDecisionMixin:
                     ),
                 )
 
+        if not open_ended and planner_verdict is None:
+            deterministic = self._deterministic_final_completion(
+                review=review,
+                cur=cur,
+                order=order,
+                mission_scope=mission_scope,
+                checklist_contract=checklist_contract,
+                root=root,
+            )
+            if deterministic is not None:
+                return deterministic
+
         # --- Phase 5: Build the LLM caller ---
         run_exec, hold = self._build_stage_run_exec(run_exec, root, on_event)
         if hold is not None:
@@ -589,7 +653,7 @@ class _StageDecisionMixin:
                     review=review,
                     planner_verdict=planner_verdict,
                     rendering_block=manager_rendering_prompt(
-                        root,
+                        self.execution_workdir,
                         review=review,
                         manifest_root=self.manager_session_root,
                     ),
@@ -603,7 +667,12 @@ class _StageDecisionMixin:
                 ),
             )
 
-            raw = self._run_stage_model(run_exec, prompt, root, root_task_id)
+            raw = self._run_stage_model(
+                run_exec,
+                prompt,
+                self.execution_workdir,
+                root_task_id,
+            )
 
             decision = self._parse_and_finalize_stage_decision(
                 raw,

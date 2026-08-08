@@ -355,7 +355,7 @@ def test_continuous_dispatch_persists_only_manager_handoff(memory):
 
 
 def test_lifetime_promotion_sets_pending_handoff(memory):
-    state = {"backend": "codex"}
+    state = {"backend": "codex", "_frontdoor_lifetime": "standing"}
 
     assert dispatch.maybe_promote_to_continuous(memory, "keep researching", state)
     assert state["config"]["continuous"] is True
@@ -377,6 +377,7 @@ def test_lifetime_promotion_revalidates_existing_continuous_state(
     state = {
         "backend": "codex",
         "config": {"continuous": False},
+        "_frontdoor_lifetime": "standing",
     }
 
     assert dispatch.maybe_promote_to_continuous(memory, "keep researching", state)
@@ -390,6 +391,7 @@ def test_lifetime_promotion_repairs_stale_continuous_cache(memory, monkeypatch):
     state = {
         "backend": "codex",
         "config": {"continuous": True},
+        "_frontdoor_lifetime": "standing",
     }
 
     assert dispatch.maybe_promote_to_continuous(memory, "new campaign", state)
@@ -408,6 +410,18 @@ def test_lifetime_promotion_keeps_explicit_bounded_direct_task_finite(memory):
     )
     assert state["config"]["continuous"] is False
     assert "_frontdoor_lifetime" not in state
+
+
+def test_missing_lifetime_defaults_direct_task_to_bounded(memory):
+    state = {"backend": "codex"}
+
+    assert not dispatch.maybe_promote_to_continuous(
+        memory,
+        "one report",
+        state,
+        workflow_mode="direct",
+    )
+    assert state["config"]["continuous"] is False
 
 
 def test_finite_staged_task_uses_durable_campaign_supervisor(memory, monkeypatch):
@@ -445,7 +459,7 @@ def test_lifetime_promotion_validates_the_life_backend(memory, monkeypatch):
     monkeypatch.setenv("ARGUS_SKILL_RUNNER_BACKEND", "memory")
     monkeypatch.setenv("ARGUS_SKILL_LIFE_BACKEND", "memory")
     monkeypatch.setenv("ARGUS_SKILL_DAEMON_TEST_ALLOW_MEMORY_CONTINUOUS", "0")
-    state = {"backend": "codex"}
+    state = {"backend": "codex", "_frontdoor_lifetime": "standing"}
 
     with pytest.raises(
         front_door.ManagerHandoffError,
@@ -472,7 +486,7 @@ def test_lifetime_promotion_validates_the_active_daemon_backend(
             life_backend="memory",
         ),
     )
-    state = {"backend": "codex"}
+    state = {"backend": "codex", "_frontdoor_lifetime": "standing"}
 
     with pytest.raises(
         front_door.ManagerHandoffError,
