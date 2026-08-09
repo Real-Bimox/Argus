@@ -15,6 +15,7 @@ import { ApiClient } from '../src/api.js';
 import {
   ensureApi,
   probeApi,
+  repoBackendPath,
   scheduleOutdatedDaemonUpgrades,
   uniqueWarningReporter,
   type ApiProbeResult,
@@ -45,6 +46,14 @@ function meta(overrides: Record<string, unknown> = {}): Record<string, unknown> 
     ...overrides,
   };
 }
+
+test('repository backend path follows the platform venv layout', () => {
+  const windows = repoBackendPath('/repo', 'win32').replaceAll('\\', '/');
+  const posix = repoBackendPath('/repo', 'linux').replaceAll('\\', '/');
+
+  assert.match(windows, /\/repo\/\.venv\/Scripts\/argus-skill\.exe$/);
+  assert.match(posix, /\/repo\/\.venv\/bin\/argus-skill$/);
+});
 
 test('protocol contract accepts the current server and rejects missing capabilities', () => {
   assert.equal(inspectApiMeta(meta()).compatible, true);

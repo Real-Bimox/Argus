@@ -112,6 +112,22 @@ test('resume scope excludes unassigned legacy Web sessions unless --all is used'
   assert.equal(projectsForLaunchCwd(rows, '/work', true).length, 3);
 });
 
+test('resume scope normalizes Windows separators, drive case, and filesystem root', () => {
+  const windowsRows = [
+    { id: 'local', label: 'local', objective: '', launch_cwd: 'C:\\Work\\Repo', last_active: 2, daemon_alive: false, daemon_pid: null, uptime_seconds: null },
+    { id: 'other', label: 'other', objective: '', launch_cwd: 'D:\\Work', last_active: 1, daemon_alive: false, daemon_pid: null, uptime_seconds: null },
+  ];
+  assert.deepEqual(
+    projectsForLaunchCwd(windowsRows, 'c:/work', false).map((row) => row.id),
+    ['local'],
+  );
+
+  const posixRows = [
+    { id: 'root-child', label: 'root-child', objective: '', launch_cwd: '/work/repo', last_active: 1, daemon_alive: false, daemon_pid: null, uptime_seconds: null },
+  ];
+  assert.deepEqual(projectsForLaunchCwd(posixRows, '/', false).map((row) => row.id), ['root-child']);
+});
+
 test('first-run screen remains usable from 40 to 120 columns', async () => {
   for (const width of [40, 60, 120]) {
     const harness = mount(async () => daemon('s-idle', false), () => {}, width);

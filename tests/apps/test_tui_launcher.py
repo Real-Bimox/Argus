@@ -140,7 +140,8 @@ def test_public_admin_flags_stay_on_python_admin_path(monkeypatch) -> None:
         lambda: (_ for _ in ()).throw(AssertionError("TUI must not launch")),
     )
     assert tui_launcher.main(["--setup", "--non-interactive"]) == 7
-    assert seen == [["--setup", "--non-interactive"]]
+    assert tui_launcher.main(["--pair-plan"]) == 7
+    assert seen == [["--setup", "--non-interactive"], ["--pair-plan"]]
 
 
 def test_admin_subcommands_stay_on_python_admin_path(monkeypatch) -> None:

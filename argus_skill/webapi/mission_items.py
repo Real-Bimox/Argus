@@ -202,7 +202,10 @@ def get_status(sid: str, *, global_root: Path | str | None = None) -> dict[str, 
     )
     inbox_pending = _safe(lambda: count_pending_inbox_messages(life_dir), 0)
     daemon = _safe(
-        lambda: _daemon_dict(_srv().read_daemon_status(life_dir)), {"alive": False, "pid": None}
+        lambda: _daemon_dict(
+            _srv().read_daemon_status(life_dir), life_dir=life_dir
+        ),
+        {"alive": False, "pid": None},
     )
     roles = _safe(
         lambda: _roles_list(resolve_all_roles(env=os.environ), role_activity(life_dir)), []

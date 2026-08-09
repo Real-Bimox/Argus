@@ -726,6 +726,34 @@ def test_cmd_reply_appends_engineer_turn_and_reports_liveness(monkeypatch, tmp_p
     assert "shorter on purpose" in _render_discussion(tid)
 
 
+def test_cmd_reply_reads_utf8_message_file(monkeypatch, tmp_path, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+    tid = "train-unicode"
+    _write_task(tid, {"state": "discussing", "task_id": tid, "mode": "supervised"})
+    message = "复现实验 🔬 → α"
+    message_file = tmp_path / "reply.md"
+    message_file.write_text(message, encoding="utf-8")
+
+    args = types.SimpleNamespace(task_id=tid, message="", message_file=str(message_file))
+
+    assert cmd_reply(args) == 0
+    capsys.readouterr()
+    assert message in _render_discussion(tid)
+
+
+def test_queue_fallback_writes_utf8_report(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(_sub._reporting, "REGISTRY_DIR", tmp_path)
+    monkeypatch.setattr(
+        "argus_skill.apps._inbox.queue_inbox_message",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+    report = "实验报告 🔬 → α"
+
+    _sub._reporting._queue_to_inbox(report, task_id="unicode")
+
+    assert (tmp_path / "unicode_ALERT.md").read_text(encoding="utf-8") == report + "\n"
+
+
 def test_cmd_reply_flags_closed_discussion(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     tid = "train-closed"

@@ -194,7 +194,10 @@ def _write_continuous_config_unlocked(
         data["done_reason"] = done_reason
         data["done_at"] = done_at or datetime.now(timezone.utc).isoformat()
     try:
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        tmp.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         os.replace(str(tmp), str(path))
         return True
     except OSError:

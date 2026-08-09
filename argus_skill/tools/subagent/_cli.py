@@ -437,8 +437,8 @@ def cmd_reply(args: argparse.Namespace) -> int:
     if getattr(args, "message_file", None):
         try:
             message = sys.stdin.read() if args.message_file == "-" else \
-                Path(args.message_file).read_text()
-        except OSError as e:
+                Path(args.message_file).read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as e:
             print(json.dumps({"error": f"cannot read --message-file: {e}"}))
             return 2
     if not message or not message.strip():
