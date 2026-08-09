@@ -105,6 +105,10 @@ class TaskSpec:
     authorization_action: str = ""
     require_independent_review: bool = False
     skip_stage_transition: bool = False
+    # Host-authored recovery work after a Manager HOLD or approved revision.
+    # This bypasses certification-churn suppression because the task includes
+    # the substantive repair and its independent recertification in one unit.
+    stage_repair: bool = False
     allow_skill_changes: bool = False
 
 
@@ -803,11 +807,11 @@ def parse_planner_text(text: str) -> PlannerVerdict:
                 or not require_independent_review
                 or normalized_scope != TASK_SCOPE_BOUNDED
             ):
-                raise ValueError(
-                    "TASK_SKIP_STAGE_TRANSITION=true requires "
-                    "TASK_REQUIRE_INDEPENDENT_REVIEW=true and "
-                    "TASK_STAGE_CLOSING=false with TASK_SCOPE=bounded"
-                )
+                # This flag is a routing hint, not task intent or authority.
+                # Ordinary preplanned bounded nodes already hold the stage in
+                # the host, so a malformed true value is safely downgraded
+                # instead of spending another Planner call repairing metadata.
+                skip_stage_transition = False
         except ValueError as exc:
             return PlannerVerdict(
                 project_done=False,

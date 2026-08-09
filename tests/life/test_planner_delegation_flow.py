@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from argus_skill.core.models import RunnerResult
 from argus_skill.daemon.state import write_continuous_config
 from argus_skill.life.event_log import JsonlEventSink
 from argus_skill.life.memory import BacklogItem, LifeMemory
 from argus_skill.life.supervisor import LifeBudget, LifeSupervisor, LifeSupervisorConfig
+from argus_skill.life.supervisor._constants import PLAN_RETRY
 from argus_skill.planner import PlannerConfig
 from argus_skill.skills.vertical_select import persist_vertical
 
@@ -105,6 +107,320 @@ def test_planner_delegates_to_engineer_and_continues_after_one_increment(
     assert all(call["options"].sandbox_mode == "read-only" for call in planner.calls)
     assert all(call["options"].dangerous_yolo is False for call in planner.calls)
     assert not list(project.glob("**/*.py")), "Planner must not create implementation files"
+
+
+def _kernel_supervisor(
+    project: Path,
+    life: Path,
+    planner: _PlannerBackend,
+) -> LifeSupervisor:
+    memory = LifeMemory.open(life)
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=_MissionRunner(),
+        sink=JsonlEventSink(None, life_dir=memory.root, verbosity="full"),
+        config=LifeSupervisorConfig(
+            budget=LifeBudget(),
+            continuous=True,
+            continuous_objective="run the kernel algorithm campaign",
+            open_ended=True,
+            project_worktree=project,
+            artifact_root=life,
+        ),
+        planner_runner=planner,
+    )
+    persist_vertical(life, "kernel_engineering", workflow_mode="staged")
+    supervisor._vertical_resolved = True
+    supervisor._planner_config = lambda: PlannerConfig(  # type: ignore[method-assign]
+        working_dir=str(project),
+        add_dirs=[str(life)],
+        open_ended=True,
+    )
+    return supervisor
+
+
+def test_missing_kernel_scope_bundle_is_delegated_without_planner_call(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    life = tmp_path / "life"
+    planner = _PlannerBackend([])
+    supervisor = _kernel_supervisor(project, life, planner)
+    from argus_skill.manager.directive import set_active_manager_directive
+
+    set_active_manager_directive(
+        life,
+        "Keep the existing PR and reference worktree read-only.",
+    )
+
+    assert supervisor._plan_next_work() is True
+
+    assert planner.calls == []
+    pending = supervisor.memory.backlog.pending()
+    assert [item.title for item in pending] == [
+        "Complete the kernel_engineering scope deliverable"
+    ]
+    item = pending[0]
+    assert "stage:scope" in item.tags
+    assert "stage_closing" in item.tags
+    assert "review:required" in item.tags
+    assert "research/KERNEL_SCOPE.md" in item.objective
+    assert "research/PROJECT_NATIVE_SETUP.md" in item.objective
+    assert "research/frontier/scope.json" in item.objective
+    assert "Online frontier snapshot validates" in item.acceptance_check
+
+
+def test_missing_kernel_discover_bundle_is_delegated_without_planner_call(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    life = tmp_path / "life"
+    planner = _PlannerBackend([])
+    supervisor = _kernel_supervisor(project, life, planner)
+    state_path = life / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["current_stage"] = "discover"
+    state["stages"] = {
+        "scope": {"status": "done"},
+        "discover": {"status": "in_progress"},
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    assert supervisor._plan_next_work() is True
+
+    assert planner.calls == []
+    pending = supervisor.memory.backlog.pending()
+    assert [item.title for item in pending] == [
+        "Complete the kernel_engineering discover deliverable"
+    ]
+    item = pending[0]
+    assert "stage:discover" in item.tags
+    assert "research/ALGORITHM_PLAN.md" in item.objective
+    assert "research/frontier/discover.json" in item.objective
+    assert "Online algorithm frontier validates" in item.acceptance_check
+    assert "edit production source code" in item.non_goals
+
+
+def test_manager_approved_discover_revision_bypasses_planner(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    research = project / "research"
+    (research / "frontier").mkdir(parents=True)
+    (research / "ALGORITHM_PLAN.md").write_text("# rejected plan\n", encoding="utf-8")
+    (research / "frontier" / "discover.json").write_text("{}\n", encoding="utf-8")
+    life = tmp_path / "life"
+    planner = _PlannerBackend([])
+    supervisor = _kernel_supervisor(project, life, planner)
+    state_path = life / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["current_stage"] = "discover"
+    state["stages"] = {
+        "scope": {"status": "done"},
+        "discover": {"status": "in_progress"},
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+    prior = supervisor.memory.backlog.add(BacklogItem.new(
+        title="Complete the kernel_engineering discover deliverable",
+        objective="Select the first algorithm candidate.",
+        tags=[
+            "planner",
+            "scope:bounded",
+            "bounded_dag_node",
+            "stage_closing",
+            "review:required",
+            "stage:discover",
+        ],
+        plan_id="plan-old",
+        plan_version=1,
+        node_key="stage-discover",
+    ))
+    revision = {
+        "item_id": prior.id,
+        "review_status": "replan_requested",
+        "review_reason": (
+            "The selected grouped-token dataflow already exists in the Gluon backend."
+        ),
+        "expected_plan_id": "plan-old",
+        "expected_plan_version": 1,
+        "plan_challenge": {
+            "manager_action": "replace",
+            "manager_reason": "Later evidence refuted the novelty premise.",
+            "challenge": "Grouped-token reduction was treated as a new algorithm.",
+            "alternative": (
+                "Evaluate omitted implementations and select a materially distinct "
+                "reformulation, or record that none survives."
+            ),
+            "authority_impact": "technical",
+        },
+    }
+
+    assert supervisor._plan_next_work(revision_request=revision) is True
+
+    assert planner.calls == []
+    rows = {item.id: item for item in supervisor.memory.backlog.all()}
+    assert rows[prior.id].status == "superseded"
+    replacement = next(item for item in rows.values() if item.status == "pending")
+    assert replacement.title == "Revise the kernel_engineering discover decision"
+    assert replacement.plan_id != "plan-old"
+    assert replacement.plan_version == 2
+    assert "already exists in the Gluon backend" in replacement.objective
+    assert "materially distinct reformulation" in replacement.objective
+    assert any(
+        "rerun settled repository research" in item
+        for item in replacement.non_goals
+    )
+
+
+def test_manager_hold_dispatches_one_stage_repair_without_planner_loop(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    research = project / "research"
+    (research / "frontier").mkdir(parents=True)
+    (research / "KERNEL_SCOPE.md").write_text("# scope\n", encoding="utf-8")
+    (research / "PROJECT_NATIVE_SETUP.md").write_text("# setup\n", encoding="utf-8")
+    (research / "frontier" / "scope.json").write_text("{}\n", encoding="utf-8")
+    life = tmp_path / "life"
+    planner = _PlannerBackend([
+        "\n".join([
+            "PROJECT_DONE=false",
+            "WAITING=true",
+            "REASON=All scope evidence is complete; only Manager transition remains.",
+        ])
+    ])
+    supervisor = _kernel_supervisor(project, life, planner)
+    prior = supervisor.memory.backlog.add(BacklogItem.new(
+        title="Certify the completed scope gate",
+        objective="Recheck the same scope evidence.",
+        tags=[
+            "planner",
+            "scope:bounded",
+            "bounded_dag_node",
+            "stage_closing",
+            "review:required",
+            "stage:scope",
+        ],
+    ))
+    supervisor.memory.backlog.update(
+        prior.id,
+        status="done",
+        finished_ts=time.time(),
+        outcome={"review_status": "done"},
+    )
+
+    class HoldingManager:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def bind_execution_workdir(self, _workdir):
+            return self
+
+        def decide_stage_transition(self, **_kwargs):
+            self.calls += 1
+            return SimpleNamespace(
+                action="hold",
+                target_stage="scope",
+                reason=(
+                    "Designate the corrected reference as the measured control "
+                    "across all scope artifacts before certification."
+                ),
+                current_stage="scope",
+                source="manager_llm",
+                diagnostic="intentional_hold",
+                resolves_wait=False,
+            )
+
+    manager = HoldingManager()
+    supervisor.manager = manager
+
+    assert supervisor._plan_next_work() == PLAN_RETRY
+    assert manager.calls == 1
+    assert len(planner.calls) == 1
+    feedback = supervisor._load_manager_planner_feedback()
+    assert feedback is not None
+    assert feedback["diagnostic"] == "manager_hold_requires_stage_repair"
+
+    assert supervisor._plan_next_work() is True
+
+    assert manager.calls == 1
+    assert len(planner.calls) == 1
+    pending = supervisor.memory.backlog.pending()
+    assert [item.title for item in pending] == [
+        "Apply the Manager-required kernel_engineering scope repair"
+    ]
+    repair = pending[0]
+    assert "stage_repair" in repair.tags
+    assert "stage_closing" in repair.tags
+    assert "corrected reference as the measured control" in repair.objective
+    assert supervisor._load_manager_planner_feedback() is None
+    events = [
+        json.loads(line)
+        for line in (life / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len([
+        event for event in events
+        if event.get("type") == "life.manager.feedback.persisted"
+        and event.get("diagnostic") == "manager_hold_requires_stage_repair"
+    ]) == 1
+
+
+def test_task_policy_uses_isolated_stage_and_execution_evidence_root(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    research = project / "research"
+    (research / "frontier").mkdir(parents=True)
+    (research / "KERNEL_SCOPE.md").write_text("# scope\n", encoding="utf-8")
+    (research / "PROJECT_NATIVE_SETUP.md").write_text("# setup\n", encoding="utf-8")
+    (research / "frontier" / "scope.json").write_text("{}\n", encoding="utf-8")
+    # Deliberately stale workspace state must not override Manager-owned state.
+    (research / "PIPELINE_STATE.json").write_text(
+        json.dumps({"vertical": "kernel_engineering", "current_stage": "optimize"}),
+        encoding="utf-8",
+    )
+    attempt = project / "attempts" / "winner"
+    attempt.mkdir(parents=True)
+    (attempt / "OUTCOME.json").write_text(
+        json.dumps({
+            "attempt_id": "winner",
+            "execution_status": "completed",
+            "failure_class": "none",
+            "idea_status": "supported",
+        }),
+        encoding="utf-8",
+    )
+    (research / "PERFORMANCE_RESULT.json").write_text(
+        json.dumps({"passed": True}),
+        encoding="utf-8",
+    )
+    planner = _PlannerBackend([
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=finish the authoritative scope stage",
+            "TASK_KEY=scope-repair",
+            "TASK_TITLE=Reconcile the scope contract",
+            "TASK_OBJECTIVE=Repair the current scope evidence only.",
+            "TASK_HYPOTHESIS=The scope contract has one remaining inconsistency.",
+            "TASK_GOAL_CONTRIBUTION=Make the campaign ready for discovery.",
+            "TASK_EXPECTED_REGRESSIONS=None; implementation is unchanged.",
+            "TASK_DECISION_RULE=Stop if the scope is already internally consistent.",
+            "TASK_ACCEPTANCE_CHECK=scope artifacts agree",
+        ])
+    ])
+    supervisor = _kernel_supervisor(project, tmp_path / "life", planner)
+
+    assert supervisor._plan_next_work() is True
+
+    assert len(planner.calls) == 1
+    assert [item.title for item in supervisor.memory.backlog.pending()] == [
+        "Reconcile the scope contract"
+    ]
 
 
 def test_planner_receives_host_current_reality_without_rediscovery(

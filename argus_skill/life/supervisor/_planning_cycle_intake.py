@@ -73,10 +73,11 @@ class PlanningCycleIntakeMixin:
             if revision_request is None
             else []
         )
+        state.fresh_operator_messages = list(dict.fromkeys(transient_messages))
         state.operator_messages = list(
             dict.fromkeys(
                 ([active_directive] if active_directive else [])
-                + transient_messages
+                + state.fresh_operator_messages
             )
         )
         if transient_messages:

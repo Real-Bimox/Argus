@@ -93,9 +93,9 @@ def test_research_stage_mapping(stage, expected) -> None:
 @pytest.mark.parametrize(
     "stage,expected",
     [
-        ("scope", "explore"), ("environment", "explore"),
+        ("scope", "explore"), ("discover", "explore"), ("environment", "explore"),
         ("baseline", "develop"), ("optimize", "develop"),
-        ("validate", "certify"), ("report", "certify"),
+        ("validate", "certify"), ("report", "certify"), ("deliver", "certify"),
     ],
 )
 def test_kernel_stage_mapping(stage, expected) -> None:

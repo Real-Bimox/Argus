@@ -272,7 +272,10 @@ class PlanningCycleMixin(
 
         decision = self._bound_manager().decide_stage_transition(
             review=review,
-            planner_verdict=verdict,
+            # This path replays previously unassessed Reviewer evidence. The
+            # empty Planner verdict only triggered recovery; it is not new
+            # stage evidence and must not force another semantic adjudication.
+            planner_verdict=None,
             project_root=root,
             on_event=getattr(self.sink, "handle_event", None),
             open_ended=True,
@@ -290,7 +293,7 @@ class PlanningCycleMixin(
             "trigger": "reviewed_stage_empty_plan_reconciliation",
             "recovered_item_id": item.id,
         })
-        if decision.source == "manager_llm":
+        if decision.source in {"manager_llm", "reviewer_certified_policy"}:
             outcome = dict(item.outcome)
             outcome["stage_certification"] = {
                 "advance": "certified",
@@ -501,6 +504,38 @@ class PlanningCycleMixin(
         if (
             decision.action == "hold"
             and decision.source == "manager_llm"
+            and not bool(getattr(decision, "resolves_wait", False))
+            and (uncontracted or explicitly_requested)
+        ):
+            persisted = self._persist_manager_planner_feedback(
+                stage=stage,
+                reason=decision.reason,
+                diagnostic="manager_hold_requires_stage_repair",
+            )
+            if not persisted:
+                self._emit_status(
+                    "failed to persist Manager HOLD repair; retry later"
+                )
+                return ""
+            self._deactivate_planner_waiting_contract()
+            self._clear_planner_wait_resolution()
+            self._last_planner_wait_reconciliation_key = None
+            self._planner_waits_since_reconciliation = 0
+            self._reset_idle_backoff()
+            self._emit({
+                "type": "life.manager.feedback.persisted",
+                "stage": stage,
+                "reason": decision.reason,
+                "diagnostic": "manager_hold_requires_stage_repair",
+            })
+            self._emit_status(
+                f"Manager HOLD converted to one bounded {stage} repair"
+            )
+            return "hold"
+
+        if (
+            decision.action == "hold"
+            and decision.source == "manager_llm"
             and bool(getattr(decision, "resolves_wait", False))
         ):
             self._resolve_planner_waiting_contract(
@@ -634,6 +669,7 @@ class PlanningCycleMixin(
         for phase in (
             self._pc_intake_gate,
             self._pc_preflight_shortcircuits,
+            self._pc_prepare_direct_stage_task,
             self._pc_invoke_planner,
             self._pc_normalize_verdict,
             self._pc_handle_waiting,

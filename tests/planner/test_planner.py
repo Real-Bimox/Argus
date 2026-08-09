@@ -218,6 +218,46 @@ def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:
     assert runner.calls[1]["options"].working_dir == "/tmp/project"
 
 
+def test_plan_next_downgrades_invalid_skip_hint_without_repair_call(
+    monkeypatch,
+) -> None:
+    runner = _SequenceRunner([
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=delegate the missing scope deliverable",
+            "TASK_KEY=scope",
+            "TASK_TITLE=Complete kernel campaign scope",
+            "TASK_OBJECTIVE=Create the missing scope artifacts without editing kernels.",
+            "TASK_HYPOTHESIS=A bounded scope pass can unlock discovery.",
+            "TASK_GOAL_CONTRIBUTION=Advance the campaign from scope to discovery.",
+            "TASK_EXPECTED_REGRESSIONS=None; production code is read-only.",
+            "TASK_DECISION_RULE=Stop if the target worktree is not clean main.",
+            "TASK_SCOPE=bounded",
+            "TASK_STAGE_CLOSING=false",
+            "TASK_REQUIRE_INDEPENDENT_REVIEW=false",
+            "TASK_SKIP_STAGE_TRANSITION=true",
+            "TASK_ACCEPTANCE_CHECK=scope completion hook reports no issues",
+        ])
+    ])
+    monkeypatch.setattr(
+        Planner,
+        "_build_planner_prompt",
+        staticmethod(lambda **kwargs: "original planner prompt"),
+    )
+
+    verdict = Planner(runner).plan_next(
+        continuous_objective="run the kernel campaign",
+        config=PlannerConfig(working_dir="/tmp/project"),
+    )
+
+    assert verdict.error == ""
+    assert [task.title for task in verdict.new_tasks] == [
+        "Complete kernel campaign scope"
+    ]
+    assert verdict.new_tasks[0].skip_stage_transition is False
+    assert len(runner.calls) == 1
+
+
 def test_plan_next_repairs_missing_mission_quality_context(monkeypatch) -> None:
     runner = _SequenceRunner([
         "\n".join([

@@ -91,6 +91,27 @@ def test_adoption_preserves_execution_workspace(
     assert resolve_vertical(state) == "software"
 
 
+def test_adoption_is_ignored_after_session_base_workdir_changes(
+    tmp_path: Path,
+) -> None:
+    original_base = tmp_path / "workspace"
+    original_base.mkdir()
+    old_target = original_base / "old-target"
+    _git_init(old_target)
+    state = tmp_path / "life"
+    adopt_campaign_workdir(
+        state_root=state,
+        base_root=original_base,
+        current_root=original_base,
+        requested="old-target",
+    )
+    new_base = tmp_path / "new-target"
+    _git_init(new_base)
+
+    assert active_campaign_workdir(state, original_base) == old_target.resolve()
+    assert active_campaign_workdir(state, new_base) is None
+
+
 def test_repeated_preplanned_child_path_is_idempotent_after_adoption(
     tmp_path: Path,
 ) -> None:

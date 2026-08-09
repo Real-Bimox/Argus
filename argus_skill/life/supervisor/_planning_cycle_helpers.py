@@ -196,6 +196,7 @@ class _PlanCycleState:
 
         # Set by the intake/gate phase.
         self.operator_messages: list[str] = []
+        self.fresh_operator_messages: list[str] = []
         self.revision_active_items: list[BacklogItem] = []
         self.expected_plan_id: str = ""
         self.expected_plan_version: int = 0

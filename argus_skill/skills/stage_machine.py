@@ -435,6 +435,11 @@ def advance_stage(
                 f"advance target {target!r} must be the immediate next stage "
                 f"after {cur_norm!r}"
             )
+        _ensure_stage_completion(
+            project_root,
+            cur_norm,
+            evidence_root=evidence_root,
+        )
     return _set_stage(
         project_root,
         target_stage=target,

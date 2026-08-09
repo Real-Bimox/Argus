@@ -38,6 +38,53 @@ class _StageDecisionMixin:
     # Private helpers — each covers one logical phase of decide_stage_transition
     # ------------------------------------------------------------------
 
+    def _deterministic_reviewed_advance(
+        self,
+        *,
+        review: Any,
+        cur: str,
+        order: list[str],
+        root: Path,
+    ) -> "StageTransition | None":  # noqa: F821
+        """Advance an uncontested Reviewer-certified intermediate stage."""
+        status = str(getattr(review, "status", "") or "").strip().lower()
+        if status != "done" or cur not in order or cur == order[-1]:
+            return None
+        if str(getattr(review, "operator_question", "") or "").strip():
+            return None
+        report = getattr(review, "planner_report", {}) or {}
+        if isinstance(report, dict) and (
+            str(report.get("plan_signal") or "").strip().lower() == "reconsider"
+            or str(report.get("challenge") or "").strip()
+            or str(report.get("alternative") or "").strip()
+            or str(report.get("authority_impact") or "").strip().lower()
+            in {"manager_contract", "operator"}
+        ):
+            return None
+
+        from ._core import StageTransition
+        from .stage_decider import StageDecision
+
+        target = order[order.index(cur) + 1]
+        decision = StageDecision(
+            "advance",
+            target,
+            "independent Reviewer certified the current stage",
+            "reviewer_certified_policy",
+        )
+        transition = self._apply_stage_decision_to_disk(decision, cur, root)
+        if transition.action != "advance":
+            return transition
+        return StageTransition(
+            transition.action,
+            transition.target_stage,
+            transition.reason,
+            transition.current_stage,
+            "reviewer_certified_policy",
+            transition.diagnostic,
+            transition.resolves_wait,
+        )
+
     def _deterministic_final_completion(
         self,
         *,
@@ -607,17 +654,26 @@ class _StageDecisionMixin:
                     ),
                 )
 
-        if not open_ended and planner_verdict is None:
-            deterministic = self._deterministic_final_completion(
+        if planner_verdict is None:
+            deterministic_advance = self._deterministic_reviewed_advance(
                 review=review,
                 cur=cur,
                 order=order,
-                mission_scope=mission_scope,
-                checklist_contract=checklist_contract,
                 root=root,
             )
-            if deterministic is not None:
-                return deterministic
+            if deterministic_advance is not None:
+                return deterministic_advance
+            if not open_ended:
+                deterministic_completion = self._deterministic_final_completion(
+                    review=review,
+                    cur=cur,
+                    order=order,
+                    mission_scope=mission_scope,
+                    checklist_contract=checklist_contract,
+                    root=root,
+                )
+                if deterministic_completion is not None:
+                    return deterministic_completion
 
         # --- Phase 5: Build the LLM caller ---
         run_exec, hold = self._build_stage_run_exec(run_exec, root, on_event)

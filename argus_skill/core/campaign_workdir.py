@@ -85,6 +85,13 @@ def active_campaign_workdir(
     raw = str(payload.get("workdir") or "").strip()
     if not raw:
         return None
+    recorded_base = str(payload.get("base_workdir") or "").strip()
+    if recorded_base:
+        try:
+            if Path(recorded_base).expanduser().resolve() != base:
+                return None
+        except OSError:
+            return None
     try:
         target = Path(raw).expanduser().resolve(strict=True)
     except OSError:

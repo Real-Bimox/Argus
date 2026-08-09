@@ -38,14 +38,156 @@
 | ARGUS-P0-02 | P0 | 严重 | 已完成 | Mission loop | P0-01 checkpoint invariants |
 | ARGUS-P0-03 | P0 | 严重 | 已完成 | Manager/contract | 无 |
 | ARGUS-P0-04 | P0 | 高 | 已完成 | Planner/goal | P0-03 |
+| ARGUS-P0-05 | P0 | 严重 | 调查中 | Runtime/Planner | 真实 FLA 低效轨迹 |
 | ARGUS-P1-01 | P1 | 高 | 已完成 | Mission progress/evaluation | 持久 frontier + 回退 envelope |
 | ARGUS-P1-02 | P1 | 高 | 已完成 | Agent/session integration | canary 否决 mission 默认化，保留 fresh |
 | ARGUS-P1-03 | P1 | 中 | 已完成 | Skill system | 自然触发 10/10，旧字段已迁移 |
 | ARGUS-P1-04 | P1 | 中 | 已完成 | Architecture/verticals | core-owned contract |
 | ARGUS-P1-05 | P1 | 高 | 已完成 | Role prompts/UX | 独立盲评 10/10 偏好新版 |
 | ARGUS-P1-06 | P1 | 高 | 已完成 | Runtime/architecture | 删除无行为兼容层 |
+| ARGUS-P1-07 | P1 | 高 | 未分配 | 专业角色/vertical | P0-05 |
+| ARGUS-P1-08 | P1 | 高 | 未分配 | 实验生命周期 | P0-05、P1-07 |
 | ARGUS-P2-01 | P2 | 中 | 后续试验 | Persistence | P0 状态语义稳定后 |
 | ARGUS-P2-02 | P2 | 中 | 持续进行 | Evaluation/observability | 支撑全部事项 |
+| ARGUS-P2-03 | P2 | 中 | 未分配 | 执行效率评估 | P0-05、P1-07、P1-08 |
+
+---
+
+## 执行效率专项 — 让 Argus 成为工程师，而不是证据收集员
+
+FLA campaign 暴露了系统性问题：Planner、Engineer、Reviewer 和 Manager 重复读取
+同一仓库与证据，真正应该执行的动作却迟迟没有派发。当前控制层对“审计完整”的奖励
+高于对“首次有效动作、实验吞吐和交付速度”的奖励。本专项必须在保持正确性和权限边界
+的同时，让立即行动成为默认路径。
+
+### 不可违反的设计约束
+
+- 不增加哈希绑定证据链、面向模型的严格 JSON schema、关键词路由或重复 gate。
+- 下述预算是可配置的执行默认值，不是科研价值阈值。不能可靠预测收益的想法，只要机制
+  可证伪，也可以进入低成本 decisive probe；不得要求统一收益百分比。
+- 每个决策只有一个 owner。Reviewer 已完成的结论，除非出现新证据、冲突或用户拥有的
+  变化，否则不能再让另一个模型从头审理。
+- 只增加少量端到端回归场景；不能用庞大合成测试矩阵代替真实 canary。
+
+## ARGUS-P0-05 — 让控制层以行动为先
+
+**状态：调查中。** 真实 FLA 轨迹显示：Planner grounding 过长、每个角色重复读文件、
+旧 workdir/stage 泄漏、合法任务被错误过滤，以及 Reviewer 完成后 Manager 再次审计。
+
+**问题。** 控制层没有清楚区分“信息已经足够，可以行动”和“也许还能再读一个文件”。
+它在每个角色里重新建立仓库认知，以 stage artifact 数量替代决策，并让普通阶段转换再次
+经过昂贵语义判断。
+
+**工作项**
+
+- [ ] 由 runtime 在内存中生成一个 `MissionBrief`，包含权威 workdir、stage、Git 状态、
+      相关变更路径、硬件/工具、原生测试与 benchmark 命令、最近决定性结果、当前交付物
+      和缺失 gate。它只是上下文，不写进项目，也不形成证据账本。
+- [ ] 任务实际解析后的 workdir 必须是 vertical、stage、policy 和 artifact 解析的唯一
+      来源；增加“父 campaign 仓库 + 嵌套目标 worktree”的真实回放。
+- [ ] 增加可配置的 Planner grounding 预算（工具调用和墙钟）。Brief 与已读事实足够产生
+      合法任务后必须派工；延长预算时必须指出具体缺失事实。
+- [ ] 在单个 planning cycle 内缓存不变的只读工具结果；重复读取时返回
+      `unchanged since last read`，不再重新加载全文。
+- [ ] 每个 stage 只定义一个主要交付物和一种直接任务形状。Scope 缺 artifact 时，host
+      应直接生成一个 bounded Scope Engineer 任务，而不是开放式 Planner 调研。
+- [ ] Stage checks 通过且必要 Reviewer 返回 `done` 时，框架直接推进。只有 rollback、
+      证据冲突、scope/权限变化或用户决策才调用 Manager 做语义裁决。
+- [ ] Reviewer 只检查改动面和决定性 acceptance evidence；没有新证据时不得重新研究或
+      重开已解决问题。
+- [ ] 修复仓库本地 Skill 发现：匹配的 `.agents/skills/**/SKILL.md` 应能直接加载，不得先
+      native lookup 失败再手工读取。
+- [ ] 建立轻量 exploration/candidate/delivery 三级证据：失败 probe 只保留紧凑实验卡；
+      完整 correctness、profiling 和报告只用于晋级候选及最终交付。
+
+**验收标准**
+
+- 在冻结的 FLA scope 回放中，一个短 planning turn 就能派发缺失 scope 工作，不再重复读
+  文件或因父目录旧 stage 错误拒绝任务。
+- Reviewer `done` 能直接推进无争议 stage，不再触发第二次模型证据审理。
+- 首次有效动作时间、重复读取比例、Planner Tokens 和墙钟相比基线有实质改善，同时
+  held-out correctness 不下降。
+- 安全、权限、隔离和用户批准边界不变。
+
+---
+
+## ARGUS-P1-07 — 增加专业执行角色和真正的 Discover 流程
+
+**问题。** 同一个通用角色同时承担数学研究、环境安装、kernel 编码、测量和发布，最终
+自然退化为最安全的公共行为：收集证据和做局部实现调整。
+
+**工作项**
+
+- [ ] 增加显式 work kind：`scope`、`algorithm_discovery`、`environment_setup`、
+      `engineering_optimization`、`validation`、`delivery`。Stage 准入使用类型，不从任务
+      文本关键词推断。
+- [ ] Scope Engineer 在一个 mission 内固定 API、可改范围、硬件、oracle、benchmark 和
+      只读参考边界。
+- [ ] Discover 路由给 Algorithm Scientist：推导公式与数据流，比较至少三种本质不同的
+      重构，说明消除的工作/存储/通信、正确性或误差、primary prior art、未知量和最便宜
+      decisive probe。
+- [ ] 不设置统一预期收益阈值。按照项目 leverage、测量噪声、部署频率、实现成本，以及
+      延迟、内存、通信、扩展性、数值或覆盖价值决定是否做 probe。
+- [ ] Environment Engineer 只安装所选算法需要、且项目原生支持的 lockfile/extras，
+      不安装所有可能工具。
+- [ ] Kernel Engineer 接收已选算法与明确 probe 后才编码；Release Engineer 只负责最终
+      交付，不能重新开启优化。
+- [ ] Continuous 项目必须完成一次 delivery 后，才能开始下一轮 Discover。
+
+**验收标准**
+
+- Discover 在生产 kernel 修改前产出经 Reviewer 接受的算法决策，普通 tiling/autotune
+  不会被包装成算法创新。
+- 收益未知但机制合理的想法可进入低成本 probe；广泛热路径上的 1% 改善不会被全局阈值
+  拒绝。
+- Delivery 任务绝不修改算法或启动新实验。
+
+---
+
+## ARGUS-P1-08 — 使用候选组合与分级实验信息
+
+**问题。** 增量 attempt 使用不断变化的 baseline，最早 supported 结果可能被误当成最佳
+交付；失败想法也承担了与晋级候选相同的流程成本。
+
+**工作项**
+
+- [ ] 保留小型候选组合：机制、正确性、可比较指标、最差情况、适用范围、实现成本和
+      未解决风险。不能按 attempt 名、完成时间或文件顺序选 winner。
+- [ ] 每个 delivery cycle 固定一个 clean baseline。增量测量可指导探索，但最终候选必须
+      对同一 baseline 比较。
+- [ ] 用明确的 `continue`、`probe`、`select` 或 `deliver` 决策替代 first-winner 自动交付。
+- [ ] 失败探索只保存紧凑实验卡：假设、消除工作、decisive probe、观察和结论；晋级后才
+      增加完整矩阵。
+- [ ] 把不确定性作为一等信息：有证据时给区间；没有时写 `unknown` 和可消除未知的实验。
+- [ ] 保存诚实负面结果，但不把原始 profiler 日志注入后续角色 prompt。
+
+**验收标准**
+
+- 多个候选对统一 baseline 比较时，较晚的更强候选能够胜过较早 supported 候选。
+- 负面 probe 保持低成本，不触发完整交付证据流程。
+- 不依靠不透明身份元数据，也能从工程取舍理解候选选择。
+
+---
+
+## ARGUS-P2-03 — 测量并自适应执行效率
+
+**工作项**
+
+- [ ] 记录可安全披露的控制层指标：首次任务/写入/测试时间、派工前 Planner reads、重复
+      读取比例、角色墙钟、每个接受候选的 Tokens/成本、每小时实验数、Reviewer 重审次数、
+      winner 到 PR 的耗时。
+- [ ] 在事件中区分有效执行和控制层工作，使产品无需检查私有推理也能统计 action ratio。
+- [ ] 从真实软件、kernel、研究和证明轨迹建立基线；测量分布后再设 canary 目标。
+- [ ] 按 stage 复杂度与实测价值调整 Planner/Reviewer 执行预算，不能把 runtime 预算变成
+      科研价值阈值。
+- [ ] 每周发布简洁对比：基线、候选策略、正确性、延迟、成本、重复工作和
+      ship/revise/stop 决策。
+
+**验收标准**
+
+- 效率改动按端到端目标完成和 held-out 质量评估，不只看 Tokens 或文件数下降。
+- 即使 action ratio 改善，只要正确性、权限处理或恢复能力回退，就不能上线。
+- FLA 回放证明派工更快、有效实验吞吐更高，且不再退回证据收集循环。
 
 ---
 
@@ -472,14 +614,16 @@ secret、sandbox、幂等和 crash recovery 保持不变。量化见 P1-04/P1-06
 
 ## 建议执行顺序
 
-1. **已完成：** P0-01 到 P0-04，包括批准/恢复一致性、按进展继续、可修改计划和
-   目标级 mission 质量。
-2. **下一步：** 建立 P1-01 跨领域非单调进展模型，并在真实项目上 canary P1-02
-   mission session；轮换 handoff 已修复并 smoke 2/2，下一步完整复测 rolling。
-3. **并行：** 从正常 mission 观测 `8100d2ae` 的原生 Skill 相关性决定，补旧 session
-   迁移测试，并推进 P1-05 沟通改进；不再单独启动模型实验。
-4. **生命周期稳定后：** P1-04 vertical/core 清理和 P1-06 runtime 简化。
-5. **状态语义稳定后：** 再做 P2-01 存储方案和迁移。
+1. **立即执行：** 用冻结的 FLA 轨迹实施 P0-05 action-first 控制层；把权威 workdir/stage、
+   MissionBrief、重复读取复用、有限 grounding、直接 scope 派工和无争议阶段确定性推进拆成
+   独立聚焦改动。
+2. **P0-05 canary 成功后：** 实施 P1-07 专业 work kind 与角色路由，并回放 FLA 的
+   Scope → Discover → Prototype 路线。
+3. **随后：** 实施 P1-08 候选组合和分级证据，让探索保持低成本，交付选择可比较的最强候选。
+4. **持续进行：** 使用 P2-03 指标和现有 P2-02 评估矩阵，对比端到端质量、延迟、Tokens、
+   成本、重复工作与交付情况。
+5. **已完成基础：** P0-01 到 P1-06 作为回归约束保留，没有真实轨迹不得重开；P2-01 存储
+   工作继续放在状态语义与执行行为稳定之后。
 
 ## P0 — 保证同步后的基线可运行
 

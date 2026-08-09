@@ -152,6 +152,8 @@ class PlanningCycleEnqueueMixin:
         """
         if not bool(getattr(task, "stage_closing", False)):
             return None
+        if bool(getattr(task, "stage_repair", False)):
+            return None
         stage_reader = getattr(self, "_current_pipeline_stage", None)
         if not callable(stage_reader):
             return None
@@ -394,17 +396,17 @@ class PlanningCycleEnqueueMixin:
                 ),
                 require_independent_review=canonical_require_review,
             )
+            from ...skills.stage_machine import current_stage
             from ...skills.vertical_select import resolve_vertical
             from ...verticals._base import load_vertical, vertical_planner_task_issues
 
             policy_root = Path(context_root or self._project_workdir()).resolve()
-            stage_reader = getattr(self, "_current_pipeline_stage", None)
-            policy_stage = str(
-                stage_reader() if callable(stage_reader) else ""
-            ).strip().lower()
-            policy_vertical = resolve_vertical(policy_root)
+            state_reader = getattr(self, "_artifact_root", None)
+            state_root = state_reader() if callable(state_reader) else policy_root
+            policy_stage = current_stage(state_root)
+            policy_vertical = resolve_vertical(state_root)
             policy_issues = vertical_planner_task_issues(
-                load_vertical(policy_vertical, project_root=policy_root),
+                load_vertical(policy_vertical, project_root=state_root),
                 stage=policy_stage,
                 project_root=policy_root,
                 task=task,
