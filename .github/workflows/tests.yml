@@ -35,6 +35,9 @@ env:
     tests/life/test_feishu_bot.py
     tests/life/test_telegram_bot.py
     tests/life/test_telegram_mobile.py
+    tests/core/test_release.py
+    tests/core/test_session_lock_portable.py
+    tests/daemon/test_state_portable.py
     tests/webapi/test_pairing.py
 
 jobs:
