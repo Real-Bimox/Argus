@@ -67,25 +67,30 @@ def test_direct_job_survives_worker_owner_death(tmp_path: Path) -> None:
         time.sleep(0.05)
     assert record.get("state") == "running", record
     os.kill(worker_pid, signal.SIGKILL)
-    terminal = _wait_for_terminal_record(record_path, timeout=10.0)
-    assert terminal.get("state") == "done", terminal
-    status = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "argus_skill.tools.subagent",
-            "status",
-            "--task-id",
-            "durable",
-        ],
-        cwd=tmp_path,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    assert status.returncode == 0, status.stderr
-    payload = json.loads(status.stdout)
+    status_command = [
+        sys.executable,
+        "-m",
+        "argus_skill.tools.subagent",
+        "status",
+        "--task-id",
+        "durable",
+    ]
+    deadline = time.time() + 10
+    payload = {}
+    while time.time() < deadline:
+        status = subprocess.run(
+            status_command,
+            cwd=tmp_path,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert status.returncode == 0, status.stderr
+        payload = json.loads(status.stdout)
+        if payload.get("state") == "done":
+            break
+        time.sleep(0.05)
     assert payload["state"] == "done"
     assert payload["exit_code"] == 0
     assert payload["terminal_owner"] == "exit_sidecar_reconciler"
