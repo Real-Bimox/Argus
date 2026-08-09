@@ -152,6 +152,8 @@ class PlanningCycleEnqueueMixin:
         """
         if not bool(getattr(task, "stage_closing", False)):
             return None
+        if bool(getattr(task, "stage_repair", False)):
+            return None
         stage_reader = getattr(self, "_current_pipeline_stage", None)
         if not callable(stage_reader):
             return None

@@ -504,6 +504,38 @@ class PlanningCycleMixin(
         if (
             decision.action == "hold"
             and decision.source == "manager_llm"
+            and not bool(getattr(decision, "resolves_wait", False))
+            and (uncontracted or explicitly_requested)
+        ):
+            persisted = self._persist_manager_planner_feedback(
+                stage=stage,
+                reason=decision.reason,
+                diagnostic="manager_hold_requires_stage_repair",
+            )
+            if not persisted:
+                self._emit_status(
+                    "failed to persist Manager HOLD repair; retry later"
+                )
+                return ""
+            self._deactivate_planner_waiting_contract()
+            self._clear_planner_wait_resolution()
+            self._last_planner_wait_reconciliation_key = None
+            self._planner_waits_since_reconciliation = 0
+            self._reset_idle_backoff()
+            self._emit({
+                "type": "life.manager.feedback.persisted",
+                "stage": stage,
+                "reason": decision.reason,
+                "diagnostic": "manager_hold_requires_stage_repair",
+            })
+            self._emit_status(
+                f"Manager HOLD converted to one bounded {stage} repair"
+            )
+            return "hold"
+
+        if (
+            decision.action == "hold"
+            and decision.source == "manager_llm"
             and bool(getattr(decision, "resolves_wait", False))
         ):
             self._resolve_planner_waiting_contract(

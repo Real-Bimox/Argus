@@ -38,11 +38,19 @@ class PlanningCycleVerdictMixin:
                 "without another repository audit"
             )
         else:
-            task = self._direct_current_stage_task()
-            reason = (
-                "host dispatched the missing primary current-stage deliverable "
-                "without another repository audit"
-            )
+            feedback = self._load_manager_planner_feedback()
+            if feedback is not None:
+                task = self._direct_manager_hold_task(feedback)
+                reason = (
+                    "host dispatched the Manager-required stage repair without "
+                    "another repository audit"
+                )
+            else:
+                task = self._direct_current_stage_task()
+                reason = (
+                    "host dispatched the missing primary current-stage deliverable "
+                    "without another repository audit"
+                )
         if task is None:
             return None
         from ...planner import PlannerVerdict

@@ -63,6 +63,8 @@ class PlanningContextMixin:
             tags.append("review:required")
         if bool(getattr(task, "skip_stage_transition", False)):
             tags.append("stage_transition:skip")
+        if bool(getattr(task, "stage_repair", False)):
+            tags.append("stage_repair")
         if bool(getattr(task, "allow_skill_changes", False)):
             tags.append("skill_changes:allowed")
         # Bind Planner work to the stage in which it was proposed.  This is

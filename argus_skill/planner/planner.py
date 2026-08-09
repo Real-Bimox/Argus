@@ -105,6 +105,10 @@ class TaskSpec:
     authorization_action: str = ""
     require_independent_review: bool = False
     skip_stage_transition: bool = False
+    # Host-authored recovery work after a Manager HOLD or approved revision.
+    # This bypasses certification-churn suppression because the task includes
+    # the substantive repair and its independent recertification in one unit.
+    stage_repair: bool = False
     allow_skill_changes: bool = False
 
 

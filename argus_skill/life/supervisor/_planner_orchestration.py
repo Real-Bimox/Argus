@@ -104,6 +104,82 @@ class PlannerOrchestrationMixin:
             stage_closing=True,
             require_independent_review=True,
             skip_stage_transition=False,
+            stage_repair=True,
+        )
+
+    def _direct_manager_hold_task(self, feedback: dict[str, Any]) -> Any | None:
+        """Create the one repair mission required by an authoritative HOLD."""
+        state_root = self._artifact_root()
+        try:
+            from ...planner import TaskSpec
+            from ...skills.stage_machine import current_stage
+            from ...skills.vertical_select import resolve_vertical
+            from ...verticals._base import load_vertical_contract
+
+            vertical = resolve_vertical(state_root)
+            stage = current_stage(state_root)
+            if str(feedback.get("stage") or "").strip() != stage:
+                return None
+            contract = load_vertical_contract(vertical, project_root=state_root)
+            deliverables = contract.primary_deliverables(stage)
+        except Exception:  # noqa: BLE001 - ordinary Planner remains the fallback
+            log.exception("failed to resolve Manager HOLD repair")
+            return None
+        if not deliverables:
+            return None
+
+        reason = str(feedback.get("reason") or "").strip()
+        if not reason:
+            return None
+        checks = tuple((contract.stage_checks or {}).get(stage, ()))
+        check_text = " | ".join(
+            f"{label}: `{command}`" for label, command in checks
+        ) or "the current-stage checklist reports no unresolved issue"
+        paths = ", ".join(f"`{path}`" for path in deliverables)
+        return TaskSpec(
+            key=f"stage-{stage}-manager-repair",
+            title=f"Apply the Manager-required {vertical} {stage} repair",
+            objective=(
+                f"Repair and recertify only the current `{stage}` stage. The "
+                f"Manager held advancement with this binding reason: {reason}. "
+                f"Reconcile the primary stage bundle {paths} with that decision. "
+                "Preserve valid evidence and make the smallest substantive change "
+                "that resolves the stated reason. Then run the declared stage checks "
+                "and obtain one independent Reviewer verdict. Do not create another "
+                "certification-only artifact, edit Manager-owned pipeline state, or "
+                "start downstream work."
+            ),
+            impact_score=5,
+            impact_area="rollback recovery",
+            evidence=reason,
+            hypothesis=(
+                "The Manager HOLD names a bounded current-stage inconsistency that "
+                "one repair-and-recertification mission can resolve."
+            ),
+            goal_contribution=(
+                f"Close the specific `{stage}` inconsistency blocking deterministic "
+                "stage advancement."
+            ),
+            expected_regressions=(
+                "Only claims or controls contradicted by the Manager decision may "
+                "change; unrelated accepted evidence remains intact."
+            ),
+            decision_rule=(
+                "Return done only when the Manager's stated inconsistency is resolved "
+                "and all current-stage checks pass; otherwise report the concrete blocker."
+            ),
+            acceptance_check=f"All repaired `{stage}` checks pass — {check_text}",
+            non_goals=[
+                "repeat certification without changing the held evidence",
+                "edit production source code unless the current stage explicitly owns it",
+                "advance or edit pipeline state",
+                "perform downstream-stage work",
+            ],
+            scope="bounded",
+            stage_closing=True,
+            require_independent_review=True,
+            skip_stage_transition=False,
+            stage_repair=True,
         )
 
     def _direct_current_stage_task(self) -> Any | None:

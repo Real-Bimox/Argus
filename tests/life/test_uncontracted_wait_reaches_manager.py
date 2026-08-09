@@ -61,6 +61,7 @@ class _Probe:
         self.skill_store = None
         self.sink = SimpleNamespace(handle_event=None)
         self.events: list[dict] = []
+        self.manager_feedback: list[dict] = []
 
     @staticmethod
     def _waiting_contract_key(contract):
@@ -96,6 +97,16 @@ class _Probe:
         # second short-circuit this test exists to hold.
         return None
 
+    def _persist_manager_planner_feedback(self, **feedback):
+        self.manager_feedback.append(feedback)
+        return True
+
+    def _deactivate_planner_waiting_contract(self) -> None:
+        return None
+
+    def _clear_planner_wait_resolution(self) -> None:
+        return None
+
     def _apply_manager_wait_resolution(self, *a, **k):
         return None
 
@@ -128,6 +139,13 @@ def test_an_uncontracted_wait_still_reaches_the_manager() -> None:
     probe = _Probe()
 
     assert _reconciles(probe, _verdict()) is True
+    assert probe.manager_feedback == [
+        {
+            "stage": "research",
+            "reason": "held",
+            "diagnostic": "manager_hold_requires_stage_repair",
+        }
+    ]
 
 
 def test_a_wait_with_no_reason_at_all_is_left_alone() -> None:
