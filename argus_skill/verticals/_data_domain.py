@@ -12,7 +12,9 @@ the Python verticals use.
 :mod:`argus_skill.verticals._base` read via ``getattr``
 (``STAGE_ORDER`` / ``CHECKLIST_STAGE_ORDER`` / ``CHECKLIST_ITEMS`` /
 ``completion_gate`` / ``role_banner``), so ``_base`` needs no changes to consume
-it. A fresh data domain ships an EMPTY ``CHECKLIST_ITEMS`` (the Planner authors
+it. ``role_banners`` may map role names to separate prompt contracts; the legacy
+``role_banner`` string remains the fallback. A fresh data domain ships an EMPTY
+``CHECKLIST_ITEMS`` (the Planner authors
 the per-stage checklist at runtime via :mod:`argus_skill.skills.checklist_store`)
 and ``completion_gate="none"`` so it does not demand the paper submission gate.
 
@@ -82,6 +84,16 @@ def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
             pass
 
 
+def _normalize_role_banners(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(role).strip().lower(): banner.strip()
+        for role, banner in value.items()
+        if str(role).strip() and isinstance(banner, str) and banner.strip()
+    }
+
+
 class DataDomain:
     """Duck-typed, module-contract-compatible view over a project-local domain.
 
@@ -113,6 +125,7 @@ class DataDomain:
         self.CHECKLIST_OPTIONAL_STAGES = tuple(checklist_stage_order)
         self.completion_gate = gate or DEFAULT_COMPLETION_GATE
         self._role_banner = str(payload.get("role_banner") or "")
+        self.ROLE_BANNERS = _normalize_role_banners(payload.get("role_banners"))
 
         # Optional per-stage seed checklist (usually empty for a fresh
         # Manager-authored domain; the Planner authors items at runtime via the
@@ -147,8 +160,13 @@ class DataDomain:
             out[str(stage).strip().lower()] = tuple(built)
         return out
 
-    def role_banner(self, role: str) -> str:  # noqa: ARG002 - role-agnostic banner
-        return self._role_banner
+    def role_banner(self, role: str) -> str:
+        role_name = str(role or "").strip().lower()
+        return (
+            self.ROLE_BANNERS.get(role_name)
+            or self.ROLE_BANNERS.get("default")
+            or self._role_banner
+        )
 
 
 def load_data_domain(name: object, project_root: object = ".") -> "DataDomain | None":
@@ -206,7 +224,7 @@ def write_data_domain(
     stages: list[str],
     checklist_stage_order: list[str] | None = None,
     completion_gate: str = DEFAULT_COMPLETION_GATE,
-    role_banner: str = "",
+    role_banner: str | dict[str, str] = "",
     created_by: str = "manager",
     overwrite: bool = False,
 ) -> Path:
@@ -233,16 +251,19 @@ def write_data_domain(
     from datetime import datetime, timezone
 
     created_at = datetime.now(timezone.utc).isoformat()
+    role_banners = _normalize_role_banners(role_banner)
     payload = {
         "name": name,
         "stages": norm_stages,
         "checklist_stage_order": order,
         "completion_gate": (completion_gate or DEFAULT_COMPLETION_GATE).strip().lower(),
-        "role_banner": role_banner or "",
+        "role_banner": role_banner if isinstance(role_banner, str) else "",
         "created_by": created_by or "manager",
         "created_at": created_at,
         "promoted": False,
     }
+    if role_banners:
+        payload["role_banners"] = role_banners
     _atomic_write_json(path, payload)
     _update_index(project_root, name, {k: payload[k] for k in (
         "stages", "checklist_stage_order", "completion_gate", "created_by",

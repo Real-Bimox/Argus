@@ -148,8 +148,15 @@ def _render_stages_py(name: str, project_root: Path) -> str:
     lines.append("}")
     lines.append("")
     banner = domain.role_banner("")
-    lines.append("def role_banner(role: str) -> str:  # noqa: ARG001")
-    lines.append(f"    return {banner!r}")
+    role_banners = dict(getattr(domain, "ROLE_BANNERS", {}) or {})
+    lines.append(f"ROLE_BANNERS = {role_banners!r}")
+    lines.append("")
+    lines.append("def role_banner(role: str) -> str:")
+    lines.append("    role_name = str(role or '').strip().lower()")
+    lines.append(
+        "    return ROLE_BANNERS.get(role_name) or "
+        f"ROLE_BANNERS.get('default') or {banner!r}"
+    )
     lines.append("")
     return "\n".join(lines)
 

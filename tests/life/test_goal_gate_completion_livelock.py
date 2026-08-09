@@ -144,6 +144,25 @@ def test_an_unreadable_vertical_keeps_the_strict_rule() -> None:
     assert _mission_scope_can_complete("bounded", "no-such-vertical") is False
 
 
+def test_project_local_vertical_completion_uses_project_root(tmp_path) -> None:
+    """A data-domain gate must not silently fall back to research."""
+    from argus_skill.manager.stage_decider import _mission_scope_can_complete
+    from argus_skill.verticals import _data_domain as data_domain
+
+    data_domain.write_data_domain(
+        tmp_path,
+        "bench",
+        stages=["scope", "execute", "certify"],
+        completion_gate="none",
+    )
+
+    assert _mission_scope_can_complete(
+        "bounded",
+        "bench",
+        project_root=tmp_path,
+    ) is True
+
+
 # -- the log has to say what happened ----------------------------------------
 
 

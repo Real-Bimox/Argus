@@ -323,6 +323,7 @@ def final_stage_completion_decision(
     stage_order: Sequence[str],
     vertical: str = "",
     mission_scope: str = "",
+    project_root: Any = None,
     research_target_level: str | None = None,
     checklist_contract: Any | None = None,
     completion_blocker: str = "",
@@ -336,7 +337,11 @@ def final_stage_completion_decision(
         return None
     if str(completion_blocker or "").strip():
         return None
-    if not _mission_scope_can_complete(mission_scope, vertical):
+    if not _mission_scope_can_complete(
+        mission_scope,
+        vertical,
+        project_root=project_root,
+    ):
         return None
     missing = _review_certifies_completion(
         review,
@@ -424,7 +429,12 @@ def external_completion_gate_stage_guard_decision(
     return proposed
 
 
-def _mission_scope_can_complete(mission_scope: str, vertical: str) -> bool:
+def _mission_scope_can_complete(
+    mission_scope: str,
+    vertical: str,
+    *,
+    project_root: Any = None,
+) -> bool:
     """Whether a mission with this scope is allowed to close the project.
 
     ``final_submission`` is the *paper* transport scope and nothing else can
@@ -441,7 +451,9 @@ def _mission_scope_can_complete(mission_scope: str, vertical: str) -> bool:
     try:
         from ..verticals._base import load_vertical, vertical_completion_gate
 
-        gate = vertical_completion_gate(load_vertical(vertical or ""))
+        gate = vertical_completion_gate(
+            load_vertical(vertical or "", project_root=project_root)
+        )
     except Exception:  # noqa: BLE001 — an unreadable vertical keeps the strict rule
         return False
     return gate != "certified"
