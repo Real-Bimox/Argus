@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -174,6 +175,18 @@ def _run_text(
         timeout=timeout_s,
         check=False,
     )
+
+
+def _run_backend_version(
+    backend: str,
+    executable: str,
+    *,
+    timeout_s: float,
+) -> subprocess.CompletedProcess[str]:
+    command: tuple[str, ...] = (executable, "--version")
+    if backend == "pi" and sys.platform == "darwin" and Path("/usr/bin/script").is_file():
+        command = ("/usr/bin/script", "-q", "/dev/null", *command)
+    return _run_text(command, timeout_s=timeout_s)
 
 
 def _extract_version(text: str) -> tuple[str, tuple[int, int, int], str] | None:
@@ -492,7 +505,11 @@ def check_backend_readiness(
     try:
         for attempt in range(2):
             try:
-                version_result = _run_text((executable, "--version"), timeout_s=timeout_s)
+                version_result = _run_backend_version(
+                    profile.backend,
+                    executable,
+                    timeout_s=timeout_s,
+                )
                 break
             except subprocess.TimeoutExpired:
                 if attempt:
