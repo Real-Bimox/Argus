@@ -377,9 +377,8 @@ class LifeSupervisor(
 
     def _planner_config(self):
         from ...core.knobs import resolve_role_model
-        from ...planner import PlannerConfig
-
         from ...daemon.state import read_continuous_state
+        from ...planner import PlannerConfig
 
         expected = read_continuous_state(self.memory.root)
 

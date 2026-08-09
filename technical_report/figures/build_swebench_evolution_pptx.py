@@ -17,7 +17,6 @@ from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
-
 REPORT = Path(__file__).resolve().parents[1]
 FIGURES = REPORT / "figures"
 EVIDENCE = REPORT / "evidence" / "swebench_pro"
@@ -323,7 +322,6 @@ def draw_series_panel(
         value_text = f"{value / 1_000_000:.2f}M" if value_key == "solve_input_tokens_mean" else f"{value / 60:.2f}m"
         add_text(slide, value_text, px - 0.35, py - 0.32, 0.70, 0.22, size=8.0, bold=True, color=color, align=PP_ALIGN.CENTER)
         add_text(slide, window["label"], px - 0.43, plot_y + plot_h + 0.10, 0.86, 0.24, size=8.4, bold=True, color=INK, align=PP_ALIGN.CENTER)
-    mature = points[3]
     add_text(
         slide,
         f"Start-up → mature: −{reduction:.0f}%",

@@ -505,7 +505,6 @@ def persist_vertical(
     legacy_direct = str(vertical or "").strip().lower() == "direct"
     vert = require_vertical(vertical, project_root)
     path = _state_path(project_root)
-    framework_created = not path.exists()
 
     try:
         raw = path.read_text(encoding="utf-8")

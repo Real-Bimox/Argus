@@ -9,7 +9,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
 HERE = Path(__file__).resolve().parent
 HTML_PATH = HERE / "horizon_mountain.html"
 BASE_PATH = HERE / "horizon_mountain_illustrated_base.png"

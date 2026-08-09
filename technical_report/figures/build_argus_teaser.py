@@ -9,7 +9,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-
 HERE = Path(__file__).resolve().parent
 REPORT = HERE.parent
 PPTX_SOURCE = HERE / "argus_teaser.pptx"
