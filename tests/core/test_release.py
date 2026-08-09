@@ -94,6 +94,23 @@ def test_untracked_new_source_participates_before_first_commit() -> None:
         source.unlink(missing_ok=True)
 
 
+def test_installed_frontend_dependencies_do_not_change_release_identity() -> None:
+    root = Path(__file__).parents[2]
+    node_modules = root / "frontend" / "web" / "node_modules"
+    dependency = node_modules / "_release-test" / "package.json"
+    had_node_modules = node_modules.exists()
+    before = compute_source_digest(root)
+    try:
+        dependency.parent.mkdir(parents=True, exist_ok=True)
+        dependency.write_text('{"name": "ignored"}\n', encoding="utf-8")
+        assert compute_source_digest(root) == before
+    finally:
+        dependency.unlink(missing_ok=True)
+        dependency.parent.rmdir()
+        if not had_node_modules:
+            node_modules.rmdir()
+
+
 def test_strict_release_preflight_rejects_manifest_source_mismatch(
     monkeypatch,
 ) -> None:
