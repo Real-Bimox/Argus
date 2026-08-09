@@ -67,7 +67,7 @@ __all__ = ["CommandRouter", "COMMAND_MENU", "help_text"]
 COMMAND_MENU: tuple[tuple[str, str], ...] = (
     ("status", "查看守护进程 / 当前任务 / backlog / 花费"),
     ("add", "添加任务：/add 标题: 目标"),
-    ("ask", "直接回答，不排任务、不走四角色"),
+    ("ask", "直接回答，不排任务、只走 Manager"),
     ("nudge", "向当前任务注入指令"),
     ("backlog", "查看待办任务（/backlog all 看全部）"),
     ("journal", "查看最近日志"),
@@ -91,6 +91,11 @@ COMMAND_MENU: tuple[tuple[str, str], ...] = (
 def help_text(channel_name: str = "") -> str:
     """Render the ``/help`` body, naming the channel the operator is on."""
     where = channel_name or "这里"
+    architecture = """<b>🏗️ 四角色运行时</b>
+01 👔 Manager · 控制 — 理解意图、选择工作流
+02 🧠 Planner · 方向 — 规划后续任务
+03 👷 Engineer · 执行 — 实现、调研、实验
+04 👨‍🏫 Reviewer · 验证 — 检查正确性与完成状态"""
     return f"""🤖 <b>argus-skill 命令列表</b>
 
 /add <code>&lt;text&gt;</code> [--once] [--cycles=N] — 添加任务
@@ -109,18 +114,14 @@ def help_text(channel_name: str = "") -> str:
 /stop <id> — 关闭任务迭代；必要时会把待办项标记为已完成
 /start [目标] — 开启持续模式（/continuous start 的别名）
 /continuous start|stop [目标] — 持续模式控制
-/ask <code>问题</code> — 直接回答，不排任务、不走四角色
+/ask <code>问题</code> — 直接回答，不排任务、只走 Manager
 /nudge <code>文本</code> — 向当前任务注入指令
 /help — 显示此帮助
 
-直接发文字 → 运行中注入当前任务；空闲时自动添加为任务。显式排新任务请用 /add
+直接发文字 → 运行中注入当前任务；空闲时由 Manager 判断直接回复或添加任务。显式排新任务请用 /add
 当前频道：{where}
 
-<b>🏗️ 四层 Agent 架构</b>
-L1 👷 工程师 — 编码执行任务
-L2 👨‍🏫 审查员 — 代码审查与修复
-L3 👔 评审员 — 评估质量并决定迭代
-L4 🧠 规划师 — 分析项目并规划新任务"""
+{architecture}"""
 
 
 @dataclass(frozen=True)
@@ -208,10 +209,10 @@ class CommandRouter:
     # -- individual commands -----------------------------------------------
 
     _LAYER_LABELS = {
-        "engineer": "👷 工程师 (L1)",
-        "reviewer": "👨‍🏫 审查员 (L2)",
-        # critic layer removed,
-        "planner":  "🧠 规划师 (L4)",
+        "manager": "👔 Manager · 控制",
+        "planner": "🧠 Planner · 方向",
+        "engineer": "👷 Engineer · 执行",
+        "reviewer": "👨‍🏫 Reviewer · 验证",
     }
 
     def _detect_active_layer(self, mem: Any) -> str:
@@ -248,23 +249,29 @@ class CommandRouter:
 
         from ...manager.front_door import manager_bounded_handoff
         from ..memory import BacklogItem, MemoryBundle
+        from ..supervisor.backlog_guard import decision_evidence
 
         mem = MemoryBundle.for_cwd(
             fingerprint=self.life_dir.name,
             global_root=self.life_dir.parent.parent,
         )
         item_id = BacklogItem.new_id()
-        item = manager_bounded_handoff(
-            mem,
-            objective,
-            self._state,
-            lambda execution_task, division: add_backlog_item(
+
+        def _persist(execution_task: str, division: Any) -> Any:
+            return add_backlog_item(
                 mem,
                 execution_task,
                 item_id=item_id,
                 iterate=iterate,
                 iteration_max_cycles=cycles,
-            ),
+                manager_decision=decision_evidence(division) or {"routed": True},
+            )
+
+        item = manager_bounded_handoff(
+            mem,
+            objective,
+            self._state,
+            _persist,
             root_task_id=item_id,
         )
         execution_task = item.objective
@@ -296,7 +303,8 @@ class CommandRouter:
         """Route natural chat text to the most timely useful action."""
         from ...apps._inbox import queue_inbox_message
         from ...daemon.life_worker import read_daemon_status
-        from ..memory import LifeMemory
+        from ...manager.front_door import manager_triage
+        from ..memory import LifeMemory, MemoryBundle
 
         mem = LifeMemory.open(self.life_dir)
         current_task = select_current_running_item(mem.backlog.all())
@@ -311,6 +319,15 @@ class CommandRouter:
                 "它不会打断正在进行的 LLM 调用；下一轮会看到。\n"
                 "如果想另外开一个任务，请用 /add；查进度用 /status。"
             )
+            return
+
+        manager_mem = MemoryBundle.for_cwd(
+            fingerprint=self.life_dir.name,
+            global_root=self.life_dir.parent.parent,
+        )
+        reply = manager_triage(manager_mem, text, self._state)
+        if reply is not None:
+            self._reply(_esc(reply))
             return
 
         queued = self._queue_task(text)

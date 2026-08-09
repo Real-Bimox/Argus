@@ -55,7 +55,12 @@ class MissionExecutionMixin(
         # silently proceeds under the default workflow — the Manager looks like
         # it is doing nothing. Route it now rather than executing blind;
         # already-routed items are untouched.
-        item = ensure_manager_decision(self.memory, item, getattr(self, "chat_state", None))
+        item = ensure_manager_decision(
+            self.memory,
+            item,
+            getattr(self, "chat_state", None),
+            ensure_runner=lambda _state, _memory: self.runner,
+        )
 
         state = self._prepare_mission_context(item, prelude)
         self._invoke_mission_runner(state)

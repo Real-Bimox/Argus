@@ -20,7 +20,7 @@ back door becomes another way in through the front.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
@@ -98,7 +98,13 @@ def describe_undecided(items: Any) -> str:
     )
 
 
-def ensure_manager_decision(memory: Any, item: Any, chat_state: Any = None) -> Any:
+def ensure_manager_decision(
+    memory: Any,
+    item: Any,
+    chat_state: Any = None,
+    *,
+    ensure_runner: Callable[[dict[str, Any], Any], Any] | None = None,
+) -> Any:
     """Route *item* through the Manager if it never was, and record that.
 
     Returns the item, with its objective replaced by the Manager's execution
@@ -125,6 +131,7 @@ def ensure_manager_decision(memory: Any, item: Any, chat_state: Any = None) -> A
             objective,
             dict(chat_state or {}),
             root_task_id=str(getattr(item, "id", "") or "") or None,
+            ensure_runner=ensure_runner,
         )
         execution_task = prepared.execution_task
         evidence = decision_evidence(getattr(prepared, "decision", None)) or {
