@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { adoptTokenFromUrl } from './api';
 import { BootSplash } from './components/BootSplash';
-import { I18nProvider, useI18n } from './i18n';
+import { I18nProvider } from './i18n';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import './index.css';
@@ -21,10 +21,9 @@ const queryClient = new QueryClient({
 
 function WebApp() {
   const [booting, setBooting] = useState(true);
-  const { locale } = useI18n();
   return (
     <>
-      <App key={locale} />
+      <App />
       {booting ? <BootSplash onDone={() => setBooting(false)} /> : null}
     </>
   );

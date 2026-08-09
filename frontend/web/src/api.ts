@@ -548,7 +548,7 @@ export const api = {
    * Streaming Manager front-door (SSE): ``onPhase`` per real step, ``onDelta``
    * per reply block as it's produced, ``onDone`` with the final classification,
    * ``onError`` on failure. Un-freezes the UI — Argus visibly thinks and the
-   * answer types in. Fall back to blocking ``message()`` at the call site.
+   * answer types in. Callers must not automatically replay a failed POST.
    */
   messageStream: async (
     sid: string,
@@ -578,6 +578,7 @@ export const api = {
     });
     await ensureResponseOk(res, 'POST', P(sid, '/message/stream'));
     if (!res.body) throw new Error('Manager stream returned no response body');
+    let sawTerminal = false;
     const dispatch = (f: SSEFrame) => {
       if (signal?.aborted) return;
       if (f.type === 'phase') {
@@ -600,8 +601,14 @@ export const api = {
           String(f.fragment_mode ?? 'auto'),
         );
       }
-      else if (f.type === 'done') handlers.onDone?.((f.result ?? {}) as StreamDone);
-      else if (f.type === 'error') handlers.onError?.(new Error(String(f.error ?? 'stream error')));
+      else if (f.type === 'done') {
+        sawTerminal = true;
+        handlers.onDone?.((f.result ?? {}) as StreamDone);
+      }
+      else if (f.type === 'error') {
+        sawTerminal = true;
+        handlers.onError?.(new Error(String(f.error ?? 'stream error')));
+      }
     };
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -614,7 +621,10 @@ export const api = {
       buf = parsed.rest;
       parsed.frames.forEach(dispatch);
     }
-    if (!signal?.aborted) parseSSEFrames(buf + '\n\n').frames.forEach(dispatch);
+    if (!signal?.aborted) {
+      parseSSEFrames(buf + '\n\n').frames.forEach(dispatch);
+      if (!sawTerminal) throw new Error('Manager stream ended before a terminal event');
+    }
   },
   nudge: (sid: string, text: string) => postJson(P(sid, '/nudge'), { text }),
   note: (sid: string, text: string) => postJson(P(sid, '/note'), { text }),

@@ -47,7 +47,7 @@ import {
   optimisticOperatorEvent,
 } from './lib/conversationEvents';
 import { mergeProjectCosts } from './lib/projectCosts';
-import { errorText } from './lib/format';
+import { errorText, managerStreamFailureMessage } from './lib/format';
 import { useCreateDaemonSession } from './useCreateDaemonSession';
 import { useProjectDaemonActions } from './useProjectDaemonActions';
 import { useGlobalKeyboardShortcuts } from './useGlobalKeyboardShortcuts';
@@ -535,20 +535,11 @@ export default function App() {
 
         if (!isCurrent()) return;
 
-        // Fallback to the blocking endpoint only if streaming produced nothing.
-        if (streamErr && !gotDelta) {
-          try {
-            const result = await api.message(requestSid, text, {
-              signal: controller.signal,
-              attachments: attachmentRefs,
-            });
-            if (!isCurrent()) return;
-            showManagerText(result.reply);
-            finishMessage(result);
-          } catch (error) {
-            if (!isCurrent()) return;
-            notify('error', `Message failed: ${errorText(error)}`);
-          }
+        if (streamErr) {
+          // Retrying the POST automatically can execute a task twice when the
+          // server accepted the first request but the SSE connection broke.
+          // Keep any partial reply visible and let the operator choose retry.
+          notify('error', managerStreamFailureMessage(streamErr, gotDelta));
         }
       } finally {
         resetCurrentRequest();
