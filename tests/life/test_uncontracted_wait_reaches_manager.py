@@ -96,6 +96,15 @@ class _Probe:
         # second short-circuit this test exists to hold.
         return None
 
+    def _bound_manager(self):
+        from argus_skill.manager import Manager
+
+        return Manager(
+            project_root=self._artifact_root(),
+            runner=self.planner_runner,
+            skill_store=self.skill_store,
+        )
+
     def _apply_manager_wait_resolution(self, *a, **k):
         return None
 

@@ -134,10 +134,11 @@ def test_worker_supervisor_enables_paper_mode_only_after_research_resolution(
 ):
     from argus_skill.skills.vertical_select import persist_vertical
 
-    persist_vertical(tmp_path, "research")
+    runtime_root = tmp_path / "life"
+    persist_vertical(runtime_root, "research")
     cfg = _build_worker_supervisor_config(
         _worker_cfg(tmp_path, open_ended=True),
-        runtime_root=tmp_path / "life",
+        runtime_root=runtime_root,
         stop_event=threading.Event(),
         init_continuous=True,
         init_objective="paper campaign",
@@ -147,4 +148,5 @@ def test_worker_supervisor_enables_paper_mode_only_after_research_resolution(
 
     assert cfg.paper_mission is True
     assert cfg.final_certification_gate is True
-    assert cfg.artifact_root == tmp_path
+    assert cfg.artifact_root == runtime_root
+    assert cfg.project_worktree == tmp_path
