@@ -67,7 +67,8 @@ def test_direct_job_survives_worker_owner_death(tmp_path: Path) -> None:
         time.sleep(0.05)
     assert record.get("state") == "running", record
     os.kill(worker_pid, signal.SIGKILL)
-    time.sleep(2.4)
+    terminal = _wait_for_terminal_record(record_path, timeout=10.0)
+    assert terminal.get("state") == "done", terminal
     status = subprocess.run(
         [
             sys.executable,
