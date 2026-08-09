@@ -479,6 +479,13 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     view.mission.status = presentation.missionStatus;
     view.mission.completed_at = ts;
     view.outcome = missionOutcomeDimensions(event);
+    setRole(
+      view,
+      'engineer',
+      presentation.missionStatus === 'complete' ? 'done' : presentation.missionStatus,
+      presentation.label,
+      ts,
+    );
     addTimeline(
       view,
       event,
@@ -501,7 +508,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
   return view;
 }
 
-function mergeSnapshot(view: MissionView, snapshot: Snapshot, artifacts: ArtifactInfo[]): void {
+function mergeSnapshot(view: MissionView, snapshot: Snapshot, artifacts: ArtifactInfo[]): boolean {
   const active = snapshot.backlog.find((item) => ACTIVE_STATUSES.has(item.status));
   const queued = snapshot.backlog.find((item) => item.status === 'pending');
   const owner = snapshot.backlog.find((item) => item.id === view.mission.id);
@@ -596,6 +603,21 @@ function mergeSnapshot(view: MissionView, snapshot: Snapshot, artifacts: Artifac
       source: artifact.source,
     });
   });
+  return missionContext;
+}
+
+function finalizeSnapshot(
+  view: MissionView,
+  snapshot: Snapshot,
+  artifacts: ArtifactInfo[],
+  missionContext: boolean,
+): void {
+  if (!missionContext) {
+    snapshot.roles.forEach((role) => {
+      if (!role.active) setRole(view, role.role, 'waiting', 'Waiting', Date.now() / 1000);
+    });
+    view.active_role = '';
+  }
   const now = Date.now() / 1000;
   const campaignStartedAt = view.mission.campaign_started_at
     ?? snapshot.session.created
@@ -632,11 +654,15 @@ export function projectMissionView(
   view.role_work ??= [];
   view.outcome ??= {};
   const seedTs = view.last_event_ts;
+  // The snapshot is a baseline. Events newer than mission_view.last_event_ts
+  // are authoritative and must not be overwritten by an older backlog/role
+  // projection that happened to arrive in the same refresh.
+  const missionContext = mergeSnapshot(view, snapshot, artifacts);
   events
     .filter((event) => event.ts == null || Number(event.ts) > seedTs)
     .sort((left, right) => Number(left.ts ?? 0) - Number(right.ts ?? 0))
     .forEach((event) => reduceMissionViewEvent(view, event));
-  mergeSnapshot(view, snapshot, artifacts);
+  finalizeSnapshot(view, snapshot, artifacts, missionContext);
   return view;
 }
 

@@ -68,6 +68,8 @@ test('achievement requires an explicit reviewer certification event', () => {
   ];
   const completed = projectMissionView(snapshot(), events);
   assert.equal(completed.achievement, null);
+  assert.equal(completed.mission.status, 'complete');
+  assert.notEqual(completed.active_role, 'engineer');
 
   const certified = reduceMissionViewEvent(completed, {
     type: 'research.achievement.certified',
@@ -82,6 +84,22 @@ test('achievement requires an explicit reviewer certification event', () => {
   assert.equal(certified.achievement?.reviewer_certified, true);
   assert.equal(certified.achievement?.title, 'Kernel speedup certified');
   assert.deepEqual(certified.achievement?.evidence, ['result.json']);
+});
+
+
+test('new failure event wins over an older running snapshot', () => {
+  const failed = projectMissionView(snapshot(), [{
+    type: 'life.mission.failed',
+    ts: 13,
+    success: false,
+    item_id: 'task-1',
+    title: 'Kernel v7',
+    objective: 'Optimize kernel',
+    reason: 'benchmark regressed',
+  }]);
+
+  assert.equal(failed.mission.status, 'failed');
+  assert.notEqual(failed.active_role, 'engineer');
 });
 
 

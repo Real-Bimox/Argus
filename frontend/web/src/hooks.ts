@@ -165,7 +165,7 @@ export function streamReducer(state: StreamState, action: StreamAction): StreamS
   if (action.kind === 'seed') {
     const seen = new Set<string>();
     const events: EventMsg[] = [];
-    action.events.forEach((ev, i) => {
+    [...action.events, ...state.events].forEach((ev, i) => {
       const k = eventKey(ev, i);
       if (!seen.has(k)) {
         seen.add(k);

@@ -404,10 +404,31 @@ def _read_recent_project_events(
     *,
     limit: int = 80,
 ) -> list[dict[str, Any]]:
-    events = _read_recent_jsonl_events(life_dir / "events.jsonl", limit=limit)
-    if events:
-        return events
-    return _read_recent_jsonl_events(life_dir / "events.jsonl.1", limit=limit)
+    if limit <= 0:
+        return []
+    current = _read_recent_jsonl_events(life_dir / "events.jsonl", limit=limit)
+    previous = _read_recent_jsonl_events(
+        life_dir / "events.jsonl.1",
+        limit=limit,
+    )
+    return _merge_recent_event_rows(previous, current, limit=limit)
+
+
+def _merge_recent_event_rows(
+    previous: list[dict[str, Any]],
+    current: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Join rollover/live tails while removing only their exact boundary overlap."""
+    if limit <= 0:
+        return []
+    overlap = 0
+    for size in range(min(len(previous), len(current)), 0, -1):
+        if previous[-size:] == current[:size]:
+            overlap = size
+            break
+    return [*previous, *current[overlap:]][-limit:]
 
 
 def _format_follow_planner_task_added(event: dict) -> str:
