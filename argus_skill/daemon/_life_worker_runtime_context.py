@@ -67,7 +67,7 @@ def _runner_namespace(cfg: LifeWorkerConfig) -> Any:
     # quick-reply runner never
     # sets this, so the Manager's own SELF-turn can never abort itself.
     ns.enable_mission_abort_signal = True
-    ns.max_rounds = int(os.environ.get("ARGUS_SKILL_MAX_ROUNDS", "500"))
+    ns.max_rounds = int(os.environ.get("ARGUS_SKILL_MAX_ROUNDS", "32"))
     ns.plan_mode = os.environ.get("ARGUS_SKILL_PLAN_MODE", "auto")
     ns.plan_model = os.environ.get("ARGUS_SKILL_PLAN_MODEL")
     ns.color = None
@@ -176,7 +176,7 @@ def _build_supervisor_config(
     )
     from ..manager._session_ops import manager_pipeline_yield_requested
 
-    paper_mission = _paper_mission_for_project_root(cfg.project_workdir or runtime_root)
+    paper_mission = _paper_mission_for_project_root(runtime_root)
 
     return LifeSupervisorConfig(
         budget=LifeBudget(
@@ -204,7 +204,7 @@ def _build_supervisor_config(
         manager_pipeline_yield_provider=(lambda: manager_pipeline_yield_requested(runtime_root)),
         post_mission_hook=post_mission_hook,
         project_state_dir=runtime_root,
-        artifact_root=cfg.project_workdir or runtime_root,
+        artifact_root=runtime_root,
     )
 
 

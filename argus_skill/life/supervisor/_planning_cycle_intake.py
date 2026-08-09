@@ -31,6 +31,33 @@ from ._planning_cycle_helpers import (
 class PlanningCycleIntakeMixin:
     """Gate checks + preflight short-circuits run before planner invocation."""
 
+    def _bounded_completion_reason(self) -> str:
+        """Return a deterministic completion reason for a finite campaign."""
+        artifact_root = self._artifact_root()
+        if (
+            getattr(self.config, "open_ended", False)
+            or self._effective_final_certification_gate(artifact_root)
+        ):
+            return ""
+
+        from ...core.external_completion_gate import external_completion_gate_issue
+        from ...skills.vertical_select import (
+            resolve_vertical,
+            vertical_has_current_completion_certificate,
+        )
+
+        vertical = resolve_vertical(artifact_root)
+        if not vertical_has_current_completion_certificate(artifact_root, vertical):
+            return ""
+        if external_completion_gate_issue(artifact_root):
+            return ""
+        if _research_project_done_issue(
+            artifact_root,
+            self.memory.journal.all(),
+        ):
+            return ""
+        return f"bounded {vertical} vertical reached terminal stage"
+
     def _pc_intake_gate(self, state: _PlanCycleState) -> Any | None:
         """Drain operator input and reject/idle before touching the planner.
 
@@ -237,27 +264,8 @@ class PlanningCycleIntakeMixin:
         # decision (nor a wasted planner-runner call).
         self._resolve_vertical_once()
 
-        artifact_root = self._artifact_root()
-        from ...core.external_completion_gate import external_completion_gate_issue
-        from ...skills.vertical_select import (
-            resolve_vertical,
-            vertical_has_current_completion_certificate,
-        )
-
-        vertical = resolve_vertical(artifact_root)
-        if (
-            revision_request is None
-            and
-            not getattr(self.config, "open_ended", False)
-            and not self._effective_final_certification_gate(artifact_root)
-            and vertical_has_current_completion_certificate(artifact_root, vertical)
-            and not external_completion_gate_issue(artifact_root)
-            and not _research_project_done_issue(
-                artifact_root,
-                self.memory.journal.all(),
-            )
-        ):
-            reason = f"bounded {vertical} vertical reached terminal stage"
+        reason = "" if revision_request is not None else self._bounded_completion_reason()
+        if reason:
             delivered = self._emit_planner_verdict(
                 status=PlannerVerdictStatus.COMPLETED,
                 completion_kind="project_completed",

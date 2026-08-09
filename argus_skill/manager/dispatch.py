@@ -512,8 +512,10 @@ def maybe_promote_to_continuous(
     """
     del root_task_id
     lifetime = str(
-        chat_state.pop("_frontdoor_lifetime", "standing") or "standing"
+        chat_state.pop("_frontdoor_lifetime", "bounded") or "bounded"
     ).strip().lower()
+    if lifetime not in {"bounded_increment", "bounded", "standing"}:
+        lifetime = "bounded"
     normalized_workflow = str(workflow_mode or "").strip().lower()
     if lifetime == "bounded_increment" or (
         lifetime == "bounded" and normalized_workflow != "staged"

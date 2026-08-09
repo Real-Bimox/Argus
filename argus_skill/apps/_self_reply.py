@@ -834,7 +834,7 @@ class SelfReplyMixin:
             if lean
             else resolve_role_reasoning_effort(
                 "ARGUS_SKILL_SELF_REASONING_EFFORT",
-                default="xhigh",
+                default="high",
             )
         )
         run_label = "manager-quick-reply" if lean else "simple-1"

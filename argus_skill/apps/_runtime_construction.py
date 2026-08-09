@@ -28,6 +28,48 @@ from ._runtime_backends import _MemoryRunner, _ScriptedPlannerBackend
 log = logging.getLogger(__name__)
 
 
+def _manager_roots(args: argparse.Namespace) -> tuple[Path, Path, Path]:
+    workdir = (
+        Path(args.workdir).expanduser()
+        if getattr(args, "workdir", None)
+        else Path.cwd()
+    )
+    session_root = (
+        Path(args.manager_session_root).expanduser()
+        if getattr(args, "manager_session_root", None)
+        else workdir
+    )
+    raw_state_root = str(getattr(args, "project_state_dir", "") or "").strip()
+    state_root = Path(raw_state_root).expanduser() if raw_state_root else workdir
+    if raw_state_root:
+        from ..skills.vertical_select import migrate_legacy_manager_state
+
+        migrate_legacy_manager_state(state_root, workdir)
+    return workdir, state_root, session_root
+
+
+def _create_manager(
+    args: argparse.Namespace,
+    *,
+    backend: Any,
+    skill_store: Any = None,
+    usage_context: Any = None,
+    memory_maintenance_enabled: bool | None = None,
+) -> Any:
+    from ..manager import Manager
+
+    workdir, state_root, session_root = _manager_roots(args)
+    return Manager(
+        project_root=state_root,
+        execution_workdir=workdir,
+        runner=backend,
+        skill_store=skill_store,
+        manager_session_root=session_root,
+        usage_context=usage_context,
+        memory_maintenance_enabled=memory_maintenance_enabled,
+    )
+
+
 class _RunnerConstructionMixin:
     """Backend/manager construction half of ``_SkillLoopRunner``.
 
@@ -264,29 +306,18 @@ class _RunnerConstructionMixin:
         # instance on the manager backend — no more scattered ad-hoc
         # ``Manager(...)`` constructions, and skill approval now genuinely runs
         # on the Manager's backend rather than the reviewer's.
-        from ..manager import Manager
-
-        _manager_workdir = (
-            Path(args.workdir).expanduser() if getattr(args, "workdir", None) else Path.cwd()
+        _manager_workdir, _manager_state_root, _manager_session_root = (
+            _manager_roots(args)
         )
-        _manager_session_root = (
-            Path(getattr(args, "manager_session_root")).expanduser()
-            if getattr(args, "manager_session_root", None)
-            else _manager_workdir
-        )
-        # Pipeline state belongs to the mission workdir, where every stage and
-        # vertical reader resolves it. Manager session locks remain under the
-        # internal state root; mixing the two roots would split stage authority.
-        self._artifact_root = _manager_workdir
-        os.environ["ARGUS_SKILL_ARTIFACT_ROOT"] = str(_manager_workdir)
+        self._artifact_root = _manager_state_root
+        os.environ["ARGUS_SKILL_ARTIFACT_ROOT"] = str(_manager_state_root)
         # Give Manager the same Skill-library roots as every other role. Manager
         # searches them with its own tools; no content is selected or injected.
         self._manager_skill_store = self._build_manager_skill_store(args)
-        self.manager = Manager(
-            project_root=_manager_workdir,
-            runner=self.manager_backend or self._backend,
+        self.manager = _create_manager(
+            args,
+            backend=self.manager_backend or self._backend,
             skill_store=self._manager_skill_store,
-            manager_session_root=_manager_session_root,
             usage_context=self.task_usage_context,
             memory_maintenance_enabled=self._role_memory_maintenance_enabled,
         )
@@ -561,9 +592,11 @@ def build_life_runner(args: argparse.Namespace, *, seed_thread_id: str | None = 
     """Return a ``_MissionRunner``-shaped adapter for the requested backend."""
     if args.backend == "memory":
         runner = _MemoryRunner()
-        runner.workdir = (
-            Path(args.workdir).expanduser() if getattr(args, "workdir", None) else Path.cwd()
-        )
+        workdir, state_root, session_root = _manager_roots(args)
+        runner.workdir = workdir
+        runner._artifact_root = state_root
+        runner._manager_session_root = session_root
+        runner.manager = _create_manager(args, backend=None)
         scripted_backend = _ScriptedPlannerBackend.from_env()
         if scripted_backend is not None:
             runner.backend = scripted_backend

@@ -165,6 +165,7 @@ class MissionExecutionSettlementMixin:
                         target_stage=state.pipeline_stage_at_start,
                         reason=guard_reason,
                         rolled_back_by="supervisor_dynamic_plan_guard",
+                        evidence_root=self._project_workdir(),
                     )
                     guard_applied = True
                 except Exception:  # noqa: BLE001

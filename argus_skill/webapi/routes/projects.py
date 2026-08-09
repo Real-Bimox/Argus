@@ -13,7 +13,6 @@ See :mod:`.meta` for the extraction convention this module follows.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, HTTPException, Query
@@ -31,7 +30,7 @@ def register_project_routes(app, ctx: ServerContext, server_mod) -> None:
     ) -> dict[str, Any]:
         return {
             "projects": ctx.machine_projects(limit=limit, include_empty=include_empty),
-            "local_cwd": str(Path.cwd().resolve()),
+            "local_cwd": "",
         }
 
     @app.get("/api/projects/costs", dependencies=[Depends(ctx.require_auth)])

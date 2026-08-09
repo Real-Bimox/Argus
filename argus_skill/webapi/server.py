@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import queue
+import re
 import threading  # noqa: F401 - used via server.threading in tests/webapi/test_commands_m1.py
 import time
 from pathlib import Path
@@ -89,6 +90,44 @@ from . import artifacts, project_state
 from .protocol import build_api_meta, protocol_header
 
 log = logging.getLogger(__name__)
+
+_QUIET_ACCESS_PATHS = re.compile(
+    r"^/api/projects(?:/costs|/[^/]+/(?:snapshot|artifacts|git-diff|status|journal))?$"
+)
+
+
+class _PollingAccessFilter(logging.Filter):
+    """Hide successful dashboard refreshes while retaining actionable traffic."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if not isinstance(args, tuple) or len(args) < 5:
+            return True
+        method = str(args[1]).upper()
+        path = str(args[2]).partition("?")[0]
+        try:
+            status = int(args[4])
+        except (TypeError, ValueError):
+            return True
+        return not (
+            method in {"GET", "HEAD"}
+            and 200 <= status < 400
+            and _QUIET_ACCESS_PATHS.fullmatch(path) is not None
+        )
+
+
+def _uvicorn_log_config(uvicorn_module: Any) -> dict[str, Any]:
+    """Return Uvicorn defaults with successful dashboard polling filtered."""
+    import copy
+
+    config = copy.deepcopy(uvicorn_module.config.LOGGING_CONFIG)
+    config.setdefault("filters", {})["argus_polling"] = {
+        "()": _PollingAccessFilter,
+    }
+    config["handlers"]["access"]["filters"] = ["argus_polling"]
+    return config
+
+
 _global_root = project_state.resolve_global_root
 _settled_spend = project_state.settled_spend
 build_snapshot = project_state.build_snapshot
@@ -611,5 +650,6 @@ def serve(
         host=host,
         port=port,
         log_level="info",
+        log_config=_uvicorn_log_config(uvicorn),
     )
     return 0

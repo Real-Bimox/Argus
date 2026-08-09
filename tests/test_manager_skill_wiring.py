@@ -90,6 +90,20 @@ class _CapturingRunExec:
         )
 
 
+class _CapturingStageRunner:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def run_exec(self, **kwargs) -> RunnerResult:
+        self.calls.append(kwargs)
+        return RunnerResult(
+            exit_code=0,
+            agent_messages=[
+                '{"action": "hold", "target_stage": "research", "reason": "stub"}'
+            ],
+        )
+
+
 def test_manager_accepts_skill_store_and_is_backward_compatible() -> None:
     # No skill_store (default) — the existing signature/behaviour is preserved.
     m_default = Manager(project_root=".", runner=None)
@@ -139,6 +153,21 @@ def test_manager_decision_prompt_unchanged_without_store(tmp_path: Path) -> None
     mgr.decide_stage_transition(review=_StubReview(), project_root=tmp_path, run_exec=cap)
     assert cap.prompts
     assert "Argus manager role skill" not in cap.prompts[0]
+
+
+def test_manager_stage_decision_is_read_only(tmp_path: Path) -> None:
+    runner = _CapturingStageRunner()
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_stage_transition(
+        review=_StubReview(),
+        project_root=tmp_path,
+    )
+
+    assert decision.action == "hold"
+    call = runner.calls[0]
+    assert call["run_label"] == "manager-stage"
+    assert call["options"].sandbox_mode == "read-only"
+    assert call["options"].dangerous_yolo is False
 
 
 # --------------------------------------------------------------------------

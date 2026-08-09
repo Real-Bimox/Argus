@@ -675,10 +675,22 @@ export const api = {
 };
 
 /** Open the live event stream for a project. Returns a close() fn. */
+export type StreamCloseInfo = {
+  code: number;
+  reason: string;
+  retryable: boolean;
+};
+
+const NON_RETRYABLE_STREAM_CLOSE_CODES = new Set([4401, 4404]);
+
 export function openStream(
   sid: string,
   onEvent: (ev: EventMsg) => void,
-  opts: { replay?: number; onOpen?: () => void; onClose?: () => void } = {},
+  opts: {
+    replay?: number;
+    onOpen?: () => void;
+    onClose?: (info: StreamCloseInfo) => void;
+  } = {},
 ): () => void {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   const q = new URLSearchParams();
@@ -702,9 +714,10 @@ export function openStream(
         /* ignore malformed frame */
       }
     };
-    ws.onclose = () => {
-      opts.onClose?.();
-      if (!closed) retry = setTimeout(connect, 1000); // reconnect with backoff
+    ws.onclose = (event) => {
+      const retryable = !NON_RETRYABLE_STREAM_CLOSE_CODES.has(event.code);
+      opts.onClose?.({ code: event.code, reason: event.reason, retryable });
+      if (!closed && retryable) retry = setTimeout(connect, 1000); // reconnect with backoff
     };
     ws.onerror = () => ws?.close();
   };

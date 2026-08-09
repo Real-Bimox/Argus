@@ -174,9 +174,9 @@ def test_execute_dispatches_to_manager_self_path_on_greeting(monkeypatch) -> Non
     # Exactly one backend call (no matcher / distill / reviewer).
     assert len(backend.calls) == 1
     assert backend.calls[0]["run_label"] == "simple-1"
-    # Foreground chat is latency-sensitive and no longer inherits the Engineer's
-    # xhigh setting; deep Manager/Planner/Engineer decisions keep their own knobs.
-    assert backend.calls[0]["options"].reasoning_effort == "xhigh"
+    # Foreground inspection is latency-sensitive and no longer defaults to the
+    # maximum reasoning tier; operators can still request xhigh explicitly.
+    assert backend.calls[0]["options"].reasoning_effort == "high"
     assert backend.calls[0]["options"].model == "best-manager"
 
 

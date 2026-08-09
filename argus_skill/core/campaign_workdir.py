@@ -14,7 +14,6 @@ import json
 import os
 import subprocess
 from pathlib import Path
-from typing import Any
 
 CAMPAIGN_WORKDIR_FILENAME = "campaign-workdir.json"
 
@@ -97,60 +96,6 @@ def active_campaign_workdir(
     return target
 
 
-def _load_json(path: Path) -> dict[str, Any] | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    return payload if isinstance(payload, dict) else None
-
-
-def _copy_pipeline_state(source_root: Path, target_root: Path) -> None:
-    """Move Manager-owned stage authority to the adopted repository.
-
-    The old file is retained as a compatibility snapshot, but all subsequent
-    framework reads resolve to the adopted root.  Conflicting live state fails
-    closed instead of silently choosing one copy.
-    """
-    source = source_root / "research" / "PIPELINE_STATE.json"
-    target = target_root / "research" / "PIPELINE_STATE.json"
-    if not source.is_file():
-        return
-    source_payload = _load_json(source)
-    if source_payload is None:
-        raise ValueError(f"cannot adopt workdir with unreadable pipeline state: {source}")
-    if target.is_file():
-        target_payload = _load_json(target)
-        if target_payload is None:
-            raise ValueError(f"target pipeline state is unreadable: {target}")
-        for key in ("vertical", "current_stage"):
-            left = str(source_payload.get(key) or "")
-            right = str(target_payload.get(key) or "")
-            if left and right and left != right:
-                raise ValueError(
-                    f"target pipeline state conflicts on {key}: {left!r} != {right!r}"
-                )
-        merged = {**source_payload, **target_payload}
-        if merged != target_payload:
-            temporary = target.with_suffix(
-                target.suffix + f".adopt.{os.getpid()}.tmp"
-            )
-            temporary.write_text(
-                json.dumps(merged, ensure_ascii=False, indent=2, sort_keys=True)
-                + "\n",
-                encoding="utf-8",
-            )
-            os.replace(temporary, target)
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(target.suffix + f".adopt.{os.getpid()}.tmp")
-    temporary.write_text(
-        json.dumps(source_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, target)
-
-
 def adopt_campaign_workdir(
     *,
     state_root: Path | str,
@@ -172,7 +117,6 @@ def adopt_campaign_workdir(
             "TASK_WORKDIR adoption requires the root of a real Git repository"
         )
 
-    _copy_pipeline_state(current, target)
     payload = {
         "schema_version": 1,
         "base_workdir": str(base),

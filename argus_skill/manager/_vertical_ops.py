@@ -104,7 +104,7 @@ class _VerticalDecisionMixin:
                             "ARGUS_SKILL_MANAGER_GROUNDING_REASONING_EFFORT",
                             "low",
                         ),
-                        working_dir=str(self.project_root),
+                        working_dir=str(self.execution_workdir),
                         skill_paths=[
                             str(path) for path in manager_libraries.native_paths
                         ],
@@ -176,7 +176,7 @@ class _VerticalDecisionMixin:
                 options=RunnerOptions(
                     model=_manager_model(),
                     reasoning_effort=_manager_reasoning_effort(),
-                    working_dir=str(self.project_root),
+                    working_dir=str(self.execution_workdir),
                     dangerous_yolo=True,
                     skip_git_repo_check=True,
                 ),
@@ -452,7 +452,7 @@ class _VerticalDecisionMixin:
             from .live_view import apply_manager_rendering_response
 
             apply_manager_rendering_response(
-                self.project_root,
+                self.execution_workdir,
                 decision.rendering_response,
                 manifest_root=self.manager_session_root,
                 null_means_clear=True,
@@ -588,6 +588,7 @@ class _VerticalDecisionMixin:
                     old_vertical=old_vertical,
                     new_vertical=division.vertical,
                     force_replacement=True,
+                    evidence_root=self.execution_workdir,
                 )
             self._apply_vertical_decision_rendering(decision)
             return division
@@ -608,6 +609,7 @@ class _VerticalDecisionMixin:
                 old_vertical=old_vertical,
                 new_vertical=vertical,
                 force_replacement=force_stage_reset,
+                evidence_root=self.execution_workdir,
             )
         division = Division(
             task=task,
@@ -690,6 +692,7 @@ class _VerticalDecisionMixin:
                 self.project_root,
                 old_vertical=_old_vertical,
                 new_vertical=proposal.name,
+                evidence_root=self.execution_workdir,
             )
         return Division(
             task=task, vertical=proposal.name, kind="custom",

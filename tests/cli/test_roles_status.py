@@ -154,6 +154,11 @@ def test_effort_shown_for_reasoning_model_defaults_xhigh():
     assert c.effort == "xhigh"
 
 
+def test_manager_and_planner_effort_default_to_high() -> None:
+    assert resolve_role_config("manager", env={}).effort == "high"
+    assert resolve_role_config("planner", env={}).effort == "high"
+
+
 def test_effort_none_for_non_reasoning_model():
     c = resolve_role_config("engineer", env={"ARGUS_SKILL_ENGINEER_MODEL": "gpt-4o-mini"})
     assert c.effort is None

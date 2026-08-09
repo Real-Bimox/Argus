@@ -194,7 +194,7 @@ def test_set_project_workdir_uses_pipeline_then_session_lock_order(
     assert order == ["pipeline", "session"]
 
 
-def test_web_context_defaults_launch_cwd_and_reports_it(
+def test_web_session_defaults_are_independent_of_server_cwd(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -212,7 +212,7 @@ def test_web_context_defaults_launch_cwd_and_reports_it(
     assert meta.launch_cwd == str(expected.resolve())
     assert meta.workdir == str(expected.resolve())
     assert created["workdir"] == str(expected.resolve())
-    assert index["local_cwd"] == str(launch.resolve())
+    assert index["local_cwd"] != str(launch.resolve())
     assert created["sid"] in {row["id"] for row in index["projects"]}
 
 
