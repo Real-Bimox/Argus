@@ -862,6 +862,7 @@ class CopilotAcpClient:
             completed = (stop_reason == "end_turn") and not cancelled["v"]
             if completed and _looks_like_content_filter_notice(turn.raw_text):
                 self._invalidate_session(sid)
+                self.close()
                 return self._fail_result(
                     "Copilot content filtering blocked the response; the identical "
                     "prompt must not be retried",
