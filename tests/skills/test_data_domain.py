@@ -160,3 +160,31 @@ def test_candidate_becomes_reusable_after_first_verified_success(tmp_path):
         "hardware_audit",
         another,
     ).REQUIRE_INDEPENDENT_REVIEW is False
+
+
+def test_role_specific_banners_with_default_and_legacy_fallback(tmp_path):
+    dd.write_data_domain(
+        tmp_path,
+        "role_aware",
+        stages=["scope", "deliver"],
+        role_banner={
+            "manager": "manager contract",
+            "engineer": "engineer contract",
+            "default": "shared fallback",
+        },
+    )
+    domain = dd.load_data_domain("role_aware", tmp_path)
+    assert domain is not None
+    assert domain.role_banner("manager") == "manager contract"
+    assert domain.role_banner(" ENGINEER ") == "engineer contract"
+    assert domain.role_banner("reviewer") == "shared fallback"
+
+    dd.write_data_domain(
+        tmp_path,
+        "legacy_banner",
+        stages=["scope", "deliver"],
+        role_banner="legacy only",
+    )
+    legacy = dd.load_data_domain("legacy_banner", tmp_path)
+    assert legacy is not None
+    assert legacy.role_banner("reviewer") == "legacy only"

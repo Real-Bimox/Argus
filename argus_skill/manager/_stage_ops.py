@@ -224,6 +224,7 @@ class _StageDecisionMixin:
         Returns a ``StageDecision``-like object (action, target_stage, reason, …).
         """
         from .stage_decider import (
+            completion_trigger_reason,
             external_completion_gate_rework_decision,
             external_completion_gate_stage_guard_decision,
             fallback_empty_stage_decision,
@@ -325,19 +326,25 @@ class _StageDecisionMixin:
                 stage_order=order,
                 vertical=_completion_vertical,
                 mission_scope=mission_scope,
+                project_root=root,
                 research_target_level=_research_target_level,
                 checklist_contract=checklist_contract,
                 completion_blocker=external_completion_gate_issue(
                     self.execution_workdir
                 ),
                 trigger_diagnostic=decision.diagnostic,
-                trigger_reason=decision.reason,
+                trigger_reason=completion_trigger_reason(
+                    decision.action,
+                    decision.reason,
+                ),
                 allow_early_completion=(
                     not open_ended
                     and resolve_workflow_mode(root) == "direct"
                 ),
             )
-            if final_decision is None:
+            if final_decision is not None:
+                decision = final_decision
+            else:
                 from .stage_decider import StageDecision
 
                 decision = StageDecision(
@@ -346,8 +353,6 @@ class _StageDecisionMixin:
                     "Manager completion rejected by the project completion contract",
                     "manager_completion_rejected",
                 )
-            else:
-                decision = final_decision
         rework_decision = external_completion_gate_rework_decision(
             review,
             current_stage=cur,

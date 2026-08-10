@@ -318,6 +318,17 @@ def _review_certifies_completion(
     return ""
 
 
+def completion_trigger_reason(action: str, reason: str) -> str:
+    """Describe completion without preserving a contradictory hold reason."""
+    text = str(reason or "").strip()
+    if str(action or "").strip().lower() != "hold":
+        return text
+    return (
+        "reviewer certified the final-stage checklist, overriding the Manager "
+        f"hold ({text[:160] or 'no reason given'})"
+    )
+
+
 def final_stage_completion_decision(
     review: Any,
     *,
@@ -325,6 +336,7 @@ def final_stage_completion_decision(
     stage_order: Sequence[str],
     vertical: str = "",
     mission_scope: str = "",
+    project_root: Any = None,
     research_target_level: str | None = None,
     checklist_contract: Any | None = None,
     completion_blocker: str = "",
@@ -340,7 +352,9 @@ def final_stage_completion_decision(
     if str(completion_blocker or "").strip():
         return None
     if not allow_early_completion and not _mission_scope_can_complete(
-        mission_scope, vertical
+        mission_scope,
+        vertical,
+        project_root=project_root,
     ):
         return None
     missing = _review_certifies_completion(
@@ -429,7 +443,12 @@ def external_completion_gate_stage_guard_decision(
     return proposed
 
 
-def _mission_scope_can_complete(mission_scope: str, vertical: str) -> bool:
+def _mission_scope_can_complete(
+    mission_scope: str,
+    vertical: str,
+    *,
+    project_root: Any = None,
+) -> bool:
     """Whether a mission with this scope is allowed to close the project.
 
     ``final_submission`` is the *paper* transport scope and nothing else can
@@ -446,7 +465,9 @@ def _mission_scope_can_complete(mission_scope: str, vertical: str) -> bool:
     try:
         from ..verticals._base import load_vertical, vertical_completion_gate
 
-        gate = vertical_completion_gate(load_vertical(vertical or ""))
+        gate = vertical_completion_gate(
+            load_vertical(vertical or "", project_root=project_root)
+        )
     except Exception:  # noqa: BLE001 — an unreadable vertical keeps the strict rule
         return False
     return gate != "certified"
@@ -455,6 +476,7 @@ def _mission_scope_can_complete(mission_scope: str, vertical: str) -> bool:
 __all__ = [
     "StageDecision",
     "stage_decision_fields",
+    "completion_trigger_reason",
     "extract_answer",
     "fallback_empty_stage_decision",
     "external_completion_gate_rework_decision",

@@ -93,6 +93,30 @@ def test_rendered_stages_py_is_valid_and_exposes_contract(tmp_path, monkeypatch)
     assert callable(mod.role_banner)
 
 
+def test_rendered_stages_py_preserves_role_specific_banners(tmp_path):
+    dd.write_data_domain(
+        tmp_path,
+        "role_aware",
+        stages=["scope", "deliver"],
+        role_banner={
+            "manager": "manager contract",
+            "reviewer": "reviewer contract",
+            "default": "shared contract",
+        },
+    )
+    src = dt._render_stages_py("role_aware", tmp_path)
+    src = src.replace(
+        "from ...skills.stage_machine",
+        "from argus_skill.skills.stage_machine",
+    )
+    mod = types.ModuleType("promoted_role_aware_stages")
+    exec(compile(src, "<stages>", "exec"), mod.__dict__)
+
+    assert mod.role_banner("manager") == "manager contract"
+    assert mod.role_banner("reviewer") == "reviewer contract"
+    assert mod.role_banner("engineer") == "shared contract"
+
+
 def test_render_preserves_seed_plus_custom_items(tmp_path):
     """REGRESSION: _render_stages_py must snapshot seed items AND custom items.
 

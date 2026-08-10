@@ -16,7 +16,6 @@ from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
 from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
 from pptx.util import Inches, Pt
 
-
 REPORT = Path(__file__).resolve().parents[1]
 FIGURES = REPORT / "figures"
 EVIDENCE = REPORT / "evidence" / "swebench_pro"

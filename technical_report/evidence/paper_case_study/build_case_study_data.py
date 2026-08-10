@@ -9,7 +9,6 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-
 META = {
     "bench-fragile-leaderboard": ("Fragile leaderboard", "Evaluation reliability"),
     "cv-compositional-match": ("Compositional match", "Vision--language matching"),

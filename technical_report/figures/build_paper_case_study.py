@@ -8,7 +8,6 @@ import html
 import json
 from pathlib import Path
 
-
 HERE = Path(__file__).resolve().parent
 REPORT = HERE.parent
 DATA = REPORT / "evidence" / "paper_case_study"
@@ -264,8 +263,6 @@ def role_badges(*roles: str) -> str:
 
 
 def trajectory_html(transitions: list[dict[str, str]], trace: dict) -> str:
-    no_go_chips = "".join(f"<span>{esc(name)}</span>" for name in trace["no_go_branches"])
-    repairs = "".join(f"<li>{esc(name)}</li>" for name in trace["submission_repairs"])
     plot = stage_plot_svg(transitions, trace)
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Argus representative autonomous paper trajectory</title>

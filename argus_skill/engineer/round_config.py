@@ -120,7 +120,7 @@ def _fit_guard(threshold: int, reachable_max: int) -> int:
 
     ``0`` means "explicitly disabled" for every guard that uses this, so it is
     returned untouched. A guard that already fits is returned unchanged, which
-    keeps the default 500-round budget byte-for-byte identical. Anything larger
+    keeps the default 32-round budget byte-for-byte identical. Anything larger
     is pulled down to ``reachable_max`` but never below 1, because a guard at 0
     would read as "disabled" rather than "fires immediately".
     """

@@ -149,3 +149,4 @@ def test_worker_supervisor_enables_paper_mode_only_after_research_resolution(
     assert cfg.paper_mission is True
     assert cfg.final_certification_gate is True
     assert cfg.artifact_root == runtime_root
+    assert cfg.project_worktree == tmp_path
