@@ -103,6 +103,7 @@ def fake_agent_cli(monkeypatch: pytest.MonkeyPatch) -> None:
     backend_mod.__dict__["BACKEND_CLAUDE"] = "claude"
     backend_mod.__dict__["BACKEND_CODEX"] = "codex"
     backend_mod.__dict__["BACKEND_COPILOT"] = "copilot"
+    backend_mod.__dict__["BACKEND_GROK"] = "grok"
     backend_mod.__dict__["BACKEND_OPENCODE"] = "opencode"
     backend_mod.__dict__["BACKEND_PI"] = "pi"
     backend_mod.__dict__["DEFAULT_RUNNER_BACKEND"] = "codex"

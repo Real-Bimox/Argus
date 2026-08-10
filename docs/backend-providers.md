@@ -1,6 +1,6 @@
 # Backend providers
 
-Argus drives five agent CLIs. Two of them — **Pi** and **OpenCode** — are
+Argus drives six agent CLIs. Two of them — **Pi** and **OpenCode** — are
 provider-agnostic fronts: the CLI holds credentials for one or more provider
 catalogs, and which one serves a request depends on the model id you select.
 This page covers how Argus picks that catalog, and what changed in the
@@ -16,6 +16,7 @@ Argus passes the model id you configured (`ARGUS_SKILL_MODEL`, or a per-role
 | `codex` | the id verbatim | single catalog |
 | `copilot` | the id verbatim | single catalog |
 | `claude` | the id verbatim | single catalog |
+| `grok` | the id verbatim | xAI Grok Build catalog; login with `grok login` or set `XAI_API_KEY` |
 | `pi` | the id verbatim, or `<provider>/<id>` when `ARGUS_SKILL_PI_PROVIDER` is set | Pi resolves a bare id against its authenticated catalogs |
 | `opencode` | `<provider>/<id>`, built from `ARGUS_SKILL_OPENCODE_PROVIDER` | `opencode run --model` rejects a bare id, so without the provider the model setting is dropped |
 
@@ -24,7 +25,28 @@ Run the CLI's own listing to see what you actually hold keys for:
 ```bash
 pi --list-models
 opencode auth list
+grok --version
 ```
+
+## Grok Build
+
+Install and authenticate xAI's official CLI:
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+grok login
+argus --setup --non-interactive --backend grok --accept-house-rules
+```
+
+For CI or another headless host, set `XAI_API_KEY` instead of starting the
+browser login flow. Argus invokes Grok with its native
+`streaming-messages-json` protocol, passes role prompts through a private
+temporary `--prompt-file`, records the returned session ID, and resumes later
+turns with `--resume`.
+
+Read-only roles receive only `read_file`, `grep`, and `list_dir`. Trusted
+unattended execution maps Argus full-auto mode to Grok's `--yolo`; project or
+organization deny rules still take precedence inside Grok.
 
 ## Setting a provider
 
@@ -47,6 +69,12 @@ without it Argus cannot build a selector OpenCode accepts, so it drops the
 this happens.
 
 ## What `argus --doctor` checks
+
+For Grok, readiness checks the CLI version and verifies that either
+`XAI_API_KEY` or a cached `grok login` credential exists without spending a
+model turn. Grok does not currently expose a read-only auth-status command, so
+an expired cached login is reported when the first provider call asks for
+reauthentication.
 
 For the Pi backend, readiness reads `pi --list-models` — which lists only
 AUTHENTICATED models — and reports:

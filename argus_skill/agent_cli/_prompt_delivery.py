@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
+from pathlib import Path
 
 from ..core.sandbox import sandboxed_child_env
 from ._sandbox_commands import (
@@ -14,6 +16,7 @@ from .copilot_home import apply_copilot_home
 from .runner_backend import (
     BACKEND_CLAUDE,
     BACKEND_COPILOT,
+    BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
 )
@@ -129,9 +132,25 @@ class PromptDeliveryMixin:
         self,
         command: list[str],
         prompt: str,
-    ) -> tuple[list[str], str | None]:
+    ) -> tuple[list[str], str | None, Path | None]:
+        if self.backend == BACKEND_GROK:
+            fd, raw_path = tempfile.mkstemp(
+                prefix="argus-grok-prompt-",
+                suffix=".txt",
+                text=True,
+            )
+            prompt_path = Path(raw_path)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+                    stream.write(prompt)
+            except BaseException:
+                prompt_path.unlink(missing_ok=True)
+                raise
+            prepared = list(command)
+            prepared.extend(["--prompt-file", str(prompt_path)])
+            return prepared, None, prompt_path
         if self.backend != BACKEND_CLAUDE:
-            return command, prompt
+            return command, prompt, None
         prepared = list(command)
         if "--bare" in prepared:
             if "--input-format" not in prepared:
@@ -147,7 +166,7 @@ class PromptDeliveryMixin:
                 "message": {"role": "user", "content": prompt},
                 "parent_tool_use_id": None,
             }, ensure_ascii=False, separators=(",", ":"))
-            return prepared, payload
+            return prepared, payload, None
         executable = str(prepared[0] if prepared else "").casefold()
         if executable.endswith((".cmd", ".bat")):
             raise RuntimeError(
@@ -164,7 +183,7 @@ class PromptDeliveryMixin:
         except ValueError:
             prompt_index = 1
         prepared.insert(prompt_index, prompt)
-        return prepared, None
+        return prepared, None, None
 
     def _child_env(self, options) -> dict[str, str] | None:
         if not options.sandbox_mode and not options.isolate_workdir:

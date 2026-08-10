@@ -18,6 +18,7 @@ from .runner_backend import (
     BACKEND_CLAUDE,
     BACKEND_CODEX,
     BACKEND_COPILOT,
+    BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
     RunnerBackend,
@@ -247,6 +248,10 @@ class CommandBuilderMixin:
             return self._build_pi_command(
                 resume_thread_id=resume_thread_id, options=options
             )
+        if self.backend == BACKEND_GROK:
+            return self._build_grok_command(
+                resume_thread_id=resume_thread_id, options=options
+            )
         return self._build_codex_command(resume_thread_id=resume_thread_id, options=options)
 
     def _apply_sandbox_policy(self, options):
@@ -267,6 +272,7 @@ class CommandBuilderMixin:
         if self.backend in (
             BACKEND_CLAUDE,
             BACKEND_COPILOT,
+            BACKEND_GROK,
             BACKEND_OPENCODE,
             BACKEND_PI,
         ):
@@ -581,4 +587,48 @@ class CommandBuilderMixin:
             command.extend(["--session", resume_thread_id])
         # Pi reads non-TTY stdin into the initial message in JSON mode. Keeping
         # the prompt out of argv avoids E2BIG and process-list disclosure.
+        return command
+
+    def _build_grok_command(
+        self,
+        *,
+        resume_thread_id: str | None,
+        options,
+    ) -> list[str]:
+        """Build a Grok Build headless turn using its Messages-compatible stream."""
+        if options.isolate_workdir:
+            raise ValueError(
+                "isolated Grok calls are not supported because Grok authentication "
+                "and session state are intentionally hidden by worktree isolation"
+            )
+        command = [
+            self.agent_bin,
+            "--no-auto-update",
+            "--output-format",
+            "streaming-messages-json",
+            "--verbatim",
+        ]
+        if options.working_dir:
+            command.extend(["--cwd", options.working_dir])
+        if options.model:
+            command.extend(["--model", options.model])
+        if options.reasoning_effort:
+            command.extend(["--reasoning-effort", options.reasoning_effort])
+        if options.sandbox_mode == "read-only":
+            command.extend(["--tools", "read_file,grep,list_dir"])
+        elif options.dangerous_yolo or options.full_auto:
+            command.append("--yolo")
+        merged_extra_args = [*self.default_extra_args]
+        if options.extra_args:
+            merged_extra_args.extend(options.extra_args)
+        if options.sandbox_mode == "read-only":
+            merged_extra_args = _read_only_extra_args(
+                merged_extra_args,
+                backend=BACKEND_GROK,
+            )
+        if merged_extra_args:
+            command.extend(merged_extra_args)
+        if resume_thread_id:
+            command.extend(["--resume", resume_thread_id])
+        # PromptDeliveryMixin appends --prompt-file with a private temporary file.
         return command

@@ -133,10 +133,13 @@ def test_opencode_delivers_plain_prompt_on_stdin() -> None:
         options=RunnerOptions(),
     )
 
-    prepared, stdin_prompt = _runner()._prepare_prompt_delivery(command, "review")
+    prepared, stdin_prompt, cleanup_path = _runner()._prepare_prompt_delivery(
+        command, "review"
+    )
 
     assert prepared == command
     assert stdin_prompt == "review"
+    assert cleanup_path is None
     assert "--output-schema" not in command
 
 
