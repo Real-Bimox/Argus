@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import time
 import uuid
@@ -46,6 +47,7 @@ def _truthy_env(name: str, default: str = "1") -> bool:
 class ContinuousConfigState:
     enabled: bool = False
     objective: str = ""
+    open_ended: bool = True
     done_reason: str = ""
     done_at: str = ""
     generation: int = field(default=0, compare=False)
@@ -133,6 +135,7 @@ def _read_continuous_state_unlocked(life_dir: Path) -> ContinuousConfigState:
         return ContinuousConfigState(
             enabled=bool(data.get("enabled", False)),
             objective=_text(data.get("objective", "")),
+            open_ended=bool(data.get("open_ended", True)),
             done_reason=_text(data.get("done_reason", "")),
             done_at=_text(data.get("done_at", "")),
             generation=max(0, int(data.get("generation", 0) or 0)),
@@ -156,6 +159,7 @@ def write_continuous_config(
     *,
     enabled: bool,
     objective: str,
+    open_ended: bool | None = None,
     done_reason: str = "",
 ) -> None:
     objective = objective.strip()
@@ -168,6 +172,7 @@ def write_continuous_config(
             life_dir,
             enabled=enabled,
             objective=objective,
+            open_ended=(current.open_ended if open_ended is None else open_ended),
             done_reason=done_reason,
             generation=current.generation + 1,
         )
@@ -178,6 +183,7 @@ def _write_continuous_config_unlocked(
     *,
     enabled: bool,
     objective: str,
+    open_ended: bool,
     done_reason: str = "",
     done_at: str = "",
     generation: int,
@@ -188,6 +194,7 @@ def _write_continuous_config_unlocked(
     data = {
         "enabled": enabled,
         "objective": objective,
+        "open_ended": bool(open_ended),
         "generation": max(0, int(generation)),
     }
     if done_reason:
@@ -208,6 +215,7 @@ def compare_and_swap_continuous_config(
     expected: ContinuousConfigState,
     enabled: bool,
     objective: str,
+    open_ended: bool | None = None,
     done_reason: str = "",
     before_write: Callable[[], None] | None = None,
 ) -> bool:
@@ -225,6 +233,7 @@ def compare_and_swap_continuous_config(
             life_dir,
             enabled=enabled,
             objective=objective,
+            open_ended=(current.open_ended if open_ended is None else open_ended),
             done_reason=done_reason,
             generation=current.generation + 1,
         )
@@ -243,6 +252,7 @@ def disable_continuous_config(
             life_dir,
             enabled=False,
             objective=current.objective,
+            open_ended=current.open_ended,
             done_reason=done_reason,
             generation=generation,
         ):
@@ -257,6 +267,7 @@ def _same_continuous_state(
     return (
         left.enabled == right.enabled
         and left.objective == right.objective
+        and left.open_ended == right.open_ended
         and left.done_reason == right.done_reason
         and left.done_at == right.done_at
         and left.generation == right.generation
@@ -602,7 +613,7 @@ def _process_alive(pid: int) -> bool:
 
 
 def _descendant_pids(root_pid: int) -> tuple[int, ...]:
-    """Return current descendants, deepest first, using Linux ``/proc``.
+    """Return current descendants, deepest first, using the host process table.
 
     Provider CLIs commonly create their own process groups/sessions, so killing
     only the daemon PID does not contain a forced stop.  A snapshot of the
@@ -613,27 +624,50 @@ def _descendant_pids(root_pid: int) -> tuple[int, ...]:
     try:
         entries = list(Path("/proc").iterdir())
     except OSError:
-        return ()
-    for entry in entries:
-        if not entry.name.isdigit():
-            continue
+        entries = []
+    if entries:
+        for entry in entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                status = (entry / "status").read_text(
+                    encoding="utf-8",
+                    errors="replace",
+                )
+            except OSError:
+                continue
+            parent = 0
+            for line in status.splitlines():
+                if line.startswith("PPid:"):
+                    try:
+                        parent = int(line.split(":", 1)[1].strip())
+                    except ValueError:
+                        parent = 0
+                    break
+            if parent > 0:
+                children.setdefault(parent, []).append(int(entry.name))
+    elif os.name != "nt":
+        ps = "/bin/ps" if Path("/bin/ps").is_file() else "/usr/bin/ps"
         try:
-            status = (entry / "status").read_text(
-                encoding="utf-8",
-                errors="replace",
+            result = subprocess.run(
+                [ps, "-axo", "pid=,ppid="],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2.0,
             )
-        except OSError:
-            continue
-        parent = 0
-        for line in status.splitlines():
-            if line.startswith("PPid:"):
+        except (OSError, subprocess.SubprocessError):
+            result = None
+        if result is not None and result.returncode == 0:
+            for line in result.stdout.splitlines():
                 try:
-                    parent = int(line.split(":", 1)[1].strip())
-                except ValueError:
-                    parent = 0
-                break
-        if parent > 0:
-            children.setdefault(parent, []).append(int(entry.name))
+                    pid_text, parent_text = line.split()
+                    pid = int(pid_text)
+                    parent = int(parent_text)
+                except (TypeError, ValueError):
+                    continue
+                if parent > 0:
+                    children.setdefault(parent, []).append(pid)
 
     found: list[tuple[int, int]] = []
     stack = [(int(root_pid), 0)]

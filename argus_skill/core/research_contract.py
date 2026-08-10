@@ -240,6 +240,17 @@ def research_completion_issue(
         # result and evidence checks above, but leave terminal novelty and
         # significance to final-submission missions.
         return ""
+    if result_class == "literature_review":
+        if novelty not in {"known", "not_applicable"}:
+            return "survey_novelty_must_be_not_applicable"
+        accepted_significance = {
+            "exploratory": {"exploratory", "publishable", "doctoral"},
+            "publishable": {"publishable", "doctoral"},
+            "doctoral": {"doctoral"},
+        }[target]
+        if significance in accepted_significance:
+            return ""
+        return f"survey_significance_below_{target}:{significance}"
     if target == "exploratory":
         if result_class not in _EXPLORATORY_TERMINAL_CLASSES:
             return f"result_class_not_exploratory_terminal:{result_class}"

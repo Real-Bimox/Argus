@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -157,6 +158,11 @@ def test_framework_maintenance_uses_private_worktree_and_review(
 
 
 def test_skill_changes_require_explicit_mission_permission(tmp_path) -> None:
+    from argus_skill.verticals._data_domain import (
+        promote_data_domain,
+        write_data_domain,
+    )
+
     memory = LifeMemory.open(tmp_path / "life")
     sink = _RecordingSink(memory.root)
     runner = _MaintenanceRunner()
@@ -169,17 +175,116 @@ def test_skill_changes_require_explicit_mission_permission(tmp_path) -> None:
             artifact_root=tmp_path,
         ),
     )
+    write_data_domain(
+        memory.root,
+        "device_tuning",
+        stages=("profile", "optimize"),
+        status="candidate",
+    )
+    assert promote_data_domain(
+        memory.root,
+        memory.root,
+        "device_tuning",
+    )
     memory.backlog.add(BacklogItem.new(
         title="author reusable capability",
         objective="Create the explicitly requested reusable Skill.",
         tags=["planner", "scope:bounded", "skill_changes:allowed"],
-        manager_decision={"routed": True, "vertical": "software"},
+        manager_decision={"routed": True, "vertical": "device_tuning"},
     ))
+    supervisor._vertical_resolved = True
 
     result = supervisor.tick()
 
     assert result is not None and result["status"] == "done"
     assert runner.kwargs["allow_skill_changes"] is True
+    assert runner.kwargs["vertical_override"] == "device_tuning"
+    assert supervisor._vertical_resolved is False
+
+
+def test_manager_reselects_vertical_for_each_planned_mission(tmp_path) -> None:
+    from argus_skill.manager.directive import set_active_manager_directive
+    from argus_skill.skills.vertical_select import persist_vertical
+
+    memory = LifeMemory.open(tmp_path / "life")
+    sink = _RecordingSink(memory.root)
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=_MaintenanceRunner(),
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=tmp_path,
+            artifact_root=tmp_path,
+            continuous=True,
+            continuous_objective="optimize the current project",
+        ),
+    )
+    calls: list[str] = []
+
+    class _Manager:
+        selected = "device_tuning"
+
+        def decide_vertical(self, objective: str):
+            calls.append(objective)
+            return SimpleNamespace(vertical=self.selected)
+
+        @staticmethod
+        def plan_stages(vertical: str) -> list[str]:
+            assert vertical == "device_tuning"
+            return ["profile", "optimize"]
+
+        @staticmethod
+        def commit_vertical_decision(
+            objective,
+            decision,
+            *,
+            ask_on_new_domain,
+            force_stage_reset,
+            _lock_held,
+        ):
+            assert objective == "optimize the current project"
+            assert decision.vertical == "device_tuning"
+            assert ask_on_new_domain is False
+            assert force_stage_reset is True
+            assert _lock_held is True
+            return SimpleNamespace(
+                vertical="device_tuning",
+                domain="",
+                kind="custom",
+                workflow_mode="staged",
+                learned_vertical_status="formal",
+                stages=("profile", "optimize"),
+            )
+
+        @staticmethod
+        def current_stage() -> str:
+            return "profile"
+
+    supervisor._bound_manager = lambda: _Manager()  # type: ignore[method-assign]
+    supervisor._artifact_root = lambda: memory.root  # type: ignore[method-assign]
+    persist_vertical(memory.root, "software", workflow_mode="direct")
+    set_active_manager_directive(
+        memory.root,
+        "Build the Apple-specific inference kernel.",
+    )
+
+    first = supervisor._resolve_vertical_once()
+    supervisor._vertical_resolved = False
+    second = supervisor._resolve_vertical_once()
+
+    assert calls == [
+        (
+            "optimize the current project\n\n"
+            "[ACTIVE MANAGER STEERING DIRECTIVE - persists until replaced or "
+            "cleared] Build the Apple-specific inference kernel."
+        ),
+        (
+            "optimize the current project\n\n"
+            "[ACTIVE MANAGER STEERING DIRECTIVE - persists until replaced or "
+            "cleared] Build the Apple-specific inference kernel."
+        ),
+    ]
+    assert first["vertical"] == second["vertical"] == "device_tuning"
 
 
 def test_regular_task_adopts_nested_repository_as_campaign_root(tmp_path) -> None:

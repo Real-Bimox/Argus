@@ -74,8 +74,52 @@ def test_autonomous_authors_and_commits(tmp_path, monkeypatch):
     assert div.pending_confirmation is False
     # Written + persisted so the supervisor trusts it.
     assert (tmp_path / "research" / "DOMAINS" / "robotics_sim.json").exists()
+    payload = json.loads(
+        (tmp_path / "research" / "DOMAINS" / "robotics_sim.json").read_text()
+    )
+    assert payload["status"] == "candidate"
+    assert payload["require_independent_review"] is True
+    assert div.learned_vertical_status == "candidate"
     assert vs.resolve_vertical(tmp_path) == "robotics_sim"
     assert sc.current_stage(tmp_path) == "scope"
+
+
+def test_formal_learned_vertical_is_described_and_reused_across_sessions(
+    tmp_path,
+    monkeypatch,
+):
+    from argus_skill.verticals import _data_domain as dd
+
+    monkeypatch.delenv("ARGUS_SKILL_VERTICAL", raising=False)
+    learned = tmp_path / "global"
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    dd.write_data_domain(
+        source,
+        "robotics_sim",
+        stages=["scope", "simulate", "report"],
+        status="candidate",
+        purpose="closed-loop robotics simulation and evaluation",
+    )
+    assert dd.promote_data_domain(source, learned, "robotics_sim")
+    runner = _FakeRunner({
+        "choice": "existing",
+        "vertical": "robotics_sim",
+        "confidence": 0.95,
+        "workflow_mode": "staged",
+        "rationale": "the learned robotics workflow fits",
+    })
+
+    division = Manager(
+        project_root=target,
+        learned_vertical_root=learned,
+        runner=runner,
+    ).divide("Evaluate another closed-loop robotics controller")
+
+    assert division.vertical == "robotics_sim"
+    assert division.learned_vertical_status == "formal"
+    assert dd.load_data_domain("robotics_sim", target) is not None
+    assert "closed-loop robotics simulation and evaluation" in runner.calls[0]["prompt"]
 
 
 def test_ask_mode_defers_write(tmp_path, monkeypatch):

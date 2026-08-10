@@ -41,6 +41,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +73,8 @@ VERTICALS: tuple[str, ...] = (
 #: data domain. Keys must stay in sync with ``VERTICALS``.
 VERTICAL_PURPOSES: dict[str, str] = {
     "software": "software engineering: repository repairs, features, refactors, "
-    "tests, developer tooling, and implementation work outside Argus itself",
+    "tests, developer tooling, and ordinary implementation outside Argus itself; "
+    "not specialized hardware/runtime performance research",
     "argus_maintenance": "maintenance and architectural improvement of the Argus "
     "framework itself: concise reusable code, core/vertical decoupling, removal of "
     "unjustified hardcoding/wrappers/fallbacks, independent regression and release checks",
@@ -87,8 +89,10 @@ VERTICAL_PURPOSES: dict[str, str] = {
     "independent verification, DFT, synthesis, physical implementation, STA/power/"
     "signal-integrity sign-off, DRC/LVS, fair public-baseline comparison, and a "
     "provenance-bound pre-tapeout release",
-    "research": "full multi-stage research-PAPER pipeline (literature review → "
-    "experiments → draft → submission); the default when the goal is a written paper",
+    "research": "team-scale scholarly survey or original research-PAPER pipeline "
+    "(literature review → optional experiments → draft/review → optional submission); "
+    "use when the goal is substantial synthesis or a written paper, not for reading, "
+    "explaining, critiquing, or summarizing one existing paper",
     "math": "mathematical conjectures, proofs, and open research problems; dynamically "
     "choose background retrieval, examples/counterexamples, computation, natural-language "
     "proof, and Lean formalization as appropriate; not a paper pipeline or a "
@@ -592,11 +596,99 @@ def persist_vertical(
 # --- new-intent vs. reclassification triage --------------------------------
 
 
+def _vertical_completion_record(
+    project_root: object,
+    vertical: str,
+) -> tuple[str, dict[str, Any]] | None:
+    """Return the Manager-certified completion stage and its state record."""
+    try:
+        from ..verticals._base import load_vertical, vertical_checklist_stage_order
+
+        order = [
+            _normalize_stage(stage)
+            for stage in vertical_checklist_stage_order(
+                load_vertical(vertical, project_root=project_root)
+            )
+        ]
+    except Exception:  # noqa: BLE001 — never raise on a probe
+        return None
+    if not order:
+        return None
+
+    try:
+        raw = _state_path(project_root).read_text(encoding="utf-8")
+        payload = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    current = _normalize_stage(payload.get("current_stage"))
+    if current not in order:
+        return None
+    stages = payload.get("stages")
+    if not isinstance(stages, dict):
+        return None
+
+    def stage_record(stage: str) -> dict[str, Any] | None:
+        record = stages.get(stage)
+        if isinstance(record, dict):
+            return record
+        return next(
+            (
+                value
+                for key, value in stages.items()
+                if _normalize_stage(key) == stage and isinstance(value, dict)
+            ),
+            None,
+        )
+
+    record = stage_record(current)
+    if not isinstance(record, dict):
+        return None
+    if str(record.get("status") or "").strip().lower() != "done":
+        return None
+    if current == order[-1]:
+        return current, record
+
+    downstream = order[order.index(current) + 1 :]
+    if any(
+        not isinstance((tail_record := stage_record(stage)), dict)
+        or str(tail_record.get("status") or "").strip().lower() != "skipped"
+        for stage in downstream
+    ):
+        return None
+    history = payload.get("stage_history")
+    if not isinstance(history, list):
+        return None
+    completion = next(
+        (
+            entry
+            for entry in reversed(history)
+            if isinstance(entry, dict)
+            and str(entry.get("direction") or "").strip().lower() == "complete"
+            and _normalize_stage(entry.get("from_stage")) == current
+            and _normalize_stage(entry.get("to_stage")) == current
+        ),
+        None,
+    )
+    if completion is None:
+        return None
+    recorded_skips = completion.get("skipped_stages")
+    if not isinstance(recorded_skips, list):
+        return None
+    if [_normalize_stage(stage) for stage in recorded_skips] != downstream:
+        return None
+    return current, record
+
+
 def vertical_reached_own_terminal_stage(project_root: object, vertical: str) -> bool:
-    """Whether ``vertical``'s OWN last checklist stage is the raw persisted
-    ``current_stage`` in ``research/PIPELINE_STATE.json`` AND that stage's
-    ``status`` is ``"done"`` — i.e. a project fully completed under
-    ``vertical`` on its own stage list.
+    """Whether ``vertical`` has a Manager-certified completed stage.
+
+    The ordinary case is the final stage marked ``done``. A Manager may also
+    complete an earlier stage when the remaining stages do not apply; that
+    counts only when the same ``complete`` transition explicitly recorded every
+    downstream stage as skipped.
 
     This is the signal :func:`reset_stage_for_new_intent` uses to distinguish
     "the SAME evolving project got reclassified mid-flight" (a stale/foreign
@@ -607,42 +699,7 @@ def vertical_reached_own_terminal_stage(project_root: object, vertical: str) -> 
     any error (unknown vertical, missing/corrupt state, non-dict payload)
     returns ``False`` so callers never reset on ambiguous data.
     """
-    try:
-        from ..verticals._base import load_vertical, vertical_checklist_stage_order
-
-        order = vertical_checklist_stage_order(
-            load_vertical(vertical, project_root=project_root)
-        )
-    except Exception:  # noqa: BLE001 — never raise on a probe
-        return False
-    if not order:
-        return False
-    last_stage = _normalize_stage(order[-1])
-
-    try:
-        raw = _state_path(project_root).read_text(encoding="utf-8")
-        payload = json.loads(raw)
-    except (OSError, json.JSONDecodeError):
-        return False
-    if not isinstance(payload, dict):
-        return False
-
-    if _normalize_stage(payload.get("current_stage")) != last_stage:
-        return False
-
-    stages = payload.get("stages")
-    if not isinstance(stages, dict):
-        return False
-    record = stages.get(last_stage)
-    if not isinstance(record, dict):
-        # Tolerate a differently-cased key in the stored ``stages`` dict.
-        for key, value in stages.items():
-            if _normalize_stage(key) == last_stage and isinstance(value, dict):
-                record = value
-                break
-    if not isinstance(record, dict):
-        return False
-    return str(record.get("status") or "").strip().lower() == "done"
+    return _vertical_completion_record(project_root, vertical) is not None
 
 
 def vertical_has_current_completion_certificate(
@@ -655,34 +712,28 @@ def vertical_has_current_completion_certificate(
     decisions use this stricter predicate so a versioned checklist change forces
     one fresh Reviewer/Manager certification.
     """
-    if not vertical_reached_own_terminal_stage(project_root, vertical):
+    completion = _vertical_completion_record(project_root, vertical)
+    if completion is None:
         return False
+    completed_stage, record = completion
     try:
         from ..verticals._base import (
             load_vertical,
-            vertical_checklist_stage_order,
             vertical_completion_contract_version,
         )
 
         module = load_vertical(vertical, project_root=project_root)
-        order = vertical_checklist_stage_order(module)
         completion_contract_version = vertical_completion_contract_version(module)
     except Exception:  # noqa: BLE001 — strict completion fails closed
         return False
     if completion_contract_version <= 0:
         return True
-    last_stage = _normalize_stage(order[-1])
     try:
         from .stage_machine import completion_contract_fingerprint
 
-        payload = json.loads(_state_path(project_root).read_text(encoding="utf-8"))
-        stages = payload.get("stages") if isinstance(payload, dict) else None
-        record = stages.get(last_stage) if isinstance(stages, dict) else None
-        if not isinstance(record, dict):
-            return False
         expected = completion_contract_fingerprint(
-            project_root,
-            last_stage,
+            Path(str(project_root)),
+            completed_stage,
             version=completion_contract_version,
         )
     except Exception:  # noqa: BLE001 — versioned completion fails closed

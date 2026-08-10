@@ -95,3 +95,68 @@ def test_seed_checklist_builds_items(tmp_path):
     }))
     domain = dd.load_data_domain("seeded", tmp_path)
     assert [i.id for i in domain.CHECKLIST_ITEMS["scope"]] == ["scope.obj"]
+
+
+def test_candidate_becomes_reusable_after_first_verified_success(tmp_path):
+    project = tmp_path / "project"
+    learned = tmp_path / "global"
+    dd.write_data_domain(
+        project,
+        "hardware_audit",
+        stages=["inspect", "analyze", "report"],
+        status="candidate",
+        purpose="audit unfamiliar hardware deployments",
+        require_independent_review=True,
+    )
+
+    domain = dd.load_data_domain("hardware_audit", project)
+    assert domain.status == "candidate"
+    assert domain.REQUIRE_INDEPENDENT_REVIEW is True
+    assert dd.list_formal_data_domain_purposes(
+        project,
+        learned_root=learned,
+    ) == {}
+
+    assert dd.record_data_domain_failure(
+        project,
+        "hardware_audit",
+        reason="missing device evidence",
+    )
+    assert dd.promote_data_domain(
+        project,
+        learned,
+        "hardware_audit",
+        review_reason="independent review passed",
+    )
+
+    formal = dd.load_data_domain("hardware_audit", project)
+    assert formal.status == "formal"
+    assert formal.REQUIRE_INDEPENDENT_REVIEW is False
+    assert dd.list_formal_data_domain_purposes(
+        tmp_path / "another-project",
+        learned_root=learned,
+    ) == {
+        "hardware_audit": "audit unfamiliar hardware deployments"
+    }
+    another = tmp_path / "another-project"
+    dd.write_data_domain(
+        another,
+        "hardware_audit",
+        stages=["draft"],
+        status="candidate",
+        purpose="stale local candidate",
+    )
+    assert dd.materialize_learned_data_domain(
+        learned,
+        another,
+        "hardware_audit",
+    )
+    assert dd.load_data_domain("hardware_audit", another).STAGE_ORDER == [
+        "inspect",
+        "analyze",
+        "report",
+    ]
+    assert dd.load_data_domain(
+        "hardware_audit",
+        another,
+    ).REQUIRE_INDEPENDENT_REVIEW is False

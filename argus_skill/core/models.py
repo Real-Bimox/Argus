@@ -200,6 +200,7 @@ class ReviewDecision:
     backend_fatal_error: str = ""
     backend_exit_code: int | None = None
     backend_stop_kind: StopKind | None = None
+    research_result: dict[str, Any] | None = None
 
     @property
     def final_submission_certified(self) -> bool:
@@ -255,6 +256,8 @@ class ReviewDecision:
         signal = self.session_signal if isinstance(self.session_signal, dict) else {}
         if str(signal.get("kind") or "").strip():
             payload["session_signal"] = dict(signal)
+        if self.research_result is not None:
+            payload["research_result"] = dict(self.research_result)
         payload.update(extras)
         return payload
 

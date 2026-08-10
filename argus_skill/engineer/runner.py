@@ -20,7 +20,7 @@ from ..core.secret_guard import (
     redact_secrets_record,
 )
 from ..reviewer import Reviewer, ReviewerConfig
-from .checkpoint import ensure_shared_checkpoint
+from .checkpoint import resolve_shared_checkpoint
 
 log = logging.getLogger(__name__)
 # Config dataclasses are re-exported here for historical/test imports.
@@ -137,7 +137,7 @@ class SupervisedEngineer(
 
             on_event = _redacted_on_event
         state = RoundLoopState()
-        checkpoint_path = ensure_shared_checkpoint(supervised_config.checkpoint_path)
+        checkpoint_path = resolve_shared_checkpoint(supervised_config.checkpoint_path)
         capsule_dir = supervised_config.role_session_dir
         persist_capsules = supervised_config.role_session_policy != "fresh"
         revision = objective_revision(objective)

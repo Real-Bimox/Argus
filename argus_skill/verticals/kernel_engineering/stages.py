@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from ...skills.stage_machine import ChecklistItem
 
 STAGE_ORDER = ["optimize"]
@@ -76,8 +79,25 @@ def stage_completion_issues(stage: str, project_root) -> tuple[str, ...]:  # noq
     return ()
 
 
-def prepare_mission(stage: str, project_root, state_root) -> str:  # noqa: ARG001
-    return ""
+def prepare_mission(stage: str, project_root, state_root) -> str:
+    """Preserve legacy explicit baseline isolation without making it a stage gate."""
+    raw_stage = str(stage or "").strip().lower()
+    state_path = Path(project_root) / "research" / "PIPELINE_STATE.json"
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+    if isinstance(payload, dict):
+        raw_stage = str(payload.get("current_stage") or raw_stage).strip().lower()
+    if raw_stage != "baseline":
+        return ""
+    from .baseline_workspace import prepare_baseline_workspace
+
+    try:
+        baseline = prepare_baseline_workspace(project_root, state_root)
+    except Exception as exc:
+        return f"## Baseline isolation unavailable\n- error: {exc}"
+    return baseline.prompt_block() if baseline is not None else ""
 
 
 def role_banner(role: str) -> str:

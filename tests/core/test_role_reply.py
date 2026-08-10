@@ -361,6 +361,7 @@ def test_the_stage_prompt_no_longer_demands_json() -> None:
     prompt = build_stage_decision_prompt(
         current_stage="delivery",
         next_stage="",
+        later_stages=[],
         earlier_stages=[],
         checklist_md="- x",
         review=review,
@@ -371,7 +372,30 @@ def test_the_stage_prompt_no_longer_demands_json() -> None:
     )
 
     assert "JSON" not in prompt
-    assert "ACTION=advance|hold|rollback" in prompt
+    assert "ACTION=advance|hold|rollback|complete" in prompt
+
+
+def test_stage_prompt_exposes_dynamic_later_stage_choices() -> None:
+    from types import SimpleNamespace
+
+    from argus_skill.roles.prompts.manager import build_stage_decision_prompt
+
+    prompt = build_stage_decision_prompt(
+        current_stage="research",
+        next_stage="plan",
+        later_stages=["plan", "benchmark", "run", "analysis", "draft"],
+        earlier_stages=[],
+        checklist_md="- literature is grounded",
+        review=SimpleNamespace(status="done", reason="scope and sources verified"),
+        continuous_objective="Write a literature-only survey with no experiments.",
+    )
+
+    assert "Legal ADVANCE targets (later stages)" in prompt
+    assert "`plan`, `benchmark`, `run`, `analysis`, `draft`" in prompt
+    assert "literature-only survey" in prompt
+    assert "harness validates and records" in prompt
+    assert "## Operator objective" in prompt
+    assert "survey with no experiments" in prompt
 
 
 # -- prompt rewrite ----------------------------------------------------------

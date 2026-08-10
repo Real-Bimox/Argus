@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from argus_skill.core.models import RunnerResult
 from argus_skill.daemon.state import write_continuous_config
 from argus_skill.life.event_log import JsonlEventSink
 from argus_skill.life.memory import BacklogItem, LifeMemory
 from argus_skill.life.supervisor import LifeBudget, LifeSupervisor, LifeSupervisorConfig
+from argus_skill.life.supervisor._constants import PLAN_RETRY
 from argus_skill.planner import PlannerConfig
 from argus_skill.skills.vertical_select import persist_vertical
 
@@ -97,6 +99,7 @@ def test_planner_delegates_to_engineer_and_continues_after_one_increment(
     assert [item.title for item in first] == ["Remove redundant snapshot prewarm"]
     supervisor.memory.backlog.update(first[0].id, status="done")
 
+    assert supervisor._plan_next_work() == PLAN_RETRY
     assert supervisor._plan_next_work() is True
     pending = supervisor.memory.backlog.pending()
     assert [item.title for item in pending] == ["Deduplicate Manager reply rows"]
@@ -169,6 +172,76 @@ def test_direct_kernel_workflow_does_not_generate_scope_bundle(
     ]
     assert "KERNEL_SCOPE.md" not in pending[0].objective
     assert "stage_closing" not in pending[0].tags
+
+
+def test_manager_intent_survives_generation_only_daemon_restart(
+    tmp_path: Path,
+) -> None:
+    from argus_skill.life.supervisor._planning_context import PlanningContextMixin
+
+    life = tmp_path / "life"
+    life.mkdir()
+    (life / "continuous.json").write_text(
+        json.dumps({
+            "enabled": True,
+            "objective": "optimize MLX inference",
+            "generation": 4,
+        }),
+        encoding="utf-8",
+    )
+    (life / "events.jsonl").write_text(
+        json.dumps({
+            "type": "life.manager.intent.completed",
+            "execution_task": "optimize MLX inference",
+            "continuous_generation": 2,
+            "vertical": "apple_mlx_inference",
+            "learned_vertical_status": "candidate",
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    class Harness(PlanningContextMixin):
+        memory = SimpleNamespace(root=life)
+        config = SimpleNamespace(project_state_dir=life)
+
+        @staticmethod
+        def _current_pipeline_stage() -> str:
+            return "hotpath_profile"
+
+    assert Harness()._manager_intent_context() == {
+        "execution_task": "optimize MLX inference",
+        "vertical": "apple_mlx_inference",
+        "learned_vertical_status": "candidate",
+        "continuous_generation": 2,
+        "stage": "hotpath_profile",
+        "current_stage": "hotpath_profile",
+    }
+
+
+def test_continuous_reload_updates_lifetime_and_final_gate() -> None:
+    from argus_skill.life.supervisor._planning_context import PlanningContextMixin
+
+    class Harness(PlanningContextMixin):
+        config = SimpleNamespace(
+            continuous=False,
+            continuous_objective="old",
+            open_ended=False,
+            paper_mission=True,
+            final_certification_gate=False,
+            continuous_config_provider=lambda: (
+                True,
+                "standing paper",
+                True,
+            ),
+        )
+
+    harness = Harness()
+    harness._reload_continuous_config()
+
+    assert harness.config.continuous is True
+    assert harness.config.continuous_objective == "standing paper"
+    assert harness.config.open_ended is True
+    assert harness.config.final_certification_gate is True
 
 
 def test_task_policy_uses_isolated_stage_and_execution_evidence_root(
@@ -324,7 +397,7 @@ def test_0d3_later_no_gap_evidence_replaces_skip_zero_plan(
     assert rows["skip-zero-rollout"].status == "superseded"
     replacement = next(item for item in rows.values() if item.status == "pending")
     assert replacement.title == "Adopt the no-gap validator"
-    assert replacement.plan_hypothesis.startswith("The no-gap validator")
+    assert replacement.plan_hypothesis == ""
     prompt = planner.calls[0]["prompt"]
     assert "challenged_assumption: The preselected skip-zero candidate" in prompt
     assert "proposed_alternative: Use the no-gap validator" in prompt

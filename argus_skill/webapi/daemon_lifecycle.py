@@ -251,6 +251,7 @@ def start_project_daemon(
         if continuous.enabled:
             config.continuous_objective = continuous.objective
             config.resume_continuous = True
+            config.continuous_open_ended = continuous.open_ended
     daemon_limit = _srv()._max_active_daemons(config)
     active_count = _srv()._active_daemon_count(config)
     if daemon_limit > 0 and active_count >= daemon_limit:

@@ -485,6 +485,67 @@ class MissionExecutionSettlementMixin:
             resumable=resumable,
         )
 
+        manager_decision = getattr(item, "manager_decision", {}) or {}
+        learned_candidate = bool(
+            isinstance(manager_decision, dict)
+            and manager_decision.get("learned_vertical_status") == "candidate"
+        )
+        if learned_candidate:
+            from ...verticals._data_domain import (
+                promote_data_domain,
+                record_data_domain_failure,
+            )
+
+            vertical = str(manager_decision.get("vertical") or "")
+            review_status = str(
+                getattr(outcome, "final_review_status", "") or ""
+            ).strip().lower()
+            review_source = str(
+                getattr(outcome, "final_review_source", "") or ""
+            ).strip().lower()
+            if success and review_status == "done" and review_source == "reviewer":
+                try:
+                    promoted = promote_data_domain(
+                        self.memory.root,
+                        self._budget_global_root(),
+                        vertical,
+                        review_reason=str(
+                            getattr(outcome, "final_review_reason", "") or ""
+                        ),
+                    )
+                except OSError as exc:
+                    log.exception(
+                        "life supervisor: learned vertical promotion failed"
+                    )
+                    self._emit({
+                        "type": "life.learned_vertical.promotion_failed",
+                        "vertical": vertical,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    })
+                    promoted = False
+                if promoted:
+                    manager_decision = dict(manager_decision)
+                    manager_decision["learned_vertical_status"] = "formal"
+                    self.memory.backlog.update(
+                        item.id,
+                        manager_decision=manager_decision,
+                    )
+                    self._emit({
+                        "type": "life.learned_vertical.promoted",
+                        "vertical": vertical,
+                    })
+            elif not success:
+                try:
+                    record_data_domain_failure(
+                        self.memory.root,
+                        vertical,
+                        reason=state.stop_reason or status,
+                    )
+                except OSError:
+                    log.exception(
+                        "life supervisor: learned vertical failure note could not be saved"
+                    )
+
         # Update backlog row. A bounded research cycle that did not achieve its
         # persisted success target is resumable, not a success or terminal failure.
         if success:
@@ -798,6 +859,7 @@ class MissionExecutionSettlementMixin:
             ),
             "final_submission_certified": final_submission_certified,
             "final_submission_signature": final_submission_signature,
+            "research_result": getattr(outcome, "research_result", None),
             "repair_capability": {
                 "capability_id": str(state.repair_capability.get("capability_id") or ""),
                 "authorization_id": str(

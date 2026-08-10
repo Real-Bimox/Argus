@@ -362,6 +362,9 @@ def enqueue_mission(
         from ..life.supervisor.backlog_guard import decision_evidence
 
         manager_decision = decision_evidence(_division) or {"routed": True}
+        learned_candidate = (
+            manager_decision.get("learned_vertical_status") == "candidate"
+        )
         ids = {
             node.key: (
                 str(root_task_id)
@@ -380,7 +383,7 @@ def enqueue_mission(
             stage_closing = bool(getattr(node, "stage_closing", False))
             require_review = bool(
                 getattr(node, "require_independent_review", False)
-            )
+            ) or learned_candidate
             skip_stage_transition = bool(
                 getattr(node, "skip_stage_transition", False)
             )
@@ -524,6 +527,7 @@ def maybe_promote_to_continuous(
             "continuous"
         ] = False
         chat_state["continuous_objective"] = ""
+        chat_state.pop("_continuous_open_ended", None)
         chat_state.pop("_continuous_pending_manager_handoff", None)
         return False
 
@@ -550,6 +554,7 @@ def maybe_promote_to_continuous(
             "continuous"
         ] = True
         chat_state["continuous_objective"] = persisted.objective
+        chat_state["_continuous_open_ended"] = persisted.open_ended
         chat_state.pop("_continuous_pending_manager_handoff", None)
         return True
 
@@ -557,6 +562,7 @@ def maybe_promote_to_continuous(
         "continuous"
     ] = True
     chat_state["_continuous_pending_manager_handoff"] = True
+    chat_state["_continuous_open_ended"] = lifetime == "standing"
     chat_state["continuous_objective"] = ""
     return True
 

@@ -20,6 +20,7 @@ back door becomes another way in through the front.
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import Any
 
 log = logging.getLogger(__name__)
@@ -45,7 +46,13 @@ def decision_evidence(decision: Any) -> dict[str, Any]:
     """
     if decision is None:
         return {}
-    fields = ("vertical", "stage", "workflow_mode", "research_target_level")
+    fields = (
+        "vertical",
+        "stage",
+        "workflow_mode",
+        "research_target_level",
+        "learned_vertical_status",
+    )
     evidence = {
         name: str(getattr(decision, name, "") or "").strip()
         for name in fields
@@ -98,7 +105,13 @@ def describe_undecided(items: Any) -> str:
     )
 
 
-def ensure_manager_decision(memory: Any, item: Any, chat_state: Any = None) -> Any:
+def ensure_manager_decision(
+    memory: Any,
+    item: Any,
+    chat_state: Any = None,
+    *,
+    manager: Any = None,
+) -> Any:
     """Route *item* through the Manager if it never was, and record that.
 
     Returns the item, with its objective replaced by the Manager's execution
@@ -120,11 +133,19 @@ def ensure_manager_decision(memory: Any, item: Any, chat_state: Any = None) -> A
         return item
 
     try:
+        manager_runner = (
+            SimpleNamespace(manager=manager) if manager is not None else None
+        )
         prepared = prepare_manager_execution_task(
             memory,
             objective,
             dict(chat_state or {}),
             root_task_id=str(getattr(item, "id", "") or "") or None,
+            ensure_runner=(
+                (lambda _state, _memory: manager_runner)
+                if manager_runner is not None
+                else None
+            ),
         )
         execution_task = prepared.execution_task
         evidence = decision_evidence(getattr(prepared, "decision", None)) or {

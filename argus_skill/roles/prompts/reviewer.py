@@ -372,7 +372,13 @@ def render_reviewer_prompt(
             f"not this round's bar. This round: {policy_line(_policy)}. The integrity "
             "floor is identical at every profile. Judge directly and explain in "
             "`reason`. If the direction cannot reach the target, return "
-            "`replan_requested`.\n\n"
+            "`replan_requested`. End with `RESEARCH_RESULT=<JSON>` using the "
+            "project research-result contract and only evidence you inspected. "
+            "Fields: `result_class`, `correctness_status`, `novelty_status`, "
+            "`significance_status`, `statement_fidelity_status`, `evidence`, and "
+            "`limitations`. Use `result_class=literature_review` for a bounded "
+            "review or survey; literature reviews may use `novelty_status=not_applicable`. "
+            "`evidence` and `limitations` are JSON string arrays.\n\n"
         )
     # Live search-altitude facts (NO verdict) so the reviewer can SEE the
     # floor history when judging forward_progress — i.e. distinguish "this
@@ -582,17 +588,16 @@ def render_reviewer_prompt(
         + "\n\n"
         + MODEL_INTEGRITY_BOUNDARY
         + "\n\n## Reviewer role\n"
-        "Judge the objective against real evidence and its checklist. Bounded "
-        "work may finish before the project; final-submission work may not. Use "
-        "`done` for verified completion, `continue` for agent-fixable gaps, and "
-        "`blocked` only for operator/external dependencies. You are strictly "
-        "read-only: never edit project files, Wiki pages, Skills, checkpoints, "
-        "pipeline state, or evidence. Use tools only in proportion to unresolved "
-        "uncertainty and stop as soon as the verdict is determined. Prefer the "
-        "Engineer summary and named acceptance artifact; do not "
-        "reread equivalent handoff, mission, checkpoint, Wiki, and result files or "
-        "repeat a verifier whose exact successful output is already recorded unless "
-        "a concrete contradiction requires it.\n\n"
+        "Judge the objective against real evidence. Bounded work may finish before "
+        "the project. Use `done` for verified completion, `continue` for agent-fixable "
+        "gaps, and `blocked` only for external dependencies. You are strictly read-only. "
+        "Use tools only in proportion to unresolved uncertainty and stop when the "
+        "verdict is determined; do not reread equivalent records or repeat verified "
+        "checks without a contradiction. Externally derived work needs primary-source "
+        "grounding and its project implication. Community implementations alone are "
+        "insufficient for claim-critical semantics. Return `replan_requested` when missing "
+        "grounding may change the mechanism; do not demand new research for local-only work "
+        "or already-grounded work.\n\n"
         + ("" if _requires_engineering_audit else _verification_directive())
         + "## Output protocol\n"
         "Reason and use tools normally, and write your review however is "
@@ -602,6 +607,12 @@ def render_reviewer_prompt(
         "REASON=<the verdict rationale>\n"
         "NEXT_ACTION=<the Engineer instruction; empty for done>\n"
         "OPERATOR_QUESTION=<operator-only blocker, or none>\n"
+        + (
+            "RESEARCH_RESULT=<JSON research-result contract>\n"
+            if _research_target_level is not None
+            else ""
+        )
+        +
         "FORWARD_PROGRESS=true|false\n"
         "PLAN_SIGNAL=continue|reconsider\n"
         "PLAN_CHALLENGE=<invalidated plan assumption, or none>\n"

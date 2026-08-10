@@ -96,6 +96,8 @@ The agent will follow the **[installation execution contract](docs/agent-install
 
 ### Install
 
+macOS / Linux:
+
 ```bash
 git clone https://github.com/lbx154/Argus.git
 cd Argus
@@ -104,6 +106,21 @@ python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
 ```
+
+Windows PowerShell (portable preview):
+
+```powershell
+git clone https://github.com/lbx154/Argus.git
+Set-Location Argus
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Windows currently covers installation, Manager chat, pairing, and the
+terminal-scoped daemon. POSIX-only subagent detachment and locking paths are not
+yet full-parity features. The Windows CI job intentionally tests the portable
+surface rather than claiming every long-running workflow is supported.
 
 Private-preview collaborators can clone
 `https://github.com/lbx154/argus-skill.git` instead. The repositories may be at
@@ -130,6 +147,8 @@ argus --setup --non-interactive --backend grok --accept-house-rules
 `XAI_API_KEY` is also supported for headless environments. Argus uses Grok's
 native headless JSON stream, resumes sessions by ID, and keeps role prompts out
 of process arguments.
+In PowerShell, run the same arguments with
+`.\.venv\Scripts\argus.exe`; use a backtick instead of `\` for line continuation.
 
 #### Choosing a provider on the multi-provider CLIs
 

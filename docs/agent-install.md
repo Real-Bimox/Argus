@@ -89,6 +89,8 @@ preference, use `$HOME/Argus`.
 
 For a new installation:
 
+macOS / Linux:
+
 ```bash
 git clone https://github.com/lbx154/Argus.git "$HOME/Argus"
 cd "$HOME/Argus"
@@ -96,6 +98,21 @@ python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
 ```
+
+Windows PowerShell (portable preview):
+
+```powershell
+git clone https://github.com/lbx154/Argus.git "$HOME\Argus"
+Set-Location "$HOME\Argus"
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Windows installation, Manager chat, pairing, and the terminal-scoped daemon are
+covered by the portable surface. POSIX-only subagent detachment and file-locking
+paths are not yet full-parity features; do not claim full Windows support when a
+requested workflow depends on them.
 
 For an authorized private-preview installation, use
 `https://github.com/lbx154/argus-skill.git` and a matching directory instead.
@@ -109,8 +126,8 @@ If `$HOME/Argus` already exists:
 4. If it is clean, update it with `git pull --ff-only`.
 5. Re-run `.venv/bin/python -m pip install -e .`.
 
-On Windows, use the platform-appropriate virtual-environment executable and
-activation command. Do not assume a POSIX shell.
+On Windows, keep using `.\.venv\Scripts\python.exe` explicitly; activation is
+optional and the POSIX `.venv/bin/...` commands do not apply.
 
 ### 4. Configure the selected backend
 
@@ -119,6 +136,14 @@ From the Argus checkout, run:
 ```bash
 .venv/bin/argus --setup --non-interactive \
   --backend <copilot|codex|claude|pi|opencode|grok> \
+  --accept-house-rules
+```
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\argus.exe --setup --non-interactive `
+  --backend <copilot|codex|claude|pi|opencode> `
   --accept-house-rules
 ```
 
@@ -133,6 +158,13 @@ Run:
 ```bash
 .venv/bin/argus --doctor
 .venv/bin/argus --status
+```
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\argus.exe --doctor
+.\.venv\Scripts\argus.exe --status
 ```
 
 The task is complete only when `argus --doctor` reports that the installation
@@ -166,3 +198,5 @@ Web UI:
 cd "$HOME/Argus"
 .venv/bin/argus --web
 ```
+
+Windows PowerShell uses `.\.venv\Scripts\argus.exe --web`.

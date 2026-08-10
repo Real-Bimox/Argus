@@ -314,6 +314,26 @@ def _set_stage(
             prev_record["completion_contract_version"] = completion_contract_version
             prev_record["completion_contract_sha256"] = completion_contract_sha256
 
+    skipped_stages: list[str] = []
+    if direction in {"advance", "complete"}:
+        skipped = (
+            order[p_idx + 1 : t_idx]
+            if direction == "advance"
+            else order[p_idx + 1 :]
+        )
+        for stage_name in skipped:
+            stage_record = stages.get(stage_name)
+            if not isinstance(stage_record, dict):
+                stage_record = {}
+                stages[stage_name] = stage_record
+            if str(stage_record.get("status") or "").lower() != "done":
+                stage_record.update({
+                    "status": "skipped",
+                    "skip_reason": reason,
+                    "skipped_by": by,
+                })
+                skipped_stages.append(stage_name)
+
     if downgrade_downstream:
         for stage_name in order[t_idx + 1:]:
             stage_record = stages.get(stage_name)
@@ -321,7 +341,7 @@ def _set_stage(
                 stage_record = {}
                 stages[stage_name] = stage_record
             status = str(stage_record.get("status") or "").lower()
-            if status in {"done", "ready", "in_progress"}:
+            if status in {"done", "ready", "in_progress", "skipped"}:
                 stage_record["status"] = "pending"
 
     # LIVENESS INVARIANT: the stage we just landed on must always be actionable.
@@ -345,7 +365,8 @@ def _set_stage(
             target_record["status"] = "in_progress"
         elif (
             isinstance(target_record, dict)
-            and str(target_record.get("status") or "").lower() == "done"
+            and str(target_record.get("status") or "").lower()
+            in {"done", "skipped"}
         ):
             target_record["status"] = "in_progress"
 
@@ -370,6 +391,8 @@ def _set_stage(
         "reason": reason,
         "by": by,
     }
+    if skipped_stages:
+        history_entry["skipped_stages"] = skipped_stages
     history.append(history_entry)
 
     if legacy_rollback_history:
@@ -409,13 +432,11 @@ def advance_stage(
     advanced_by: str = "manager",
     evidence_root: Path | str | None = None,
 ) -> str:
-    """Move the pipeline state machine **forward** to the next stage.
+    """Move the pipeline state machine **forward** to a later stage.
 
-    ``target_stage`` must be the IMMEDIATE next stage in the active vertical's
-    order (no skipping). Stamps the just-completed (previous) stage
-    ``status=done`` and sets ``current_stage=target_stage``. Returns the written
-    state-file path. Raises ``ValueError`` if the target is unknown or is not the
-    immediate next stage.
+    ``target_stage`` must be later in the active vertical's order. Manager may
+    skip stages that do not apply to the operator objective; skipped stages are
+    recorded explicitly. The just-completed stage is stamped ``done``.
 
     After initial state creation, ``advance_stage`` / ``rollback_stage`` are the ONLY mutators
     of ``current_stage`` — both invoked solely by the Manager, which owns stage
@@ -429,11 +450,10 @@ def advance_stage(
         raise ValueError(f"unknown stage {target_stage!r}")
     cur_norm = _normalize_stage(current_stage(project_root))
     if cur_norm in order:
-        nxt_idx = order.index(cur_norm) + 1
-        if nxt_idx >= len(order) or order[nxt_idx] != target:
+        cur_idx = order.index(cur_norm)
+        if order.index(target) <= cur_idx:
             raise ValueError(
-                f"advance target {target!r} must be the immediate next stage "
-                f"after {cur_norm!r}"
+                f"advance target {target!r} must be later than {cur_norm!r}"
             )
         _ensure_stage_completion(
             project_root,
@@ -530,27 +550,20 @@ def complete_final_stage(
     completed_by: str = "manager",
     evidence_root: Path | str | None = None,
 ) -> str:
-    """Mark the FINAL pipeline stage ``done`` without moving ``current_stage``.
+    """Mark the current pipeline stage ``done`` without moving ``current_stage``.
 
-    Used by the Manager when the reviewer certifies the final-submission stage:
-    the project stays on its last stage (e.g. ``submission``) but that stage's
-    ``status`` is stamped ``done`` so the project reads as complete. This is the
+    Used when the Manager determines that the certified current stage satisfies
+    the operator objective. The stage's ``status`` is stamped ``done`` so the
+    project reads as complete. This is the
     terminal counterpart to :func:`advance_stage` / :func:`rollback_stage` and,
     like them, is a Manager-owned mutation (gated by the stage-transition
     authority context).
-
-    Raises ``ValueError`` if ``current_stage`` is not the last stage in the
-    active vertical's order (it is illegal to "complete" a non-final stage —
-    advance to it first).
     """
     raw_order, _items = _active_vertical_checklist_defs(project_root)
     order = [_normalize_stage(s) for s in raw_order]
     cur = _normalize_stage(current_stage(project_root))
-    if not order or cur != order[-1]:
-        raise ValueError(
-            f"complete target must be the final stage {order[-1] if order else '?'!r}; "
-            f"current stage is {cur!r}"
-        )
+    if cur not in order:
+        raise ValueError(f"current stage {cur!r} is not in the active vertical")
     _ensure_stage_completion(
         project_root,
         cur,

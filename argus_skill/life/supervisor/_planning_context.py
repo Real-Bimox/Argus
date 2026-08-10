@@ -480,6 +480,7 @@ class PlanningContextMixin:
             if not isinstance(continuous, dict) or not continuous.get("enabled"):
                 return {}
             target_generation = int(continuous.get("generation", 0) or 0)
+            target_objective = str(continuous.get("objective") or "").strip()
             data: dict[str, Any] | None = None
             for name in ("events.jsonl", "events.jsonl.1"):
                 path = Path(root) / name
@@ -498,7 +499,12 @@ class PlanningContextMixin:
                         execution_task = event.get("execution_task")
                         if not isinstance(execution_task, str) or not execution_task.strip():
                             continue
-                        if event.get("continuous_generation") != target_generation:
+                        event_generation = int(
+                            event.get("continuous_generation", 0) or 0
+                        )
+                        if event_generation > target_generation:
+                            continue
+                        if str(execution_task).strip() != target_objective:
                             continue
                         data = event
                         break
@@ -516,13 +522,24 @@ class PlanningContextMixin:
                 "current_stage",
                 "workflow_mode",
                 "research_target_level",
+                "learned_vertical_status",
                 "continuous_generation",
                 "stages",
                 "reason",
                 "text",
                 "error",
             )
-            return {k: data.get(k) for k in keep if k in data}
+            intent = {k: data.get(k) for k in keep if k in data}
+            stage_reader = getattr(self, "_current_pipeline_stage", None)
+            live_stage = (
+                str(stage_reader() or "").strip()
+                if callable(stage_reader)
+                else ""
+            )
+            if live_stage:
+                intent["stage"] = live_stage
+                intent["current_stage"] = live_stage
+            return intent
         except Exception:  # noqa: BLE001
             return {}
 
@@ -566,8 +583,12 @@ class PlanningContextMixin:
         if provider is None:
             return
         try:
-            enabled, objective = provider()
+            enabled, objective, open_ended = provider()
             self.config.continuous = enabled
+            self.config.open_ended = open_ended
+            self.config.final_certification_gate = bool(
+                self.config.paper_mission and open_ended
+            )
             if objective:
                 self.config.continuous_objective = objective
         except Exception:  # noqa: BLE001
@@ -774,18 +795,28 @@ class PlanningContextMixin:
         state = self._load_manager_planner_feedback()
         if state is None:
             return ""
+        diagnostic = str(state.get("diagnostic") or "")
+        task_instruction = (
+            "The missing invariant is final independent certification. Author the "
+            "next executable certification task with "
+            "`TASK_SCOPE=final_submission`, so its successful Reviewer verdict can "
+            "be recorded as project-final evidence."
+            if diagnostic == "final_certification_missing"
+            else (
+                "You decide which tasks, if any, are appropriate; the harness does "
+                "not prescribe a repair or delivery task."
+            )
+        )
         return (
-            "MANAGER TO PLANNER REVISION FEEDBACK (durable and unresolved):\n"
+            "PLANNER VERDICT REJECTION (durable and unresolved):\n"
             f"- current_stage: {state.get('stage') or ''}\n"
-            f"- diagnostic: {state.get('diagnostic') or ''}\n"
+            f"- diagnostic: {diagnostic}\n"
             f"- repeated_attempts: {int(state.get('attempts') or 1)}\n"
             f"- rejection_reason: {state.get('reason') or ''}\n"
-            "The Manager attempted the requested stage transition, but framework "
-            "authority rejected it because the required Reviewer evidence is "
-            "incomplete. Re-plan now: emit one or more bounded new_tasks that gather "
-            "or repair the missing current-stage evidence and obtain a complete "
-            "Reviewer verdict. Do not return waiting on the same stage authority, "
-            "and do not start next-stage work."
+            "The previous plan or completion verdict failed a framework-owned "
+            "invariant. Re-plan now from the rejection reason and current evidence. "
+            f"{task_instruction} Do not repeat the rejected "
+            "verdict without new evidence."
         )
 
     @staticmethod

@@ -15,7 +15,7 @@ import pytest
 
 from argus_skill.core.session import SessionMeta, read_session_meta, write_session_meta
 from argus_skill.life.memory import LifeMemory
-from argus_skill.manager import front_door
+from argus_skill.manager import config_intent, front_door
 from argus_skill.webapi import (
     artifacts,
     manager_bridge,
@@ -410,17 +410,20 @@ def test_project_picker_uses_campaign_objective_before_greeting(
     manager_state._STATES.clear()
 
     class _Manager:
+        def classify_front_door(self, _text, *, lifetime_sink=None, **_kwargs):
+            if lifetime_sink is not None:
+                lifetime_sink("standing")
+            return None, None, "complex"
+
         def decide_vertical(self, text, **kwargs):
             return SimpleNamespace(execution_task=text)
 
         def commit_vertical_decision(self, text, decision, **kwargs):
             return SimpleNamespace(execution_task=decision.execution_task)
 
-    monkeypatch.setattr(
-        front_door,
-        "_ensure_manager_runner",
-        lambda chat_state, mem: SimpleNamespace(manager=_Manager()),
-    )
+    ensure = lambda chat_state, mem: SimpleNamespace(manager=_Manager())
+    monkeypatch.setattr(front_door, "_ensure_manager_runner", ensure)
+    monkeypatch.setattr(config_intent, "_ensure_manager_runner", ensure)
     assert (
         server.set_continuous(
             sid,
@@ -1168,8 +1171,8 @@ class TestManagerMessageLifecycleErrors:
         result = manager_bridge.manager_message(sid, "add a new feature", global_root=tmp_path)
 
         assert result["kind"] == "error", f"expected error response, got {result!r}"
-        assert "could not enqueue" in result["reply"]
-        assert state in result["reply"]
+        assert "nothing was queued or executed" in result["reply"]
+        assert state not in result["reply"]
 
     """resume_done_lifecycle_for_team_dispatch resumes a done project on TEAM."""
 

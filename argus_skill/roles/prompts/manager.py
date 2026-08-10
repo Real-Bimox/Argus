@@ -81,12 +81,14 @@ def build_route_prompt(text: str) -> str:
         "Reply with exactly one word: SELF or TEAM.\n"
         "SELF = conversational or read-only Manager work: greetings, acks, "
         "capability/status questions, explanations with no durable side effect, "
-        "or operator control of the mission already running.\n"
-        "TEAM = any request to create or modify a persistent file/artifact, run "
-        "commands, perform research/engineering, or change Argus itself. Small "
-        "one-shot artifacts still use TEAM; the `direct` workflow keeps them lean.\n"
-        "When in doubt, answer TEAM — never route work that needs review to a "
-        "lone worker.\n\n"
+        "guided reading/tutoring, bounded read-only research, one low-risk "
+        "summary/note/report artifact, or operator control of the mission already "
+        "running.\n"
+        "TEAM = any code/project modification, command execution, substantive "
+        "research/engineering, multiple coordinated artifacts, or change to Argus "
+        "itself.\n"
+        "Use SELF unless the requested outcome genuinely needs the team. Never "
+        "route work that needs independent review to a lone worker.\n\n"
         f"Message:\n{(text or '').strip()}\n\n"
         "Answer:\n"
     )
@@ -95,8 +97,9 @@ def build_route_prompt(text: str) -> str:
 def build_classify_prompt(text: str) -> str:
     return (
         "Reply with exactly one word: CHAT or TASK.\n"
-        "CHAT = a greeting, an acknowledgement, small talk, or a question about "
-        "Argus / your own capabilities — there is nothing to execute.\n"
+        "CHAT = a greeting, an acknowledgement, small talk, Guided reading, tutoring, "
+        "one low-risk summary/note/report artifact, or a question about Argus / your own capabilities when no persistent "
+        "artifact or execution is requested.\n"
         "TASK = a real task or objective to carry out — a fix, a feature, an "
         "experiment, an analysis, a codebase change, or a change to Argus "
         "itself — however small, even if one worker could do it alone.\n"
@@ -177,7 +180,19 @@ def build_simple_prompt(
         f"{identity}"
         f"You are Argus Manager, powered by one {runner_backend_label()} worker. "
         "Answer and act as Argus Manager. You have authority to intervene in the "
-        "running mission; never claim that you are read-only or lack permission.\n\n"
+        "running mission; never claim that you are read-only or lack permission. "
+        "Finish ordinary reading, explanation, bounded research, and an explicitly "
+        "requested low-risk summary/note/report directly; do not invent a vertical, "
+        "daemon, experiment, or additional artifact. For guided learning, ask only "
+        "the background question needed for the next useful lesson, then stop and "
+        "wait for the operator's reply; continue in this same Manager conversation "
+        "on the next turn. After each lesson chunk, ask at most one question that "
+        "checks the key understanding, then wait and adapt from the answer. Use "
+        "tools and Skills only as needed to ground the answer. When acting on a "
+        "material external algorithm, library/version, hardware, or third-party-"
+        "system claim that is not already grounded in the project Wiki, consult "
+        "primary sources first and retain reusable project implications there; do "
+        "not force online research onto local-only work.\n\n"
         f"{_IDENTITY_GUARD}"
         f"{_USER_FACING_STYLE}"
         f"{runtime}"
@@ -307,13 +322,18 @@ def build_front_door_prompt(text: str, *, active_mission: bool = False) -> str:
         "STEER_DIRECTIVE: only for STEER, write the Manager's concise professional "
         "team instruction. Preserve the goal while choosing method, evidence, scope, "
         "and stopping condition. Never copy insults/raw wording. Else NONE.\n\n"
-        "ROUTE: SELF for conversation, read-only inspection/explanation/status, or "
-        "control. User corrections, terminology definitions, interpretation rules, "
+        "ROUTE: SELF for conversation, guided reading/tutoring, bounded read-only "
+        "research, read-only inspection/explanation/status, or control. Reading, "
+        "explaining, critiquing, or summarizing one existing paper is SELF while no "
+        "persistent artifact is requested. An unfamiliar subject alone never requires "
+        "TEAM or a new vertical. User corrections, terminology definitions, interpretation rules, "
         "and response preferences are SELF: answer them first and let the isolated "
         "post-reply learning review decide whether they merit cross-session storage. "
         "Do not route them to TEAM merely because they should be remembered. TEAM is "
-        "for explicit project/profile file or artifact changes, commands, research, or "
-        "engineering. Small one-shot artifacts are TEAM. If unsure, TEAM.\n\n"
+        "for explicit project/profile file or artifact changes, commands, experiments, "
+        "engineering, background execution, multi-role review, or long-running work. "
+        "Small one-shot artifacts are TEAM. If unsure whether a persistent/team outcome "
+        "is required, choose SELF and answer without mutating project state.\n\n"
         "SELF_MODE: for ROUTE SELF, choose REPLY only when the message can be "
         "answered from its own text or general conversation with no file, project, "
         "runtime, artifact, or tool inspection. Choose INSPECT whenever current "
@@ -380,7 +400,7 @@ def build_domain_author_prompt(
     task: str,
     *,
     known_verticals: Sequence[str],
-    existing_data_domains: Sequence[str] = (),
+    existing_data_domains: Mapping[str, str] | Sequence[str] = (),
 ) -> str:
     """Render the prompt asking the Manager to author a new domain for ``task``."""
     known = ", ".join(f"`{v}`" for v in known_verticals) or "(none)"
@@ -416,7 +436,9 @@ def build_domain_author_prompt(
         "auto-suffixed).\n"
         "- Prefer a small, coherent stage set a domain expert would recognize, "
         "grounded in what you actually found in the repo — do not pad with "
-        "ceremony stages.\n\n"
+        "ceremony stages. Existing state is context, not an `intake`, `inventory`, "
+        "`planning`, or `certification` stage. Start with the nearest unmet action "
+        "that implements or measures the operator outcome.\n\n"
         "When your investigation is done, state the domain on these lines. "
         "Explain what you found in prose around them; only these lines are "
         "read:\n"
@@ -447,11 +469,17 @@ def build_fast_vertical_decision_prompt(
         )
         or "  (none)"
     )
-    summaries = existing_data_domain_summaries or {}
+    mapped = (
+        dict(existing_data_domains)
+        if isinstance(existing_data_domains, Mapping)
+        else {}
+    )
+    names = tuple(mapped) if mapped else tuple(existing_data_domains)
+    summaries = {**mapped, **(existing_data_domain_summaries or {})}
     existing = (
         "\n".join(
             f"  - `{name}`: {summaries.get(name, 'status=candidate')}"
-            for name in existing_data_domains
+            for name in names
         )
         or "  (none)"
     )
@@ -522,7 +550,7 @@ def build_vertical_decision_prompt(
     *,
     verticals_with_purpose: dict[str, str],
     domains_with_purpose: dict[str, str] | None = None,
-    existing_data_domains: Sequence[str] = (),
+    existing_data_domains: Mapping[str, str] | Sequence[str] = (),
     existing_data_domain_summaries: Mapping[str, str] | None = None,
     research_target_verticals: Sequence[str] = (),
 ) -> str:
@@ -537,11 +565,17 @@ def build_vertical_decision_prompt(
         )
         or "  (none)"
     )
-    summaries = existing_data_domain_summaries or {}
+    mapped = (
+        dict(existing_data_domains)
+        if isinstance(existing_data_domains, Mapping)
+        else {}
+    )
+    names = tuple(mapped) if mapped else tuple(existing_data_domains)
+    summaries = {**mapped, **(existing_data_domain_summaries or {})}
     existing = (
         "\n".join(
             f"  - `{name}`: {summaries.get(name, 'status=candidate')}"
-            for name in existing_data_domains
+            for name in names
         )
         or "  (none)"
     )
@@ -571,6 +605,9 @@ def build_vertical_decision_prompt(
         "## Existing project data domains (also selectable)\n"
         f"{existing}\n\n"
         "## How to choose (in this order)\n"
+        "0. Reading, explaining, critiquing, or summarizing one existing paper "
+        "belongs on the SELF route before vertical selection; it is not a research "
+        "paper-production pipeline.\n"
         "1. If a `status=formal` project data domain precisely matches this recurring "
         "platform/domain objective, choose it before a broader built-in. Formal means "
         "the specialization was already verified for this project; do not route an "
@@ -597,7 +634,9 @@ def build_vertical_decision_prompt(
         "mission's route, deliverable subtype, or task DAG. A new domain is a slug "
         "name plus an ordered list of Stages (a phase of work each, lowercase slug, "
         f"{_MIN_DOMAIN_STAGES}-{_MAX_DOMAIN_STAGES} stages) grounded in what the repo needs to "
-        "reach a verifiable deliverable. The per-stage checklist is authored "
+        "reach a verifiable deliverable. Do not author intake, inventory, planning, "
+        "or certification-only stages; the first stage must implement or measure "
+        "the nearest unmet action. The per-stage checklist is authored "
         "later by the Planner; you define only the stage SKELETON.\n\n"
         "Independently choose `workflow_mode`: `direct` only when one Engineer "
         "mission can finish one coherent work package with focused validation. "
@@ -1104,6 +1143,7 @@ def build_stage_decision_prompt(
     *,
     current_stage: str,
     next_stage: str,
+    later_stages: Sequence[str] = (),
     earlier_stages: Sequence[str],
     checklist_md: str,
     review: Any,
@@ -1119,6 +1159,10 @@ def build_stage_decision_prompt(
         "(none — already first)"
     )
     advance_target = f"`{next_stage}`" if next_stage else "(none — already the final stage)"
+    legal_advance = (
+        ", ".join(f"`{stage}`" for stage in later_stages if str(stage).strip())
+        or advance_target
+    )
     status = str(getattr(review, "status", "") or "")
     reason = str(getattr(review, "reason", "") or "")
     review_source = str(getattr(review, "review_source", "reviewer") or "reviewer").strip()
@@ -1154,9 +1198,14 @@ def build_stage_decision_prompt(
             "high-impact work that belongs to an earlier stage, ROLL BACK to the "
             "earliest stage needed for that work. HOLD only when no legal work can "
             "run yet; do not mark the campaign complete merely because a report or "
-            "review artifact exists.\n"
-            f"Operator objective:\n{continuous_objective.strip()}\n\n"
+            "review artifact exists.\n\n"
         )
+    objective_block = (
+        "## Operator objective\n"
+        f"{continuous_objective.strip()}\n\n"
+        if continuous_objective.strip()
+        else ""
+    )
 
     harness_control = getattr(review, "harness_control", None)
     mission_scope_change = bool(
@@ -1203,7 +1252,7 @@ def build_stage_decision_prompt(
         )
 
     response_schema = (
-        "ACTION=advance|hold|rollback\n"
+        "ACTION=advance|hold|rollback|complete\n"
         "TARGET_STAGE=<stage name>\n"
         "REASON=<clear explanation>\n"
         + ("RESOLVES_WAIT=true|false\n" if planner_waiting else "")
@@ -1216,11 +1265,12 @@ def build_stage_decision_prompt(
     return (
         "You are the MANAGER of an automated research pipeline, and the SOLE "
         "authority over pipeline STAGE transitions. The reviewer and planner only "
-        "ADVISE; YOU decide. Choose exactly one of: ADVANCE to the next stage, "
-        "HOLD on the current stage, or ROLL BACK to an earlier stage — based only "
-        "on the evidence below.\n\n"
+        "ADVISE; YOU decide. Choose exactly one of: ADVANCE to a later stage, "
+        "HOLD on the current stage, ROLL BACK to an earlier stage, or COMPLETE "
+        "the operator objective at the final applicable stage — based only on the "
+        "evidence below.\n\n"
         f"Current stage: `{current_stage}`\n"
-        f"The ONLY legal ADVANCE target (the immediate next stage): {advance_target}\n"
+        f"Legal ADVANCE targets (later stages): {legal_advance}\n"
         f"Legal ROLLBACK targets (earlier stages): {earlier}\n\n"
         '## Current-stage checklist (what "done" requires)\n'
         f"{checklist_md}\n\n"
@@ -1233,6 +1283,7 @@ def build_stage_decision_prompt(
         f"{_advisory_planner(planner_verdict)}\n\n"
         f"{wait_resolution_block}"
         f"{mission_scope_block}"
+        f"{objective_block}"
         f"{open_ended_block}"
         f"{rendering_block.strip()}\n\n"
         "## Your decision\n"
@@ -1249,13 +1300,23 @@ def build_stage_decision_prompt(
         "- Reject construct drift: an honest evaluation of a weak proxy does not "
         "establish the value or capability of the claimed system.\n"
         "- ADVANCE only when the current stage's checklist is genuinely satisfied "
-        "with concrete evidence. Use the independent Reviewer verdict and inspect "
-        "the named artifacts when needed. A legacy `engineer_self_review` source may "
+        "with concrete evidence. Treat the independent Reviewer verdict and its "
+        "named evidence as sufficient unless they contradict the checklist; do not "
+        "search the repository or checkpoint merely to repeat the review. A legacy "
+        "`engineer_self_review` source may "
         "appear in old persisted outcomes; treat it as historical compatibility "
         "evidence, not as a current bypass.\n"
+        "- Choose the earliest later stage the operator's objective still needs. "
+        "You MAY skip intervening stages only when they are explicitly inapplicable; "
+        "name them and explain why. The harness validates and records your target; "
+        "it does not decide stage applicability.\n"
         "- HOLD when any checklist work remains, or the evidence is weak/unclear.\n"
         "- ROLL BACK only when an EARLIER stage's evidence is missing, stale, or "
         "unreliable (say which one and why).\n"
+        "- For a finite objective, COMPLETE at the current stage when its checklist "
+        "is certified, the operator objective is satisfied, and every later stage "
+        "is inapplicable. For an open-ended campaign, do not COMPLETE. Reviewer "
+        "certification is evidence, not an automatic completion decision.\n"
         "- Stage names recorded in `research/GROUND_TRUTH.md` are dated "
         "observations, not live stage invariants. A legal pipeline transition "
         "naturally makes that observation historical; NEVER roll back solely "

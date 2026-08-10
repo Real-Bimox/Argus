@@ -37,6 +37,18 @@ def test_normalize_task_workdir_rejects_escape_and_absolute(tmp_path: Path) -> N
         normalize_task_workdir(str(tmp_path / "repo"))
 
 
+def test_normalize_task_workdir_accepts_absolute_path_inside_active_project(
+    tmp_path: Path,
+) -> None:
+    child = tmp_path / "repo"
+    child.mkdir()
+
+    assert normalize_task_workdir(str(tmp_path), base_root=tmp_path) == ""
+    assert normalize_task_workdir(str(child), base_root=tmp_path) == "repo"
+    with pytest.raises(ValueError, match="inside the active project"):
+        normalize_task_workdir(str(tmp_path.parent), base_root=tmp_path)
+
+
 def test_resolve_task_workdir_accepts_directory(tmp_path: Path) -> None:
     child = tmp_path / "repo"
     child.mkdir()

@@ -93,6 +93,8 @@ Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
 
 ### 安装
 
+macOS / Linux：
+
 ```bash
 git clone https://github.com/lbx154/Argus.git
 cd Argus
@@ -101,6 +103,20 @@ python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
 ```
+
+Windows PowerShell（portable preview）：
+
+```powershell
+git clone https://github.com/lbx154/Argus.git
+Set-Location Argus
+py -3.11 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+Windows 当前覆盖安装、Manager 对话、配对和终端作用域 daemon；POSIX 专属的
+subagent 后台脱离与文件锁路径尚未完全对齐。Windows CI 有意只运行 portable
+surface，不能据此宣称所有长期任务都已完整支持。
 
 私有 Preview 协作者可以改用
 `https://github.com/lbx154/argus-skill.git`。两个仓库的 revision 可能不同，
@@ -126,6 +142,8 @@ argus --setup --non-interactive --backend grok --accept-house-rules
 
 无界面环境也可以使用 `XAI_API_KEY`。Argus 通过 Grok 原生 headless JSON
 流运行、按 Session ID 续接，并避免把角色 prompt 放进进程参数。
+PowerShell 使用 `.\.venv\Scripts\argus.exe` 运行相同参数，多行续行符为反引号，
+不是 `\`。
 
 #### 为多 provider 的 CLI 指定 provider
 

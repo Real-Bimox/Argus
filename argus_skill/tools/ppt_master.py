@@ -70,11 +70,16 @@ def _run(
             capture_output=True,
             text=True,
         )
-    except subprocess.CalledProcessError as exc:
-        detail = (exc.stderr or exc.stdout or "").strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        detail = (
+            (exc.stderr or exc.stdout or "").strip()
+            if isinstance(exc, subprocess.CalledProcessError)
+            else str(exc)
+        )
         command = " ".join(argv)
+        failure = detail or f"exit {getattr(exc, 'returncode', 1)}"
         raise RuntimeError(
-            f"PPT Master command failed ({command}): {detail or f'exit {exc.returncode}'}"
+            f"PPT Master command failed ({command}): {failure}"
         ) from exc
 
 

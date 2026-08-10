@@ -12,6 +12,7 @@ from ..core.model_visible_text import (
     sanitize_model_judgment_text,
 )
 from ..core.models import ReviewDecision
+from ..core.research_contract import normalize_research_result
 
 _STATUSES = {"done", "continue", "blocked", "replan_requested"}
 _PLAN_SIGNALS = {"continue", "reconsider"}
@@ -265,6 +266,9 @@ def parse_decision_text(
                 next_action=next_action.strip(),
                 operator_question=str(operator_question or "").strip(),
                 checkpoint_recommended=bool(parsed.get("checkpoint_recommended", False)),
+                research_result=normalize_research_result(
+                    parsed.get("research_result")
+                ),
                 planner_report=(
                     _planner_report(
                         forward_progress=raw_planner_report.get("forward_progress"),
@@ -289,6 +293,7 @@ _VERDICT_KEYS = (
     "NEXT_ACTION",
     "OPERATOR_QUESTION",
     "CHECKPOINT_RECOMMENDED",
+    "RESEARCH_RESULT",
     "FORWARD_PROGRESS",
     "PLAN_SIGNAL",
     "PLAN_CHALLENGE",
@@ -336,6 +341,9 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
     evidence = _tagged_values(read_optional(values, "FRONTIER_EVIDENCE"))
     regression = _tagged_values(read_optional(values, "REGRESSION_ENVELOPE"))
     signal = _tagged_values(read_optional(values, "SESSION_SIGNAL"))
+    research_result = normalize_research_result(
+        _load_json(read_optional(values, "RESEARCH_RESULT"))
+    )
     return _apply_model_judgment_policy(
         ReviewDecision(
             status=status,
@@ -345,6 +353,7 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
             checkpoint_recommended=(
                 read_optional(values, "CHECKPOINT_RECOMMENDED").casefold() == "true"
             ),
+            research_result=research_result,
             planner_report=_planner_report(
                 forward_progress=(
                     True

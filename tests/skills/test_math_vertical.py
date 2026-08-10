@@ -384,6 +384,54 @@ def test_doctoral_verified_new_publishable_or_doctoral_result_succeeds() -> None
         assert _final_stage_decision(result, "doctoral") is not None
 
 
+def test_literature_review_uses_survey_quality_not_original_novelty() -> None:
+    exploratory = _research_result(
+        "literature_review",
+        novelty="known",
+        significance="exploratory",
+    )
+    publishable = _research_result(
+        "literature_review",
+        novelty="not_applicable",
+        significance="publishable",
+    )
+    doctoral = _research_result(
+        "literature_review",
+        novelty="not_applicable",
+        significance="doctoral",
+    )
+
+    assert research_completion_issue(
+        exploratory,
+        research_target_level="exploratory",
+    ) == ""
+    assert research_completion_issue(
+        publishable,
+        research_target_level="publishable",
+    ) == ""
+    assert research_completion_issue(
+        publishable,
+        research_target_level="doctoral",
+    ) == "survey_significance_below_doctoral:publishable"
+    assert research_completion_issue(
+        doctoral,
+        research_target_level="doctoral",
+    ) == ""
+
+
+def test_literature_review_cannot_leave_novelty_unverified() -> None:
+    result = _research_result(
+        "literature_review",
+        novelty="unverified",
+        significance="publishable",
+    )
+
+    assert research_completion_issue(
+        result,
+        research_target_level="publishable",
+    ) == "survey_novelty_must_be_not_applicable"
+
+
 def test_exploratory_honesty_alone_cannot_end_research() -> None:
     result = _research_result("structured_failure_report")
 

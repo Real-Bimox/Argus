@@ -158,3 +158,14 @@ def test_reviewer_prompt_uses_named_footer_without_schema_language(monkeypatch) 
     assert "NEXT_ACTION=<the Engineer instruction; empty for done>" in prompt
     assert "JSON Schema" not in prompt
     assert "OUTPUT CONTRACT (STRICT)" not in prompt
+
+
+def test_reviewer_replans_materially_ungrounded_external_implementation(
+    monkeypatch,
+) -> None:
+    prompt = _build(measured=False, monkeypatch=monkeypatch)
+
+    assert "primary-source grounding" in prompt
+    assert "Community implementations alone are insufficient" in prompt
+    assert "Return `replan_requested`" in prompt
+    assert "do not demand new research for local-only work" in prompt

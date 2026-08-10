@@ -2,12 +2,12 @@
 
 The Manager is the SOLE authority over pipeline stage transitions. After the
 reviewer (and planner) produce their structured feedback, the Manager
-independently judges whether to ADVANCE to the next stage, HOLD on the current
+independently judges whether to ADVANCE to a later stage, HOLD on the current
 one, or ROLL BACK to an earlier stage, then writes ``PIPELINE_STATE.json``. The prompt body lives in ``roles.prompts.manager`` and is re-exported here for
 source compatibility; this module owns the strict parser for its JSON verdict.
 
 Fail-closed everywhere: any ambiguity in the model's answer (bad JSON, unknown
-action, an advance target that is not the immediate next stage, a rollback
+action, an advance target that is not a later stage, a rollback
 target that is not strictly earlier) parses to HOLD. The Manager therefore never
 silently advances on a malformed verdict.
 """
@@ -36,7 +36,7 @@ class StageDecision:
     resolves_wait: bool = False
 
 
-_VALID_ACTIONS = ("advance", "hold", "rollback")
+_VALID_ACTIONS = ("advance", "hold", "rollback", "complete")
 
 
 def extract_answer(result: Any) -> str:
@@ -154,12 +154,12 @@ def parse_stage_decision(
 ) -> StageDecision:
     """Validate the model's JSON verdict; fail-closed to HOLD on any ambiguity.
 
-    Rules:
-      * ``action`` must be one of advance/hold/rollback (else HOLD);
-      * ADVANCE ``target_stage`` must be the IMMEDIATE next stage in
-        ``stage_order`` (no skipping; else HOLD);
+        Rules:
+            * ``action`` must be one of advance/hold/rollback/complete (else HOLD);
+            * ADVANCE ``target_stage`` must be strictly LATER in ``stage_order``;
       * ROLLBACK ``target_stage`` must be strictly EARLIER than ``current_stage``
         (else HOLD);
+            * COMPLETE targets the current stage;
       * HOLD pins ``target_stage`` to the current stage.
     """
     cur = (current_stage or "").strip().lower()
@@ -197,6 +197,18 @@ def parse_stage_decision(
         )  # cannot validate ordering → safe HOLD
 
     cur_idx = order.index(cur)
+    if action == "complete":
+        if target and target != cur:
+            return StageDecision(
+                "hold", cur, "manager held (default)", "illegal_complete_target"
+            )
+        return StageDecision(
+            "complete",
+            cur,
+            reason or "operator objective complete",
+            "valid_complete",
+        )
+
     if action == "advance":
         nxt_idx = cur_idx + 1
         if nxt_idx >= len(order):
@@ -209,11 +221,17 @@ def parse_stage_decision(
                 reason or "checklist satisfied",
                 "inferred_next_stage",
             )
-        if target != next_stage:
+        if target not in order or order.index(target) <= cur_idx:
             return StageDecision(
                 "hold", cur, "manager held (default)", "illegal_advance_target"
-            )  # must be the immediate next stage
-        diagnostic = "normalized_target_stage" if raw_target != target else "valid_target"
+            )
+        diagnostic = (
+            "normalized_target_stage"
+            if raw_target != target
+            else "valid_skip_target"
+            if target != next_stage
+            else "valid_target"
+        )
         return StageDecision(
             "advance", target, reason or "checklist satisfied", diagnostic
         )
@@ -300,22 +318,6 @@ def _review_certifies_completion(
     return ""
 
 
-def completion_trigger_reason(action: str, reason: str) -> str:
-    """What a `complete` transition should record when it overrode the trigger.
-
-    A completed transition must not retain the reason from an overridden hold;
-    stage history should state why the stage actually closed. When the trigger
-    agreed, its own reason is the most informative value to keep.
-    """
-    text = str(reason or "").strip()
-    if str(action or "").strip().lower() != "hold":
-        return text
-    return (
-        "reviewer certified the final-stage checklist, overriding the Manager "
-        f"hold ({text[:160] or 'no reason given'})"
-    )
-
-
 def final_stage_completion_decision(
     review: Any,
     *,
@@ -328,15 +330,18 @@ def final_stage_completion_decision(
     completion_blocker: str = "",
     trigger_diagnostic: str = "",
     trigger_reason: str = "",
+    allow_early_completion: bool = False,
 ) -> StageDecision | None:
-    """Return a COMPLETE decision when the final stage is reviewer-certified."""
+    """Validate a Manager COMPLETE decision against certified stage evidence."""
     cur = (current_stage or "").strip().lower()
     order = [str(s).strip().lower() for s in stage_order]
-    if not order or cur != order[-1]:
+    if cur not in order or (cur != order[-1] and not allow_early_completion):
         return None
     if str(completion_blocker or "").strip():
         return None
-    if not _mission_scope_can_complete(mission_scope, vertical):
+    if not allow_early_completion and not _mission_scope_can_complete(
+        mission_scope, vertical
+    ):
         return None
     missing = _review_certifies_completion(
         review,
@@ -347,8 +352,8 @@ def final_stage_completion_decision(
     )
     if missing:
         return None
-    reason = trigger_reason or "reviewer certified final-stage checklist"
-    diagnostic = trigger_diagnostic or "final_stage_certified_complete"
+    reason = trigger_reason or "Manager completed the certified current stage"
+    diagnostic = trigger_diagnostic or "manager_completion_certified"
     return StageDecision("complete", cur, reason, diagnostic)
 
 
@@ -450,7 +455,6 @@ def _mission_scope_can_complete(mission_scope: str, vertical: str) -> bool:
 __all__ = [
     "StageDecision",
     "stage_decision_fields",
-    "completion_trigger_reason",
     "extract_answer",
     "fallback_empty_stage_decision",
     "external_completion_gate_rework_decision",

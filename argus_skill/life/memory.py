@@ -1154,7 +1154,7 @@ class Backlog:
         reason: str,
         replacement_id: str,
     ) -> tuple[str, ...]:
-        """Atomically retire pending work owned by a superseded objective.
+        """Atomically retire inactive work owned by a superseded objective.
 
         Running missions are left untouched; Manager pipeline-yield ensures
         replacement commits happen at a mission boundary in normal operation.
@@ -1168,7 +1168,7 @@ class Backlog:
             items = self._load()
             now = time.time()
             for item in items:
-                if item.status != "pending":
+                if item.status in _TERMINAL_STATUSES or item.status == "running":
                     continue
                 item.status = "superseded"
                 item.finished_ts = now

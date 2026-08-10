@@ -3,17 +3,12 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from ..core.models import RunnerOptions
 from ..core.run_gateway import run_exec as gateway_run_exec
-from .planner import (
-    TASK_SCOPE_BOUNDED,
-    hydrate_task_context_refs,
-    parse_task_context_refs,
-)
 
 
 @dataclass(frozen=True)
@@ -22,19 +17,8 @@ class BoundedDagNode:
     deps: tuple[str, ...]
     title: str
     objective: str
-    hypothesis: str = ""
-    goal_contribution: str = ""
-    expected_regressions: str = ""
-    decision_rule: str = ""
-    execution_workdir: str = ""
     acceptance_check: str = ""
     non_goals: tuple[str, ...] = ()
-    context_refs: tuple[dict[str, str], ...] = ()
-    scope: str = TASK_SCOPE_BOUNDED
-    stage_closing: bool = False
-    require_independent_review: bool = False
-    skip_stage_transition: bool = False
-    allow_skill_changes: bool = False
 
 
 @dataclass(frozen=True)
@@ -64,24 +48,10 @@ def _extract(result: Any) -> str:
 
 _PLAN_LINE = re.compile(
     r"^(?P<key>PLAN_REASON|TASK_KEY|TASK_DEPS|TASK_TITLE|TASK_OBJECTIVE|"
-    r"TASK_HYPOTHESIS|TASK_GOAL_CONTRIBUTION|TASK_EXPECTED_REGRESSIONS|"
-    r"TASK_DECISION_RULE|TASK_WORKDIR|TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS|"
-    r"TASK_CONTEXT_REFS|TASK_SCOPE|"
-    r"TASK_STAGE_CLOSING|TASK_REQUIRE_INDEPENDENT_REVIEW|"
-    r"TASK_SKIP_STAGE_TRANSITION|TASK_OPERATOR_APPROVAL_REQUIRED|"
-    r"TASK_ALLOW_SKILL_CHANGES)"
+    r"TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS)"
     r"\s*[:=]\s*(?P<value>.*)$",
     re.IGNORECASE,
 )
-
-
-def _parse_task_boolean(raw: str, field: str) -> bool:
-    normalized = str(raw or "").strip().casefold()
-    if normalized in {"true", "yes", "1"}:
-        return True
-    if normalized in {"false", "no", "0"}:
-        return False
-    raise ValueError(f"{field} must be explicitly true or false")
 
 
 def _parse_key_value_plan(text: str) -> dict[str, Any]:
@@ -92,13 +62,7 @@ def _parse_key_value_plan(text: str) -> dict[str, Any]:
         "TASK_KEY": "key",
         "TASK_TITLE": "title",
         "TASK_OBJECTIVE": "objective",
-        "TASK_HYPOTHESIS": "hypothesis",
-        "TASK_GOAL_CONTRIBUTION": "goal_contribution",
-        "TASK_EXPECTED_REGRESSIONS": "expected_regressions",
-        "TASK_DECISION_RULE": "decision_rule",
-        "TASK_WORKDIR": "execution_workdir",
         "TASK_ACCEPTANCE_CHECK": "acceptance_check",
-        "TASK_SCOPE": "scope",
     }
     for raw_line in text.splitlines():
         line = raw_line.strip().strip("`").strip()
@@ -118,33 +82,13 @@ def _parse_key_value_plan(text: str) -> dict[str, Any]:
         if current is None:
             raise ValueError(f"{key} appeared before TASK_KEY")
         if key == "TASK_DEPS":
-            current["deps"] = [dep.strip() for dep in value.split(",") if dep.strip()]
+            current["deps"] = [
+                dep.strip() for dep in value.split(",") if dep.strip()
+            ]
         elif key == "TASK_NON_GOALS":
             current["non_goals"] = [
                 item.strip() for item in value.split("|") if item.strip()
             ]
-        elif key == "TASK_CONTEXT_REFS":
-            current["context_refs"] = parse_task_context_refs(value)
-        elif key == "TASK_STAGE_CLOSING":
-            current["stage_closing"] = _parse_task_boolean(
-                value, "TASK_STAGE_CLOSING"
-            )
-        elif key == "TASK_REQUIRE_INDEPENDENT_REVIEW":
-            current["require_independent_review"] = _parse_task_boolean(
-                value, "TASK_REQUIRE_INDEPENDENT_REVIEW"
-            )
-        elif key == "TASK_SKIP_STAGE_TRANSITION":
-            current["skip_stage_transition"] = _parse_task_boolean(
-                value, "TASK_SKIP_STAGE_TRANSITION"
-            )
-        elif key == "TASK_OPERATOR_APPROVAL_REQUIRED":
-            current["operator_approval_required"] = _parse_task_boolean(
-                value, "TASK_OPERATOR_APPROVAL_REQUIRED"
-            )
-        elif key == "TASK_ALLOW_SKILL_CHANGES":
-            current["allow_skill_changes"] = _parse_task_boolean(
-                value, "TASK_ALLOW_SKILL_CHANGES"
-            )
         else:
             current[field_map[key]] = value
     if current is not None:
@@ -164,65 +108,12 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("planner task is not an object")
-        required_controls = (
-            "hypothesis",
-            "goal_contribution",
-            "expected_regressions",
-            "decision_rule",
-            "scope",
-            "stage_closing",
-            "require_independent_review",
-            "skip_stage_transition",
-            "operator_approval_required",
-            "allow_skill_changes",
-        )
-        missing_controls = [field for field in required_controls if field not in row]
-        if missing_controls:
-            raise ValueError(
-                "planner task is missing required control fields: "
-                + ", ".join(missing_controls)
-            )
-        empty_quality = [
-            field
-            for field in (
-                "hypothesis",
-                "goal_contribution",
-                "expected_regressions",
-                "decision_rule",
-            )
-            if not str(row.get(field) or "").strip()
-        ]
-        if empty_quality:
-            raise ValueError(
-                "planner task has empty mission-quality fields: "
-                + ", ".join(empty_quality)
-            )
         key = str(row.get("key") or "").strip()
         title = str(row.get("title") or "").strip()
         objective = str(row.get("objective") or "").strip()
         raw_deps = row.get("deps")
-        scope = str(row.get("scope") or TASK_SCOPE_BOUNDED).strip()
         if not key or key in keys or not title or not objective or not isinstance(raw_deps, list):
             raise ValueError("planner task fields are invalid or duplicate")
-        if scope != TASK_SCOPE_BOUNDED:
-            raise ValueError("bounded Planner task scope must be bounded")
-        stage_closing = bool(row.get("stage_closing", False))
-        require_independent_review = bool(
-            row.get("require_independent_review", False)
-        )
-        skip_stage_transition = bool(row.get("skip_stage_transition", False))
-        if bool(row.get("operator_approval_required", False)):
-            raise ValueError(
-                "bounded Planner must stop before work requiring future "
-                "operator approval"
-            )
-        if skip_stage_transition and (
-            stage_closing or not require_independent_review
-        ):
-            raise ValueError(
-                "skip_stage_transition requires independent review and "
-                "stage_closing=false"
-            )
         deps = tuple(dict.fromkeys(str(dep).strip() for dep in raw_deps if str(dep).strip()))
         if key in deps:
             raise ValueError(f"planner task {key!r} depends on itself")
@@ -233,37 +124,18 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
                 deps=deps,
                 title=title,
                 objective=objective,
-                hypothesis=str(row.get("hypothesis") or "").strip(),
-                goal_contribution=str(row.get("goal_contribution") or "").strip(),
-                expected_regressions=str(
-                    row.get("expected_regressions") or ""
-                ).strip(),
-                decision_rule=str(row.get("decision_rule") or "").strip(),
-                execution_workdir=str(
-                    row.get("execution_workdir") or row.get("workdir") or ""
-                ).strip(),
                 acceptance_check=str(row.get("acceptance_check") or "").strip(),
                 non_goals=tuple(
                     str(item).strip()
                     for item in (row.get("non_goals") or [])
                     if str(item).strip()
                 ),
-                context_refs=tuple(
-                    {str(field): str(value) for field, value in ref.items()}
-                    for ref in (row.get("context_refs") or [])
-                    if isinstance(ref, dict)
-                ),
-                scope=scope,
-                stage_closing=stage_closing,
-                require_independent_review=require_independent_review,
-                skip_stage_transition=skip_stage_transition,
-                allow_skill_changes=bool(row.get("allow_skill_changes", False)),
             )
         )
-    for node in nodes:
-        unknown = [dep for dep in node.deps if dep not in keys]
-        if unknown:
-            raise ValueError(f"planner task {node.key!r} has unknown deps: {unknown}")
+    nodes = [
+        replace(node, deps=tuple(dep for dep in node.deps if dep in keys))
+        for node in nodes
+    ]
     remaining = {node.key: set(node.deps) for node in nodes}
     done: set[str] = set()
     while remaining:
@@ -341,12 +213,6 @@ def plan_bounded_dag(
         try:
             payload = _parse_key_value_plan(output)
             reason, tasks = _validate(payload)
-            # Context refs are advisory, but malformed/escaping paths are a
-            # security boundary. Validate them while the Planner's one repair
-            # attempt is still available instead of discovering the defect only
-            # after Manager has accepted an otherwise-executable plan.
-            for task in tasks:
-                hydrate_task_context_refs(list(task.context_refs), workdir)
             return BoundedDagPlan(reason=reason, tasks=tasks, **usage)
         except (TypeError, ValueError) as exc:
             validation_error = f"{type(exc).__name__}: {exc}"

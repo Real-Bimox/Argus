@@ -352,6 +352,7 @@ def test_continuous_dispatch_persists_only_manager_handoff(memory):
     assert memory.backlog.all() == []
     assert payload["enabled"] is True
     assert payload["objective"] == "managed: operator request"
+    assert payload["open_ended"] is True
 
 
 def test_lifetime_promotion_sets_pending_handoff(memory):
@@ -360,6 +361,7 @@ def test_lifetime_promotion_sets_pending_handoff(memory):
     assert dispatch.maybe_promote_to_continuous(memory, "keep researching", state)
     assert state["config"]["continuous"] is True
     assert state["_continuous_pending_manager_handoff"] is True
+    assert state["_continuous_open_ended"] is True
     assert state["continuous_objective"] == ""
 
 
@@ -436,6 +438,7 @@ def test_finite_staged_task_uses_durable_campaign_supervisor(memory, monkeypatch
     )
     assert state["config"]["continuous"] is True
     assert state["_continuous_pending_manager_handoff"] is True
+    assert state["_continuous_open_ended"] is False
     assert "_frontdoor_lifetime" not in state
 
 

@@ -94,13 +94,18 @@ export function useProjectDaemonActions({
   const manageDeleteProject = useCallback(async (): Promise<boolean> => {
     if (!activeSid) return false;
     try {
-      await actions.deleteProject.mutateAsync();
+      const deleted = await actions.deleteProject.mutateAsync();
       setDaemonManageOpen(false);
       clearProjectSelection('replace');
       const refreshed = await refetchProjects();
       const next = rankProjects(refreshed.data?.projects ?? [])[0];
       if (next) selectProject(next.id, 'replace');
-      notify('success', 'Session moved to recoverable trash.');
+      notify(
+        'success',
+        deleted.workdir_preserved
+          ? `Session moved to recoverable trash. Files remain in ${deleted.workdir}.`
+          : 'Session moved to recoverable trash.',
+      );
       return true;
     } catch (error) {
       notify('error', errorText(error));

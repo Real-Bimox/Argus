@@ -86,6 +86,7 @@ class RunExecMixin:
         options,
         run_label: str | None = None,
     ) -> AgentRunResult:
+        options = self._apply_sandbox_policy(options)
         if self.before_exec is not None:
             self.before_exec()
         gated = self._run_exec_start_gate(resume_thread_id=resume_thread_id, options=options)
@@ -103,7 +104,6 @@ class RunExecMixin:
             )
             if acp_result is not None:
                 return acp_result
-        options = self._apply_sandbox_policy(options)
         command, process, spawn_failure, prompt_path = self._spawn_turn_process(
             prompt=prompt, resume_thread_id=resume_thread_id, options=options
         )

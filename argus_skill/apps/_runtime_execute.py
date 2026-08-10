@@ -350,6 +350,7 @@ class SkillLoopExecuteMixin:
         *,
         objective: str,
         original_objective: str = "",
+        review_objective: str = "",
         sink: EventSink,
         preload_injects: list[str] | None = None,  # noqa: ARG002 — protocol parity
         prelude_context: str = "",
@@ -389,7 +390,6 @@ class SkillLoopExecuteMixin:
             ex_state,
             working_dir_override=working_dir_override,
             maintenance_mission=maintenance_mission,
-            allow_skill_changes=allow_skill_changes,
             vertical_override=vertical_override,
             require_independent_review=require_independent_review,
             max_rounds_override=max_rounds_override,
@@ -401,6 +401,7 @@ class SkillLoopExecuteMixin:
         self._prepare_execute_mission_context(
             ex_state,
             objective=objective,
+            review_objective=review_objective,
             prelude_context=prelude_context,
             seed_thread_id=seed_thread_id,
             scope=scope,
@@ -459,7 +460,6 @@ class SkillLoopExecuteMixin:
         *,
         working_dir_override: str,
         maintenance_mission: bool,
-        allow_skill_changes: bool,
         vertical_override: str,
         require_independent_review: bool,
         max_rounds_override: int | None,
@@ -521,10 +521,7 @@ class SkillLoopExecuteMixin:
         # consents to autonomous execution; the sandbox only fights us
         # (`bwrap: Can't create file at /.codex: Permission denied`).
         # Operators can opt back into sandbox via ARGUS_SKILL_SAFE_MODE=1.
-        # Framework-maintenance roles are always confined to their private
-        # worktree and receive no push-capable VCS credentials. Authenticated
-        # commit/push/PR publication remains daemon-owned after Reviewer approval.
-        safe_mode = True if maintenance_mission else _env_flag("ARGUS_SKILL_SAFE_MODE", False)
+        safe_mode = _env_flag("ARGUS_SKILL_SAFE_MODE", False)
         config_kwargs = {
             "engineer_model": args.engineer_model,
             "reviewer_model": args.reviewer_model,
@@ -544,21 +541,19 @@ class SkillLoopExecuteMixin:
                 else args.max_rounds
             ),
             "require_post_task_learning": bool(
-                allow_skill_changes
-                and getattr(self, "_role_memory_maintenance_enabled", True)
+                getattr(self, "_role_memory_maintenance_enabled", True)
             ),
-            "wiki_enabled": bool(
-                allow_skill_changes
-                and _env_flag("ARGUS_SKILL_WIKI", default=True)
-            ),
-            "auto_init_wiki": bool(
-                allow_skill_changes
-                and _env_flag("ARGUS_SKILL_AUTO_INIT_WIKI", default=True)
+            "wiki_enabled": _env_flag("ARGUS_SKILL_WIKI", default=False),
+            "auto_init_wiki": _env_flag(
+                "ARGUS_SKILL_AUTO_INIT_WIKI",
+                default=False,
             ),
             "dangerous_yolo": not safe_mode,
             "full_auto": safe_mode,
-            "sandbox_mode": "workspace-write" if maintenance_mission else None,
-            "isolate_workdir": maintenance_mission,
+            "sandbox_mode": (
+                "workspace-write" if maintenance_mission and safe_mode else None
+            ),
+            "isolate_workdir": bool(maintenance_mission and safe_mode),
             "skip_git_repo_check": True,
             # Filled from the resolved vertical below.  Fail-safe default: an
             # undecided task is bounded/non-paper.
@@ -720,6 +715,7 @@ class SkillLoopExecuteMixin:
         ex_state: "_ExecuteState",
         *,
         objective: str,
+        review_objective: str,
         prelude_context: str,
         seed_thread_id: str | None,
         scope: str,
@@ -740,6 +736,7 @@ class SkillLoopExecuteMixin:
         # should consume the structured field, not sniff the rendered text.
         mission_scope = (scope or "").strip().lower()
         ex_state.full_task = full_task
+        ex_state.review_objective = review_objective or objective
         ex_state.seed = seed
         ex_state.mission_scope = mission_scope
 
@@ -964,6 +961,7 @@ class SkillLoopExecuteMixin:
                 workdir=ex_state.workdir,
                 seed_thread_id=ex_state.seed,
                 objective_for_skill=objective,
+                review_objective=ex_state.review_objective,
                 original_objective=original_objective or objective,
                 scope=ex_state.mission_scope,
             )
@@ -1157,7 +1155,7 @@ class SkillLoopExecuteMixin:
         STAGE AUTHORITY: the Manager is the SOLE writer of the
         pipeline stage. After this round's independent Reviewer verdict, the
         Manager makes
-        its OWN judgment (advance / hold / rollback) and writes
+        its OWN judgment (advance / hold / rollback / complete) and writes
         PIPELINE_STATE.json. See ``_decide_stage_transition``.
         """
         outcome = ex_state.outcome
@@ -1252,10 +1250,20 @@ class SkillLoopExecuteMixin:
             stage_transition_skipped=ex_state.stage_transition_skipped,
             operator_question=ex_state.operator_question,
             final_review_status=ex_state.final_review_status,
+            final_review_source=ex_state.review_source,
             final_review_reason=str(
                 getattr(outcome, "final_review_reason", "") or ""
             ),
             final_review_next_action=ex_state.final_review_next_action,
+            research_result=(
+                getattr(
+                    (getattr(outcome, "rounds", None) or ex_state.rounds_list)[-1].review,
+                    "research_result",
+                    None,
+                )
+                if (getattr(outcome, "rounds", None) or ex_state.rounds_list)
+                else None
+            ),
             final_planner_report=ex_state.final_planner_report,
             plan_challenge=ex_state.plan_challenge,
         )

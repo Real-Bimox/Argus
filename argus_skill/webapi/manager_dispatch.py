@@ -92,10 +92,27 @@ def manager_continuous_handoff(
         chat_state = _chat_state_for(sid)
         chat_state["session_id"] = sid
         chat_state["global_root"] = str(mem.global_root)
-        if name_session:
-            from ..manager.config_intent import _front_door_classify
+        from ..manager.config_intent import _front_door_classify
 
+        if requested_objective.strip():
             _front_door_classify(mem, requested_objective, chat_state)
+            failure = str(chat_state.pop("_frontdoor_failure", "") or "").strip()
+            if failure:
+                from ..manager.front_door import ManagerHandoffError
+
+                raise ManagerHandoffError(
+                    f"Manager could not classify the continuous task: {failure}"
+                )
+            lifetime = str(
+                chat_state.pop("_frontdoor_lifetime", "bounded") or "bounded"
+            ).strip().lower()
+            chat_state["_continuous_open_ended"] = lifetime == "standing"
+        else:
+            from ..daemon.state import read_continuous_state
+
+            chat_state["_continuous_open_ended"] = read_continuous_state(
+                mem.project_root
+            ).open_ended
         execution_objective = commit_handoff(mem, requested_objective, chat_state)
         chat_state.setdefault("config", {})["continuous"] = True
         chat_state["continuous_objective"] = execution_objective
@@ -391,10 +408,19 @@ def _classify_operator_turn(
     # STRUCTURED handoff (identity + project path + recent turns), so the
     # operator never notices the seam. Turn count is a cheap proxy for "full".
     chat_state["turns"] = int(chat_state.get("turns", 0)) + 1
-    send_body = f"{startup_handoff}\n\n{body}" if startup_handoff else body
+    dispatch_body = str(
+        chat_state.pop("_frontdoor_dispatch_body", "") or body
+    )
+    handoff = startup_handoff
+    send_body = (
+        f"{handoff}\n\n{dispatch_body}"
+        if handoff
+        else dispatch_body
+    )
     root_task_id = BacklogItem.new_id()
     if chat_state["turns"] > _rotate_after():
-        send_body = f"{_build_handoff(life_dir)}\n\n{body}"
+        handoff = _build_handoff(life_dir)
+        send_body = f"{handoff}\n\n{dispatch_body}"
         chat_state["last_thread_id"] = None  # start a fresh session thread
         # The cached runner keeps its OWN copy of the session id
         # (``_next_seed_thread_id``); ``_simple_quick_reply`` falls back to it
@@ -436,6 +462,7 @@ def _classify_operator_turn(
         chat_state,
         **classify_kwargs,
     )
+    chat_state.pop("_frontdoor_contextual_text", None)
     if cancelled():
         return _cancelled_result()
     if isinstance(decision, tuple) and len(decision) == 3:
@@ -443,6 +470,8 @@ def _classify_operator_turn(
     else:
         intent, route = decision
         control = None
+    selected_body = dispatch_body if route == "complex" else body
+    send_body = f"{handoff}\n\n{selected_body}" if handoff else selected_body
 
     self_mode = str(
         chat_state.get("_frontdoor_self_mode", "inspect") or "inspect"
@@ -888,9 +917,6 @@ def _dispatch_team_mission(
     # Reject quarantined/archived projects and resume completed projects before
     # paying for another Manager model call. Lifetime and workflow are separate
     # axes only after the project lifecycle admits new work.
-    emitter.phase("Manager · validating project lifecycle")
-    resume_done_lifecycle_for_team_dispatch(mem)
-
     # A publication campaign has a finite finish line, but Manager may still
     # require staged progression. Run the normal workflow decision once, use it
     # to choose topology, then reuse the sealed handoff during commit.
@@ -901,6 +927,8 @@ def _dispatch_team_mission(
         chat_state,
         root_task_id=root_task_id,
     )
+    emitter.phase("Manager · validating project lifecycle")
+    resume_done_lifecycle_for_team_dispatch(mem)
     workflow_mode = str(
         getattr(prepared.decision, "workflow_mode", "") or ""
     )

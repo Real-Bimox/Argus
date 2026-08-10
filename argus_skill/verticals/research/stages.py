@@ -354,7 +354,11 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "one coherent argument. The title, abstract, introduction, method, and "
                 "experiments all serve the same thesis; the paper does not introduce "
                 "a method as its contribution and then make that method's failure the "
-                "main conclusion without an independently valuable insight."
+                "main conclusion without an independently valuable insight. A "
+                "literature review instead aligns its scope, taxonomy/comparison "
+                "frame, source evidence, synthesis, limitations, and conclusions; it "
+                "must not invent a method or experiment section merely to mimic an "
+                "empirical paper."
             ),
             evidence_hint="paper/main.tex + research/VENUE_PROFILE.json + research/NARRATIVE_REPORT.md",
         ),
@@ -436,13 +440,15 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             id="review.language",
             statement=(
                 "Academic prose reads like a real selected-venue paper, not generic agent "
-                "output: the Abstract states problem, gap, method, evidence, and "
+                "output: the Abstract states problem, gap, article approach, evidence, and "
                 "implication (no result-first opening, no validator-checklist "
                 "phrasing); the Introduction grounds the gap in cited prior work, "
-                "then gives the method insight, a quantified result preview, and a "
-                "contribution roadmap before Related Work; the Method/Setup lets an "
-                "outside reviewer identify the evaluated system, baselines, task "
-                "source, metrics, evaluated model/backend, and budget; every "
+                "then gives the organizing insight and contribution roadmap. For an "
+                "empirical article, Method/Setup identifies the system, baselines, "
+                "task source, metrics, backend, budget, and result preview. For a "
+                "literature review, the scope/method explains source selection and "
+                "the body provides a defensible taxonomy, fair comparisons, conflicts, "
+                "gaps, and limitations. Every "
                 "headline claim is tied to reported evidence; no unsupported hype, "
                 "template LLM openings, experiment-report narration, or repeated "
                 "not-X-but-Y caveats. Limitations bound the thesis instead of becoming "
@@ -458,10 +464,11 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             statement=(
                 "As a venue reviewer, identify the strongest accept argument before "
                 "passing. A valid experiment, transparent failure report, or complete "
-                "artifact bundle is not enough: the manuscript must deliver a clear "
-                "insight, capable method/system, theorem, or genuinely surprising and "
-                "decision-relevant boundary. A weak result cannot be rescued by "
-                "renaming it a diagnostic."
+                "artifact bundle is not enough. Original research must deliver a clear "
+                "insight, method/system, theorem, or decision-relevant boundary. A "
+                "weak result cannot be rescued by renaming it a diagnostic. A "
+                "literature review must deliver valuable coverage, synthesis, critique, "
+                "and a defensible map of the field rather than a paper-by-paper list."
             ),
             evidence_hint="paper/main.tex + paper/main.pdf + canonical evidence",
         ),
@@ -471,10 +478,14 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             id="submission.upstream",
             statement=(
                 "All upstream stage checklists (research → review) are themselves "
-                "marked done by a prior reviewer round — submission readiness is "
-                "not a way to retro-fix missing evidence."
+                "marked done by a prior reviewer round or explicitly skipped by a "
+                "recorded Manager decision because they do not apply to this article "
+                "form. Submission readiness is not a way to retro-fix missing evidence."
             ),
-            evidence_hint="research/PIPELINE_STATE.json shows every stage status=done",
+            evidence_hint=(
+                "research/PIPELINE_STATE.json shows each stage status=done or "
+                "status=skipped with skip_reason/skipped_by and stage_history evidence"
+            ),
         ),
         ChecklistItem(
             id="submission.readiness",

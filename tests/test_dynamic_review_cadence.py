@@ -82,7 +82,10 @@ def test_low_risk_task_can_finish_with_engineer_self_review(tmp_path: Path) -> N
     backend.queue(
         "engineer-r1",
         CannedResponse(
-            message="Implemented the bounded fix.\n## Verification\n3 tests passed",
+            message=(
+                "Implemented the bounded fix.\n## Verification\n3 tests passed\n"
+                "MILESTONE_STATUS=done"
+            ),
             thread_id="t1",
         ),
     )
@@ -107,3 +110,38 @@ def test_low_risk_task_can_finish_with_engineer_self_review(tmp_path: Path) -> N
     assert review_events[0]["review_source"] == "engineer_self_review"
     assert "without an independent Reviewer call" in reason
     assert tid is None
+
+
+def test_engineer_continues_milestone_without_reviewer(tmp_path: Path) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message="Captured the signal.\nMILESTONE_STATUS=continue",
+            thread_id="t1",
+        ),
+    )
+    backend.queue(
+        "engineer-r2",
+        CannedResponse(
+            message="Made the keep/reject decision.\nMILESTONE_STATUS=done",
+            thread_id="t2",
+        ),
+    )
+
+    status, rounds, _final, _reason, _tid = _engineer(backend).run(
+        objective="complete one decision-sized milestone",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(
+            max_rounds=2,
+            require_independent_review=False,
+        ),
+        workdir=tmp_path,
+    )
+
+    assert status == "done"
+    assert [label for label, _prompt, _options in backend.history] == [
+        "engineer-r1",
+        "engineer-r2",
+    ]
+    assert len(rounds) == 1

@@ -16,6 +16,7 @@ from ..core import paths as core_paths
 from ..core.session import (
     SessionMeta,
     normalize_session_name,
+    read_session_meta,
     session_lifecycle_lock,
     session_meta_lock,
     update_session_meta,
@@ -97,6 +98,16 @@ def delete_project(
                         "error": "pause the daemon before deleting this session",
                     }
 
+                meta = read_session_meta(root, sid)
+                workdir = str(getattr(meta, "workdir", "") or "").strip()
+                workdir_path = Path(workdir).expanduser().resolve() if workdir else None
+                workdir_preserved = bool(
+                    workdir_path
+                    and workdir_path.is_dir()
+                    and workdir_path != life_dir.resolve()
+                    and life_dir.resolve() not in workdir_path.parents
+                )
+
                 date = time.strftime("%Y%m%d", time.localtime())
                 dest_parent = root / "projects_trash" / date
                 dest_parent.mkdir(parents=True, exist_ok=True)
@@ -109,6 +120,8 @@ def delete_project(
                     "ok": True,
                     "sid": sid,
                     "trash_path": str(dest.relative_to(root)),
+                    "workdir": workdir,
+                    "workdir_preserved": workdir_preserved,
                 }
 
 

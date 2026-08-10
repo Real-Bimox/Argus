@@ -76,9 +76,11 @@ def test_route_prompt_has_two_labels_and_safe_default() -> None:
     assert "SELF" in p and "TEAM" in p
     assert "do a thing" in p
     assert "Argus itself" in p
-    assert "When in doubt, answer TEAM" in p
-    assert "persistent file/artifact" in p
-    assert "Small one-shot artifacts still use TEAM" in p
+    assert "Use SELF unless the requested outcome genuinely needs the team" in p
+    assert "code/project modification" in p
+    assert "multiple coordinated artifacts" in p
+    assert "guided reading/tutoring" in p
+    assert "one low-risk summary/note/report artifact" in p
 
 
 # ---- classify_is_conversational: CHAT (True) vs TASK (False) ----------------
@@ -135,6 +137,8 @@ def test_classify_prompt_asks_chat_or_task() -> None:
     assert "你好" in prompt
     assert "CHAT" in prompt and "TASK" in prompt
     assert "When in doubt, answer TASK" in prompt
+    assert "Guided reading, tutoring" in prompt
+    assert "one low-risk summary/note/report" in prompt
 
 
 # ---- chat / simple answer prompts ------------------------------------------
@@ -176,6 +180,10 @@ def test_build_simple_prompt_is_minimal() -> None:
 
     assert f"{runner_backend_label()} worker" in out
     assert "Answer and act as Argus Manager" in out
+    assert "do not invent a vertical" in out
+    assert "additional artifact" in out
+    assert "stop and wait for the operator's reply" in out
+    assert "ask at most one question that checks the key understanding" in out
 
 
 def test_build_simple_prompt_includes_identity_when_given() -> None:

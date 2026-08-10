@@ -88,10 +88,10 @@ class SkillLoopConfig:
     backend_failure_threshold: int = 2
     backend_failure_backoff_seconds: float = 15.0
     # Shared declarative knowledge wiki. Roles edit pages directly.
-    wiki_enabled: bool = False
+    wiki_enabled: bool = True
     # Bootstrap one project wiki before the first mission.
     # Library callers remain opt-in; the daemon runtime enables this by default.
-    auto_init_wiki: bool = False
+    auto_init_wiki: bool = True
     round_checkpoint_enabled: bool = field(
         default_factory=lambda: _knob_bool_setting(
             "ARGUS_SKILL_ROUND_CHECKPOINT",
@@ -114,16 +114,6 @@ class SkillLoopConfig:
     role_session_max_input_tokens: int = field(
         default_factory=lambda: _env_int_setting(
             "ARGUS_SKILL_ROLE_SESSION_MAX_INPUT_TOKENS", 120_000
-        )
-    )
-    engineer_file_read_budget: int = field(
-        default_factory=lambda: _env_int_setting(
-            "ARGUS_SKILL_ENGINEER_FILE_READ_BUDGET", 12
-        )
-    )
-    engineer_test_run_budget: int = field(
-        default_factory=lambda: _env_int_setting(
-            "ARGUS_SKILL_ENGINEER_TEST_RUN_BUDGET", 3
         )
     )
     # Manager-selected execution topology. Every mode still uses skill/wiki.
@@ -263,6 +253,7 @@ class SkillLoop(
 
     def run(self, task: str, *, workdir: Path | None = None, seed_thread_id: str | None = None,
             objective_for_skill: str | None = None,
+            review_objective: str | None = None,
             original_objective: str | None = None,
             scope: str = "") -> LoopOutcome:
         """Run one mission end-to-end.
@@ -297,6 +288,7 @@ class SkillLoop(
                 on_event=self.on_event,
             )
         skill_task = (objective_for_skill or task).strip() or task
+        reviewer_task = (review_objective or skill_task).strip() or skill_task
         request_anchor = (original_objective or objective_for_skill or task).strip() or task
         self._emit({
             "type": EventType.LOOP_START,
@@ -335,7 +327,7 @@ class SkillLoop(
             return self._adapt_after_rejections(mission, state, rounds)
 
         status, rounds, final_message, reason, last_thread_id = self.supervised.run(
-            objective=task,
+            objective=reviewer_task,
             original_objective=request_anchor,
             engineer_prompt_builder=build_prompt,
             supervised_config=SupervisedConfig(

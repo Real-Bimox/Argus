@@ -299,6 +299,7 @@ def classify_front_door(
     greeting_sink: Callable[[str], None] | None = None,
     steering_sink: Callable[[str], None] | None = None,
     authorization_sink: Callable[[tuple[str, ...]], None] | None = None,
+    failure_sink: Callable[[str], None] | None = None,
     active_mission: bool = False,
 ) -> "tuple[ConfigDecision, ControlIntent | None, str]":
     """One model call for every cheap front-door decision.
@@ -313,9 +314,13 @@ def classify_front_door(
         result = run_exec(
             build_front_door_prompt(cleaned, active_mission=active_mission)
         )
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        if callable(failure_sink):
+            failure_sink(f"{type(exc).__name__}: {exc}")
         return None, None, "complex"
     if int(getattr(result, "exit_code", 0) or 0) != 0:
+        if callable(failure_sink):
+            failure_sink("classifier backend failed")
         return None, None, "complex"
     answer = _extract_answer(result)
     config_line = _line_after_prefix(answer, "CONFIG:")
@@ -360,9 +365,17 @@ def classify_front_door(
                 control = None
             elif _first_alpha_token(_extract_answer(confirmation)).upper() != "STEER":
                 control = None
-    route = (
-        _route_from_token(_first_alpha_token(route_line)) if route_line is not None else "complex"
-    )
+    route_token = _first_alpha_token(route_line) if route_line is not None else ""
+    if not route_token or route_token.upper() not in {
+        "SELF",
+        "SIMPLE",
+        "TEAM",
+        "COMPLEX",
+    }:
+        if callable(failure_sink):
+            failure_sink("classifier returned no valid route")
+        return intent, None, "complex"
+    route = _route_from_token(route_token)
     if control in {"abort", "pause", "no_dispatch", "steer"}:
         route = "simple"
     authorization = _parse_authorization_line(authorization_line)

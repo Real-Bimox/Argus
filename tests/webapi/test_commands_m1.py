@@ -17,7 +17,7 @@ import pytest
 from argus_skill.core.session import SessionMeta, touch_session, write_session_meta
 from argus_skill.daemon.state import write_continuous_config
 from argus_skill.life.memory import LifeMemory
-from argus_skill.manager import front_door
+from argus_skill.manager import config_intent, front_door
 from argus_skill.manager.front_door import (
     ManagerHandoffError,
     ManagerHandoffSupersededError,
@@ -66,17 +66,20 @@ def _install_manager(monkeypatch, execution_for) -> None:
     manager_state._STATES.clear()
 
     class _Manager:
+        def classify_front_door(self, _text, *, lifetime_sink=None, **_kwargs):
+            if lifetime_sink is not None:
+                lifetime_sink("standing")
+            return None, None, "complex"
+
         def decide_vertical(self, text, **kwargs):
             return SimpleNamespace(execution_task=execution_for(text))
 
         def commit_vertical_decision(self, text, decision, **kwargs):
             return SimpleNamespace(execution_task=decision.execution_task)
 
-    monkeypatch.setattr(
-        front_door,
-        "_ensure_manager_runner",
-        lambda chat_state, mem: SimpleNamespace(manager=_Manager()),
-    )
+    ensure = lambda chat_state, mem: SimpleNamespace(manager=_Manager())
+    monkeypatch.setattr(front_door, "_ensure_manager_runner", ensure)
+    monkeypatch.setattr(config_intent, "_ensure_manager_runner", ensure)
 
 
 # ── tasks ─────────────────────────────────────────────────────────────────
@@ -588,7 +591,12 @@ def test_enable_continuous_reprocesses_stored_objective(
 ) -> None:
     root, sid, life = ctx
     raw = "legacy objective; Manager owns the sidebar"
-    server.write_continuous_config(life, enabled=False, objective=raw)
+    server.write_continuous_config(
+        life,
+        enabled=False,
+        objective=raw,
+        open_ended=True,
+    )
     seen = {}
 
     def clean_handoff(text):
@@ -610,6 +618,7 @@ def test_enable_continuous_reprocesses_stored_objective(
     assert seen["text"] == raw
     assert state.enabled is True
     assert state.objective == "clean legacy objective"
+    assert state.open_ended is True
 
 
 def test_post_continuous_rejects_enable_without_any_objective(ctx) -> None:
@@ -699,6 +708,7 @@ def test_daemon_start_resume_reenables_preserved_continuous_objective(
         life,
         enabled=False,
         objective="continue the proof campaign",
+        open_ended=False,
         done_reason="operator drain-stop",
     )
     spawned = {}
@@ -706,6 +716,7 @@ def test_daemon_start_resume_reenables_preserved_continuous_objective(
     def fake_spawn(config, *, quiet=False):
         spawned["objective"] = config.continuous_objective
         spawned["resume_continuous"] = config.resume_continuous
+        spawned["open_ended"] = config.continuous_open_ended
         return 0
 
     monkeypatch.setattr(server, "spawn_detached_daemon", fake_spawn)
@@ -724,6 +735,7 @@ def test_daemon_start_resume_reenables_preserved_continuous_objective(
     assert spawned == {
         "objective": "continue the proof campaign",
         "resume_continuous": True,
+        "open_ended": False,
     }
 
 
@@ -1309,6 +1321,12 @@ def test_project_update_preserves_legacy_continuous_objective(ctx) -> None:
 
 def test_project_delete_moves_stopped_session_to_trash(ctx, monkeypatch) -> None:
     root, sid, life = ctx
+    workdir = root / "workspaces" / sid
+    workdir.mkdir(parents=True)
+    (workdir / "result.txt").write_text("operator result", encoding="utf-8")
+    meta = json.loads((life / "session.json").read_text(encoding="utf-8"))
+    meta["workdir"] = str(workdir)
+    (life / "session.json").write_text(json.dumps(meta), encoding="utf-8")
     monkeypatch.setattr(
         server,
         "read_daemon_status",
@@ -1328,6 +1346,9 @@ def test_project_delete_moves_stopped_session_to_trash(ctx, monkeypatch) -> None
     assert r.status_code == 200
     assert not life.exists()
     assert (root / r.json()["trash_path"]).is_dir()
+    assert r.json()["workdir"] == str(workdir)
+    assert r.json()["workdir_preserved"] is True
+    assert (workdir / "result.txt").read_text(encoding="utf-8") == "operator result"
     touch_session(root, sid, display_name="must not resurrect")
     assert not life.exists()
 

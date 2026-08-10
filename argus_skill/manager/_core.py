@@ -43,6 +43,7 @@ class Division:
     # committed Division with ``pending_confirmation=False``.
     proposed_domain: Any = None
     pending_confirmation: bool = False
+    learned_vertical_status: str = ""
 
     def headline(self) -> str:
         if self.proposed_domain is not None and self.pending_confirmation:
@@ -72,8 +73,8 @@ class StageTransition:
     target_stage: str
     reason: str
     current_stage: str = ""
-    # manager_llm | reviewer_certified_policy | no_review_hold | no_runner_hold |
-    # failsafe_hold | illegal_target_hold
+    # manager_llm | no_review_hold | no_runner_hold | failsafe_hold |
+    # illegal_target_hold
     source: str = "manager_llm"
     # Non-secret parser/runtime code for log triage (never raw model output).
     diagnostic: str = ""
@@ -108,6 +109,7 @@ class Manager(
         execution_workdir: Path | str | None = None,
         skill_store: Any = None,
         manager_session_root: Path | str | None = None,
+        learned_vertical_root: Path | str | None = None,
         usage_context: Any = None,
         memory_maintenance_enabled: bool | None = None,
     ) -> None:
@@ -119,6 +121,9 @@ class Manager(
             Path(manager_session_root)
             if manager_session_root is not None
             else self.project_root
+        )
+        self.learned_vertical_root = Path(
+            learned_vertical_root or self.project_root
         )
         # One persistent, flock-serialized model session shared by stateful
         # Manager calls. Vertical routing deliberately uses the raw runner with

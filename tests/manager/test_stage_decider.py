@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -53,14 +54,164 @@ def test_parse_advance_immediate_ok() -> None:
     assert decision.target_stage == "plan"
 
 
-def test_parse_advance_cannot_skip_stage() -> None:
+def test_parse_advance_can_skip_irrelevant_stages() -> None:
     decision = parse_stage_decision(
         '{"action":"advance","target_stage":"benchmark","reason":"skip"}',
         current_stage="research",
         stage_order=ORDER,
     )
+    assert decision.action == "advance"
+    assert decision.target_stage == "benchmark"
+    assert decision.diagnostic == "valid_skip_target"
+
+
+def test_parse_complete_can_end_finite_objective_at_current_stage() -> None:
+    decision = parse_stage_decision(
+        '{"action":"complete","target_stage":"research","reason":"done"}',
+        current_stage="research",
+        stage_order=ORDER,
+    )
+    assert decision.action == "complete"
+    assert decision.target_stage == "research"
+
+
+def test_parse_advance_still_rejects_current_or_earlier_stage() -> None:
+    for target in ("research",):
+        decision = parse_stage_decision(
+            json.dumps({"action": "advance", "target_stage": target}),
+            current_stage="research",
+            stage_order=ORDER,
+        )
+        assert decision.action == "hold"
+        assert decision.diagnostic == "illegal_advance_target"
+
+
+def test_research_survey_can_advance_directly_to_draft(tmp_path) -> None:
+    from argus_skill.manager import Manager
+    from argus_skill.skills.vertical_select import persist_vertical
+
+    state_root = tmp_path / "state"
+    workdir = tmp_path / "worktree"
+    workdir.mkdir()
+    persist_vertical(state_root, "research", workflow_mode="staged")
+
+    decision = Manager(
+        project_root=state_root,
+        execution_workdir=workdir,
+        runner=object(),
+    ).decide_stage_transition(
+        review=_review(),
+        project_root=state_root,
+        mission_scope="bounded",
+        open_ended=False,
+        run_exec=lambda _prompt: SimpleNamespace(
+            last_agent_message=(
+                '{"action":"advance","target_stage":"draft",'
+                '"reason":"literature synthesis is certified; this survey has no '
+                'experiment, benchmark, run, or empirical analysis"}'
+            )
+        ),
+    )
+
+    state = json.loads(
+        (state_root / "research" / "PIPELINE_STATE.json").read_text()
+    )
+    assert decision.action == "advance"
+    assert decision.target_stage == "draft"
+    assert decision.source == "manager_llm"
+    assert state["current_stage"] == "draft"
+    assert state["stages"]["research"]["status"] == "done"
+    assert state["stage_history"][-1]["skipped_stages"] == [
+        "plan",
+        "benchmark",
+        "run",
+        "analysis",
+    ]
+    for stage in ("plan", "benchmark", "run", "analysis"):
+        assert state["stages"][stage]["status"] == "skipped"
+
+
+def test_finite_research_can_complete_and_skip_all_later_stages(tmp_path) -> None:
+    from argus_skill.manager import Manager
+    from argus_skill.skills.vertical_select import persist_vertical
+
+    state_root = tmp_path / "state"
+    workdir = tmp_path / "worktree"
+    workdir.mkdir()
+    persist_vertical(state_root, "research", workflow_mode="direct")
+    review = _review()
+    review.research_result = {
+        "result_class": "literature_review",
+        "correctness_status": "verified",
+        "novelty_status": "known",
+        "significance_status": "exploratory",
+        "statement_fidelity_status": "verified",
+        "evidence": ["independent review"],
+        "limitations": [],
+    }
+
+    decision = Manager(
+        project_root=state_root,
+        execution_workdir=workdir,
+        runner=object(),
+    ).decide_stage_transition(
+        review=review,
+        project_root=state_root,
+        mission_scope="bounded",
+        open_ended=False,
+        run_exec=lambda _prompt: SimpleNamespace(
+            last_agent_message=(
+                '{"action":"complete","target_stage":"research",'
+                '"reason":"the finite reviewed objective is complete"}'
+            )
+        ),
+    )
+
+    state = json.loads(
+        (state_root / "research" / "PIPELINE_STATE.json").read_text()
+    )
+    assert decision.action == "complete"
+    assert decision.source == "manager_llm"
+    assert state["current_stage"] == "research"
+    assert state["stages"]["research"]["status"] == "done"
+    for stage in ORDER[1:]:
+        assert state["stages"][stage]["status"] == "skipped"
+
+
+def test_bounded_stage_mission_cannot_complete_staged_research_project(
+    tmp_path,
+) -> None:
+    from argus_skill.manager import Manager
+    from argus_skill.skills.vertical_select import persist_vertical
+
+    state_root = tmp_path / "state"
+    workdir = tmp_path / "worktree"
+    workdir.mkdir()
+    persist_vertical(state_root, "research", workflow_mode="staged")
+
+    decision = Manager(
+        project_root=state_root,
+        execution_workdir=workdir,
+        runner=object(),
+    ).decide_stage_transition(
+        review=_review(),
+        project_root=state_root,
+        mission_scope="bounded",
+        open_ended=False,
+        run_exec=lambda _prompt: SimpleNamespace(
+            last_agent_message=(
+                '{"action":"complete","target_stage":"research",'
+                '"reason":"this bounded stage task is done"}'
+            )
+        ),
+    )
+
     assert decision.action == "hold"
-    assert decision.diagnostic == "illegal_advance_target"
+    state = json.loads(
+        (state_root / "research" / "PIPELINE_STATE.json").read_text()
+    )
+    assert state["current_stage"] == "research"
+    assert state.get("stages", {}).get("research", {}).get("status") != "done"
 
 
 def test_parse_rollback_requires_earlier_stage() -> None:
@@ -159,7 +310,7 @@ def test_no_second_machine_value_guard_overrides_manager() -> None:
     assert manager.target_stage == "plan"
 
 
-def test_reviewer_certified_intermediate_stage_skips_manager_model(
+def test_reviewer_certified_intermediate_stage_still_uses_manager_judgment(
     tmp_path,
 ) -> None:
     from argus_skill.manager import Manager
@@ -170,28 +321,43 @@ def test_reviewer_certified_intermediate_stage_skips_manager_model(
     workdir.mkdir()
     persist_vertical(state_root, "speedrun", workflow_mode="staged")
 
+    prompts: list[str] = []
+
+    def decide(prompt: str):
+        prompts.append(prompt)
+        return SimpleNamespace(
+            last_agent_message=(
+                '{"action":"advance","target_stage":"measure",'
+                '"reason":"scope is certified; implementation stages do not apply"}'
+            )
+        )
+
     decision = Manager(
         project_root=state_root,
         execution_workdir=workdir,
-        runner=None,
+        runner=object(),
     ).decide_stage_transition(
         review=_review(),
         project_root=state_root,
         mission_scope="bounded",
         open_ended=True,
-        run_exec=lambda _prompt: (_ for _ in ()).throw(
-            AssertionError("ordinary reviewed advance must not call Manager model")
-        ),
+        run_exec=decide,
     )
 
     state = json.loads(
         (state_root / "research" / "PIPELINE_STATE.json").read_text()
     )
     assert decision.action == "advance"
-    assert decision.target_stage == "optimize"
-    assert decision.source == "reviewer_certified_policy"
-    assert state["current_stage"] == "optimize"
+    assert decision.target_stage == "measure"
+    assert decision.source == "manager_llm"
+    assert state["current_stage"] == "measure"
     assert state["stages"]["setup"]["status"] == "done"
+    assert [
+        stage
+        for stage in ("optimize",)
+        if state["stages"][stage]["status"] == "skipped"
+    ] == ["optimize"]
+    assert prompts and "Legal ADVANCE targets" in prompts[0]
 
 
 def test_kernel_direct_vertical_has_no_process_completion_hook(
@@ -211,8 +377,14 @@ def test_kernel_direct_vertical_has_no_process_completion_hook(
     assert issues == ()
 
 
-def test_reviewer_certified_final_stage_skips_manager_model(
+@pytest.mark.parametrize(
+    ("manager_action", "expected_status"),
+    [("hold", "in_progress"), ("complete", "done")],
+)
+def test_final_stage_completion_requires_manager_decision(
     tmp_path,
+    manager_action: str,
+    expected_status: str,
 ) -> None:
     from argus_skill.manager import Manager
     from argus_skill.skills.stage_machine import completion_contract_fingerprint
@@ -241,14 +413,21 @@ def test_reviewer_certified_final_stage_skips_manager_model(
     })
     state_path.write_text(json.dumps(state), encoding="utf-8")
 
-    decision = Manager(project_root=tmp_path, runner=None).decide_stage_transition(
+    decision = Manager(project_root=tmp_path, runner=object()).decide_stage_transition(
         review=_review(),
         project_root=tmp_path,
         mission_scope="bounded",
-        run_exec=lambda _prompt: (_ for _ in ()).throw(
-            AssertionError("deterministic final completion must not call Manager")
+        run_exec=lambda _prompt: SimpleNamespace(
+            last_agent_message=json.dumps({
+                "action": manager_action,
+                "target_stage": "delivery",
+                "reason": "Manager assessed the operator objective",
+            })
         ),
     )
 
-    assert decision.action == "complete"
-    assert decision.source == "reviewer_certified_policy"
+    assert decision.action == manager_action
+    assert decision.source == "manager_llm"
+    assert json.loads(state_path.read_text())["stages"]["delivery"]["status"] == (
+        expected_status
+    )

@@ -22,6 +22,7 @@ from argus_skill.life.supervisor.backlog_guard import (
     DECISION_KEY,
     decision_evidence,
     describe_undecided,
+    ensure_manager_decision,
     needs_manager_decision,
     undecided_items,
 )
@@ -134,6 +135,50 @@ def test_an_empty_decision_yields_no_false_routing_mark() -> None:
     assert decision_evidence(None) == {}
 
 
+def test_guard_reuses_the_daemon_manager_instead_of_building_a_runner(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from argus_skill.life import MemoryBundle
+    from argus_skill.manager import front_door
+
+    mem = MemoryBundle.for_cwd(
+        tmp_path,
+        global_root=tmp_path / "root",
+        fingerprint="s-reuse-daemon-manager",
+    )
+    mem.init()
+    item = mem.backlog.add(_written_directly(objective="profile the hot path"))
+    calls: list[tuple[str, str | None]] = []
+
+    class Manager:
+        def decide_vertical(self, body: str, *, root_task_id: str | None = None):
+            calls.append((body, root_task_id))
+            return SimpleNamespace(
+                execution_task=f"managed: {body}",
+                vertical="software",
+                stage="implementation",
+                workflow_mode="staged",
+            )
+
+    def fail_if_built(*_args, **_kwargs):
+        raise AssertionError("the guard must reuse the daemon's Manager")
+
+    monkeypatch.setattr(front_door, "_ensure_manager_runner", fail_if_built)
+
+    routed = ensure_manager_decision(mem, item, manager=Manager())
+
+    assert calls == [("profile the hot path", item.id)]
+    assert routed.objective == "managed: profile the hot path"
+    assert routed.manager_decision == {
+        "vertical": "software",
+        "stage": "implementation",
+        "workflow_mode": "staged",
+        "routed": True,
+    }
+    assert needs_manager_decision(routed) is False
+
+
 # -- the wiring, which once went missing -----------------------------------
 
 def test_the_backlog_item_carries_the_field() -> None:
@@ -159,6 +204,8 @@ def test_the_supervisor_routes_before_executing() -> None:
     # Must happen after the claim and before the mission context is built,
     # or the run proceeds under the default workflow.
     assert claim_at < guard_at < context_at
+    assert "_bound_manager()" in source
+    assert "manager=manager" in source
 
 
 def test_status_reports_bypassed_items() -> None:

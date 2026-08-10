@@ -108,7 +108,8 @@ class _VerticalDecisionMixin:
                         skill_paths=[
                             str(path) for path in manager_libraries.native_paths
                         ],
-                        dangerous_yolo=True,
+                        sandbox_mode="read-only",
+                        dangerous_yolo=False,
                         skip_git_repo_check=True,
                     ),
                     run_label="manager-project-grounding",
@@ -234,8 +235,8 @@ class _VerticalDecisionMixin:
             build_vertical_decision_prompt,
         )
         from ..verticals._data_domain import (
-            data_domain_summaries,
-            list_data_domains,
+            list_all_data_domain_names,
+            list_formal_data_domain_purposes,
         )
         from .domain_author import (
             parse_fast_vertical_decision,
@@ -243,8 +244,18 @@ class _VerticalDecisionMixin:
         )
         from .stage_decider import extract_answer
 
-        existing = list_data_domains(self.project_root)
-        existing_summaries = data_domain_summaries(self.project_root)
+        existing = list_formal_data_domain_purposes(
+            self.project_root,
+            learned_root=self.learned_vertical_root,
+        )
+        existing_summaries = {
+            name: f"status=formal; {purpose}"
+            for name, purpose in existing.items()
+        }
+        all_domain_names = list_all_data_domain_names(
+            self.project_root,
+            learned_root=self.learned_vertical_root,
+        )
         contextual_task = (
             "[RECENT CONVERSATION CONTEXT" in task
             and "[CURRENT OPERATOR MESSAGE]" in task
@@ -328,7 +339,7 @@ class _VerticalDecisionMixin:
                     extract_answer(fast_result),
                     known_verticals=list(vertical_select.available_verticals()),
                     known_domains=list(BUILTIN_DOMAINS),
-                    existing_data_domains=existing,
+                    existing_data_domains=tuple(existing),
                     research_target_verticals=research_target_verticals,
                 )
                 if (
@@ -337,7 +348,15 @@ class _VerticalDecisionMixin:
                     and fast_route.confidence >= _manager_fast_route_min_confidence()
                 ):
                     from ..verticals._base import load_vertical_contract
+                    from ..verticals._data_domain import (
+                        materialize_learned_data_domain,
+                    )
 
+                    materialize_learned_data_domain(
+                        self.learned_vertical_root,
+                        self.project_root,
+                        fast_route.vertical,
+                    )
                     contract = load_vertical_contract(
                         fast_route.vertical,
                         project_root=self.project_root,
@@ -426,7 +445,7 @@ class _VerticalDecisionMixin:
             answer,
             known_verticals=list(vertical_select.available_verticals()),
             known_domains=list(BUILTIN_DOMAINS),
-            existing_data_domains=existing,
+            existing_data_domains=all_domain_names,
             research_target_verticals=research_target_verticals,
             default_execution_task="" if contextual_task else task.strip(),
         )
@@ -437,7 +456,13 @@ class _VerticalDecisionMixin:
             )
         if decision.choice == "existing":
             from ..verticals._base import load_vertical_contract
+            from ..verticals._data_domain import materialize_learned_data_domain
 
+            materialize_learned_data_domain(
+                self.learned_vertical_root,
+                self.project_root,
+                decision.vertical,
+            )
             contract = load_vertical_contract(
                 decision.vertical,
                 project_root=self.project_root,
@@ -604,6 +629,16 @@ class _VerticalDecisionMixin:
             self._apply_vertical_decision_rendering(decision)
             return division
         vertical = decision.vertical
+        from ..verticals._data_domain import (
+            load_data_domain,
+            materialize_learned_data_domain,
+        )
+
+        materialize_learned_data_domain(
+            self.learned_vertical_root,
+            self.project_root,
+            vertical,
+        )
         stages = self.plan_stages(vertical)
         pipeline_state = self.project_root / "research" / "PIPELINE_STATE.json"
         with _restore_files_on_error([pipeline_state]):
@@ -630,6 +665,15 @@ class _VerticalDecisionMixin:
             stages=stages,
             workflow_mode=decision.workflow_mode,
             execution_task=decision.execution_task,
+            learned_vertical_status=(
+                getattr(
+                    load_data_domain(vertical, self.project_root),
+                    "status",
+                    "",
+                )
+                if vertical not in vertical_select.VERTICALS
+                else ""
+            ),
         )
         self._apply_vertical_decision_rendering(decision)
         return division
@@ -693,6 +737,9 @@ class _VerticalDecisionMixin:
                 proposal.name,
                 stages=list(proposal.stages),
                 created_by="manager",
+                status="candidate",
+                purpose=task,
+                require_independent_review=True,
             )
             persist_vertical(
                 self.project_root,
@@ -714,4 +761,5 @@ class _VerticalDecisionMixin:
             ),
             workflow_mode=workflow_mode,
             pending_confirmation=False,
+            learned_vertical_status="candidate",
         )

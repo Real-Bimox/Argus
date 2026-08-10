@@ -89,6 +89,7 @@ def _front_door_classify(
     greeting_replies: list[str] = []
     steering_directives: list[str] = []
     authorization_decisions: list[tuple[str, ...]] = []
+    classifier_failures: list[str] = []
     chat_state.pop("_frontdoor_lifetime", None)
     chat_state.pop("_frontdoor_self_mode", None)
     chat_state.pop("_frontdoor_fast_reply", None)
@@ -125,7 +126,12 @@ def _front_door_classify(
             kwargs["authorization_sink"] = authorization_decisions.append
         if accepts(mgr.classify_front_door, "active_mission"):
             kwargs["active_mission"] = bool(active_mission)
-        decision = mgr.classify_front_door(text, **kwargs)
+        if accepts(mgr.classify_front_door, "failure_sink"):
+            kwargs["failure_sink"] = classifier_failures.append
+        model_text = str(
+            chat_state.get("_frontdoor_contextual_text") or text
+        )
+        decision = mgr.classify_front_door(model_text, **kwargs)
         if isinstance(decision, tuple) and len(decision) == 4:
             intent, control, route, suggested_name = decision
             if suggested_name:
@@ -136,21 +142,28 @@ def _front_door_classify(
             intent, route = decision
             control = None
         normalized_route = route if route in ("simple", "complex") else "complex"
+        if classifier_failures:
+            chat_state["_frontdoor_failure"] = classifier_failures[-1]
         if normalized_route == "simple":
-            self_mode = next(
-                (
-                    str(value).strip().lower()
-                    for value in self_mode_decisions
-                    if str(value).strip().lower() in {"reply", "inspect"}
-                ),
-                "inspect",
+            existing_thread = bool(chat_state.get("last_thread_id"))
+            self_mode = (
+                "inspect"
+                if existing_thread
+                else next(
+                    (
+                        str(value).strip().lower()
+                        for value in self_mode_decisions
+                        if str(value).strip().lower() in {"reply", "inspect"}
+                    ),
+                    "inspect",
+                )
             )
             chat_state["_frontdoor_self_mode"] = self_mode
             fast_reply = next(
                 (str(value).strip() for value in fast_replies if str(value).strip()),
                 "",
             )
-            if self_mode == "reply" and fast_reply:
+            if not existing_thread and self_mode == "reply" and fast_reply:
                 chat_state["_frontdoor_fast_reply"] = fast_reply
         if normalized_route == "complex":
             lifetime = next(

@@ -429,6 +429,7 @@ def test_stale_outbox_discard_resumes_planning_and_enqueues_recovery_task(
         ),
         planner_runner=planner_runner,
     )
+    sup._vertical_resolved = True
     monkeypatch.setattr(
         sup,
         "_open_ended_terminal_idle_signature",

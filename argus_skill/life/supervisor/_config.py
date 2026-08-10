@@ -166,11 +166,11 @@ class LifeSupervisorConfig:
     # False at this low level (honour project_done); the daemon/cockpit entry paths
     # default it True unless ``--bounded`` is passed.
     open_ended: bool = False
-    # Optional callback returning ``(enabled, objective)`` — the
+    # Optional callback returning ``(enabled, objective, open_ended)`` — the
     # supervisor calls it each iteration to hot-reload from disk or
     # elsewhere. When ``None``, the static ``continuous`` /
     # ``continuous_objective`` fields are used unchanged.
-    continuous_config_provider: Any = None  # Callable[[], tuple[bool, str]] | None
+    continuous_config_provider: Any = None
     # Optional mission-boundary yield signal. A live operator Manager request
     # uses this to make ``run()`` return before the next tick/planner cycle so
     # the host can release its outer pipeline lock and commit configuration.

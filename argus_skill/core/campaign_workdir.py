@@ -22,14 +22,33 @@ def campaign_workdir_path(state_root: Path | str) -> Path:
     return Path(state_root) / CAMPAIGN_WORKDIR_FILENAME
 
 
-def normalize_task_workdir(value: object) -> str:
+def normalize_task_workdir(
+    value: object,
+    *,
+    base_root: Path | str | None = None,
+) -> str:
     """Normalize a Planner-authored project-relative execution root."""
     raw = str(value or "").strip()
     if not raw or raw == ".":
         return ""
     candidate = Path(raw)
-    if candidate.is_absolute() or ".." in candidate.parts:
+    if candidate.is_absolute():
+        if base_root is None:
+            raise ValueError(
+                "TASK_WORKDIR must be a project-relative path without '..'"
+            )
+        base = Path(base_root).expanduser().resolve()
+        resolved = candidate.expanduser().resolve()
+        try:
+            candidate = resolved.relative_to(base)
+        except ValueError as exc:
+            raise ValueError(
+                "TASK_WORKDIR must be inside the active project"
+            ) from exc
+    if ".." in candidate.parts:
         raise ValueError("TASK_WORKDIR must be a project-relative path without '..'")
+    if candidate == Path("."):
+        return ""
     normalized = candidate.as_posix().strip("/")
     if not normalized:
         return ""
@@ -39,7 +58,7 @@ def normalize_task_workdir(value: object) -> str:
 def resolve_task_workdir(base_root: Path | str, value: object) -> Path:
     """Resolve a task root from *base_root*, allowing external symlink targets."""
     base = Path(base_root).expanduser().resolve(strict=True)
-    relative = normalize_task_workdir(value)
+    relative = normalize_task_workdir(value, base_root=base)
     try:
         target = base if not relative else (base / relative).resolve(strict=True)
     except OSError as exc:
@@ -113,7 +132,7 @@ def adopt_campaign_workdir(
     """Validate and persist a Planner-selected Git repository as campaign root."""
     base = Path(base_root).expanduser().resolve(strict=True)
     current = Path(current_root).expanduser().resolve(strict=True)
-    relative = normalize_task_workdir(requested)
+    relative = normalize_task_workdir(requested, base_root=base)
     # Persisted DAG nodes remain relative to the original session root even
     # after an earlier sibling has adopted another campaign repository.
     target = current if not relative else resolve_task_workdir(base, relative)

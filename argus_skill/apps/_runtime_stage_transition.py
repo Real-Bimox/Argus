@@ -33,7 +33,7 @@ class StageTransitionMixin:
     ) -> dict:
         """Hand this round's reviewer verdict to the Manager — the SOLE
         writer of the pipeline stage — and let it judge
-        advance / hold / rollback and write ``PIPELINE_STATE.json``.
+        advance / hold / rollback / complete and write ``PIPELINE_STATE.json``.
 
         Reviewer/planner only advise; the engineer no longer edits stage state.
         Fail-open: a stage decision must NEVER break a mission — any error

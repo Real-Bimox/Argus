@@ -681,6 +681,8 @@ def test_planner_waiting_records_external_dependency_status(tmp_path: Path) -> N
     sup.planner_runner = _PlannerRunner()
     sup.skill_store = None
     sup.runner = SimpleNamespace(stream_to=None)
+    sup.manager = None
+    sup._vertical_resolved = True
     sup.sink = None
     sup.reviewer_model = "gpt-5.5"
     sup._planning_cycles = 0

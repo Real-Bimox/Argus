@@ -239,3 +239,23 @@ def test_planner_context_refs_reject_project_escape(tmp_path: Path) -> None:
             }],
             tmp_path,
         )
+
+
+def test_planner_context_refs_normalize_local_absolute_and_drop_external(
+    tmp_path: Path,
+) -> None:
+    local = tmp_path / "notes.md"
+    local.write_text("grounded", encoding="utf-8")
+    external = tmp_path.parent / "external-handoff.json"
+    external.write_text("runtime", encoding="utf-8")
+
+    hydrated = hydrate_task_context_refs(
+        [
+            {"kind": "wiki", "ref": str(local), "why": "local grounding"},
+            {"kind": "handoff", "ref": str(external), "why": "runtime state"},
+        ],
+        tmp_path,
+        discard_external=True,
+    )
+
+    assert [ref["ref"] for ref in hydrated] == ["notes.md"]

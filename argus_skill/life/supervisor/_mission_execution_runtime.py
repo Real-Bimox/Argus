@@ -238,6 +238,20 @@ class MissionExecutionRuntimeMixin:
                 "prelude_context": state.prelude,
                 "scope": state.item_scope,
             }
+            review_lines = [item.objective]
+            acceptance_check = str(
+                getattr(item, "acceptance_check", "") or ""
+            ).strip()
+            if acceptance_check:
+                review_lines.append(f"Acceptance check: {acceptance_check}")
+            non_goals = [
+                str(value).strip()
+                for value in getattr(item, "non_goals", [])
+                if str(value).strip()
+            ]
+            if non_goals:
+                review_lines.append("Non-goals: " + "; ".join(non_goals))
+            review_objective = "\n".join(review_lines)
             original_objective = (
                 getattr(item, "original_objective", "") or item.objective
             )
@@ -318,6 +332,29 @@ class MissionExecutionRuntimeMixin:
                     public_repair + "\n\n---\n" + state.prelude
                     if state.prelude else public_repair
                 )
+            manager_decision = (
+                item.manager_decision
+                if isinstance(item.manager_decision, dict)
+                else {}
+            )
+            execution_vertical = str(
+                manager_decision.get("vertical") or ""
+            ).strip()
+            if execution_vertical:
+                from ...skills.vertical_select import require_vertical
+                from ...verticals._data_domain import (
+                    materialize_learned_data_domain,
+                )
+
+                materialize_learned_data_domain(
+                    self._budget_global_root(),
+                    state.execution_workdir,
+                    execution_vertical,
+                )
+                try:
+                    require_vertical(execution_vertical, state.execution_workdir)
+                except LookupError:
+                    execution_vertical = ""
             try:
                 from inspect import Parameter, signature
 
@@ -327,6 +364,8 @@ class MissionExecutionRuntimeMixin:
                 )
                 if "original_objective" in params or _accepts_kw:
                     execute_kwargs["original_objective"] = original_objective
+                if "review_objective" in params or _accepts_kw:
+                    execute_kwargs["review_objective"] = review_objective
                 if "preplanned" in params or _accepts_kw:
                     execute_kwargs["preplanned"] = any(
                         str(tag).strip().lower() == "planner"
@@ -367,15 +406,7 @@ class MissionExecutionRuntimeMixin:
                         "skill_changes:allowed" in state.item_tags
                     )
                 if "vertical_override" in params or _accepts_kw:
-                    manager_decision = (
-                        item.manager_decision
-                        if maintenance_mission
-                        and isinstance(item.manager_decision, dict)
-                        else {}
-                    )
-                    execute_kwargs["vertical_override"] = str(
-                        manager_decision.get("vertical") or ""
-                    ).strip()
+                    execute_kwargs["vertical_override"] = execution_vertical
                 if state.repair_capability is not None:
                     if "max_rounds_override" in params or _accepts_kw:
                         execute_kwargs["max_rounds_override"] = 1
@@ -398,15 +429,7 @@ class MissionExecutionRuntimeMixin:
                 execute_kwargs["context_packet_path"] = (
                     str(state.context_packet_path) if state.context_packet_path else ""
                 )
-                manager_decision = (
-                    item.manager_decision
-                    if "framework_maintenance" in state.item_tags
-                    and isinstance(item.manager_decision, dict)
-                    else {}
-                )
-                execute_kwargs["vertical_override"] = str(
-                    manager_decision.get("vertical") or ""
-                ).strip()
+                execute_kwargs["vertical_override"] = execution_vertical
                 if state.repair_capability is not None:
                     execute_kwargs["max_rounds_override"] = 1
                     execute_kwargs["workflow_mode_override"] = "direct"

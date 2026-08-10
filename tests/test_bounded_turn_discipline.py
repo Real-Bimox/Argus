@@ -31,17 +31,16 @@ def _prompt(task: str, *, paper_mission: bool = False) -> str:
     )
 
 
-def test_bounded_turn_discipline_present_for_paper_mission():
+def test_checkpoint_handoff_discipline_present_for_paper_mission():
     out = _prompt(
         "Work the benchmark stage of the EMNLP paper: build the dataset "
         "evidence package and resolve all readiness blockers.",
         paper_mission=True,
     )
     assert "## This turn" in out
-    # Must tell the engineer to stop after a bounded increment and yield.
-    assert "yield" in out.lower()
-    assert "one coherent, verifiable increment" in out.lower()
     assert "pure reading" in out.lower()
+    assert "CHECKPOINT.md is the only role-maintained cross-round handoff file" in out
+    assert "one coherent, verifiable increment" not in out
 
 
 def test_turn_discipline_present_even_for_nonpaper_task():
@@ -79,17 +78,17 @@ def test_engineer_must_not_spawn_a_subagent_to_impersonate_reviewer():
     )
 
     assert "reviewer subagent" in out.lower()
-    assert "fresh reviewer" in out.lower()
+    assert "host invokes reviewer only when required" in out.lower()
     assert "yield" in out.lower()
 
 
-def test_engineer_does_not_treat_empty_git_diff_as_untracked_evidence():
-    out = _prompt("Update an untracked research report and verify it.")
+def test_engineer_does_not_create_extra_handoff_packets():
+    out = _prompt("Continue the implementation across rounds.")
 
-    assert "git ls-files --error-unmatch" in out
-    assert "untracked" in out.lower()
-    assert "verify their direct content" in out.lower()
-    assert "hashes" not in out.lower()
+    assert "only role-maintained cross-round handoff file" in out
+    assert "do not create handoff or evidence packets" in out
+    assert "compile/type-check" not in out
+    assert "git ls-files --error-unmatch" not in out
 
 
 def test_engineer_fixed_prompt_stays_token_efficient():

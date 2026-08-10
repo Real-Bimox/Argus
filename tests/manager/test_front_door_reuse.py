@@ -12,10 +12,14 @@ class _Manager:
         route: str,
         lifetime: str = "standing",
         self_mode: str = "inspect",
+        reply: str = "",
+        failure: str = "",
     ) -> None:
         self.route = route
         self.lifetime = lifetime
         self.self_mode = self_mode
+        self.reply = reply
+        self.failure = failure
 
     def classify_front_door(
         self,
@@ -23,13 +27,19 @@ class _Manager:
         *,
         lifetime_sink=None,
         self_mode_sink=None,
+        reply_sink=None,
         greeting_sink=None,
         name_sink=None,
+        failure_sink=None,
     ):
+        if self.failure and failure_sink is not None:
+            failure_sink(self.failure)
         if self.route == "complex" and lifetime_sink is not None:
             lifetime_sink(self.lifetime)
         if self.route == "simple" and self_mode_sink is not None:
             self_mode_sink(self.self_mode)
+        if self.route == "simple" and reply_sink is not None and self.reply:
+            reply_sink(self.reply)
         if self.route == "simple" and greeting_sink is not None:
             greeting_sink("你好，我是 Argus Manager。")
         if name_sink is not None:
@@ -103,6 +113,27 @@ def test_front_door_wrapper_carries_one_turn_greeting_reply() -> None:
     assert "_frontdoor_fast_reply" not in state
 
 
+def test_existing_manager_thread_disables_context_free_fast_reply() -> None:
+    state: dict = {"last_thread_id": "manager-thread-1"}
+
+    decision = _front_door_classify(
+        object(),
+        "我选 B，先讲直觉",
+        state,
+        ensure_runner=lambda *_args: SimpleNamespace(
+            manager=_Manager(
+                route="simple",
+                self_mode="reply",
+                reply="context-free answer",
+            )
+        ),
+    )
+
+    assert decision == (None, None, "simple")
+    assert state["_frontdoor_self_mode"] == "inspect"
+    assert "_frontdoor_fast_reply" not in state
+
+
 def test_front_door_wrapper_marks_classifier_unavailable() -> None:
     state: dict = {}
 
@@ -115,3 +146,22 @@ def test_front_door_wrapper_marks_classifier_unavailable() -> None:
 
     assert decision == (None, None, "complex")
     assert state["_frontdoor_failure"] == "classifier unavailable"
+
+
+def test_front_door_wrapper_marks_model_classification_failure() -> None:
+    state: dict = {}
+
+    decision = _front_door_classify(
+        object(),
+        "summarize this paper",
+        state,
+        ensure_runner=lambda *_args: SimpleNamespace(
+            manager=_Manager(
+                route="complex",
+                failure="classifier returned no valid route",
+            )
+        ),
+    )
+
+    assert decision == (None, None, "complex")
+    assert state["_frontdoor_failure"] == "classifier returned no valid route"

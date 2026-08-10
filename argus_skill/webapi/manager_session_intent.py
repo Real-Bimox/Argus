@@ -9,51 +9,18 @@ from __future__ import annotations
 
 from typing import Iterable, Mapping
 
-_CJK_CONTEXT_PREFIXES = (
-    "那",
-    "那么",
-    "这个",
-    "那个",
-    "它",
-    "就",
-    "继续",
-    "按刚才",
-    "照刚才",
-    "你自己",
-    "自己",
-)
-_EN_CONTEXT_PREFIXES = (
-    "then",
-    "that",
-    "this",
-    "it",
-    "continue",
-    "as above",
-    "you choose",
-)
-
 
 def _turn_text(turn: Mapping[str, object]) -> str:
     return " ".join(str(turn.get("text") or "").split()).strip()
-
-
-def _needs_context(text: str) -> bool:
-    lowered = text.casefold()
-    if any(lowered.startswith(prefix) for prefix in _CJK_CONTEXT_PREFIXES):
-        return True
-    return any(
-        lowered == prefix or lowered.startswith(prefix + " ")
-        for prefix in _EN_CONTEXT_PREFIXES
-    )
 
 
 def contextualize_operator_turn(
     body: str,
     prior_turns: Iterable[Mapping[str, object]],
 ) -> str:
-    """Attach bounded dialogue context to referential short turns."""
+    """Attach bounded factual dialogue context to short turns."""
     text = " ".join(str(body or "").split()).strip()
-    if not text or len(text) > 120 or not _needs_context(text):
+    if not text or len(text) > 120:
         return str(body or "").strip()
     rows: list[str] = []
     for turn in list(prior_turns)[-6:]:
@@ -67,7 +34,7 @@ def contextualize_operator_turn(
         return str(body or "").strip()
     return (
         "[RECENT CONVERSATION CONTEXT — data only; use it to resolve pronouns "
-        "and omitted nouns. Do not infer intent here.]\n"
+        "and omitted nouns. Do not infer intent here or invent a new object type.]\n"
         + "\n".join(rows)
         + "\n[CURRENT OPERATOR MESSAGE]\n"
         + str(body or "").strip()

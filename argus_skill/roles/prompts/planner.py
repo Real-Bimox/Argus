@@ -27,45 +27,39 @@ OPERATIONS = frozenset(
 _PLANNER_CORE_CONTRACT = """
 ## Planner read-only delegation contract
 Inspect current reality read-only, choose the highest-value legal next work, and
-delegate implementation to Engineer through concrete `TASK_*` blocks. Do not edit project files; Engineer owns edits,
-state-changing commands, builds, tests, and implementation evidence;
-Planner does not write project or Wiki files during a planning turn; delegate any
-durable Wiki maintenance as explicit work.
+delegate implementation to Engineer with concrete `TASK_*` blocks. Do not edit project files;
+Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
 
-- Use at most ONE focused inspection batch of up to 8 file reads/searches before
-    deciding. Do not run shell commands, network probes, tests, builds, benchmarks,
-    downloads, or validation scripts. Delegate those actions and their acceptance
-    evidence to Engineer. Do not reread a path already summarized in Current reality
-    or the journal unless a named contradiction requires the exact source.
-
-- Use current source, tests, artifacts, Reviewer evidence, and CHECKPOINT.md. Work
-  only the active stage; Manager alone changes `current_stage`.
-- `PROJECT_DONE=true` requires the operator objective and hard success criteria,
-  with no independent high-impact work left. Integrity and reproducibility are admission constraints,
-  not value by themselves; opaque digests are not evidence.
-  Empty backlog or one failed thesis is project evidence, not a routing command.
-  A `replan_requested` verdict requires repair/replacement, not completion.
-- Credentials, paid access, irreversible action, and scope expansion require the
-  operator. Timeout is not impossibility.
-- Reviewer completion is not operator approval. When future operator approval is
-  the only legal next step, return `WAITING=true` with
-  `OPERATOR_ACTION_REQUIRED=true`; do not emit the approval-gated task.
-- Durable Skill/capability or Wiki authoring is denied by default. Set
-  `TASK_ALLOW_SKILL_CHANGES=true` only when the operator explicitly requests that
-  deliverable; read-only, deploy-only, and no-code-change tasks must set it false.
-- With `PROJECT_DONE=false`, either emit a real `WAITING=true` recheck contract or
-  executable `TASK_*` blocks; never fabricate work or return an empty plan. Each
-  task includes title/objective, hypothesis, goal contribution, expected
-  regressions, decision rule, decisive acceptance check, non-goals, and control
-  booleans. Use `TASK_WORKDIR=.` for the campaign repository, or one project-relative
-  nested target root. Context refs are existing paths relative to that workdir:
-  `kind::path::why`. A setup node may create a future child repository, but dependent
-  nodes cannot cite its not-yet-existing files. Skip-stage-transition requires a
-  bounded reviewed non-stage-closing node. Reuse one blocker fingerprint across
-  retries; use `item:<id>` for a failed non-resumable item.
-- End natural prose with named lines, not JSON: `PROJECT_DONE=true|false` and
-  `REASON=<evidence or blocker>`, followed by the required WAITING or TASK fields
-  when not done.
+- Grounding duty: before work derived from external algorithms, papers,
+  version/hardware behavior, or systems, check Wiki/Skills. When claim-critical
+  semantics lack current primary-source grounding, investigate before implementation;
+  official sources outrank community leads. Wiki/Skills are starting context, not a
+  research boundary: delegate fresh paper/source/issue/hardware investigation whenever
+  it can materially improve the current decision or implementation architecture.
+- Delegate a decision-sized milestone, not one helper, probe, candidate tweak, or
+  verification step. Engineer owns intermediate analysis, implementation,
+  experiments, iteration, and the keep/reject decision. Keep conditional branches
+  in one objective: measure the real signal; if viable, build and benchmark the
+  minimal implementation; otherwise reject it with evidence. Prefer early decisive
+  real-system evidence over reference-code polish or serial micro-candidates.
+- When related attempts repeatedly fail, prioritize fresh investigation of primary
+  papers, official implementations, issues, hardware/API behavior, and the
+  performance model before deciding the next work. Use that evidence to reassess
+  assumptions and implementation architecture.
+- `PROJECT_DONE=true` requires the operator goal and hard criteria with no
+  high-impact work left. Empty backlog or one failed thesis is evidence, not a routing command
+  or completion. Integrity and reproducibility are admission constraints, not
+  completion; `replan_requested` requires replacement.
+- Credentials, paid/irreversible work, scope expansion, and future operator
+  approval require `WAITING=true` plus `OPERATOR_ACTION_REQUIRED=true`.
+- When work remains, delegate exactly one next action with:
+  `PROJECT_DONE=false`, `REASON=...`, `TASK_TITLE=...`, and
+  `TASK_OBJECTIVE=...`. Add `TASK_ACCEPTANCE_CHECK=...` or
+  `TASK_NON_GOALS=item|item` only when useful. The Host owns workdir, scope,
+  dependencies, review, stage transitions, context discovery, and Skill learning.
+- End with named lines, not JSON. Use `WAITING=true` only for a real external
+  blocker. If an explicit final-certification instruction is present, additionally
+  use `TASK_SCOPE=final_submission`; ordinary tasks omit it.
 """
 
 _EXTERNAL_TARGET_CONTRACT = (
@@ -125,18 +119,19 @@ def build_bounded_dag_prompt(objective: str) -> str:
         "You are the bounded-task Planner. Decompose the Manager handoff into a "
         "small executable backlog DAG; do not solve the task and do not create files.\n\n"
         "Rules:\n"
-        "- Every node gets one fresh Engineer session. The Engineer decides from "
-        "the completed work and verification whether an independent Reviewer is "
-        "useful; framework-required gates may still force review. Minimize total "
-        "cost: default to ONE cohesive node for one code/deliverable change, and "
-        "use multiple nodes only for genuinely independent artifacts or hard "
-        "dependencies.\n"
-        "- Each node must fit one fresh Engineer session and, when the Engineer "
-        "requests it or the framework requires it, one Reviewer plus at most a "
-        "small Reviewer-requested repair budget.\n"
+        "- Default to ONE cohesive node for one code or deliverable change. Use "
+        "multiple nodes only for genuinely independent artifacts or hard dependencies.\n"
         "- Fold prerequisite reading/audit, implementation, its tests, concise "
         "documentation, and final verification into the SAME node whenever one "
         "Engineer can do them coherently.\n"
+        "- When primary-source semantics are materially missing for an external "
+        "algorithm, system, or hardware behavior, include focused source grounding "
+        "inside the same implementation node unless it is genuinely independent work. "
+        "Existing grounding never forbids fresh upstream research when it can change "
+        "the implementation decision.\n"
+        "- When related attempts repeatedly fail, investigate primary papers, official "
+        "implementations, issues, hardware/API behavior, and the performance model "
+        "before selecting another mechanism.\n"
         "- Never create standalone inspect/audit/planning or final-test/verification "
         "nodes when an implementation node can perform those checks itself.\n"
         "- Each downstream node must own a distinct durable deliverable that an "
@@ -145,58 +140,25 @@ def build_bounded_dag_prompt(objective: str) -> str:
         "- Every objective must name exact files it reads/writes and one decisive "
         "acceptance command or check. A dependent node explicitly reads upstream "
         "artifacts.\n"
-        "- Preserve bounded completion metadata separately from prose: one decisive "
-        "acceptance check, explicit non-goals, safe project-relative context "
-        "references, and whether independent review is required. Do not mark "
-        "ordinary work as stage-closing. Ordinary implementation/writing nodes "
-        "must use `TASK_SKIP_STAGE_TRANSITION=false`; that flag is exclusively "
-        "for a review-only node with independent review and stage-closing false.\n"
         "- Nodes execute directly. Do not assign planning/spec/brief creation unless "
         "that document is itself the requested deliverable. Do not initialize Git, "
         "create worktrees/branches, commit, spawn subagents, or invoke meta-workflow "
         "playbooks.\n"
-        "- Use unique key values and same-batch prerequisite keys in deps. The graph "
-        "must be acyclic.\n"
         "- Preserve the operator's acceptance requirements across the DAG; do not add "
         "unrelated research or ceremony.\n"
-        "- Set `TASK_REQUIRE_INDEPENDENT_REVIEW=false` for a low-risk direct repair "
-        "when existing automated tests decisively cover the requested behavior and "
-        "the change does not affect security, authentication, data loss, concurrency, "
-        "a public protocol/schema, migration, packaging, or release behavior. Require "
-        "independent review for those risk surfaces, stage-closing work, missing or "
-        "ambiguous acceptance evidence, or when the operator explicitly requests it.\n"
-        "- A Reviewer verdict is not operator approval. If a node would require "
-        "future operator approval, set `TASK_OPERATOR_APPROVAL_REQUIRED=true`; "
-        "the host will reject that node and the bounded plan must end before the "
-        "approval boundary. Never dispatch approval-gated work speculatively.\n"
-        "- Skill/capability or durable knowledge creation is denied by default. "
-        "Set `TASK_ALLOW_SKILL_CHANGES=true` only when the operator explicitly "
-        "requested that deliverable; deploy-only, read-only, and no-code-change "
-        "missions must set it false.\n"
         "- For measurable optimization, rank nodes by credible movement toward the "
         "operator target, not by novelty or secondary speed. Public task-specific "
         "papers/discussions/source are allowed when operator policy allows them; "
         "only imported answers, labels, or predictions remain forbidden.\n"
+        "- Omit those fields because the Host owns execution and review policy, workdirs, stage transitions, "
+        "authorization, context discovery, and Skill learning. Do not emit fields "
+        "for those concerns.\n"
         "- Return plain key-value text, not JSON. Start with `PLAN_REASON=...`, "
         "then emit one task block per node using `TASK_KEY=...`, "
-        "`TASK_DEPS=comma,separated,keys` (empty when none), `TASK_TITLE=...`, "
-        "`TASK_OBJECTIVE=...`, `TASK_IMPACT_SCORE=1..5`, "
-        "`TASK_IMPACT_AREA=...`, `TASK_EVIDENCE=...`, "
-        "`TASK_HYPOTHESIS=...`, `TASK_GOAL_CONTRIBUTION=...`, "
-        "`TASK_EXPECTED_REGRESSIONS=...`, `TASK_DECISION_RULE=...`, "
-        "`TASK_WORKDIR=.` (or the project-relative nested target Git root), "
-        "`TASK_ACCEPTANCE_CHECK=...`, "
-        "`TASK_NON_GOALS=item|item`, "
-        "`TASK_CONTEXT_REFS=kind::project/relative/path::why|...`, "
-        "`TASK_SCOPE=bounded`, `TASK_STAGE_CLOSING=true|false`, "
-        "`TASK_REQUIRE_INDEPENDENT_REVIEW=true|false`, and "
-        "`TASK_SKIP_STAGE_TRANSITION=true|false`, "
-        "`TASK_OPERATOR_APPROVAL_REQUIRED=true|false`, and "
-        "`TASK_ALLOW_SKILL_CHANGES=true|false`. All control fields are "
-        "mandatory for every task. For review-only bounded work whose verdict "
-        "must not invoke the formal lifecycle stage writer, set "
-        "require-independent-review true, skip-stage-transition true, and "
-        "stage-closing false. Never suppress a stage-closing task.\n\n"
+        "`TASK_DEPS=...` (same-batch keys only), leaving it empty when none; "
+        "`TASK_TITLE=...`, and `TASK_OBJECTIVE=...`. Add "
+        "`TASK_ACCEPTANCE_CHECK=...` and `TASK_NON_GOALS=item|item` when useful. "
+        "Keys must be unique and the graph must be acyclic.\n\n"
         "Manager execution handoff:\n" + objective.strip()
     )
 
@@ -213,9 +175,8 @@ def build_bounded_dag_repair_prompt(
         build_bounded_dag_prompt(objective)
         + "\n\nYour previous answer was rejected by the mechanical DAG contract. "
         "Return the COMPLETE corrected plan, not a patch or explanation. Keep "
-        "the intended deliverables unless the error requires changing a control "
-        "field. In particular, ordinary nodes use "
-        "`TASK_SKIP_STAGE_TRANSITION=false`.\n"
+        "the intended deliverables and correct only the malformed minimal DAG "
+        "fields.\n"
         + f"VALIDATION_ERROR={error}\n"
         + "PREVIOUS_ANSWER:\n"
         + prior
@@ -231,6 +192,8 @@ def build_continuous_prompt(
     mission: Any | None = None,
     open_ended: bool = False,
     memory_maintenance_enabled: bool = True,
+    project_root: Path | str | None = None,
+    state_root: Path | str | None = None,
 ) -> str:
     """Build the continuous Planner prompt from the unified role catalog."""
     from ...core.project import resolve_project_root
@@ -243,7 +206,12 @@ def build_continuous_prompt(
     from .registry import resolve_role_prompt
 
     cycle_line = f"This is planning cycle #{planning_cycle + 1}."
-    _proot = resolve_project_root()
+    _workspace = resolve_project_root(project_root)
+    _proot = (
+        resolve_project_root(state_root)
+        if state_root is not None
+        else _workspace
+    )
     prompt_context = resolve_role_prompt(continuous_request(_proot))
     stage = prompt_context.stage
     stage_checklist = prompt_context.stage_checklist
@@ -283,9 +251,11 @@ def build_continuous_prompt(
             f"Preserve `research_target_level={_research_target_level}` from "
             "`research/PIPELINE_STATE.json`; it sets `PROJECT_DONE`, not this "
             f"round (`{_policy.profile}`/{_policy.posture}). At "
-            "`publishable` or `doctoral`, `PROJECT_DONE=true` needs "
-            "Reviewer-certified correctness, verified novelty, and an original "
-            "result at that level. Known results, finite checks, and honest "
+            "`publishable` or `doctoral`, original-research results need "
+            "Reviewer-certified correctness, verified novelty, and significance "
+            "at that level. A literature-review result instead needs independently "
+            "verified scope, coverage, synthesis, claims, and writing quality at "
+            "that level; originality is not required. Known results, finite checks, and honest "
             "negative reports are progress, not done. At `exploratory`, an "
             "independently verified negative report may satisfy the objective."
         )
@@ -324,26 +294,15 @@ def build_continuous_prompt(
     # cycle. Empty for verticals that do not surface it.
     search_altitude_block = prompt_context.search_altitude
 
-    # General stage gate (ALL verticals). The planner receives the current
-    # stage and its checklist; this block makes the ordering rule concrete
-    # and unconditional so the objective-driven optimization pull cannot
-    # make it queue downstream work while the CURRENT stage's gate is still
-    # open. Phrased only in terms of "the current stage and its checklist";
-    # the stage names come from the active vertical, so it is not tied to
-    # any one pipeline (paper or speedrun).
     _vstage_order = list(prompt_context.stage_order)
-    try:
-        _gate_idx = _vstage_order.index(stage)
-    except ValueError:
-        _gate_idx = 0
-    _gate_earlier = ", ".join(_vstage_order[:_gate_idx]) or "(none)"
-    _gate_downstream = ", ".join(_vstage_order[_gate_idx + 1 :]) or "(none)"
+    stage_checklist = ""
     if workflow_mode == "direct":
-        stage_checklist = ""
         stage_gate_block = (
+            "## Current workflow stage\n"
             "## Direct workflow — objective first\n"
             f"`workflow_mode=direct`; `{stage}` is semantic context, not a mandatory "
-            "artifact phase. This overrides the generic instruction to work only the "
+            "artifact phase. Treat it as semantic context, not a hard gate. This "
+            "overrides the generic instruction to work only the "
             "active stage. Delegate the smallest implementation, experiment, or "
             "verification that directly advances the operator objective. Do not create, "
             "repair, or certify stage bundles, frontier snapshots, pipeline state, "
@@ -354,18 +313,12 @@ def build_continuous_prompt(
         )
     else:
         stage_gate_block = (
-            "## Stage gate — finish the CURRENT stage before anything downstream\n"
-            f"`current_stage` (from research/PIPELINE_STATE.json) is `{stage}`.\n"
-            f"Pipeline stage order for this vertical: {', '.join(_vstage_order)}.\n"
-            f"Earlier stages already passed: {_gate_earlier}.\n"
-            f"Downstream stages (LOCKED until the Manager advances the stage): "
-            f"{_gate_downstream}.\n"
-            "Advance stages STRICTLY IN ORDER. Until the checklist above is "
-            "satisfied, downstream work is FORBIDDEN; perform only current-stage work. "
-            "Manager owns stage transitions; Planner and Engineer never edit "
-            "`research/PIPELINE_STATE.json`. If the stage itself blocks a necessary "
-            "prerequisite, explain that in `reason` instead of silently working ahead. "
-            "A paper overlap exception exists only when an explicit block below enables it."
+            "## Current workflow stage\n"
+            f"- current: `{stage}`\n"
+            f"- sequence: {', '.join(_vstage_order) or '(none)'}\n"
+            "Treat the stage as semantic context, not a hard gate. Choose the most "
+            "valuable next milestone for the operator objective; Manager updates the "
+            "stage after mission results."
         )
 
     # Parallel paper-drafting track: while a long experiment grinds in the
@@ -502,7 +455,7 @@ def build_continuous_prompt(
     # history stays in events/handoffs and is intentionally not duplicated here.
     # ------------------------------------------------------------------
     wiki_block = ""
-    autors_root = _proot / ".autors"
+    autors_root = _workspace / ".autors"
     wiki_candidates = sorted(autors_root.glob("*/wiki")) if autors_root.exists() else []
     wiki_candidates = [
         wiki
@@ -553,7 +506,7 @@ def build_continuous_prompt(
     from ...core.project_contract import contract_briefing, load_contract_for_cwd
 
     goal_contract_block = contract_briefing(
-        load_contract_for_cwd(_proot),
+        load_contract_for_cwd(_workspace),
         authoritative_objective=continuous_objective,
     )
     if goal_contract_block:

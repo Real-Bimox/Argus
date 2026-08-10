@@ -293,7 +293,7 @@ class PlanningCycleMixin(
             "trigger": "reviewed_stage_empty_plan_reconciliation",
             "recovered_item_id": item.id,
         })
-        if decision.source in {"manager_llm", "reviewer_certified_policy"}:
+        if decision.source == "manager_llm":
             outcome = dict(item.outcome)
             outcome["stage_certification"] = {
                 "advance": "certified",
@@ -566,85 +566,86 @@ class PlanningCycleMixin(
         )
         return "rollback"
 
-    def _resolve_vertical_once(self) -> None:
-        """DECIDE + persist the active vertical exactly once per mission, BEFORE
-        any gate/stage read (``resolve_vertical``) runs.
-
-        Precedence:
-        * An already-persisted vertical is TRUSTED as-is (sticky across daemon
-          restarts; a chosen per-task vertical stays chosen).
-        * Otherwise, when a continuous objective is set, the MANAGER AGENT
-          decides it (``Manager.divide`` — one grounded call, no keyword
-          classifier) and persists it (autonomously authoring a new data domain
-          when no built-in fits).
-
-        FAIL-HARD: an undecidable vertical, a missing backend, or a corrupt
-        ``PIPELINE_STATE.json`` PROPAGATES — a mission that cannot determine its
-        vertical must fail loudly, not silently run the research pipeline.
-        """
+    def _resolve_vertical_once(self) -> dict[str, Any]:
+        """Let Manager select the vertical once for the next mission."""
         if getattr(self, "_vertical_resolved", False):
-            return
-        # Flip the guard immediately so this decision runs exactly once.
+            return {}
         self._vertical_resolved = True
 
         from ...skills import vertical_select as _vsel
 
         artifact_root = self._artifact_root()
-        persisted = _vsel._persisted_vertical(artifact_root)
-        if persisted is not None:
-            from ...core.research_contract import resolve_research_target_level
-            from ...verticals._base import (
-                load_vertical,
-                vertical_research_target_levels,
-            )
-
-            supported_levels = vertical_research_target_levels(
-                load_vertical(persisted, project_root=artifact_root)
-            )
-            target_missing = (
-                bool(supported_levels)
-                and resolve_research_target_level(artifact_root) is None
-            )
-            if target_missing and self.config.continuous_objective:
-                # Legacy research campaigns predate the target field. At this clean
-                # planning boundary, ask the Manager once and persist its judgment;
-                # never infer the target from objective keywords.
-                mgr = self._bound_manager()
-                target = mgr._decide_research_target(
-                    self.config.continuous_objective,
-                    root_task_id=None,
-                    supported_levels=supported_levels,
-                )
-                _vsel.persist_vertical(
-                    artifact_root,
-                    persisted,
-                    research_target_level=target,
-                )
+        if not self.config.continuous_objective:
+            persisted = _vsel._persisted_vertical(artifact_root)
+            if persisted is None:
+                return {}
             self._emit({
                 "type": "life.vertical.resolved",
                 "vertical": persisted,
-                "profile_hint": (
-                    "persisted-target-restored" if target_missing else "persisted"
-                ),
+                "profile_hint": "persisted",
                 "agent_layer": "planner",
             })
-            return
-
-        if not self.config.continuous_objective:
-            return
+            return {"vertical": persisted}
 
         mgr = self._bound_manager()
-        division = mgr.divide(self.config.continuous_objective)
+        from ...manager.directive import active_manager_directive_message
+
+        directive = active_manager_directive_message(artifact_root)
+        selection_objective = "\n\n".join(
+            part
+            for part in (
+                self.config.continuous_objective,
+                directive,
+            )
+            if str(part or "").strip()
+        )
+        decision = mgr.decide_vertical(selection_objective)
+        from ...skills.vertical_select import _persisted_vertical
+
+        prior_vertical = _persisted_vertical(artifact_root)
+        try:
+            current_stage = str(mgr.current_stage() or "")
+            selected_stages = list(mgr.plan_stages(decision.vertical))
+        except Exception:  # noqa: BLE001 - commit remains the authority boundary
+            current_stage = ""
+            selected_stages = []
+        reset_stage = bool(
+            prior_vertical != decision.vertical
+            or (
+                current_stage
+                and selected_stages
+                and current_stage not in selected_stages
+            )
+        )
+        division = mgr.commit_vertical_decision(
+            self.config.continuous_objective,
+            decision,
+            ask_on_new_domain=False,
+            force_stage_reset=reset_stage,
+            _lock_held=True,
+        )
+        intent = {
+            "vertical": str(getattr(division, "vertical", "") or ""),
+            "domain": str(getattr(division, "domain", "") or ""),
+            "kind": str(getattr(division, "kind", "") or ""),
+            "workflow_mode": str(getattr(division, "workflow_mode", "") or ""),
+            "learned_vertical_status": str(
+                getattr(division, "learned_vertical_status", "") or ""
+            ),
+            "stages": list(getattr(division, "stages", ()) or ()),
+        }
+        intent = {key: value for key, value in intent.items() if value}
+        try:
+            intent["current_stage"] = str(mgr.current_stage() or "")
+        except Exception:  # noqa: BLE001 - stage is prompt context only
+            pass
         self._emit({
             "type": "life.vertical.resolved",
             "vertical": division.vertical,
-            "profile_hint": "manager",
+            "profile_hint": "manager-per-mission",
             "agent_layer": "planner",
         })
-        log.info(
-            "life supervisor: resolved vertical = %s (manager-decided)",
-            division.vertical,
-        )
+        return intent
 
     def _plan_next_work(
         self,
@@ -669,7 +670,6 @@ class PlanningCycleMixin(
         for phase in (
             self._pc_intake_gate,
             self._pc_preflight_shortcircuits,
-            self._pc_prepare_direct_stage_task,
             self._pc_invoke_planner,
             self._pc_normalize_verdict,
             self._pc_handle_waiting,

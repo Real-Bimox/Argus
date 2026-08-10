@@ -66,14 +66,26 @@ class RoundPromptMixin:
                 "approval again. Read the canonical checkpoint and latest reviewed "
                 "handoff below first."
             )
+        checkpoint_has_state = False
+        if round_index == 1 and checkpoint_path is not None:
+            try:
+                checkpoint_has_state = bool(
+                    checkpoint_path.read_text(encoding="utf-8").strip()
+                )
+            except OSError:
+                checkpoint_has_state = False
         checkpoint_block = "\n\n".join(
             block
             for block in (
                 role_session.prompt_block(),
                 rotation_block,
-                shared_checkpoint_instructions(
-                    checkpoint_path,
-                    role="engineer",
+                (
+                    shared_checkpoint_instructions(
+                        checkpoint_path,
+                        role="engineer",
+                    )
+                    if round_index > 1 or checkpoint_has_state
+                    else ""
                 ),
             )
             if block

@@ -55,6 +55,25 @@ def test_legacy_json_verdict_still_parses_for_inflight_sessions() -> None:
     assert decision.operator_question == "Which route?"
 
 
+def test_named_reviewer_verdict_parses_research_result_contract() -> None:
+    decision = parse_decision_text(
+        "STATUS=done\n"
+        "REASON=The literature synthesis is supported by the cited sources.\n"
+        "NEXT_ACTION=\n"
+        "RESEARCH_RESULT={\"result_class\":\"literature_review\","
+        "\"correctness_status\":\"verified\",\"novelty_status\":\"known\","
+        "\"significance_status\":\"publishable\","
+        "\"statement_fidelity_status\":\"verified\","
+        "\"evidence\":[\"source audit\"],\"limitations\":[]}\n"
+        "FORWARD_PROGRESS=true\n"
+    )
+
+    assert decision is not None
+    assert decision.research_result is not None
+    assert decision.research_result["result_class"] == "literature_review"
+    assert decision.research_result["significance_status"] == "publishable"
+
+
 def test_retired_reviewer_output_schema_assets_are_absent() -> None:
     package = Path(reviewer_core.__file__).resolve().parent
     assert list(package.glob("reviewer*_schema.json")) == []

@@ -71,7 +71,9 @@ def test_short_turn_is_supplied_to_classification_and_dispatch(
     seen: dict[str, str] = {}
 
     def classify(_mem, text, chat_state, **_kwargs):
-        seen["classify"] = text
+        seen["classify"] = str(
+            chat_state.get("_frontdoor_contextual_text") or text
+        )
         chat_state["_frontdoor_lifetime"] = "bounded"
         return None, None, "complex"
 
@@ -113,6 +115,8 @@ def test_contextualization_is_bounded_by_turn_length() -> None:
     assert "old task" in enriched
     assert "[CURRENT OPERATOR MESSAGE]\n那就列出修改" in enriched
 
-    assert contextualize_operator_turn("itemize the changes", prior) == "itemize the changes"
+    generic = contextualize_operator_turn("itemize the changes", prior)
+    assert "old task" in generic
+    assert "[CURRENT OPERATOR MESSAGE]\nitemize the changes" in generic
     long_text = "那" + ("x" * 120)
     assert contextualize_operator_turn(long_text, prior) == long_text

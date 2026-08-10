@@ -195,7 +195,11 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
             manager_session_root=str(session_root) if session_root else None,
             project_state_dir=str(session_root) if session_root else None,
             global_root=str(mem.global_root),
-            skills_dir=str(Path(mem.global_root) / "skills"),
+            skills_dir=os.environ.get(
+                "ARGUS_SKILL_SKILLS_DIR",
+                str(Path(mem.global_root) / "skills"),
+            ),
+            manager_memory=mem,
             life_dir=getattr(mem, "root", None),
             stop_event=None,
         )
@@ -490,6 +494,11 @@ class PreparedManagerHandoff:
             "domain": getattr(division, "domain", ""),
             "workflow_mode": getattr(division, "workflow_mode", "staged"),
             "kind": getattr(division, "kind", ""),
+            "learned_vertical_status": getattr(
+                division,
+                "learned_vertical_status",
+                "",
+            ),
             "stages": list(getattr(division, "stages", []) or []),
             "reason": getattr(division, "headline", lambda: "")(),
             "text": (
@@ -820,6 +829,9 @@ def manager_continuous_handoff(
                 expected=expected,
                 enabled=True,
                 objective=prepared.execution_task,
+                open_ended=bool(
+                    chat_state.get("_continuous_open_ended", expected.open_ended)
+                ),
                 before_write=_commit,
             )
     except Exception as exc:

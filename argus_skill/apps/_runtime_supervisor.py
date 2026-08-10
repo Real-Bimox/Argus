@@ -292,6 +292,7 @@ def _invoke_supervisor(
         "ARGUS_SKILL_SKILLS_DIR",
         str(_memory_global_root(mem) / "skills"),
     )
+    ns.global_root = str(_memory_global_root(mem))
     ns.workdir = os.environ.get("ARGUS_SKILL_WORKDIR")
     os.environ["ARGUS_SKILL_AGENT_IO_LOG"] = str(_memory_project_root(mem) / "events.jsonl")
     try:

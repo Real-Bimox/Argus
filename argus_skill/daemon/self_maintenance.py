@@ -536,11 +536,18 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         probe = self.root / "isolation-probe"
         probe.mkdir(parents=True, exist_ok=True)
         error = ""
-        if self.backend == "copilot":
+        full_access = (
+            os.environ.get("ARGUS_SKILL_SAFE_MODE", "0").strip().lower()
+            not in {"1", "true", "yes", "on"}
+        )
+        if full_access:
+            available = True
+            error = ""
+        elif self.backend in {"copilot", "pi"}:
             available = False
             error = (
-                "Copilot self-maintenance deferred: safe isolated authentication "
-                "is unavailable without exposing GitHub repository credentials"
+                f"{self.backend} self-maintenance deferred: safe isolated "
+                "authentication is unavailable without exposing provider credentials"
             )
         else:
             try:
@@ -570,6 +577,7 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         previous = state.get("maintenance_available")
         updates: dict[str, Any] = {
             "maintenance_available": available,
+            "access_mode": "full" if full_access else "isolated",
             "isolation_checked_at": now,
             "isolation_error": error[:1000],
         }
@@ -600,7 +608,15 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         state = self._state()
         if str(state.get("handoff_error") or "").strip():
             return ""
-        if str(state.get("phase") or "") in {
+        now = time.time()
+        phase = str(state.get("phase") or "")
+        if (
+            phase == "review_rejected"
+            and now - float(state.get("updated_at") or 0.0)
+            < self._audit_interval()
+        ):
+            return ""
+        if phase in {
             "queued",
             "handoff_requested",
             "canary_running",
@@ -611,7 +627,6 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             "pr_open",
         }:
             return ""
-        now = time.time()
         due = (
             bool(state.get("event_audit_pending"))
             or now - float(state.get("last_audit_at") or 0.0)

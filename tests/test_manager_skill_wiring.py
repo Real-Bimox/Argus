@@ -141,7 +141,7 @@ def test_manager_decision_prompt_carries_paths_not_skill_body(
     assert "Role: manager" in prompt
     assert "DO NOT PRELOAD THIS MANAGER BODY" not in prompt
     assert "Argus Manager Role" not in prompt
-    assert "ACTION=advance|hold|rollback" in prompt
+    assert "ACTION=advance|hold|rollback|complete" in prompt
     assert decision.action == "hold"
 
 

@@ -99,7 +99,9 @@ def test_read_self_maintenance_snapshot_is_typed_and_fail_soft(
 
 def test_copilot_self_maintenance_defers_without_safe_isolated_auth(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_SAFE_MODE", "1")
     events: list[dict] = []
     controller = DaemonSelfMaintenance(
         life_dir=tmp_path / "life",
@@ -118,6 +120,47 @@ def test_copilot_self_maintenance_defers_without_safe_isolated_auth(
     assert state["phase"] == "deferred"
     assert state["active_item_id"] == ""
     assert events[-1]["type"] == "manager.self_maintenance.availability"
+
+
+def test_pi_self_maintenance_defers_without_exposing_provider_auth(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_SAFE_MODE", "1")
+    controller = DaemonSelfMaintenance(
+        life_dir=tmp_path / "life",
+        framework_root=tmp_path,
+        project_workdir=tmp_path,
+        manager=_Manager(),
+        memory=SimpleNamespace(),
+        backend="pi",
+    )
+
+    assert controller.preflight_isolation(force=True) is False
+    state = json.loads(controller.state_path.read_text(encoding="utf-8"))
+    assert state["maintenance_available"] is False
+    assert "provider credentials" in state["isolation_error"]
+    assert state["phase"] == "deferred"
+
+
+def test_self_maintenance_full_access_is_available_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ARGUS_SKILL_SAFE_MODE", raising=False)
+    controller = DaemonSelfMaintenance(
+        life_dir=tmp_path / "life",
+        framework_root=tmp_path,
+        project_workdir=tmp_path,
+        manager=_Manager(),
+        memory=SimpleNamespace(),
+        backend="pi",
+    )
+
+    assert controller.preflight_isolation(force=True) is True
+    state = json.loads(controller.state_path.read_text(encoding="utf-8"))
+    assert state["maintenance_available"] is True
+    assert state["access_mode"] == "full"
 
 
 def test_frontend_dependency_links_are_temporary(tmp_path: Path) -> None:

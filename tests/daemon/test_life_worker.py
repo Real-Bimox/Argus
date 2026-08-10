@@ -1409,6 +1409,38 @@ def test_write_and_read_continuous_config(tmp_path: Path) -> None:
     assert obj == "optimize everything"
 
 
+def test_legacy_continuous_config_defaults_to_open_ended(tmp_path: Path) -> None:
+    (tmp_path / "continuous.json").write_text(
+        json.dumps({"enabled": True, "objective": "legacy campaign"}),
+        encoding="utf-8",
+    )
+
+    assert read_continuous_state(tmp_path).open_ended is True
+
+
+def test_bounded_continuous_config_preserves_lifetime_across_disable(
+    tmp_path: Path,
+) -> None:
+    from argus_skill.daemon.state import disable_continuous_config
+
+    write_continuous_config(
+        tmp_path,
+        enabled=True,
+        objective="finite staged goal",
+        open_ended=False,
+    )
+
+    state = disable_continuous_config(tmp_path, done_reason="operator drain-stop")
+
+    assert state.open_ended is False
+    write_continuous_config(
+        tmp_path,
+        enabled=True,
+        objective=state.objective,
+    )
+    assert read_continuous_state(tmp_path).open_ended is False
+
+
 def test_write_continuous_config_done_reason(tmp_path: Path) -> None:
     import json
 
@@ -1530,8 +1562,9 @@ def test_life_worker_hot_reload_rejects_memory_continuous(
         def run(self) -> dict[str, Any]:
             seen["runs"] += 1
             if self.config.continuous_config_provider is not None:
-                enabled, objective = self.config.continuous_config_provider()
+                enabled, objective, open_ended = self.config.continuous_config_provider()
                 self.config.continuous = enabled
+                self.config.open_ended = open_ended
                 if objective:
                     self.config.continuous_objective = objective
             seen["continuous"].append((self.config.continuous, self.config.continuous_objective))
@@ -1602,8 +1635,9 @@ def test_life_worker_retries_planning_after_planner_error(
         def run(self) -> dict[str, Any]:
             seen["runs"] += 1
             if self.config.continuous_config_provider is not None:
-                enabled, objective = self.config.continuous_config_provider()
+                enabled, objective, open_ended = self.config.continuous_config_provider()
                 self.config.continuous = enabled
+                self.config.open_ended = open_ended
                 if objective:
                     self.config.continuous_objective = objective
             seen["continuous"].append((self.config.continuous, self.config.continuous_objective))
@@ -1642,6 +1676,8 @@ def test_resume_continuous_adopts_persisted_manager_handoff_without_backend(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
     LifeMemory.open(tmp_path).init()
     write_continuous_config(
         tmp_path,
@@ -1701,6 +1737,7 @@ def test_resume_continuous_adopts_persisted_manager_handoff_without_backend(
     worker = LifeWorker(
         LifeWorkerConfig(
             life_dir=tmp_path,
+            project_workdir=workdir,
             backend="memory",
             poll_interval=0.01,
             resume_continuous=True,
@@ -1996,8 +2033,9 @@ def test_life_worker_keeps_continuous_enabled_on_terminal_idle(
         def run(self) -> dict[str, Any]:
             seen["runs"] += 1
             if self.config.continuous_config_provider is not None:
-                enabled, objective = self.config.continuous_config_provider()
+                enabled, objective, open_ended = self.config.continuous_config_provider()
                 self.config.continuous = enabled
+                self.config.open_ended = open_ended
                 if objective:
                     self.config.continuous_objective = objective
             seen["continuous"].append((self.config.continuous, self.config.continuous_objective))
@@ -2195,8 +2233,12 @@ def test_daemon_suppresses_rejected_objective_when_handoff_write_fails(
             self.config: Any = kwargs["config"]
 
         def run(self) -> dict[str, Any]:
-            enabled, objective = self.config.continuous_config_provider()
-            seen.update(enabled=enabled, objective=objective)
+            enabled, objective, open_ended = self.config.continuous_config_provider()
+            seen.update(
+                enabled=enabled,
+                objective=objective,
+                open_ended=open_ended,
+            )
             self.config.stop_event.set()
             return {"stopped_by": "backlog_empty"}
 
@@ -2212,7 +2254,11 @@ def test_daemon_suppresses_rejected_objective_when_handoff_write_fails(
     worker._install_signal_handlers = lambda: None  # type: ignore[method-assign]
 
     assert worker.run_forever() == 0
-    assert seen == {"enabled": False, "objective": raw}
+    assert seen == {
+        "enabled": False,
+        "objective": raw,
+        "open_ended": True,
+    }
     assert read_continuous_state(tmp_path).enabled is True
 
 

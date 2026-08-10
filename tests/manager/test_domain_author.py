@@ -93,6 +93,21 @@ def test_vertical_prompt_keeps_math_routes_inside_builtin_math():
     assert "they are not competing verticals" in prompt
 
 
+def test_vertical_prompts_do_not_treat_one_paper_reading_as_research_pipeline():
+    task = "Read this existing paper, explain it, and give me a concise summary."
+    fast = build_fast_vertical_decision_prompt(
+        task,
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+    grounded = build_vertical_decision_prompt(
+        task,
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+
+    assert "not for reading, explaining, critiquing, or summarizing one existing paper" in fast
+    assert "belongs on the SELF route before vertical selection" in grounded
+
+
 def test_vertical_prompt_composes_chemistry_with_research() -> None:
     prompt = build_vertical_decision_prompt(
         "Run autonomous chemistry research and produce a paper",
@@ -116,6 +131,31 @@ def test_vertical_prompt_does_not_escalate_bounded_repo_fix_to_new_domain() -> N
     assert "capability VERTICAL" in prompt
     assert "workflow_mode" in prompt
     assert "software" in prompt
+
+
+def test_new_domain_starts_with_real_work_not_process_ceremony() -> None:
+    prompt = build_vertical_decision_prompt(
+        "Optimize an unfamiliar inference runtime.",
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+
+    assert "Do not author intake, inventory, planning, or certification-only stages" in prompt
+    assert "first stage must implement or measure" in prompt
+
+
+def test_vertical_prompts_do_not_use_software_as_performance_catch_all() -> None:
+    task = "Continuously optimize an MLX inference runtime on Apple Silicon."
+    fast = build_fast_vertical_decision_prompt(
+        task,
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+    grounded = build_vertical_decision_prompt(
+        task,
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+
+    assert "not specialized hardware/runtime performance research" in fast
+    assert "author a new domain" in grounded
 
 
 def test_fast_vertical_prompt_is_tool_free_and_route_only() -> None:
@@ -256,6 +296,7 @@ def test_a_string_of_earlier_stages_is_not_rendered_letter_by_letter() -> None:
     prompt = build_stage_decision_prompt(
         current_stage="delivery",
         next_stage="",
+        later_stages=[],
         earlier_stages="scope",
         checklist_md="- x",
         review=review,

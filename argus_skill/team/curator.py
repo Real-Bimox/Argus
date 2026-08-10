@@ -26,6 +26,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -50,15 +51,43 @@ def _pid_is_teammate(pid: int, member_id: str, root: Path | None = None) -> bool
             if part
         ]
     except OSError:
-        return False
-    if "argus_skill.team.teammate_entry" not in argv:
+        argv = []
+    command_line = ""
+    if not argv:
+        ps = "/bin/ps" if Path("/bin/ps").is_file() else "/usr/bin/ps"
+        try:
+            result = subprocess.run(
+                [ps, "-ww", "-p", str(pid), "-o", "command="],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if result.returncode != 0:
+            return False
+        command_line = result.stdout.strip()
+    if argv:
+        if "argus_skill.team.teammate_entry" not in argv:
+            return False
+    elif not re.search(
+        r"(?:^|\s)argus_skill\.team\.teammate_entry(?:\s|$)",
+        command_line,
+    ):
         return False
 
     def option(name: str) -> str:
-        try:
-            return argv[argv.index(name) + 1]
-        except (ValueError, IndexError):
-            return ""
+        if argv:
+            try:
+                return argv[argv.index(name) + 1]
+            except (ValueError, IndexError):
+                return ""
+        match = re.search(
+            rf"(?:^|\s){re.escape(name)}\s+(.+?)(?=\s+--[\w-]+(?:\s|$)|$)",
+            command_line,
+        )
+        return match.group(1).strip() if match else ""
 
     if option("--member-id") != member_id:
         return False

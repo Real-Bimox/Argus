@@ -269,8 +269,15 @@ def isolated_workdir_command(
     if os.name != "posix" or not working_dir:
         raise RuntimeError("worktree isolation requires POSIX and an explicit workdir")
     bwrap = shutil.which("bwrap")
-    if not bwrap:
-        raise RuntimeError("worktree isolation requires bubblewrap")
+    sandbox_exec = (
+        shutil.which("sandbox-exec")
+        if sys.platform == "darwin" and not bwrap
+        else None
+    )
+    if not bwrap and not sandbox_exec:
+        raise RuntimeError(
+            "worktree isolation requires bubblewrap or macOS sandbox-exec"
+        )
     if not command:
         raise RuntimeError("worktree isolation requires a command")
     executable = Path(command[0]).expanduser()
@@ -301,6 +308,51 @@ def isolated_workdir_command(
         target = private_copilot / name
         if source.is_file():
             shutil.copy2(source, target)
+
+    if sandbox_exec:
+        private_home = runtime_root / "seatbelt-home"
+        private_tmp = runtime_root / "tmp"
+        private_home.mkdir(parents=True, exist_ok=True)
+        private_tmp.mkdir(parents=True, exist_ok=True)
+        private_home_copilot = private_home / ".copilot"
+        private_home_copilot.mkdir(parents=True, exist_ok=True)
+        for name in ("config.json", "settings.json", "permissions-config.json"):
+            source = private_copilot / name
+            if source.is_file():
+                shutil.copy2(source, private_home_copilot / name)
+
+        def seatbelt_path(path: str | os.PathLike[str]) -> str:
+            return '"' + os.fspath(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+        writable = (root, str(private_tmp), "/dev")
+        write_filters = "".join(
+            f"(require-not (subpath {seatbelt_path(path)}))"
+            for path in writable
+        )
+        profile = (
+            "(version 1)(allow default)"
+            f"(deny file-write* {write_filters})"
+        )
+        for sensitive in (
+            Path.home() / ".ssh",
+            Path.home() / ".aws",
+            Path.home() / ".gnupg",
+            Path.home() / ".kube",
+            Path.home() / ".docker",
+            Path.home() / ".config" / "gh",
+        ):
+            profile += (
+                f"(deny file-read* (subpath {seatbelt_path(sensitive)}))"
+            )
+        return [
+            sandbox_exec,
+            "-p",
+            profile,
+            "/usr/bin/env",
+            f"HOME={private_home}",
+            f"TMPDIR={private_tmp}",
+            *command,
+        ]
 
     wrapped = [
         bwrap,

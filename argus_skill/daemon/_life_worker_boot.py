@@ -203,6 +203,7 @@ class LifeWorkerBootMixin:
         """Resolve the boot-time continuous config, suppression, and the live
         ``continuous_provider`` the supervisor polls each cycle.
         """
+        requested_open_ended = rf_state.cfg.continuous_open_ended
         # A fresh (non-resume) daemon must NOT adopt the project's persisted
         # continuous campaign — the operator manages daemons, and a daemon that
         # was not asked to resume has no business silently continuing a campaign
@@ -239,7 +240,7 @@ class LifeWorkerBootMixin:
         # boot state lifts the suppression and is then honored live).
         rf_state.latest_continuous_state = rf_state.boot
 
-        def _continuous_provider() -> tuple[bool, str]:
+        def _continuous_provider() -> tuple[bool, str, bool]:
             current = read_continuous_state(rf_state.runtime_root)
             rf_state.latest_continuous_state = current
             enabled, objective = current.enabled, current.objective
@@ -256,17 +257,22 @@ class LifeWorkerBootMixin:
                         enabled=False,
                         objective=objective,
                     )
-                return False, objective
+                return False, objective, current.open_ended
             if not self._operator_stop_requested:
                 self._adopted_continuous_generation = current.generation if enabled else None
-            return enabled, objective
+            return enabled, objective, current.open_ended
 
         rf_state.continuous_provider = _continuous_provider
 
         # Seed continuous config from disk (or CLI flags).
-        rf_state.init_continuous, rf_state.init_objective = rf_state.continuous_provider()
+        (
+            rf_state.init_continuous,
+            rf_state.init_objective,
+            rf_state.cfg.continuous_open_ended,
+        ) = rf_state.continuous_provider()
         rf_state.init_source_state = rf_state.latest_continuous_state
         if rf_state.cfg.continuous:
+            rf_state.cfg.continuous_open_ended = requested_open_ended
             # CLI flags override disk. Persist only after Manager has produced a
             # role-clean execution handoff.
             rf_state.init_continuous = True
@@ -411,6 +417,7 @@ class LifeWorkerBootMixin:
                         expected=expected_state,
                         enabled=target_enabled,
                         objective=execution_task,
+                        open_ended=rf_state.cfg.continuous_open_ended,
                         before_write=_commit_decision,
                     )
                 if swapped:
@@ -433,6 +440,11 @@ class LifeWorkerBootMixin:
                         "vertical": getattr(division, "vertical", ""),
                         "domain": getattr(division, "domain", ""),
                         "kind": getattr(division, "kind", ""),
+                        "learned_vertical_status": getattr(
+                            division,
+                            "learned_vertical_status",
+                            "",
+                        ),
                         "stages": list(getattr(division, "stages", []) or []),
                         "text": "manager completed daemon objective handoff",
                     }
@@ -489,9 +501,11 @@ class LifeWorkerBootMixin:
                             "failed to persist Manager execution handoff"
                         )
                     else:
-                        rf_state.init_continuous, rf_state.init_objective = (
-                            rf_state.continuous_provider()
-                        )
+                        (
+                            rf_state.init_continuous,
+                            rf_state.init_objective,
+                            rf_state.cfg.continuous_open_ended,
+                        ) = rf_state.continuous_provider()
                         rf_state.sink.append(
                             {
                                 "type": "life.manager.intent.superseded",
@@ -516,9 +530,11 @@ class LifeWorkerBootMixin:
                             }
                         )
                 else:
-                    rf_state.init_continuous, rf_state.init_objective = (
-                        rf_state.continuous_provider()
-                    )
+                    (
+                        rf_state.init_continuous,
+                        rf_state.init_objective,
+                        rf_state.cfg.continuous_open_ended,
+                    ) = rf_state.continuous_provider()
                 rf_state.cfg.continuous_objective = rf_state.init_objective
                 log.error("daemon Manager handoff failed; objective not dispatched: %s", exc)
                 rf_state.handoff_failure = f"{type(exc).__name__}: {exc}"

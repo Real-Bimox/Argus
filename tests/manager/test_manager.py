@@ -100,8 +100,8 @@ def test_direct_software_grounding_can_be_forced(
     assert "## Manager project grounding" in handoff
     assert "Closest analogue" in handoff
     assert runner.calls[0]["run_label"] == "manager-project-grounding"
-    assert runner.calls[0]["options"].sandbox_mode is None
-    assert runner.calls[0]["options"].dangerous_yolo is True
+    assert runner.calls[0]["options"].sandbox_mode == "read-only"
+    assert runner.calls[0]["options"].dangerous_yolo is False
     assert runner.calls[0]["options"].reasoning_effort == "low"
     assert runner.calls[0]["options"].external_interrupt_reason_provider is None
 

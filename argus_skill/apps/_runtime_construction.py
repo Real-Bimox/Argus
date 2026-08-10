@@ -65,6 +65,7 @@ def _create_manager(
         runner=backend,
         skill_store=skill_store,
         manager_session_root=session_root,
+        learned_vertical_root=getattr(args, "global_root", None),
         usage_context=usage_context,
         memory_maintenance_enabled=memory_maintenance_enabled,
     )

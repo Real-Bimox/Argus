@@ -109,6 +109,20 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         life_dir = ctx.resolve_or_404(sid)
         return daemon_dict(server_mod.read_daemon_status(life_dir), life_dir=life_dir)
 
+    def _record_spawn_result(result: dict[str, Any], spawned: Any) -> None:
+        result["daemon"] = spawned
+        if not isinstance(spawned, dict):
+            return
+        visible = spawned.get("daemon")
+        if not isinstance(visible, dict):
+            visible = spawned
+        if "alive" in visible:
+            result["daemon_alive"] = bool(visible["alive"])
+        if "pid" in visible:
+            result["daemon_pid"] = visible["pid"]
+        if "control_available" in visible:
+            result["daemon_control_available"] = bool(visible["control_available"])
+
     async def _resolve_message_attachments(
         sid: str,
         body: MessageIn,
@@ -185,11 +199,12 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         result["daemon_alive"] = daemon_view["alive"]
         result["daemon_control_available"] = daemon_view["control_available"]
         if starts_executor and not result.get("daemon_alive"):
-            result["daemon"] = await run_in_threadpool(
+            spawned = await run_in_threadpool(
                 server_mod.start_project_daemon, sid, global_root=project_root,
                 resume_continuous=bool(result.get("continuous")),
                 reclaim_idle=True,
             )
+            _record_spawn_result(result, spawned)
         if result.get("kind") == "task":
             await run_in_threadpool(
                 record_task_dispatch_ack, sid, result, global_root=project_root,
@@ -225,7 +240,6 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         )
 
         q: "queue.Queue[dict | None]" = queue.Queue()
-        cancel_event = threading.Event()
 
         def _run() -> None:
             def _on_fragment(kind: str, payload: dict) -> None:
@@ -234,7 +248,6 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
                 kwargs = {
                     "global_root": project_root,
                     "on_fragment": _on_fragment,
-                    "cancelled": cancel_event.is_set,
                 }
                 if attachments:
                     kwargs["attachments"] = attachments
@@ -256,17 +269,17 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
                 result["daemon_alive"] = daemon_view["alive"]
                 result["daemon_control_available"] = daemon_view["control_available"]
                 if (
-                    not cancel_event.is_set()
-                    and starts_executor
+                    starts_executor
                     and not result.get("daemon_alive")
                 ):
                     try:
-                        result["daemon"] = server_mod.start_project_daemon(
+                        spawned = server_mod.start_project_daemon(
                             sid,
                             global_root=project_root,
                             resume_continuous=bool(result.get("continuous")),
                             reclaim_idle=True,
                         )
+                        _record_spawn_result(result, spawned)
                     except Exception as exc:  # noqa: BLE001 — surface failure in done frame
                         result["daemon"] = {
                             "rc": 2,
@@ -294,14 +307,11 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         threading.Thread(target=_run, name=f"manager-stream-{sid}", daemon=True).start()
 
         def _gen():
-            try:
-                for item in server_mod._iter_manager_stream_items(
-                    q,
-                    heartbeat_s=server_mod._manager_stream_heartbeat_seconds(),
-                ):
-                    yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
-            finally:
-                cancel_event.set()
+            for item in server_mod._iter_manager_stream_items(
+                q,
+                heartbeat_s=server_mod._manager_stream_heartbeat_seconds(),
+            ):
+                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
 
         return StreamingResponse(
             _gen(),

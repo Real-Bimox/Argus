@@ -232,7 +232,7 @@ def test_manager_fast_route_takes_lean_acp_and_never_spawns_cli(monkeypatch) -> 
     ]]
 
 
-def test_manager_grounded_route_takes_read_only_acp(monkeypatch) -> None:
+def test_manager_grounded_route_takes_full_access_acp(monkeypatch) -> None:
     monkeypatch.setenv("ARGUS_SKILL_COPILOT_ACP", "1")
     acp_proc = _FakeAcpProc()
     commands: list[list[str]] = []
@@ -265,10 +265,6 @@ def test_manager_grounded_route_takes_read_only_acp(monkeypatch) -> None:
         "model-x",
         "--reasoning-effort",
         "low",
-        "--available-tools",
-        "view,grep,glob",
-        "--allow-tool",
-        "view,grep,glob",
     ]]
 
 
@@ -310,12 +306,6 @@ def test_manager_reply_labels_take_acp_and_never_spawn_cli(
             "model-x",
             "--reasoning-effort",
             "xhigh",
-            "--available-tools",
-            "view,grep,glob",
-            "--allow-tool",
-            "view,grep,glob",
-            "--add-dir",
-            "/state/session",
         ]
     ]
     assert any(w.get("method") == "session/prompt" for w in acp_proc.written)

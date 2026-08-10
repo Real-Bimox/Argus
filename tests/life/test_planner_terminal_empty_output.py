@@ -74,7 +74,11 @@ class _EmptyPlannerThenManagerRunner:
             agent_messages=[json.dumps(payload) if isinstance(payload, dict) else payload],
             stdout_lines=[],
             stderr_lines=[],
-            thread_id=None,
+            thread_id=(
+                "planner-thread"
+                if run_label.startswith("planner.cycle")
+                else None
+            ),
             fatal_error=None,
             input_tokens=0,
             cached_input_tokens=0,
@@ -90,7 +94,11 @@ class _ContentFilterPlannerRunner(_EmptyPlannerThenManagerRunner):
             agent_messages=[],
             stdout_lines=[],
             stderr_lines=[],
-            thread_id=None,
+            thread_id=(
+                "planner-thread"
+                if run_label.startswith("planner.cycle")
+                else None
+            ),
             fatal_error=(
                 "Copilot content filtering blocked the response; the identical "
                 "prompt must not be retried"
@@ -145,7 +153,11 @@ class _EmptyThenTaskPlannerRunner(_EmptyPlannerThenManagerRunner):
             agent_messages=[json.dumps(payload) if isinstance(payload, dict) else payload],
             stdout_lines=[],
             stderr_lines=[],
-            thread_id=None,
+            thread_id=(
+                "planner-thread"
+                if run_label.startswith("planner.cycle")
+                else None
+            ),
             fatal_error=None,
             input_tokens=0,
             cached_input_tokens=0,
@@ -560,7 +572,7 @@ def test_nonterminal_empty_plan_replays_unassessed_current_stage_review(
     assert supervisor._plan_next_work() == PLAN_RETRY
 
     assert backend.planner_calls == 2
-    assert backend.manager_calls == 0
+    assert backend.manager_calls == 1
     state = json.loads((project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
     assert state["current_stage"] == "solve"
     assert state["research_target_level"] == "doctoral"

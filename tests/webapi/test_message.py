@@ -64,17 +64,20 @@ def _install_manager(monkeypatch, execution_for) -> None:
     manager_state._STATES.clear()
 
     class _Manager:
+        def classify_front_door(self, _text, *, lifetime_sink=None, **_kwargs):
+            if lifetime_sink is not None:
+                lifetime_sink("standing")
+            return None, None, "complex"
+
         def decide_vertical(self, text, **kwargs):
             return SimpleNamespace(execution_task=execution_for(text))
 
         def commit_vertical_decision(self, text, decision, **kwargs):
             return SimpleNamespace(execution_task=decision.execution_task)
 
-    monkeypatch.setattr(
-        front_door,
-        "_ensure_manager_runner",
-        lambda chat_state, mem: SimpleNamespace(manager=_Manager()),
-    )
+    ensure = lambda chat_state, mem: SimpleNamespace(manager=_Manager())
+    monkeypatch.setattr(front_door, "_ensure_manager_runner", ensure)
+    monkeypatch.setattr(config_intent, "_ensure_manager_runner", ensure)
 
 
 def test_message_chat_reply_passthrough(client: TestClient, monkeypatch) -> None:
@@ -776,7 +779,8 @@ def test_message_task_lazily_spawns_daemon(client: TestClient, monkeypatch) -> N
     monkeypatch.setattr(
         server, "start_project_daemon",
         lambda sid, *, global_root=None, resume_continuous=False, reclaim_idle=False:
-            spawned.update(sid=sid, resume_continuous=resume_continuous) or {"alive": True},
+            spawned.update(sid=sid, resume_continuous=resume_continuous)
+            or {"alive": True, "pid": 4321},
     )
     r = client.post("/api/projects/s-msgtest0/message", json={"text": "optimize the matmul kernel fully"})
     assert r.status_code == 200
@@ -786,6 +790,8 @@ def test_message_task_lazily_spawns_daemon(client: TestClient, monkeypatch) -> N
     assert spawned.get("sid") == "s-msgtest0"  # lazy spawn fired
     assert spawned.get("resume_continuous") is False
     assert "daemon" in body
+    assert body["daemon_alive"] is True
+    assert body["daemon_pid"] == 4321
 
 
 def test_manager_handoff_failure_persists_and_streams_error_reply(
@@ -821,7 +827,8 @@ def test_manager_handoff_failure_persists_and_streams_error_reply(
     )
 
     assert result["kind"] == "error"
-    assert "provider quota reached" in result["reply"]
+    assert "nothing was queued or executed" in result["reply"]
+    assert "provider quota reached" not in result["reply"]
     assert LifeMemory.open(life).backlog.all() == []
     transcript = [
         json.loads(line)
@@ -1580,6 +1587,23 @@ def test_manager_stream_heartbeat_defaults_to_five_seconds(monkeypatch) -> None:
     assert server._manager_stream_heartbeat_seconds() == 5.0
 
 
+def test_turn_emitter_schedules_learning_only_after_chat_reply(tmp_path) -> None:
+    from argus_skill.webapi.manager_dispatch import _TurnEmitter
+
+    learned: list[str] = []
+    emitter = _TurnEmitter(
+        life_dir=tmp_path,
+        turn_id="turn-1",
+        fragment=lambda *_args: None,
+        after_reply=learned.append,
+    )
+
+    emitter.respond("answer", {"kind": "chat"})
+    emitter.respond("queued", {"kind": "task"})
+
+    assert learned == ["answer"]
+
+
 def test_message_stream_emits_phase_delta_done(client: TestClient, monkeypatch) -> None:
     """A streamed chat turn: the endpoint forwards each on_fragment(phase|delta)
     live, then a final ``done`` frame carrying the classification + reply."""
@@ -1611,6 +1635,7 @@ def test_message_stream_task_spawns_and_reports(client: TestClient, monkeypatch)
     def _streaming(
         sid, text, *, global_root=None, on_fragment=None, cancelled=None,
     ):
+        assert cancelled is None
         return {"kind": "task", "reply": None,
                 "item": {"id": "x9", "title": "optimize kernel"}, "daemon_alive": False}
 
@@ -1619,7 +1644,8 @@ def test_message_stream_task_spawns_and_reports(client: TestClient, monkeypatch)
     monkeypatch.setattr(
         server, "start_project_daemon",
         lambda sid, *, global_root=None, resume_continuous=False, reclaim_idle=False:
-            spawned.update(sid=sid, resume_continuous=resume_continuous) or {"alive": True},
+            spawned.update(sid=sid, resume_continuous=resume_continuous)
+            or {"alive": True, "pid": 9876},
     )
     r = client.post("/api/projects/s-msgtest0/message/stream", json={"text": "optimize the matmul kernel"})
     assert r.status_code == 200
@@ -1629,6 +1655,8 @@ def test_message_stream_task_spawns_and_reports(client: TestClient, monkeypatch)
     assert done["result"]["item"]["title"] == "optimize kernel"
     assert spawned.get("sid") == "s-msgtest0"  # lazy spawn fired on the stream path too
     assert spawned.get("resume_continuous") is False
+    assert done["result"]["daemon_alive"] is True
+    assert done["result"]["daemon_pid"] == 9876
 
 
 def test_message_stream_standing_task_starts_continuous_executor(
@@ -1742,6 +1770,40 @@ def test_create_daemon_persists_only_manager_execution_handoff(
     assert session["display_name"] == "MRAM paper"
     assert spawned["objective"] == "write the MRAM paper"
     assert raw not in (life_dir / "continuous.json").read_text()
+
+
+@pytest.mark.parametrize(
+    ("lifetime", "expected_open_ended"),
+    [("bounded", False), ("standing", True)],
+)
+def test_named_daemon_uses_manager_lifetime(
+    tmp_path: Path,
+    monkeypatch,
+    lifetime: str,
+    expected_open_ended: bool,
+) -> None:
+    monkeypatch.setattr(
+        server,
+        "spawn_detached_daemon",
+        lambda *_args, **_kwargs: 0,
+    )
+
+    def _classify(mem, text, chat_state, **_kwargs):
+        chat_state["_frontdoor_lifetime"] = lifetime
+        return None, None, "complex"
+
+    monkeypatch.setattr(config_intent, "_front_door_classify", _classify)
+
+    result = server.create_daemon(
+        objective="write one reviewed report and stop",
+        name="finite report",
+        global_root=tmp_path,
+    )
+
+    continuous = json.loads(
+        (tmp_path / "projects" / result["sid"] / "continuous.json").read_text()
+    )
+    assert continuous["open_ended"] is expected_open_ended
 
 
 def test_create_daemon_preserves_manual_rename_during_manager_handoff(

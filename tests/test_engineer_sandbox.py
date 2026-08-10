@@ -21,14 +21,28 @@ _ENV = "ARGUS_SKILL_ENGINEER_SANDBOX"
 @pytest.fixture
 def gate_off(monkeypatch):
     monkeypatch.delenv(_ENV, raising=False)
+    monkeypatch.setenv("ARGUS_SKILL_SAFE_MODE", "1")
 
 
 @pytest.fixture
 def gate_on(monkeypatch):
     monkeypatch.setenv(_ENV, "workspace-write")
+    monkeypatch.setenv("ARGUS_SKILL_SAFE_MODE", "1")
 
 
 # ── gate ───────────────────────────────────────────────────────────────────
+def test_default_policy_grants_every_backend_full_access(monkeypatch):
+    monkeypatch.delenv("ARGUS_SKILL_SAFE_MODE", raising=False)
+    for backend in ("codex", "claude", "copilot", "opencode", "pi"):
+        runner = AgentCliRunner(agent_bin=backend, backend=backend)
+        options = runner._apply_sandbox_policy(
+            RunnerOptions(sandbox_mode="read-only", isolate_workdir=True)
+        )
+        assert options.sandbox_mode is None
+        assert options.isolate_workdir is False
+        assert options.dangerous_yolo is True
+
+
 def test_gate_default_off(gate_off):
     assert sandbox.engineer_sandbox_mode() is None
 
@@ -271,9 +285,15 @@ def test_isolated_workdir_wraps_any_backend_and_hides_vcs_credentials(
     assert ["--bind", str(workdir), str(workdir)] == command[
         command.index("--bind") : command.index("--bind") + 3
     ]
-    assert ["--tmpfs", "/root"] == command[
-        command.index("/root") - 1 : command.index("/root") + 1
+    hidden_roots = [
+        path
+        for path in ("/root", "/home", "/data", "/scratch", "/mnt", "/workspace")
+        if Path(path).is_dir()
     ]
+    for hidden_root in hidden_roots:
+        assert ["--tmpfs", hidden_root] == command[
+            command.index(hidden_root) - 1 : command.index(hidden_root) + 1
+        ]
     assert str(home / ".ssh") not in command
     assert str(home / ".config" / "gh") not in command
     git_entry = workdir / ".git"
@@ -415,6 +435,38 @@ def test_isolated_workdir_fails_closed_without_bubblewrap(
     monkeypatch.setattr(sandbox.shutil, "which", lambda _name: None)
     with pytest.raises(RuntimeError, match="bubblewrap"):
         sandbox.isolated_workdir_command(["copilot"], working_dir=tmp_path)
+
+
+def test_isolated_workdir_uses_macos_sandbox_exec_without_bubblewrap(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    workdir = tmp_path / "worktree"
+    home = tmp_path / "home"
+    workdir.mkdir()
+    home.mkdir()
+    monkeypatch.setattr(sandbox.sys, "platform", "darwin")
+    monkeypatch.setattr(sandbox.Path, "home", classmethod(lambda cls: home))
+    monkeypatch.setattr(
+        sandbox.shutil,
+        "which",
+        lambda name: (
+            "/usr/bin/sandbox-exec"
+            if name == "sandbox-exec"
+            else None
+        ),
+    )
+
+    command = sandbox.isolated_workdir_command(
+        ["/usr/bin/true"],
+        working_dir=workdir,
+    )
+
+    assert command[:2] == ["/usr/bin/sandbox-exec", "-p"]
+    assert str(workdir.resolve()) in command[2]
+    assert str(home / ".ssh") in command[2]
+    assert any(part.startswith("HOME=") for part in command)
+    assert command[-1] == "/usr/bin/true"
 
 
 def test_isolated_runner_scrubs_credentials_even_without_native_sandbox(

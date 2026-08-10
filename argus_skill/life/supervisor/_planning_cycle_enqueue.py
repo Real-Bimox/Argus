@@ -16,13 +16,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from ...core.campaign_workdir import (
-    normalize_task_workdir,
-    resolve_task_workdir,
-)
 from ...core.event_catalog import EventType
 from ...core.planner_verdict import PlannerVerdictStatus
-from ...planner.planner import hydrate_task_context_refs
 from ..memory import BacklogItem
 from ._constants import (
     PLAN_ERROR,
@@ -270,72 +265,8 @@ class PlanningCycleEnqueueMixin:
         key_map: dict[str, str] = {}
         pending_items: list[tuple[Any, Any]] = []  # (task, item)
         for task in state.verdict.new_tasks:
-            try:
-                execution_workdir = normalize_task_workdir(
-                    getattr(task, "execution_workdir", "")
-                )
-                raw_context_refs = list(
-                    getattr(task, "context_refs", []) or []
-                )
-                try:
-                    context_root = resolve_task_workdir(
-                        self._project_workdir(), execution_workdir
-                    )
-                except ValueError:
-                    # A dependent setup node may create the nested repository.
-                    # Defer existence/Git-root validation to claim time, after
-                    # dependencies are done; future files cannot be context refs.
-                    if (
-                        execution_workdir
-                        and list(getattr(task, "deps", []) or [])
-                        and not raw_context_refs
-                    ):
-                        context_root = None
-                    else:
-                        raise
-                hydrated_context_refs = (
-                    []
-                    if context_root is None
-                    else hydrate_task_context_refs(raw_context_refs, context_root)
-                )
-            except ValueError as exc:
-                self._emit(
-                    {
-                        "type": EventType.LIFE_PLANNER_TASK_SKIPPED,
-                        "cycle": self._planning_cycles,
-                        "title": task.title,
-                        "objective": task.objective,
-                        "impact_score": task.impact_score,
-                        "impact_area": task.impact_area,
-                        "evidence": task.evidence,
-                        "reason": str(exc),
-                        "skip_category": "invalid_context_ref",
-                    }
-                )
-                self._emit_status(
-                    "planner batch rejected because a task context ref is invalid"
-                )
-                self._enter_idle_backoff()
-                if state.revision_request is not None:
-                    return self._pc_record_revision_rejection(
-                        state,
-                        reason=(
-                            "replacement task context ref is invalid: "
-                            f"{exc}"
-                        ),
-                        nonterminal_result=PLAN_ERROR,
-                    )
-                return PLAN_ERROR
-            if (
-                hydrated_context_refs != list(getattr(task, "context_refs", []) or [])
-                or execution_workdir
-                != str(getattr(task, "execution_workdir", "") or "").strip()
-            ):
-                task = replace(
-                    task,
-                    context_refs=hydrated_context_refs,
-                    execution_workdir=execution_workdir,
-                )
+            context_root = self._project_workdir()
+            task = replace(task, context_refs=[], execution_workdir="")
             sanitized_title = _sanitize_planner_task_text(task.title)
             sanitized_objective = _sanitize_planner_task_text(task.objective)
             sanitized_evidence = _sanitize_planner_task_text(task.evidence)
@@ -381,20 +312,22 @@ class PlanningCycleEnqueueMixin:
             )
             canonical_context_refs = list(getattr(task, "context_refs", []) or [])
             canonical_stage_closing = bool(
-                getattr(task, "stage_closing", False)
+                canonical_scope == PLANNER_SCOPE_FINAL_SUBMISSION
+                or getattr(task, "stage_repair", False)
             )
-            canonical_require_review = canonical_stage_closing or bool(
-                getattr(task, "require_independent_review", False)
-            )
+            canonical_require_review = canonical_stage_closing
             task = replace(
                 task,
                 scope=canonical_scope,
                 acceptance_check=canonical_acceptance,
                 context_refs=canonical_context_refs,
+                stage_closing=canonical_stage_closing,
                 blocker_fingerprint=_normalize_blocker_fingerprint(
                     getattr(task, "blocker_fingerprint", "")
                 ),
                 require_independent_review=canonical_require_review,
+                skip_stage_transition=False,
+                allow_skill_changes=False,
             )
             from ...skills.stage_machine import current_stage
             from ...skills.vertical_select import resolve_vertical
@@ -585,12 +518,28 @@ class PlanningCycleEnqueueMixin:
                     }
                 )
                 continue
+            manager_decision = self._manager_decision_evidence(
+                state.manager_intent
+            )
+            task_tags = self._planner_task_tags(task)
+            from ...verticals._data_domain import list_formal_data_domain_purposes
+
+            formal_domains = list_formal_data_domain_purposes(
+                state_root,
+                learned_root=self._budget_global_root(),
+            )
+            if (
+                manager_decision.get("learned_vertical_status") == "candidate"
+                and manager_decision.get("vertical") not in formal_domains
+                and "review:required" not in task_tags
+            ):
+                task_tags.append("review:required")
             item = BacklogItem.new(
                 item_id=item_id,
                 title=task.title,
                 objective=task.objective,
                 priority=100,
-                tags=self._planner_task_tags(task),
+                tags=task_tags,
                 iterate=True,
                 iteration_max_cycles=self._item_iteration_cycles(),
                 plan_id=state.new_plan_id,
@@ -618,9 +567,7 @@ class PlanningCycleEnqueueMixin:
                 ),
                 authorization_id=authorization_id,
                 authorization_action=authorization_action,
-                manager_decision=self._manager_decision_evidence(
-                    state.manager_intent
-                ),
+                manager_decision=manager_decision,
             )
             # Reserve the signature now so a later sibling in the SAME batch
             # with an identical title/objective still de-dupes against this
@@ -647,6 +594,9 @@ class PlanningCycleEnqueueMixin:
             "workflow_mode": str(intent.get("workflow_mode") or "").strip(),
             "research_target_level": str(
                 intent.get("research_target_level") or ""
+            ).strip(),
+            "learned_vertical_status": str(
+                intent.get("learned_vertical_status") or ""
             ).strip(),
         }
         evidence = {key: value for key, value in evidence.items() if value}

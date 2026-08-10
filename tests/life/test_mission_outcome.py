@@ -33,13 +33,18 @@ class _Outcome:
     stop_kind: str | None = None
     recoverable: bool = False
     rounds: int = 1
+    final_review_status: str = ""
+    final_review_source: str = ""
+    final_review_reason: str = ""
 
 
 class _FixedOutcomeRunner:
     def __init__(self, outcome: _Outcome) -> None:
         self._outcome = outcome
+        self.kwargs: dict[str, Any] = {}
 
-    def execute(self, **_kwargs: Any) -> _Outcome:
+    def execute(self, **kwargs: Any) -> _Outcome:
+        self.kwargs = kwargs
         return self._outcome
 
 
@@ -129,6 +134,137 @@ def test_normal_completion_events_include_outcome_class(
     assert result is not None
     assert _completed_event(sink)["outcome_class"] == expected
 
+
+def test_first_independent_success_promotes_learned_vertical(tmp_path) -> None:
+    from argus_skill.verticals._data_domain import (
+        load_data_domain,
+        write_data_domain,
+    )
+
+    supervisor, _sink = _make_supervisor(
+        tmp_path,
+        _Outcome(
+            success=True,
+            status="done",
+            final_review_status="done",
+            final_review_source="reviewer",
+            final_review_reason="The learned workflow passed.",
+        ),
+    )
+    write_data_domain(
+        supervisor.memory.root,
+        "device_tuning",
+        stages=["inspect", "tune"],
+        status="candidate",
+        purpose="tune unfamiliar local devices",
+        require_independent_review=True,
+    )
+    item = supervisor.memory.backlog.add(
+        BacklogItem.new(
+            title="Tune the device",
+            objective="Tune this local device",
+            tags=["review:required"],
+            manager_decision={
+                "routed": True,
+                "vertical": "device_tuning",
+                "learned_vertical_status": "candidate",
+            },
+        )
+    )
+
+    supervisor.tick()
+
+    assert load_data_domain("device_tuning", supervisor.memory.root).status == "formal"
+    stored = next(row for row in supervisor.memory.backlog.all() if row.id == item.id)
+    assert stored.manager_decision["learned_vertical_status"] == "formal"
+    assert (
+        supervisor.memory.root
+        / "learned_verticals"
+        / "device_tuning.json"
+    ).is_file()
+
+
+def test_promotion_write_failure_does_not_undo_successful_mission(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    from argus_skill.verticals._data_domain import (
+        load_data_domain,
+        write_data_domain,
+    )
+
+    supervisor, sink = _make_supervisor(
+        tmp_path,
+        _Outcome(
+            success=True,
+            status="done",
+            final_review_status="done",
+            final_review_source="reviewer",
+        ),
+    )
+    write_data_domain(
+        supervisor.memory.root,
+        "device_tuning",
+        stages=["inspect", "tune"],
+        status="candidate",
+        purpose="tune unfamiliar local devices",
+    )
+    supervisor.memory.backlog.add(
+        BacklogItem.new(
+            title="Tune the device",
+            objective="Tune this local device",
+            manager_decision={
+                "routed": True,
+                "vertical": "device_tuning",
+                "learned_vertical_status": "candidate",
+            },
+        )
+    )
+    def fail_promotion(*_args, **_kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        "argus_skill.verticals._data_domain.promote_data_domain",
+        fail_promotion,
+    )
+
+    result = supervisor.tick()
+
+    assert result is not None and result["success"] is True
+    assert load_data_domain("device_tuning", supervisor.memory.root).status == "candidate"
+    assert any(
+        event.get("type") == "life.learned_vertical.promotion_failed"
+        for event in sink.events
+    )
+
+
+def test_reviewer_receives_compact_task_contract_not_engineer_prelude(
+    tmp_path,
+) -> None:
+    supervisor, _sink = _make_supervisor(
+        tmp_path,
+        _Outcome(success=True, status="done"),
+    )
+    supervisor.config.runtime_context = "large engineer-only runtime context"
+    supervisor.memory.backlog.add(
+        BacklogItem.new(
+            title="Compact review",
+            objective="Implement the kernel change.",
+            acceptance_check="benchmark exits zero",
+            non_goals=["do not change the public API"],
+        )
+    )
+
+    supervisor.tick()
+
+    review_objective = supervisor.runner.kwargs["review_objective"]
+    assert review_objective == (
+        "Implement the kernel change.\n"
+        "Acceptance check: benchmark exits zero\n"
+        "Non-goals: do not change the public API"
+    )
+    assert "engineer-only runtime context" not in review_objective
+
 def test_pause_completion_event_includes_outcome_class(tmp_path) -> None:
     supervisor, sink = _make_supervisor(
         tmp_path,
@@ -185,6 +321,52 @@ def test_replan_reason_survives_runtime_and_supervisor_adapters(tmp_path) -> Non
     assert runtime_outcome.final_review_reason == review_reason
     assert result is not None
     assert result["review_reason"] == review_reason
+
+
+def test_research_result_survives_runtime_and_mission_event(tmp_path) -> None:
+    research_result = {
+        "result_class": "literature_review",
+        "correctness_status": "verified",
+        "novelty_status": "known",
+        "significance_status": "publishable",
+        "statement_fidelity_status": "verified",
+        "evidence": ["source audit"],
+        "limitations": [],
+    }
+    loop_outcome = LoopOutcome(
+        status="done",
+        rounds=[
+            RoundRecord(
+                round_index=1,
+                engineer_message="",
+                engineer_exit_code=0,
+                review=ReviewDecision(
+                    status="done",
+                    reason="The survey is complete.",
+                    next_action="",
+                    research_result=research_result,
+                ),
+            )
+        ],
+        final_message="",
+        reason="",
+        workdir=str(tmp_path),
+    )
+    execute_state = _ExecuteState()
+    execute_state.outcome = loop_outcome
+    execute_state.effective_status = "done"
+    runtime_outcome = _SkillLoopRunner.__new__(
+        _SkillLoopRunner
+    )._build_execute_outcome(execute_state)
+    supervisor, sink = _make_supervisor(tmp_path, runtime_outcome)
+    supervisor.memory.backlog.add(
+        BacklogItem.new(title="survey", objective="write the review")
+    )
+
+    supervisor.tick()
+
+    assert runtime_outcome.research_result == research_result
+    assert _completed_event(sink)["research_result"] == research_result
 
 
 def test_daemon_shutdown_is_persisted_as_recoverable_pause(tmp_path) -> None:

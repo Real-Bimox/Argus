@@ -149,6 +149,9 @@ def test_planner_enqueued_goal_gate_keeps_the_standing_objective(tmp_path: Path)
         def _artifact_root(self) -> Path:
             return tmp_path
 
+        def _budget_global_root(self) -> Path:
+            return tmp_path
+
         def _effective_final_certification_gate(self, _root: Path) -> bool:
             return False
 

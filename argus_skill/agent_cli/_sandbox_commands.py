@@ -255,20 +255,21 @@ class CommandBuilderMixin:
         return self._build_codex_command(resume_thread_id=resume_thread_id, options=options)
 
     def _apply_sandbox_policy(self, options):
-        """Gated, default-OFF containment chokepoint for codex builder roles.
+        """Apply the operator's single global access policy."""
+        import dataclasses
 
-        When ``ARGUS_SKILL_ENGINEER_SANDBOX`` is set, convert EVERY codex role
-        into ``-s <mode>`` confined to its workdir plus the writable allowlist,
-        clear the dangerous flags, and pin a ``-C`` (falling closed to a private
-        scratch dir when the caller passed no workdir, so the writable workspace
-        is NEVER the inherited cwd ``/``). This single chokepoint covers every
-        AgentCliRunner role (engineer / reviewer / planner / manager classify /
-        plan-mode), including ones that today fall through to codex's config
-        default (danger-full-access on the box) because they set neither
-        ``dangerous_yolo`` nor ``full_auto``. No-op when the gate is off, when an
-        explicit ``sandbox_mode`` was already chosen, or for non-codex backends —
-        so the default path stays byte-for-byte unchanged.
-        """
+        safe_mode = (
+            os.environ.get("ARGUS_SKILL_SAFE_MODE", "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        if not safe_mode:
+            return dataclasses.replace(
+                options,
+                sandbox_mode=None,
+                isolate_workdir=False,
+                dangerous_yolo=True,
+                full_auto=False,
+            )
         if self.backend in (
             BACKEND_CLAUDE,
             BACKEND_COPILOT,
@@ -289,8 +290,6 @@ class CommandBuilderMixin:
         if mode is None:
             # Gate OFF: byte-for-byte legacy behaviour for EVERY role.
             return options
-        import dataclasses
-
         merged = list(dict.fromkeys([*(options.add_dirs or []), *writable_roots()]))
         # Fail closed: a sandboxed role with no -C would root its writable
         # workspace at the inherited cwd (the daemon's "/"). Pin a contained dir.

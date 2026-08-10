@@ -38,7 +38,7 @@ class _Outcome:
     completion_evidence: str = ""
     # The Manager's stage-transition verdict for this mission completion (the
     # Manager is the sole writer of current_stage). Shape:
-    # ``{"action": advance|hold|rollback, "target_stage", "reason",
+    # ``{"action": advance|hold|rollback|complete, "target_stage", "reason",
     # "current_stage", "source"}``. Empty dict when the decision
     # was skipped (error) or never ran. Journaled by the supervisor; the stage
     # write itself already happened inside execute.
@@ -54,8 +54,10 @@ class _Outcome:
     # cockpit process happened to be tailing events.jsonl at that instant.
     operator_question: str = ""
     final_review_status: str = ""
+    final_review_source: str = ""
     final_review_reason: str = ""
     final_review_next_action: str = ""
+    research_result: dict | None = None
     final_planner_report: dict = field(default_factory=dict)
     plan_challenge: dict = field(default_factory=dict)
 
@@ -91,6 +93,7 @@ class _MemoryRunner:
         *,
         objective: str,
         original_objective: str = "",  # noqa: ARG002 — protocol parity
+        review_objective: str = "",  # noqa: ARG002 — protocol parity
         sink: EventSink,
         preload_injects: list[str] | None = None,  # noqa: ARG002 — protocol parity
         prelude_context: str = "",  # noqa: ARG002 — protocol parity

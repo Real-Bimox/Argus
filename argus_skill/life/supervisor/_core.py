@@ -403,6 +403,7 @@ class LifeSupervisor(
                 "ARGUS_SKILL_PLANNER_REASONING_EFFORT", "high"
             ),
             working_dir=str(workdir),
+            state_root=str(state_root),
             add_dirs=([str(state_root)] if state_root != workdir else []),
             skip_git_repo_check=True,
             dangerous_yolo=False,
@@ -966,7 +967,9 @@ class LifeSupervisor(
         if lifecycle_block is not None:
             return lifecycle_block
 
-        return self._run_one(item)
+        result = self._run_one(item)
+        self._vertical_resolved = False
+        return result
 
     def _budget_global_root(self) -> Path:
         configured = getattr(self.memory, "global_root", None)

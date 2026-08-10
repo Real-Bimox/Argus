@@ -200,7 +200,7 @@ def test_missing_parent_context_ref_is_dropped_without_rejecting_batch(
     assert getattr(parent, "context_refs", []) == []
 
 
-def test_active_dedup_preserves_review_and_stage_transition_semantics(
+def test_active_dedup_ignores_planner_owned_review_routing(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -239,10 +239,10 @@ def test_active_dedup_preserves_review_and_stage_transition_semantics(
 
     assert len(items) == 2
     assert any("stage_closing" in item.tags for item in items)
-    assert any("stage_transition:skip" in item.tags for item in items)
+    assert not any("stage_transition:skip" in item.tags for item in items)
 
 
-def test_stage_closing_dedup_uses_effective_required_review(
+def test_planner_stage_closing_flag_does_not_force_review_or_dedup(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -276,9 +276,12 @@ def test_stage_closing_dedup_uses_effective_required_review(
         )
     )
 
-    assert supervisor._plan_next_work() == PLAN_RETRY
-
-    assert len(supervisor.memory.backlog.all()) == 1
+    assert supervisor._plan_next_work() is True
+    items = supervisor.memory.backlog.all()
+    assert len(items) == 2
+    newest = items[-1]
+    assert "stage_closing" not in newest.tags
+    assert "review:required" not in newest.tags
 
 
 def test_revision_rejection_helper_opens_existing_circuit_breaker(
@@ -339,7 +342,7 @@ def test_dedup_uses_canonical_scope_and_acceptance_metadata(
             "TASK_TITLE=Validate candidate",
             "TASK_OBJECTIVE=Run the deterministic validator.",
             "TASK_EVIDENCE=validator exits zero",
-            "TASK_ACCEPTANCE_CHECK=",
+            "TASK_ACCEPTANCE_CHECK=validator exits zero",
             "TASK_SCOPE=final_submission",
             "TASK_STAGE_CLOSING=false",
             "TASK_REQUIRE_INDEPENDENT_REVIEW=false",
@@ -418,7 +421,7 @@ def test_duplicate_prerequisite_key_maps_to_existing_backlog_item(
     items = supervisor.memory.backlog.all()
     child = next(item for item in items if item.title == "Run child analysis")
     assert result is True
-    assert child.deps == [parent.id]
+    assert child.deps == []
 
 
 def test_recent_no_progress_failure_still_quarantines_expanded_task_signature(

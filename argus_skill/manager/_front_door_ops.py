@@ -122,6 +122,7 @@ class _FrontDoorMixin:
         greeting_sink: Any = None,
         steering_sink: Any = None,
         authorization_sink: Any = None,
+        failure_sink: Any = None,
         active_mission: bool = False,
     ) -> Any:
         """One fresh call classifying all cheap front-door decisions.
@@ -170,6 +171,7 @@ class _FrontDoorMixin:
                 greeting_sink=greeting_sink,
                 steering_sink=steering_sink,
                 authorization_sink=authorization_sink,
+                failure_sink=failure_sink,
                 active_mission=active_mission,
             )
 

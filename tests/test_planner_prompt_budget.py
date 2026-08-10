@@ -74,7 +74,7 @@ def test_math_scope_prompt_is_compact_and_deduplicated(
     assert prompt.count(objective) == 1
     assert "Argus planner role skill:" not in prompt
     assert "waiting_contract" not in prompt
-    assert prompt.count("PROJECT_DONE=true|false") == 1
+    assert prompt.count("PROJECT_DONE=false") == 1
     assert "not a routing command" in prompt
     assert "Integrity and reproducibility are admission constraints" in prompt
     assert "delegate implementation to Engineer" in prompt
@@ -88,8 +88,10 @@ def test_math_scope_prompt_excludes_unrelated_modules(
     prompt, _objective = _build_math_scope_prompt(tmp_path, monkeypatch)
 
     assert "## Planner read-only delegation contract" in prompt
-    assert "## Stage checklist (scope)" in prompt
-    assert "## Stage gate" in prompt
+    assert "## Current workflow stage" in prompt
+    assert "current: `scope`" in prompt
+    assert "## Stage checklist" not in prompt
+    assert "## Stage gate" not in prompt
     assert "## Parallel paper-drafting track" not in prompt
     assert "PAPER_INFRASTRUCTURE_REVIEW.json" not in prompt
     assert "RESULT_PLACEHOLDERS.md" not in prompt

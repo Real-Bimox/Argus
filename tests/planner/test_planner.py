@@ -8,6 +8,7 @@ from argus_skill.planner.planner import (
     Planner,
     PlannerConfig,
     parse_planner_text,
+    parse_task_scope,
 )
 from argus_skill.roles.prompts.planner import _PLANNER_CORE_CONTRACT
 
@@ -25,7 +26,7 @@ def test_parse_key_value_completion_after_freeform_progress() -> None:
     assert verdict.reason == "Updated the parser and verified the regression suite."
 
 
-def test_parse_task_workdir_for_nested_target_repository() -> None:
+def test_parse_planner_task_ignores_legacy_workdir_and_quality_controls() -> None:
     verdict = parse_planner_text(
         "\n".join([
             "PROJECT_DONE=false",
@@ -43,7 +44,11 @@ def test_parse_task_workdir_for_nested_target_repository() -> None:
     )
 
     assert verdict.error == ""
-    assert verdict.new_tasks[0].execution_workdir == "flash-linear-attention"
+    assert verdict.new_tasks[0].execution_workdir == ""
+    assert verdict.new_tasks[0].hypothesis == ""
+    assert verdict.new_tasks[0].acceptance_check == (
+        "pytest tests/ops/test_attnres.py -q"
+    )
 
 
 def test_parse_status_summary_aliases() -> None:
@@ -55,7 +60,7 @@ def test_parse_status_summary_aliases() -> None:
     assert verdict.reason == "Implementation and verification finished."
 
 
-def test_parse_task_blocker_fingerprint() -> None:
+def test_parse_planner_task_ignores_legacy_blocker_fingerprint() -> None:
     verdict = parse_planner_text(
         "PROJECT_DONE=false\n"
         "REASON=The same external blocker remains.\n"
@@ -66,7 +71,7 @@ def test_parse_task_blocker_fingerprint() -> None:
     )
 
     assert verdict.error == ""
-    assert verdict.new_tasks[0].blocker_fingerprint == "dataset-license:benchmark-x"
+    assert verdict.new_tasks[0].blocker_fingerprint == ""
 
 
 def test_incomplete_key_value_result_is_retryable() -> None:
@@ -89,8 +94,52 @@ def test_planner_prompt_requires_read_only_delegation_and_plain_key_values() -> 
     assert "Planner read-only delegation contract" in _PLANNER_CORE_CONTRACT
     assert "Do not edit project files" in _PLANNER_CORE_CONTRACT
     assert "Engineer owns edits" in _PLANNER_CORE_CONTRACT
-    assert "PROJECT_DONE=true|false" in _PLANNER_CORE_CONTRACT
+    assert "PROJECT_DONE=false" in _PLANNER_CORE_CONTRACT
     assert "not JSON" in _PLANNER_CORE_CONTRACT
+    for field in ("TASK_TITLE", "TASK_OBJECTIVE", "TASK_ACCEPTANCE_CHECK"):
+        assert field in _PLANNER_CORE_CONTRACT
+    for field in (
+        "TASK_WORKDIR",
+        "TASK_CONTEXT_REFS",
+        "TASK_REQUIRE_INDEPENDENT_REVIEW",
+        "TASK_STAGE_CLOSING",
+    ):
+        assert field not in _PLANNER_CORE_CONTRACT
+    assert "The Host owns workdir, scope" in _PLANNER_CORE_CONTRACT
+    assert "external algorithm" in _PLANNER_CORE_CONTRACT
+    assert "primary-source grounding" in _PLANNER_CORE_CONTRACT
+    assert "starting context, not a" in _PLANNER_CORE_CONTRACT
+    assert "fresh paper/source/issue/hardware investigation" in _PLANNER_CORE_CONTRACT
+    assert "When related attempts repeatedly fail" in (
+        _PLANNER_CORE_CONTRACT
+    )
+    assert "official implementations" in _PLANNER_CORE_CONTRACT
+
+
+def test_parse_task_scope_accepts_final_certification_annotation() -> None:
+    assert parse_task_scope("bounded — one coherent mission") == "bounded"
+    assert parse_task_scope("final_submission (certification)") == "final_submission"
+
+
+def test_parse_planner_task_ignores_legacy_dependency_controls() -> None:
+    verdict = parse_planner_text(
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=queue the grounded implementation",
+            "TASK_KEY=grounded",
+            (
+                "TASK_DEPS=No external dependency. Preserve the dense baseline; "
+                "do not repeat rejected work."
+            ),
+            "TASK_TITLE=Implement grounded method",
+            "TASK_OBJECTIVE=Implement the source-backed method.",
+            "TASK_SCOPE=bounded — one coherent mission",
+        ])
+    )
+
+    assert verdict.error == ""
+    assert verdict.new_tasks[0].deps == []
+    assert verdict.new_tasks[0].scope == "bounded"
 
 
 class _Runner:
@@ -116,7 +165,11 @@ class _SequenceRunner:
 
     def run_exec(self, **kwargs):  # noqa: ANN003
         self.calls.append(kwargs)
-        return RunnerResult(exit_code=0, agent_messages=[self.messages.pop(0)])
+        return RunnerResult(
+            exit_code=0,
+            agent_messages=[self.messages.pop(0)],
+            thread_id="planner-thread",
+        )
 
 
 def test_plan_next_disables_schema_and_forces_read_only_tools(monkeypatch) -> None:
@@ -204,17 +257,21 @@ def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:
     assert verdict.error == ""
     assert verdict.project_done is False
     assert [task.title for task in verdict.new_tasks] == ["Repair verifier path"]
-    assert verdict.new_tasks[0].hypothesis == "The verifier path is the remaining defect."
-    assert verdict.new_tasks[0].goal_contribution.startswith("Restore trustworthy")
+    assert verdict.new_tasks[0].hypothesis == ""
+    assert verdict.new_tasks[0].goal_contribution == ""
     assert runner.calls[0]["run_label"] == "planner.cycle7"
     assert runner.calls[1]["run_label"] == "planner.cycle7.repair1"
+    assert runner.calls[1]["resume_thread_id"] == "planner-thread"
+    assert "Original Planner prompt" not in runner.calls[1]["prompt"]
+    assert "Do not use tools" in runner.calls[1]["prompt"]
     assert NO_CONCRETE_TASKS_ERROR in runner.calls[1]["prompt"]
     assert (
         "Never return `PROJECT_DONE=false` without either `WAITING=true`"
         in runner.calls[1]["prompt"]
     )
-    assert "TASK_HYPOTHESIS=..." in runner.calls[1]["prompt"]
-    assert "TASK_GOAL_CONTRIBUTION=..." in runner.calls[1]["prompt"]
+    assert "TASK_TITLE=..." in runner.calls[1]["prompt"]
+    assert "TASK_OBJECTIVE=..." in runner.calls[1]["prompt"]
+    assert "review, stage, or Skill control fields" in runner.calls[1]["prompt"]
     assert runner.calls[1]["options"].working_dir == "/tmp/project"
 
 
@@ -258,7 +315,9 @@ def test_plan_next_downgrades_invalid_skip_hint_without_repair_call(
     assert len(runner.calls) == 1
 
 
-def test_plan_next_repairs_missing_mission_quality_context(monkeypatch) -> None:
+def test_plan_next_accepts_minimal_task_without_mission_quality_fields(
+    monkeypatch,
+) -> None:
     runner = _SequenceRunner([
         "\n".join([
             "PROJECT_DONE=false",
@@ -293,12 +352,11 @@ def test_plan_next_repairs_missing_mission_quality_context(monkeypatch) -> None:
     )
 
     assert verdict.error == ""
-    assert verdict.new_tasks[0].title == "Repair the user-visible parser behavior"
-    assert len(runner.calls) == 2
-    assert "missing mission-quality fields" in runner.calls[1]["prompt"]
+    assert verdict.new_tasks[0].title == "Make checker green"
+    assert len(runner.calls) == 1
 
 
-def test_plan_next_repairs_malformed_context_ref_metadata(monkeypatch) -> None:
+def test_plan_next_ignores_malformed_context_ref_metadata(monkeypatch) -> None:
     runner = _SequenceRunner([
         "\n".join(
             [
@@ -343,17 +401,8 @@ def test_plan_next_repairs_malformed_context_ref_metadata(monkeypatch) -> None:
     )
 
     assert verdict.error == ""
-    assert verdict.new_tasks[0].context_refs == [
-        {
-            "kind": "artifact",
-            "ref": "research/PIPELINE_STATE.json",
-            "why": "current stage",
-            "content_hash": "",
-        }
-    ]
-    assert runner.calls[1]["run_label"] == "planner.cycle0.repair1"
-    assert "TASK_CONTEXT_REFS=kind::project/relative/path::why|..." in runner.calls[1]["prompt"]
-    assert "Never put URLs, absolute paths" in runner.calls[1]["prompt"]
+    assert verdict.new_tasks[0].context_refs == []
+    assert len(runner.calls) == 1
 
 
 def test_plan_next_reports_bounded_failure_after_empty_task_repair_exhaustion(
@@ -407,6 +456,8 @@ def test_open_ended_planner_must_delegate_after_one_increment() -> None:
     assert [task.title for task in verdict.new_tasks] == [
         "Remove duplicate Manager reply rows"
     ]
+    assert "TASK_STAGE_CLOSING" not in runner.calls[0]["prompt"]
+    assert "TASK_REQUIRE_INDEPENDENT_REVIEW" not in runner.calls[0]["prompt"]
     assert OPEN_ENDED_PROJECT_DONE_ERROR in runner.calls[1]["prompt"]
 
 

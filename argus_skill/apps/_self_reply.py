@@ -653,9 +653,15 @@ class SelfReplyMixin:
             native_skill_paths: list[str] = []
         else:
             libraries = self.manager.self_mission.libraries()
+            memory = getattr(args, "manager_memory", None)
+            memory_prelude = (
+                memory.render_prelude(objective=objective)
+                if memory is not None
+                else ""
+            )
             prompt = build_simple_prompt(
                 objective=objective,
-                identity_card="",
+                identity_card=memory_prelude,
                 mission_status=self._live_mission_status_block(),
                 runtime_context=self._manager_reply_runtime_context("simple-1"),
                 operator_workspace=str(workdir),

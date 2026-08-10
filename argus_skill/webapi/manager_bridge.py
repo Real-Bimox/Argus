@@ -272,6 +272,8 @@ def manager_message(
             contextualize_operator_turn(operator_text, prior_turns),
             resolved_attachments,
         ).strip()
+        chat_state["_frontdoor_contextual_text"] = routing_body
+        chat_state["_frontdoor_dispatch_body"] = routing_body
 
         # A web-process restart necessarily loses the live ACP process. Resume
         # seamlessly by opening one new warm conversation session with a
@@ -286,7 +288,7 @@ def manager_message(
 
         classify = _classify_operator_turn(
             mem,
-            routing_body,
+            body,
             chat_state,
             active_mission,
             life_dir,
@@ -300,7 +302,7 @@ def manager_message(
         send_body, root_task_id = classify.send_body, classify.root_task_id
         frontdoor_failure = classify.frontdoor_failure
 
-        greeting_result = _maybe_greeting_reply(classify, routing_body, emitter)
+        greeting_result = _maybe_greeting_reply(classify, body, emitter)
         if greeting_result is not None:
             return greeting_result
 
@@ -393,7 +395,11 @@ def manager_message(
         except Exception as exc:  # noqa: BLE001
             if _cancelled():
                 return _cancelled_result()
-            error_reply = f"could not enqueue: {exc}"
+            log.warning("Manager could not safely prepare operator work: %s", exc)
+            error_reply = (
+                "I couldn't safely prepare that request, so nothing was queued "
+                "or executed. Clarify the target and allowed scope, or retry later."
+            )
             return emitter.respond(error_reply, {"kind": "error"})
 
     if _cancelled():

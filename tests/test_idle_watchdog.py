@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -110,7 +111,10 @@ def test_provider_exit_cleans_descendants_before_waiting_for_pipe_eof() -> None:
     assert state.orphan_process_group_cleanup_succeeded is True
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX process-group isolation")
+@pytest.mark.skipif(
+    os.name != "posix" or shutil.which("setsid") is None,
+    reason="requires POSIX process-group isolation and the setsid executable",
+)
 def test_provider_exit_does_not_wait_for_separate_owned_process_pipes() -> None:
     runner = AgentCliRunner(agent_bin=sys.executable)
     command = [

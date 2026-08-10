@@ -415,7 +415,13 @@ export const api = {
   updateProject: (sid: string, name: string) =>
     mutationJson<{ ok: boolean; sid: string; name: string }>('PATCH', P(sid), { name }),
   deleteProject: (sid: string) =>
-    mutationJson<{ ok: boolean; sid: string; trash_path: string }>('DELETE', P(sid)),
+    mutationJson<{
+      ok: boolean;
+      sid: string;
+      trash_path: string;
+      workdir: string;
+      workdir_preserved: boolean;
+    }>('DELETE', P(sid)),
   snapshot: async (sid: string, signal?: AbortSignal) => {
     await compatibleApiMeta();
     const value = await getJson<unknown>(
