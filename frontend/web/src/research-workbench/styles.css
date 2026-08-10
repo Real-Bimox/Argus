@@ -352,6 +352,22 @@
   }
 
   @container (max-width: 700px) {
+    .integrated-workbench .ros-page,
+    .integrated-workbench .overview-page,
+    .integrated-workbench .page {
+      padding: 16px 16px 28px;
+    }
+    .integrated-workbench .ros-page-header {
+      flex-direction: column;
+      gap: 12px;
+    }
+    .integrated-workbench .header-badges {
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .integrated-workbench .module-grid {
+      grid-template-columns: 1fr;
+    }
     .integrated-workbench .copilot-v2__layout {
       grid-template-columns: 1fr;
     }
@@ -376,6 +392,59 @@
     .integrated-workbench .inbox-output {
       grid-template-columns: 1fr;
     }
+    .integrated-workbench .experiment-header-actions {
+      width: 100%;
+      justify-content: flex-start;
+    }
+    .integrated-workbench .experiment-header-actions .button {
+      min-width: 0;
+      flex: 1 1 96px;
+      justify-content: center;
+    }
+    .integrated-workbench .experiment-progress-hero {
+      grid-template-columns: 1fr;
+      gap: 12px;
+      padding: 18px 16px 0;
+    }
+    .integrated-workbench .progress-number {
+      align-items: flex-start;
+      padding-right: 0;
+    }
+    .integrated-workbench .progress-number strong {
+      font-size: 38px;
+    }
+    .integrated-workbench .truthful-progress__legend span:last-child {
+      width: 100%;
+      margin-left: 0;
+    }
+    .integrated-workbench .progress-metrics {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      margin-inline: -16px;
+    }
+    .integrated-workbench .progress-metrics > div:nth-child(2) {
+      border-right: 0;
+    }
+    .integrated-workbench .progress-metrics > div:nth-child(-n + 2) {
+      border-bottom: 1px solid rgb(var(--border));
+    }
+    .integrated-workbench .checkpoint-list {
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .integrated-workbench .checkpoint {
+      display: grid;
+      grid-template-columns: 30px minmax(0, 1fr);
+      align-items: center;
+      gap: 9px;
+      text-align: left;
+    }
+    .integrated-workbench .checkpoint > div {
+      margin-top: 0;
+      padding-inline: 0;
+    }
+    .integrated-workbench .checkpoint > i {
+      display: none;
+    }
     .integrated-workbench .research-stage-rail {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -387,6 +456,16 @@
     }
     .integrated-workbench .literature-v2__sidebar {
       display: none;
+    }
+    .integrated-workbench .literature-list-header {
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .integrated-workbench .paper-grid {
+      grid-template-columns: 1fr;
+    }
+    .integrated-workbench .paper-card {
+      min-height: 0;
     }
     .integrated-workbench .literature-stats {
       grid-template-columns: repeat(2, minmax(0, 1fr));
