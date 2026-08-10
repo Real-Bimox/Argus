@@ -102,7 +102,7 @@ def test_engineer_learning_targets_engineer_bucket(tmp_path) -> None:
     assert f"Engineer Skill directory (project layer only): {skill_dir}" in prompt
 
 
-def test_reviewer_learning_ab_switch_targets_reviewer_bucket(tmp_path) -> None:
+def test_main_reviewer_never_edits_skills_directly(tmp_path) -> None:
     store = SkillStore(tmp_path / "skills")
     common = dict(
         objective="review the software patch",
@@ -127,8 +127,9 @@ def test_reviewer_learning_ab_switch_targets_reviewer_bucket(tmp_path) -> None:
     )._build_prompt(**common)
 
     assert "Reviewer self-evolution" not in control
-    assert "Reviewer self-evolution" in treatment
-    assert str((tmp_path / "skills" / "reviewer").resolve()) in treatment
+    assert "Reviewer self-evolution" not in treatment
+    assert str((tmp_path / "skills" / "reviewer").resolve()) not in treatment
+    assert "strictly read-only" in treatment
 
 
 def test_reviewer_protected_resource_evidence_requires_a_traceable_mutation(
