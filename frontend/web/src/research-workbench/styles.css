@@ -392,6 +392,9 @@
     .integrated-workbench .inbox-output {
       grid-template-columns: 1fr;
     }
+    .integrated-workbench .literature-v2__detail {
+      grid-template-columns: 1fr;
+    }
     .integrated-workbench .experiment-header-actions {
       width: 100%;
       justify-content: flex-start;
@@ -771,6 +774,11 @@
   }
 }
 
+/* Restore component-specific spacing after the host Tailwind reset clears button padding. */
+.integrated-workbench button {
+  padding: revert-layer;
+}
+
 /* These controls are buttons, so keep their spacing above the host app's unlayered reset. */
 .integrated-workbench .literature-v2__sidebar .search-field {
   width: calc(100% - 24px);
@@ -778,12 +786,35 @@
   max-width: none;
 }
 
+.integrated-workbench .literature-v2__main {
+  overflow: hidden;
+  border: 1px solid rgb(var(--border));
+  border-radius: 16px;
+  background: rgb(var(--surface));
+  padding: 16px;
+  box-shadow: var(--shadow-1);
+}
+
+.integrated-workbench .literature-list-header {
+  min-height: 0;
+  border-bottom: 1px solid rgb(var(--border));
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+}
+
+.integrated-workbench .paper-grid {
+  gap: 14px;
+}
+
 .integrated-workbench button.paper-card {
   width: 100%;
   min-width: 0;
   min-height: 242px;
   overflow: hidden;
+  border-color: rgb(var(--border-strong));
+  background: rgb(var(--surface-2) / .42);
   padding: 17px;
+  box-shadow: none;
 }
 
 .integrated-workbench .paper-card__meta {
@@ -809,7 +840,20 @@
   white-space: nowrap;
 }
 
+.integrated-workbench .release-module > header .badge {
+  flex-shrink: 0;
+}
+
 @container (max-width: 700px) {
+  .integrated-workbench .literature-v2__main {
+    padding: 12px;
+  }
+
+  .integrated-workbench .literature-list-header {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+  }
+
   .integrated-workbench button.paper-card {
     min-height: 0;
     padding: 15px;
