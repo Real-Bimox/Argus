@@ -35,9 +35,19 @@ export function resolveBin(): string {
   // this file lives at <repo>/frontend/tui/{src|dist}/ensureApi — the repo venv
   // is three levels up.
   const here = dirname(fileURLToPath(import.meta.url));
-  const repoBin = resolve(here, '..', '..', '..', '.venv', 'bin', 'argus-skill');
+  const repo = resolve(here, '..', '..', '..');
+  const repoBin = repoBackendPath(repo);
   if (existsSync(repoBin)) return repoBin;
   return 'argus-skill';
+}
+
+export function repoBackendPath(
+  repo: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  return platform === 'win32'
+    ? resolve(repo, '.venv', 'Scripts', 'argus-skill.exe')
+    : resolve(repo, '.venv', 'bin', 'argus-skill');
 }
 
 export interface ApiProbeResult {

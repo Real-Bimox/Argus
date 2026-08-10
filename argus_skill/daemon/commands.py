@@ -281,7 +281,30 @@ def submit_daemon_command(
         state = _read_state(path)
         existing = state["commands"].get(cid)
         if isinstance(existing, dict):
-            return _receipt(existing)
+            requested_args = _jsonable(args or {})
+            same_request = (
+                str(existing.get("operation") or "") == op
+                and (existing.get("args") or {}) == requested_args
+                and existing.get("expected_revision") == expected_revision
+            )
+            if same_request:
+                return _receipt(existing)
+            receipt = _receipt(existing)
+            return DaemonCommandReceipt(
+                command_id=cid,
+                operation=op,
+                status="rejected",
+                revision=receipt.revision,
+                expected_revision=expected_revision,
+                args=requested_args,
+                result={},
+                error=(
+                    "command_id conflict: the id is already bound to a "
+                    "different operation, args, or expected_revision"
+                ),
+                submitted_at=receipt.submitted_at,
+                updated_at=timestamp,
+            )
         current_revision = int(state["revision"])
         rejected = (
             expected_revision is not None

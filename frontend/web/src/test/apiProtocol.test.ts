@@ -320,6 +320,20 @@ describe('web API protocol handshake', () => {
     expect(result.kind).toBe('task');
   });
 
+  it('rejects a stream that closes after a delta without a terminal event', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(
+      'data: {"type":"delta","text":"partial"}\n\n',
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    )));
+    const { api } = await import('../api');
+    const onDelta = vi.fn();
+
+    await expect(api.messageStream('s-test', 'do something', { onDelta })).rejects.toThrow(
+      'ended before a terminal event',
+    );
+    expect(onDelta).toHaveBeenCalledWith('partial', '', 'auto');
+  });
+
   it('uploads attachments as multipart and reuses attachment ids in message requests', async () => {
     const fetchMock = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/api/meta') return Response.json(currentMeta);

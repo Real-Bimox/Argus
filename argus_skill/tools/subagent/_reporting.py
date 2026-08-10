@@ -355,7 +355,7 @@ def _queue_to_inbox(report: str, task_id: str = "subagent") -> None:
     except Exception:
         alert_path = REGISTRY_DIR / f"{task_id}_ALERT.md"
         alert_path.parent.mkdir(parents=True, exist_ok=True)
-        alert_path.write_text(report + "\n")
+        alert_path.write_text(report + "\n", encoding="utf-8")
 
 
 def _alert_engineer(task_id: str, event: str, task_data: dict[str, Any]) -> str:

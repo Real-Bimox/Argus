@@ -1275,6 +1275,15 @@ def test_daemon_command_idempotency_and_revision_fencing(ctx, monkeypatch) -> No
     assert first["command_status"] == duplicate["command_status"] == "applied"
     assert first["command_revision"] == duplicate["command_revision"] == 3
 
+    conflict = client.post(
+        f"/api/projects/{sid}/daemon/stop",
+        json={"command_id": "cmd-start", "expected_revision": 0},
+    ).json()
+    assert conflict["command_status"] == "rejected"
+    assert conflict["rc"] == 3
+    assert "command_id conflict" in conflict["error"]
+    assert stops == []
+
     stale = client.post(
         f"/api/projects/{sid}/daemon/stop",
         json={"command_id": "cmd-stop", "expected_revision": 0},

@@ -1,7 +1,7 @@
 import WebSocket from 'ws';
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
-import { parse, resolve } from 'node:path';
+import { posix, win32 } from 'node:path';
 import type {
   ArtifactInfo,
   BacklogItem,
@@ -56,8 +56,17 @@ export function defaultExecutionWorkdir(
   launchCwd: string,
   home = homedir(),
 ): string | undefined {
-  const resolvedLaunch = resolve(launchCwd);
-  if (resolvedLaunch === resolve(home) || resolvedLaunch === parse(resolvedLaunch).root) {
+  const windowsStyle = (value: string) => value.includes('\\') || /^[A-Za-z]:[\\/]/.test(value);
+  const pathApi = windowsStyle(launchCwd) ? win32 : posix;
+  const resolvedLaunch = pathApi.resolve(launchCwd);
+  const comparable = (value: string) => pathApi === win32 ? value.toLowerCase() : value;
+  const sameFlavorHome = windowsStyle(home) === (pathApi === win32)
+    ? comparable(pathApi.resolve(home))
+    : '';
+  if (
+    comparable(resolvedLaunch) === sameFlavorHome
+    || comparable(resolvedLaunch) === comparable(pathApi.parse(resolvedLaunch).root)
+  ) {
     return undefined;
   }
   return resolvedLaunch;

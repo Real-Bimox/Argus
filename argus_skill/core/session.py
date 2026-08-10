@@ -30,11 +30,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import paths as core_paths
-
-try:
-    import fcntl
-except ImportError:  # pragma: no cover - non-POSIX fallback
-    fcntl = None  # type: ignore[assignment]
+from .file_lock import exclusive_file_lock
 
 SESSION_META_FILE = "session.json"
 _SESSION_PREFIX = "s-"
@@ -171,13 +167,8 @@ def session_meta_lock(global_root: Path | None, sid: str) -> Iterator[None]:
     path = root / ".session-locks" / f"{lock_name}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as handle:
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
+        with exclusive_file_lock(handle, lock_name=f"session metadata lock for {sid}"):
             yield
-        finally:
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 @contextmanager
@@ -188,13 +179,8 @@ def session_lifecycle_lock(global_root: Path | None, sid: str) -> Iterator[None]
     path = root / ".session-lifecycle-locks" / f"{lock_name}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as handle:
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        try:
+        with exclusive_file_lock(handle, lock_name=f"session lifecycle lock for {sid}"):
             yield
-        finally:
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def read_session_meta(global_root: Path | None, sid: str) -> SessionMeta | None:

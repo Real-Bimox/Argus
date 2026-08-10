@@ -6,10 +6,32 @@ from pathlib import Path
 from argus_skill.core import runtime_identity as runtime_identity_module
 from argus_skill.release import (
     MANIFEST_SCHEMA_VERSION,
+    _source_files,
     compute_source_digest,
     release_identity,
     release_manifest,
 )
+
+
+def test_release_digest_covers_runtime_and_frontend_build_inputs() -> None:
+    root = Path(__file__).parents[2]
+    included = {
+        path.resolve().relative_to(root.resolve()).as_posix()
+        for path in _source_files(root)
+    }
+
+    assert {
+        "argus_skill/verticals/classical_poetry/sources.yaml",
+        "argus_skill/verticals/chip_design/references/workflow.md",
+        "frontend/tui/scripts/build-bundle.mjs",
+        "frontend/web/src/index.css",
+        "frontend/web/public/manifest.webmanifest",
+        "frontend/web/package-lock.json",
+        "frontend/web/vite.config.ts",
+        "frontend/web/index.html",
+    }.issubset(included)
+    assert "frontend/web/dist/index.html" not in included
+    assert "frontend/tui/bundle/argus.mjs" not in included
 
 
 def test_release_manifest_matches_current_shipped_source() -> None:
@@ -28,21 +50,26 @@ def test_release_manifest_matches_current_shipped_source() -> None:
 def test_checked_in_frontend_contract_matches_current_release() -> None:
     root = Path(__file__).parents[2]
     manifest = release_manifest()
-    generated = (root / "frontend/core/src/release.generated.ts").read_text()
+    generated = (root / "frontend/core/src/release.generated.ts").read_text(
+        encoding="utf-8"
+    )
     assert manifest["release_id"] in generated
     assert manifest["source_digest"] in generated
 
-    tui = (root / "frontend/tui/bundle/argus.mjs").read_text()
+    tui = (root / "frontend/tui/bundle/argus.mjs").read_text(encoding="utf-8")
     assert manifest["release_id"] in tui
 
     web_root = root / "frontend/web/dist"
-    index = (web_root / "index.html").read_text()
+    index = (web_root / "index.html").read_text(encoding="utf-8")
     assets = [
         web_root / ref.lstrip("/")
         for ref in re.findall(r'(?:src|href)="([^"]+\.js)"', index)
     ]
     assert assets
-    assert any(manifest["release_id"] in path.read_text() for path in assets)
+    assert any(
+        manifest["release_id"] in path.read_text(encoding="utf-8")
+        for path in assets
+    )
 
 
 def test_untracked_runtime_skill_does_not_change_release_identity() -> None:
@@ -65,6 +92,23 @@ def test_untracked_new_source_participates_before_first_commit() -> None:
         assert compute_source_digest(root) != before
     finally:
         source.unlink(missing_ok=True)
+
+
+def test_installed_frontend_dependencies_do_not_change_release_identity() -> None:
+    root = Path(__file__).parents[2]
+    node_modules = root / "frontend" / "web" / "node_modules"
+    dependency = node_modules / "_release-test" / "package.json"
+    had_node_modules = node_modules.exists()
+    before = compute_source_digest(root)
+    try:
+        dependency.parent.mkdir(parents=True, exist_ok=True)
+        dependency.write_text('{"name": "ignored"}\n', encoding="utf-8")
+        assert compute_source_digest(root) == before
+    finally:
+        dependency.unlink(missing_ok=True)
+        dependency.parent.rmdir()
+        if not had_node_modules:
+            node_modules.rmdir()
 
 
 def test_strict_release_preflight_rejects_manifest_source_mismatch(

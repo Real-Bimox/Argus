@@ -211,14 +211,14 @@ def reconcile_terminal_task(task_id: str, task: dict[str, Any]) -> dict[str, Any
     if task.get("state") not in {"starting", "preflight", "running"}:
         return task
     pid = int(task.get("pid") or 0)
-    if pid and _is_pid_alive(pid):
+    run_id = str(task.get("run_id") or "") or None
+    exit_code = _read_exit_code(task_id, run_id)
+    if exit_code is None and pid and _is_pid_alive(pid):
         worker_pid = int(task.get("worker_pid") or 0)
         if worker_pid and not _is_pid_alive(worker_pid):
             task["owner_lost"] = True
             task["terminal_owner"] = "exit_sidecar_reconciler"
         return task
-    run_id = str(task.get("run_id") or "") or None
-    exit_code = _read_exit_code(task_id, run_id)
     if exit_code is None:
         task["state"] = "crashed"
         task["error"] = f"sub-agent process {pid} no longer running and no exit sidecar exists"

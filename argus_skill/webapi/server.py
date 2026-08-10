@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from ..apps.cli._follow import (
+    _merge_recent_event_rows,
     _read_recent_jsonl_events,
     _read_recent_project_events,  # noqa: F401 - used via server_mod._read_recent_project_events in webapi/routes/projects.py
 )
@@ -373,6 +374,52 @@ def _is_inner_monologue(event: object) -> bool:
     return isinstance(event, dict) and str(event.get("kind") or "").strip() == "reasoning"
 
 
+def _read_replay_snapshot(
+    path: Path,
+    *,
+    limit: int,
+    max_bytes: int = 256 * 1024,
+) -> tuple[list[dict[str, Any]], int, int | None]:
+    """Read replay rows and their exact complete-line byte boundary once.
+
+    Reading from one open file description prevents an append from appearing
+    in the replay while the tail still starts at an older separately-statted
+    offset. The final unterminated JSONL record is deliberately left for the
+    live tail to finish.
+    """
+    limit = max(0, int(limit))
+    try:
+        with path.open("rb") as fh:
+            inode = os.fstat(fh.fileno()).st_ino
+            size = fh.seek(0, os.SEEK_END)
+            start = max(0, size - max(1, int(max_bytes)))
+            fh.seek(start)
+            raw = fh.read(size - start)
+    except OSError:
+        return [], 0, None
+    last_newline = raw.rfind(b"\n")
+    if last_newline < 0:
+        return [], (0 if start == 0 else size), inode
+    offset = start + last_newline + 1
+    complete = raw[: last_newline + 1]
+    if start:
+        _, separator, complete = complete.partition(b"\n")
+        if not separator:
+            complete = b""
+    rows: list[dict[str, Any]] = []
+    for raw_line in complete.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(event, dict):
+            rows.append(event)
+    return ([] if limit == 0 else rows[-limit:]), offset, inode
+
+
 async def tail_events(
     life_dir: Path,
     *,
@@ -391,18 +438,15 @@ async def tail_events(
     """
     path = life_dir / EVENT_FILE
 
-    # Fix the tail baseline BEFORE replaying, so an event appended between the
-    # replay snapshot and the first poll is neither dropped nor duplicated:
-    # replay covers up to `offset`, the tail covers everything strictly after.
-    offset = 0
-    inode: int | None = None
-    if path.exists():
-        stat = path.stat()
-        offset = stat.st_size
-        inode = stat.st_ino
+    current, offset, inode = _read_replay_snapshot(path, limit=replay_limit)
+    previous = _read_recent_jsonl_events(
+        path.with_name(path.name + ".1"),
+        limit=replay_limit,
+    ) if replay_limit > 0 else []
+    replay = _merge_recent_event_rows(previous, current, limit=replay_limit)
 
     hide = _hides_inner_monologue()
-    for ev in _read_recent_jsonl_events(path, limit=replay_limit):
+    for ev in replay:
         if hide and _is_inner_monologue(ev):
             continue
         yield ev
