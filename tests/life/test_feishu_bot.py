@@ -14,6 +14,7 @@ import pytest
 
 from argus_skill.life import feishu_bot
 from argus_skill.life.chat.dedup import EventDedup, sender_allowed
+from argus_skill.life.chat.router import CommandRouter, help_text
 
 
 @pytest.fixture
@@ -74,6 +75,47 @@ def router(monkeypatch):
 
 def _dispatched() -> list[str]:
     return [text for r in _RecordingRouter.instances for text in r.dispatched]
+
+
+@pytest.mark.parametrize("channel_name", ["", "飞书", "Telegram"])
+def test_help_card_describes_current_four_role_runtime(channel_name: str) -> None:
+    text = help_text(channel_name)
+
+    assert text.index("Manager · 控制") < text.index("Planner · 方向")
+    assert text.index("Planner · 方向") < text.index("Engineer · 执行")
+    assert text.index("Engineer · 执行") < text.index("Reviewer · 验证")
+    assert "只走 Manager" in text
+    assert "四层 Agent 架构" not in text
+    assert "L3" not in text
+
+
+def test_status_role_labels_match_the_four_role_runtime() -> None:
+    assert CommandRouter._LAYER_LABELS == {
+        "manager": "👔 Manager · 控制",
+        "planner": "🧠 Planner · 方向",
+        "engineer": "👷 Engineer · 执行",
+        "reviewer": "👨‍🏫 Reviewer · 验证",
+    }
+
+
+def test_feishu_status_uses_current_role_label(life_dir) -> None:
+    router = CommandRouter(
+        life_dir=life_dir,
+        transport=feishu_bot.FeishuTransport(
+            app_id="cli_test",
+            app_secret="secret",
+            chat_id="oc_chat",
+        ),
+    )
+    memory = SimpleNamespace(
+        journal=SimpleNamespace(
+            tail=lambda _count: [
+                SimpleNamespace(extra={"agent_layer": "engineer"}),
+            ]
+        )
+    )
+
+    assert router._detect_active_layer(memory) == "👷 Engineer · 执行"
 
 
 # -- inbound guards ---------------------------------------------------------

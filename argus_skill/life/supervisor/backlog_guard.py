@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import logging
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, Callable
 
 log = logging.getLogger(__name__)
 
@@ -111,6 +111,7 @@ def ensure_manager_decision(
     chat_state: Any = None,
     *,
     manager: Any = None,
+    ensure_runner: Callable[[dict[str, Any], Any], Any] | None = None,
 ) -> Any:
     """Route *item* through the Manager if it never was, and record that.
 
@@ -144,7 +145,7 @@ def ensure_manager_decision(
             ensure_runner=(
                 (lambda _state, _memory: manager_runner)
                 if manager_runner is not None
-                else None
+                else ensure_runner
             ),
         )
         execution_task = prepared.execution_task

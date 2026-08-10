@@ -179,6 +179,39 @@ def test_guard_reuses_the_daemon_manager_instead_of_building_a_runner(
     assert needs_manager_decision(routed) is False
 
 
+def test_guard_uses_injected_supervisor_runner(tmp_path, monkeypatch) -> None:
+    from argus_skill.life.memory import LifeMemory
+    from argus_skill.manager import front_door
+
+    memory = LifeMemory.open(tmp_path)
+    item = memory.backlog.add(_written_directly())
+    runner = object()
+    captured = {}
+
+    def fake_prepare(mem, objective, state, **kwargs):
+        captured["runner"] = kwargs["ensure_runner"](state, mem)
+        return SimpleNamespace(
+            execution_task=f"managed: {objective}",
+            decision=SimpleNamespace(vertical="research", workflow_mode="bounded"),
+        )
+
+    monkeypatch.setattr(front_door, "prepare_manager_execution_task", fake_prepare)
+
+    routed = ensure_manager_decision(
+        memory,
+        item,
+        ensure_runner=lambda _state, _mem: runner,
+    )
+
+    assert captured["runner"] is runner
+    assert routed.objective == "managed: read the literature"
+    assert routed.manager_decision == {
+        "vertical": "research",
+        "workflow_mode": "bounded",
+        "routed": True,
+    }
+
+
 # -- the wiring, which once went missing -----------------------------------
 
 def test_the_backlog_item_carries_the_field() -> None:
