@@ -407,7 +407,7 @@ def test_duplicate_prerequisite_key_maps_to_existing_backlog_item(
         verdict,
         project_worktree=project_root,
     )
-    parent = supervisor.memory.backlog.add(
+    supervisor.memory.backlog.add(
         BacklogItem.new(
             title="Prepare inputs",
             objective="Prepare the validated input bundle.",
