@@ -233,7 +233,10 @@ class _VerticalDecisionMixin:
             build_fast_vertical_decision_prompt,
             build_vertical_decision_prompt,
         )
-        from ..verticals._data_domain import list_data_domains
+        from ..verticals._data_domain import (
+            data_domain_summaries,
+            list_data_domains,
+        )
         from .domain_author import (
             parse_fast_vertical_decision,
             parse_vertical_decision,
@@ -241,6 +244,11 @@ class _VerticalDecisionMixin:
         from .stage_decider import extract_answer
 
         existing = list_data_domains(self.project_root)
+        existing_summaries = data_domain_summaries(self.project_root)
+        contextual_task = (
+            "[RECENT CONVERSATION CONTEXT" in task
+            and "[CURRENT OPERATOR MESSAGE]" in task
+        )
         from ..verticals._base import (
             load_vertical,
             vertical_research_target_levels,
@@ -263,6 +271,7 @@ class _VerticalDecisionMixin:
             fast_prompt = ""
             if (
                 _manager_fast_route_enabled()
+                and not contextual_task
                 and len((task or "").strip())
                 <= _manager_route_positive_int(
                     "ARGUS_SKILL_MANAGER_FAST_ROUTE_MAX_TASK_CHARS",
@@ -274,6 +283,7 @@ class _VerticalDecisionMixin:
                     verticals_with_purpose=vertical_select.available_vertical_purposes(),
                     domains_with_purpose=DOMAIN_PURPOSES,
                     existing_data_domains=existing,
+                    existing_data_domain_summaries=existing_summaries,
                     research_target_verticals=research_target_verticals,
                 )
             fast_prompt_limit = _manager_route_positive_int(
@@ -370,6 +380,7 @@ class _VerticalDecisionMixin:
                 verticals_with_purpose=vertical_select.available_vertical_purposes(),
                 domains_with_purpose=DOMAIN_PURPOSES,
                 existing_data_domains=existing,
+                existing_data_domain_summaries=existing_summaries,
                 research_target_verticals=research_target_verticals,
             )
             grounded_prompt_limit = _manager_route_positive_int(
@@ -417,7 +428,7 @@ class _VerticalDecisionMixin:
             known_domains=list(BUILTIN_DOMAINS),
             existing_data_domains=existing,
             research_target_verticals=research_target_verticals,
-            default_execution_task=task.strip(),
+            default_execution_task="" if contextual_task else task.strip(),
         )
         if decision is None:
             raise VerticalDecisionError(

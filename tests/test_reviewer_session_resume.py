@@ -100,6 +100,9 @@ def test_reviewer_runner_receives_configured_working_dir(tmp_path: Path) -> None
 
     _label, _prompt, options = backend.history[-1]
     assert options.working_dir == str(tmp_path)
+    assert options.dangerous_yolo is False
+    assert options.full_auto is False
+    assert options.sandbox_mode == "read-only"
 
 
 def test_matching_resume_request_sends_delta_only() -> None:

@@ -168,7 +168,7 @@ def test_reviewer_certified_intermediate_stage_skips_manager_model(
     state_root = tmp_path / "state"
     workdir = tmp_path / "worktree"
     workdir.mkdir()
-    persist_vertical(state_root, "kernel_engineering", workflow_mode="staged")
+    persist_vertical(state_root, "speedrun", workflow_mode="staged")
 
     decision = Manager(
         project_root=state_root,
@@ -188,46 +188,27 @@ def test_reviewer_certified_intermediate_stage_skips_manager_model(
         (state_root / "research" / "PIPELINE_STATE.json").read_text()
     )
     assert decision.action == "advance"
-    assert decision.target_stage == "discover"
+    assert decision.target_stage == "optimize"
     assert decision.source == "reviewer_certified_policy"
-    assert state["current_stage"] == "discover"
-    assert state["stages"]["scope"]["status"] == "done"
+    assert state["current_stage"] == "optimize"
+    assert state["stages"]["setup"]["status"] == "done"
 
 
-def test_reviewer_certified_advance_still_obeys_completion_hook(
+def test_kernel_direct_vertical_has_no_process_completion_hook(
     tmp_path,
 ) -> None:
-    from argus_skill.manager import Manager
-    from argus_skill.skills.vertical_select import persist_vertical
-
-    state_root = tmp_path / "state"
-    workdir = tmp_path / "worktree"
-    workdir.mkdir()
-    persist_vertical(state_root, "kernel_engineering", workflow_mode="staged")
-    state_path = state_root / "research" / "PIPELINE_STATE.json"
-    state = json.loads(state_path.read_text())
-    state["current_stage"] = "optimize"
-    state["stages"] = {"optimize": {"status": "in_progress"}}
-    state_path.write_text(json.dumps(state), encoding="utf-8")
-
-    decision = Manager(
-        project_root=state_root,
-        execution_workdir=workdir,
-        runner=None,
-    ).decide_stage_transition(
-        review=_review(),
-        project_root=state_root,
-        mission_scope="bounded",
-        open_ended=True,
-        run_exec=lambda _prompt: (_ for _ in ()).throw(
-            AssertionError("deterministic completion failure must not call Manager")
-        ),
+    from argus_skill.verticals._base import (
+        load_vertical,
+        vertical_stage_completion_issues,
     )
 
-    assert decision.action == "hold"
-    assert decision.source == "stage_completion_gate_hold"
-    assert "no supported kernel winner" in decision.reason
-    assert json.loads(state_path.read_text())["current_stage"] == "optimize"
+    issues = vertical_stage_completion_issues(
+        load_vertical("kernel_engineering"),
+        stage="optimize",
+        project_root=tmp_path,
+    )
+
+    assert issues == ()
 
 
 def test_reviewer_certified_final_stage_skips_manager_model(

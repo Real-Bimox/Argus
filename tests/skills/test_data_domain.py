@@ -28,6 +28,26 @@ def test_exists_and_list(tmp_path):
     assert dd.list_data_domains(tmp_path) == ["alpha", "beta"]
 
 
+def test_data_domain_summaries_expose_formal_purpose(tmp_path):
+    path = dd.write_data_domain(
+        tmp_path,
+        "apple_mlx_inference",
+        stages=["profile", "measure"],
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update({
+        "status": "formal",
+        "purpose": "Apple Silicon MLX/Metal deployment optimization",
+    })
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert dd.data_domain_summaries(tmp_path) == {
+        "apple_mlx_inference": (
+            "status=formal; Apple Silicon MLX/Metal deployment optimization"
+        )
+    }
+
+
 def test_index_is_written(tmp_path):
     dd.write_data_domain(tmp_path, "alpha", stages=["a", "b"])
     index = json.loads((tmp_path / "research" / "DOMAINS" / "INDEX.json").read_text())

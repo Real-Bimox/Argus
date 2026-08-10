@@ -188,10 +188,12 @@ class Reviewer:
                 options=RunnerOptions(
                     model=config.model,
                     reasoning_effort=config.reasoning_effort,
-                    dangerous_yolo=config.dangerous_yolo,
-                    full_auto=config.full_auto,
-                    sandbox_mode=config.sandbox_mode,
-                    isolate_workdir=config.isolate_workdir,
+                    # Reviewer is an independent read-only judge. It must never
+                    # repair evidence, curate Wiki pages, or edit checkpoints.
+                    dangerous_yolo=False,
+                    full_auto=False,
+                    sandbox_mode="read-only",
+                    isolate_workdir=False,
                     skip_git_repo_check=config.skip_git_repo_check,
                     extra_args=list(config.extra_args) if config.extra_args else None,
                     skill_paths=native_skill_paths,

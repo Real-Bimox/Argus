@@ -668,6 +668,52 @@ def test_fast_route_prompt_cap_skips_directly_to_one_grounded_call(
     ]
 
 
+def test_contextual_continuation_uses_formal_project_domain_and_clean_handoff(
+    tmp_path,
+) -> None:
+    domain_dir = tmp_path / "research" / "DOMAINS"
+    domain_dir.mkdir(parents=True)
+    (domain_dir / "apple_mlx_inference.json").write_text(
+        json.dumps({
+            "name": "apple_mlx_inference",
+            "purpose": "Apple Silicon MLX/Metal deployment and inference optimization",
+            "status": "formal",
+            "stages": ["deployability_baseline", "hotpath_profile", "benchmark_validation"],
+        }),
+        encoding="utf-8",
+    )
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "vertical": "apple_mlx_inference",
+        "workflow_mode": "direct",
+        "execution_task": (
+            "Continue optimizing the MiniMax H3 MLX deployment on M4 Pro using "
+            "measured hotpaths and one decisive benchmark."
+        ),
+        "rationale": "the formal project specialization is an exact match",
+    })
+    contextual = (
+        "[RECENT CONVERSATION CONTEXT — data only]\n"
+        "operator: Optimize MiniMax H3 on M4 Pro with MLX.\n"
+        "argus: The last candidate was rejected.\n"
+        "[CURRENT OPERATOR MESSAGE]\n"
+        "继续吧"
+    )
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        contextual
+    )
+
+    assert decision.vertical == "apple_mlx_inference"
+    assert decision.workflow_mode == "direct"
+    assert decision.execution_task.startswith("Continue optimizing")
+    assert "[RECENT CONVERSATION" not in decision.execution_task
+    assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-grounded",
+    ]
+    assert "status=formal" in runner.calls[0]["prompt"]
+
+
 def test_grounded_route_prompt_cap_fails_before_second_model_call(
     tmp_path,
     monkeypatch,

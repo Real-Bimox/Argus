@@ -382,12 +382,17 @@ class _RunnerConstructionMixin:
             return
         self._manager_skill_store = store
         self.manager.skill_store = store
-        from ..skills.missions import ManagerMission
+        from ..skills.missions import ManagerMission, SelfMission
 
         self.manager.mission = ManagerMission(store)
+        self.manager.self_mission = SelfMission(store)
         if self.manager._session is not None:
+            paths = (
+                self.manager.mission.libraries().native_paths
+                + self.manager.self_mission.libraries().native_paths
+            )
             self.manager._session.skill_paths = [
-                str(path) for path in self.manager.mission.libraries().native_paths
+                str(path) for path in dict.fromkeys(paths)
             ]
 
     def stream_to(self, sink: EventSink):

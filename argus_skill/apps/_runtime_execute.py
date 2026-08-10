@@ -618,8 +618,8 @@ class SkillLoopExecuteMixin:
             "direct"
             if maintenance_mission
             else workflow_mode_override.strip().lower()
-            or (active_contract.workflow_mode if active_contract is not None else "")
             or _workflow_mode_for_project_root(_proot)
+            or (active_contract.workflow_mode if active_contract is not None else "")
         )
         try:
             from inspect import signature

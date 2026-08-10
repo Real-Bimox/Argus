@@ -54,8 +54,13 @@ class ManagerMission(RoleMission):
     role = "manager"
 
 
+class SelfMission(RoleMission):
+    role = "self"
+
+
 __all__ = [
     "RoleMission",
+    "SelfMission",
     "EngineerMission",
     "ReviewerMission",
     "PlannerMission",

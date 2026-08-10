@@ -95,6 +95,31 @@ def test_math_scope_prompt_excludes_unrelated_modules(
     assert "RESULT_PLACEHOLDERS.md" not in prompt
 
 
+def test_direct_workflow_suppresses_stage_artifact_ceremony(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    persist_vertical(
+        tmp_path,
+        "kernel_engineering",
+        workflow_mode="direct",
+    )
+    monkeypatch.setenv("ARGUS_SKILL_PROJECT_ROOT", str(tmp_path))
+
+    prompt = Planner._build_planner_prompt(
+        continuous_objective="Directly optimize MiniMax H3 inference on M4 Pro.",
+        journal_tail="(empty)",
+        planning_cycle=0,
+        open_ended=True,
+    )
+
+    assert "## Direct workflow — objective first" in prompt
+    assert "semantic context, not a mandatory artifact phase" in prompt
+    assert "## Stage checklist (scope)" not in prompt
+    assert "## Stage gate" not in prompt
+    assert "KERNEL_SCOPE.md" not in prompt
+
+
 def test_mature_math_prompt_keeps_only_bounded_terminal_history(
     tmp_path,
     monkeypatch,

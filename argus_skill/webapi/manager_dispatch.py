@@ -251,6 +251,7 @@ class _TurnEmitter:
     life_dir: Path
     turn_id: str
     fragment: Callable[[str, dict[str, Any]], None]
+    after_reply: Callable[[str], None] | None = None
 
     def phase(self, label: str) -> None:
         self.fragment("phase", {"role": "manager", "label": label})
@@ -285,6 +286,8 @@ class _TurnEmitter:
         """
         self.reply_fragment(text, message_id=message_id)
         self.journal(text)
+        if result.get("kind") == "chat" and self.after_reply is not None:
+            self.after_reply(text)
         return {"reply": text, **result}
 
     def journal_and_respond(self, text: str, result: dict[str, Any]) -> dict[str, Any]:
@@ -293,6 +296,8 @@ class _TurnEmitter:
         extra delta fragment is emitted here.
         """
         self.journal(text)
+        if result.get("kind") == "chat" and self.after_reply is not None:
+            self.after_reply(text)
         return {"reply": text, **result}
 
 
@@ -373,7 +378,7 @@ def _classify_operator_turn(
     """
     from ..life.memory import BacklogItem
     from ..manager.config_intent import _front_door_classify
-    from ..manager.front_door import _accepts_keyword
+    from ..manager.front_door import _accepts_parameter
 
     # Emit the stage BEFORE the classifier call. Copilot ACP may produce no
     # protocol events while the model is reasoning, so without this real
@@ -420,10 +425,10 @@ def _classify_operator_turn(
     # handoff here: that can make a greeting look like a systems task.
     classify_kwargs = (
         {"root_task_id": root_task_id}
-        if _accepts_keyword(_front_door_classify, "root_task_id")
+        if _accepts_parameter(_front_door_classify, "root_task_id")
         else {}
     )
-    if _accepts_keyword(_front_door_classify, "active_mission"):
+    if _accepts_parameter(_front_door_classify, "active_mission"):
         classify_kwargs["active_mission"] = active_mission
     decision = _front_door_classify(
         mem,

@@ -1,4 +1,4 @@
-"""Direct checkpoint editing and minimal verdict parsing."""
+"""Read-only Reviewer checkpoint guidance and minimal verdict parsing."""
 
 from __future__ import annotations
 
@@ -19,17 +19,19 @@ def _prompt(checkpoint_path: str = "/tmp/project/CHECKPOINT.md") -> str:
     )
 
 
-def test_reviewer_is_told_to_edit_shared_checkpoint_directly():
+def test_reviewer_is_not_given_checkpoint_bookkeeping():
     p = _prompt()
-    assert "/tmp/project/CHECKPOINT.md" in p
-    assert "edit the file directly" in p
-    assert "do not emit checkpoint JSON" in p
+    assert "/tmp/project/CHECKPOINT.md" not in p
+    assert "CHECKPOINT_RECOMMENDED" not in p
+    assert "Do not inspect or edit checkpoint/context-packet/handoff bookkeeping" in p
 
 
-def test_reviewer_is_the_final_checkpoint_editor_for_the_round():
+def test_reviewer_never_acts_as_checkpoint_editor():
     p = _prompt()
-    assert "Engineer already edited it this round" in p
-    assert "the final editor" in p
+    assert "strictly read-only" in p
+    assert "Put the next Engineer instruction only in NEXT_ACTION" in p
+    assert "only in proportion to unresolved uncertainty" in p
+    assert "six total read/search tool calls" not in p
 
 
 def test_checkpoint_state_is_not_copied_into_the_prompt():

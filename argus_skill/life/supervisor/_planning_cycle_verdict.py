@@ -31,6 +31,10 @@ class PlanningCycleVerdictMixin:
         """Bypass Planner when the vertical declares a plainly missing bundle."""
         if state.fresh_operator_messages:
             return None
+        from ...skills.vertical_select import resolve_workflow_mode
+
+        if resolve_workflow_mode(self._artifact_root()) == "direct":
+            return None
         if state.revision_request is not None:
             task = self._direct_stage_revision_task(state.revision_request)
             reason = (

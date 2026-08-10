@@ -7,7 +7,6 @@ for source compatibility.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
@@ -21,6 +20,7 @@ from ..roles.prompts.manager import (
     build_front_door_prompt,
     build_route_prompt,
     build_simple_prompt,
+    build_steer_confirmation_prompt,
 )
 
 _IDENTITY_GUARD = _PROMPT_IDENTITY_GUARD
@@ -149,54 +149,6 @@ _AUTHORIZATION_ACTIONS = {
     "artifact_refresh",
     "resume_blocked_work",
 }
-
-# Natural-language pause is an emergency control surface, not ordinary intent
-# classification. Keep this recognizer deliberately narrow: exact clock-out
-# commands (optionally followed by a status question) bypass the Manager model
-# and its per-session lock, while requests such as "实现暂停功能" and directional
-# steering such as "暂停这条路线，先检索文献" continue through normal routing.
-_ZH_PAUSE_REQUEST = re.compile(
-    r"^(?:请|麻烦)?(?:你)?(?:先)?"
-    r"(?:暂停(?:一下)?|停一下|停下来|别干了|先别做了)"
-    r"(?:[，,。.!！；;：:]?\s*"
-    r"(?:你)?(?:现在|当前|目前)?(?:正在|在)?(?:做什么|干什么|干嘛|干啥)"
-    r"(?:呢|啊|呀|吗)?)?[？?。.!！]*$"
-)
-_EN_PAUSE_REQUESTS = frozenset(
-    {
-        "pause",
-        "pause now",
-        "pause for now",
-        "stop",
-        "stop now",
-        "stop for now",
-        "hold on",
-        "take a break",
-        "pause the campaign",
-        "pause this campaign",
-        "pause the session",
-        "pause this session",
-        "stop the campaign",
-        "stop this campaign",
-    }
-)
-
-
-def looks_like_pause_request(text: str) -> bool:
-    """Recognize only unambiguous, immediate whole-session pause commands.
-
-    This deterministic path exists so an operator can always clock out a busy
-    daemon even when the Manager model is stalled. More specific instructions,
-    questions, and route changes are intentionally left to the classifier.
-    """
-    normalized = re.sub(r"\s+", " ", str(text or "").strip()).casefold()
-    if not normalized or len(normalized) > 120:
-        return False
-    if _ZH_PAUSE_REQUEST.fullmatch(normalized):
-        return True
-    english = normalized.rstrip("?.! ")
-    return english in _EN_PAUSE_REQUESTS
-
 
 _GREETING_REPLIES = {
     "zh": "你好，我是 Argus Manager。",
@@ -357,11 +309,6 @@ def classify_front_door(
     cleaned = (text or "").strip()
     if not cleaned:
         return None, None, "complex"
-    # A bare pause must not depend on provider health or wait behind an
-    # agentic Manager turn. The Web bridge also checks this before taking the
-    # per-session lock; keeping it here gives non-Web callers identical intent.
-    if looks_like_pause_request(cleaned):
-        return None, "pause", "simple"
     try:
         result = run_exec(
             build_front_door_prompt(cleaned, active_mission=active_mission)
@@ -396,6 +343,23 @@ def classify_front_door(
         control = "steer"
     else:
         control = None
+    if control == "steer" and not active_mission:
+        control = None
+    elif control == "steer":
+        try:
+            confirmation = run_exec(
+                build_steer_confirmation_prompt(
+                    cleaned,
+                    active_mission=active_mission,
+                )
+            )
+        except Exception:  # noqa: BLE001 - mutation fails closed
+            control = None
+        else:
+            if int(getattr(confirmation, "exit_code", 0) or 0) != 0:
+                control = None
+            elif _first_alpha_token(_extract_answer(confirmation)).upper() != "STEER":
+                control = None
     route = (
         _route_from_token(_first_alpha_token(route_line)) if route_line is not None else "complex"
     )
@@ -504,7 +468,6 @@ __all__ = [
     "classify_route",
     "classify_config_intent",
     "classify_front_door",
-    "looks_like_pause_request",
     "build_classify_prompt",
     "build_route_prompt",
     "build_config_intent_prompt",

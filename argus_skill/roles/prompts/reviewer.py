@@ -290,7 +290,6 @@ def render_reviewer_prompt(
     """Render the complete Reviewer prompt as ``(static_preamble, round_delta)``."""
     from ...core.project import resolve_project_root
     from ...core.research_contract import resolve_research_target_level
-    from ...engineer.checkpoint import shared_checkpoint_instructions
     from ...skills.vertical_select import _persisted_vertical
     from ..task_contract import EFFECTIVE_TASK_CONTRACT
     from .registry import resolve_role_prompt
@@ -435,17 +434,8 @@ def render_reviewer_prompt(
             or (_final_certification and stage in {"review", "submission"})
         ),
     )
-    wiki_curator_text = _load_wiki_curator_skill_if_present(working_dir)
-    wiki_curator_skill_block = (
-        f"## Wiki curator (fixed when a wiki exists)\n{wiki_curator_text}\n\n"
-        if wiki_curator_text
-        else ""
-    )
-    direct_memory_edit_block = (
-        _direct_memory_edit_block(owner.skill_store, working_dir)
-        if owner.memory_maintenance_enabled
-        else ""
-    )
+    wiki_curator_skill_block = ""
+    direct_memory_edit_block = ""
 
     venv_skill_block = (
         "## Dependency rule\n"
@@ -540,12 +530,8 @@ def render_reviewer_prompt(
     # The shared Markdown checkpoint is the live handoff. ``prior_checkpoint``
     # remains accepted for callers that have not migrated to the file path.
     _ = prior_checkpoint
-    checkpoint_block = shared_checkpoint_instructions(
-        Path(checkpoint_path) if checkpoint_path else None,
-        role="reviewer",
-    )
-    if checkpoint_block:
-        checkpoint_block += "\n\n"
+    _ = checkpoint_path
+    checkpoint_block = ""
     # Anti-livelock escalation directive (supplied by the round loop once a
     # mission passes the soft round limit): tell the reviewer to escalate an
     # unresolvable EXTERNAL blocker to `blocked` instead of looping `continue`.
@@ -599,7 +585,14 @@ def render_reviewer_prompt(
         "Judge the objective against real evidence and its checklist. Bounded "
         "work may finish before the project; final-submission work may not. Use "
         "`done` for verified completion, `continue` for agent-fixable gaps, and "
-        "`blocked` only for operator/external dependencies.\n\n"
+        "`blocked` only for operator/external dependencies. You are strictly "
+        "read-only: never edit project files, Wiki pages, Skills, checkpoints, "
+        "pipeline state, or evidence. Use tools only in proportion to unresolved "
+        "uncertainty and stop as soon as the verdict is determined. Prefer the "
+        "Engineer summary and named acceptance artifact; do not "
+        "reread equivalent handoff, mission, checkpoint, Wiki, and result files or "
+        "repeat a verifier whose exact successful output is already recorded unless "
+        "a concrete contradiction requires it.\n\n"
         + ("" if _requires_engineering_audit else _verification_directive())
         + "## Output protocol\n"
         "Reason and use tools normally, and write your review however is "
@@ -609,7 +602,6 @@ def render_reviewer_prompt(
         "REASON=<the verdict rationale>\n"
         "NEXT_ACTION=<the Engineer instruction; empty for done>\n"
         "OPERATOR_QUESTION=<operator-only blocker, or none>\n"
-        "CHECKPOINT_RECOMMENDED=true|false\n"
         "FORWARD_PROGRESS=true|false\n"
         "PLAN_SIGNAL=continue|reconsider\n"
         "PLAN_CHALLENGE=<invalidated plan assumption, or none>\n"
@@ -624,7 +616,8 @@ def render_reviewer_prompt(
         "SESSION_SIGNAL=none, or kind::<repeated_contradiction|reviewer_confusion|quality_degradation>|target::<planner|engineer|reviewer>|detail::<evidence>\n"
         "Judge FORWARD_PROGRESS against the operator objective, separately from "
         "whether this bounded implementation is correctly done.\n"
-        "Edit CHECKPOINT.md first as instructed.\n\n"
+        "Do not inspect or edit checkpoint/context-packet/handoff bookkeeping; it is "
+        "not review evidence. Put the next Engineer instruction only in NEXT_ACTION.\n\n"
         + paper_review_skill_block
         + wiki_curator_skill_block
         + direct_memory_edit_block
@@ -642,7 +635,8 @@ def render_reviewer_prompt(
         "- Preserve useful negative evidence, but integrity is a hard constraint, not scientific value by itself. "
         "Do not automatically turn an honest result into completion. An agent-designed weak proxy is not evidence for the claimed system; otherwise return `replan_requested`.\n"
         "REASON states the strongest supported finding; NEXT_ACTION names only "
-        "missing evidence or the next decision. Record surprises once in CHECKPOINT.md. "
+        "missing evidence or the next decision. State surprises once in REASON; do not "
+        "write them into project or checkpoint files. "
         "Keep factual outcome, claim boundary, and retry condition distinct: timeout, "
         "incomplete coverage, or one failed mechanism is not impossibility.\n"
         "Use done only for checkable evidence satisfying the current scope; use continue "

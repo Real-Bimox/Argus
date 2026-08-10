@@ -12,7 +12,6 @@ from argus_skill.life.router import (
     build_front_door_prompt,
     classify_config_intent,
     classify_front_door,
-    looks_like_pause_request,
 )
 
 
@@ -36,6 +35,15 @@ def _exec(answer: str, exit_code: int = 0):
     return run_exec
 
 
+def _exec_sequence(*answers: str):
+    remaining = list(answers)
+
+    def run_exec(_prompt: str):
+        return _FakeResult(remaining.pop(0), 0)
+
+    return run_exec
+
+
 def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     prompt = build_front_door_prompt("你好", active_mission=True)
 
@@ -52,6 +60,10 @@ def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     assert "WORKFLOW:" not in prompt
     assert "FAST_REPLY:" not in prompt
     assert "ACTIVE_MISSION: YES" in prompt
+    assert "Questions, requests for an explanation/status/capability check" in prompt
+    assert "Ambiguity defaults to no control" in prompt
+    assert "terminology definitions" in prompt
+    assert "post-reply learning review" in prompt
     assert "BOUNDED_INCREMENT" in prompt
     assert "BOUNDED" in prompt
     assert "STANDING" in prompt
@@ -305,35 +317,23 @@ def test_pause_control_clocks_out_whole_session() -> None:
     assert route == "simple"
 
 
-def test_bare_pause_bypasses_model_even_when_followed_by_status_question() -> None:
+def test_bare_pause_is_decided_by_front_door_model_call() -> None:
     called = False
 
-    def must_not_run(_prompt: str):
+    def run_exec(prompt: str):
         nonlocal called
         called = True
-        raise AssertionError("emergency pause must not call the Manager model")
+        assert "停一下，你在干什么？" in prompt
+        return _FakeResult("CONFIG: NONE\nCONTROL: PAUSE\nROUTE: TEAM")
 
     decision = classify_front_door(
         "停一下，你在干什么？",
-        run_exec=must_not_run,
+        run_exec=run_exec,
         active_mission=True,
     )
 
     assert decision == (None, "pause", "simple")
-    assert called is False
-
-
-@pytest.mark.parametrize(
-    "text",
-    [
-        "怎么实现暂停功能？",
-        "我应该暂停吗？",
-        "暂停当前形式化路线；先检索最接近的前人研究",
-        "stop handling this event after the first match",
-    ],
-)
-def test_emergency_pause_recognizer_rejects_questions_and_task_content(text: str) -> None:
-    assert not looks_like_pause_request(text)
+    assert called is True
 
 
 def test_explicit_authorization_uses_structured_action_enum_and_forces_self() -> None:
@@ -371,12 +371,13 @@ def test_authorization_question_does_not_create_authority() -> None:
 def test_steer_control_routes_running_mission_direction_inline() -> None:
     directives: list[str] = []
     intent, control, route = classify_front_door(
-        "你好蠢啊，先上网查别人怎么解决这个问题",
-        run_exec=_exec(
+        "停止当前自创路线，改为先上网查别人怎么解决这个问题",
+        run_exec=_exec_sequence(
             "CONFIG: NONE\nCONTROL: STEER\n"
             "STEER_DIRECTIVE: 暂停当前自创路线；检索最接近的前人方法和基础理论，形成来源审计后由 Planner 决定下一证明节点。\n"
             "ROUTE: TEAM\n"
-            "LIFETIME: NONE\nNAME: 调整数学方向"
+            "LIFETIME: NONE\nNAME: 调整数学方向",
+            "STEER",
         ),
         steering_sink=directives.append,
         active_mission=True,
@@ -387,6 +388,47 @@ def test_steer_control_routes_running_mission_direction_inline() -> None:
     assert directives == [
         "暂停当前自创路线；检索最接近的前人方法和基础理论，形成来源审计后由 Planner 决定下一证明节点。"
     ]
+
+
+def test_question_about_profiling_cannot_mutate_active_mission() -> None:
+    directives: list[str] = []
+    intent, control, route = classify_front_door(
+        "有没有完整 Profile 测一下前向耗时？macOS 有 quant activation 吗？",
+        run_exec=_exec_sequence(
+            "CONFIG: NONE\nCONTROL: STEER\n"
+            "STEER_DIRECTIVE: 改成完整前向 profiling。\n"
+            "ROUTE: SELF\nSELF_MODE: INSPECT\nREPLY: NONE\n"
+            "LIFETIME: NONE\nGREETING: NONE\nNAME: 前向性能问题",
+            "SELF",
+        ),
+        steering_sink=directives.append,
+        active_mission=True,
+    )
+
+    assert intent is None
+    assert control is None
+    assert route == "simple"
+    assert directives == []
+
+
+def test_steer_is_structurally_impossible_without_active_mission() -> None:
+    directives: list[str] = []
+    intent, control, route = classify_front_door(
+        "把当前任务改成完整前向 profiling",
+        run_exec=_exec(
+            "CONFIG: NONE\nCONTROL: STEER\n"
+            "STEER_DIRECTIVE: 改成完整前向 profiling。\n"
+            "ROUTE: SELF\nSELF_MODE: INSPECT\nREPLY: NONE\n"
+            "LIFETIME: NONE\nGREETING: NONE\nNAME: 前向性能任务"
+        ),
+        steering_sink=directives.append,
+        active_mission=False,
+    )
+
+    assert intent is None
+    assert control is None
+    assert route == "simple"
+    assert directives == []
 
 
 @pytest.mark.parametrize(

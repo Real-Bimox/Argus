@@ -37,10 +37,7 @@ from .manager_dispatch import (
     _TurnEmitter,
 )
 from .manager_pending_question import _emit_ui_turn
-from .manager_session_intent import (
-    contextualize_operator_turn,
-    maybe_handle_session_intent,
-)
+from .manager_session_intent import contextualize_operator_turn
 from .manager_state import (
     _chat_state_for,
     _lock_for,
@@ -167,43 +164,36 @@ def manager_message(
         fingerprint=sid, global_root=Path(global_root) if global_root else None
     )
     life_dir = mem.project_root
-    emitter = _TurnEmitter(life_dir=life_dir, turn_id=turn_id, fragment=_fragment)
+
+    def _after_reply(reply: str) -> None:
+        runner = _chat_state_for(sid).get("manager_runner")
+        schedule = getattr(runner, "_schedule_self_learning_review", None)
+        if not callable(schedule):
+            return
+        try:
+            schedule(objective=operator_text, reply=reply)
+        except Exception as exc:  # noqa: BLE001 - learning never owns the answer
+            from ..life.event_log import JsonlEventSink
+
+            JsonlEventSink(None, life_dir=life_dir).append({
+                "type": "self.learning.review.failed",
+                "agent_layer": "self",
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+
+    emitter = _TurnEmitter(
+        life_dir=life_dir,
+        turn_id=turn_id,
+        fragment=_fragment,
+        after_reply=_after_reply,
+    )
     if not life_dir.is_dir():
         return {
             "kind": "error",
             "reply": "project no longer exists; the message was not processed",
         }
 
-    # Emergency pause and bounded status reads deliberately bypass the Manager
-    # session lock. A model/tool turn may be stalled while the operator is
-    # trying to intervene; making either command queue behind that turn defeats
-    # the control surface. The pause generation fences the older turn from
-    # committing stale work when it eventually returns.
-    from ..apps._self_reply import (
-        build_status_snapshot_reply,
-        looks_like_status_query,
-    )
-    from ..life.router import looks_like_pause_request
     from ..manager.ask_intent import strip_ask_prefix
-
-    if looks_like_pause_request(operator_text):
-        interrupt_manager_turns(sid)
-        try:
-            append_turn(life_dir, "operator", body)
-        except Exception:  # noqa: BLE001
-            pass
-        _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
-        return _handle_pause_control(operator_text, None, life_dir, emitter)
-
-    if looks_like_status_query(operator_text):
-        reply = build_status_snapshot_reply(life_dir, operator_text)
-        if reply:
-            try:
-                append_turn(life_dir, "operator", body)
-            except Exception:  # noqa: BLE001
-                pass
-            _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
-            return emitter.respond(reply, {"kind": "chat"})
 
     # `/ask` states outright that this is a question. Skip classification —
     # the guess is what we are removing — queue nothing, and involve no role
@@ -277,28 +267,6 @@ def manager_message(
             return _cancelled_result()
         if pending_result is not None:
             return pending_result
-
-        try:
-            session_intent = maybe_handle_session_intent(
-                sid=sid,
-                body=operator_text,
-                life_dir=life_dir,
-                global_root=Path(mem.global_root),
-                prior_turns=prior_turns,
-            )
-        except (OSError, RuntimeError, ValueError) as exc:
-            chinese = any("\u3400" <= char <= "\u9fff" for char in operator_text)
-            reply = (
-                f"无法创建或切换工作目录：{exc}。没有派发软件任务。"
-                if chinese
-                else f"Could not create or switch the work directory: {exc}. No software task was dispatched."
-            )
-            return emitter.respond(
-                reply,
-                {"kind": "error", "control": "workdir", "changed": False},
-            )
-        if session_intent is not None:
-            return emitter.respond(session_intent.reply, session_intent.result)
 
         routing_body = compose_message_body(
             contextualize_operator_turn(operator_text, prior_turns),

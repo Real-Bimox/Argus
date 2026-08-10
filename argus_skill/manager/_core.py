@@ -136,13 +136,16 @@ class Manager(
 
             memory_maintenance_enabled = role_skill_maintenance_enabled()
         self.memory_maintenance_enabled = memory_maintenance_enabled
-        from ..skills.missions import ManagerMission
+        from ..skills.missions import ManagerMission, SelfMission
 
         self.mission = ManagerMission(skill_store)
+        self.self_mission = SelfMission(skill_store)
         if self._session is not None:
-            self._session.skill_paths = [
-                str(path) for path in self.mission.libraries().native_paths
-            ]
+            paths = (
+                self.mission.libraries().native_paths
+                + self.self_mission.libraries().native_paths
+            )
+            self._session.skill_paths = [str(path) for path in dict.fromkeys(paths)]
 
     def bind_execution_workdir(self, workdir: Path | str) -> "Manager":
         """Retarget repository-facing operations without replacing state."""

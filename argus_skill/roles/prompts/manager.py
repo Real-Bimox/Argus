@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shlex
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from ...core.model_visible_text import (
     MODEL_INTEGRITY_BOUNDARY,
@@ -291,10 +291,14 @@ def build_front_door_prompt(text: str, *, active_mission: bool = False) -> str:
         "abort this one current mission while leaving the session/campaign able "
         "to continue. NO_DISPATCH only when the operator explicitly forbids "
         "queueing/starting work or requires no persistent side effect. STEER only when "
-        "ACTIVE_MISSION=YES and the message changes that mission's direction, "
-        "priority, method, evidence, or constraints; criticism such as 'search how "
-        "others solved it' still counts. Questions about stopping and tasks merely "
-        "mentioning stop are NONE. Any control forces ROUTE SELF.\n\n"
+        "ACTIVE_MISSION=YES and the current message explicitly commands a mutation of "
+        "that active mission—such as replacing its direction, changing its method or "
+        "priority, or adding/removing a binding constraint. Questions, requests for an "
+        "explanation/status/capability check, hypotheticals, reactions, criticism, and "
+        "suggestions are NEVER STEER even when they mention another possible method. "
+        "If the message can reasonably be answered without mutating active work, use "
+        "ROUTE SELF. A new task that does not explicitly replace the active mission is "
+        "TEAM, not STEER. Ambiguity defaults to no control. Any control forces ROUTE SELF.\n\n"
         "AUTHORIZATION: AUTHORIZE only when the operator explicitly grants an "
         "action blocked by the active campaign. Allowed actions: validator_repair,"
         "acceptance_retry,provenance_repair,artifact_refresh,resume_blocked_work. "
@@ -304,7 +308,11 @@ def build_front_door_prompt(text: str, *, active_mission: bool = False) -> str:
         "team instruction. Preserve the goal while choosing method, evidence, scope, "
         "and stopping condition. Never copy insults/raw wording. Else NONE.\n\n"
         "ROUTE: SELF for conversation, read-only inspection/explanation/status, or "
-        "control. TEAM for persistent file/artifact changes, commands, research, or "
+        "control. User corrections, terminology definitions, interpretation rules, "
+        "and response preferences are SELF: answer them first and let the isolated "
+        "post-reply learning review decide whether they merit cross-session storage. "
+        "Do not route them to TEAM merely because they should be remembered. TEAM is "
+        "for explicit project/profile file or artifact changes, commands, research, or "
         "engineering. Small one-shot artifacts are TEAM. If unsure, TEAM.\n\n"
         "SELF_MODE: for ROUTE SELF, choose REPLY only when the message can be "
         "answered from its own text or general conversation with no file, project, "
@@ -345,6 +353,26 @@ def build_front_door_prompt(text: str, *, active_mission: bool = False) -> str:
         "repeat with `; SET ...` for each additional requested knob.\n\n"
         f"Message:\n{cleaned}\n\n"
         "Answer:\n"
+    )
+
+
+def build_steer_confirmation_prompt(text: str, *, active_mission: bool) -> str:
+    """Render the second, mutation-only LLM gate for a proposed STEER."""
+    return (
+        "Decide whether the current operator message explicitly commands changing "
+        "the active mission. This is a mutation authorization gate, not general intent "
+        "classification.\n\n"
+        f"ACTIVE_MISSION: {'YES' if active_mission else 'NO'}\n\n"
+        "Return STEER only when ACTIVE_MISSION=YES and the message itself clearly "
+        "orders a change to that mission's direction, priority, method, evidence, or "
+        "constraints. Do not infer authorization from frustration, criticism, a feature "
+        "idea, or an implied preference. Questions and information requests are SELF, "
+        "including questions asking whether profiling exists, whether a technique is "
+        "supported, what the team is doing, why it chose a path, or whether another "
+        "approach might work. A separate new task is also SELF for this gate because it "
+        "does not mutate the active mission.\n\n"
+        "Reply with exactly one word: STEER or SELF.\n\n"
+        f"Message:\n{(text or '').strip()}\n"
     )
 
 
@@ -405,6 +433,7 @@ def build_fast_vertical_decision_prompt(
     verticals_with_purpose: dict[str, str],
     domains_with_purpose: dict[str, str] | None = None,
     existing_data_domains: Sequence[str] = (),
+    existing_data_domain_summaries: Mapping[str, str] | None = None,
     research_target_verticals: Sequence[str] = (),
 ) -> str:
     """Render the compact, tool-free first-pass vertical router prompt."""
@@ -418,7 +447,14 @@ def build_fast_vertical_decision_prompt(
         )
         or "  (none)"
     )
-    existing = ", ".join(f"`{v}`" for v in existing_data_domains) or "(none)"
+    summaries = existing_data_domain_summaries or {}
+    existing = (
+        "\n".join(
+            f"  - `{name}`: {summaries.get(name, 'status=candidate')}"
+            for name in existing_data_domains
+        )
+        or "  (none)"
+    )
     target_verticals = ", ".join(f"`{name}`" for name in research_target_verticals) or "(none)"
     return (
         "You are the MANAGER performing your fast, tool-free classification pass. "
@@ -431,8 +467,14 @@ def build_fast_vertical_decision_prompt(
         f"{menu}\n\n"
         "## Optional built-in research domains\n"
         f"{domain_menu}\n\n"
-        f"## Existing project data domains: {existing}\n\n"
+        "## Existing project data domains\n"
+        f"{existing}\n\n"
         "## Classification rules\n"
+        "- A `status=formal` project data domain is a verified specialization. "
+        "When its purpose precisely matches the recurring platform/domain objective, "
+        "choose it over a broader built-in such as `software`, `speedrun`, or "
+        "`kernel_engineering`. Do not discard specialization merely because a generic "
+        "built-in could also perform part of the work.\n"
         "- `vertical` is the workflow/capability (software, research, math, etc.). "
         "Never use an execution topology such as direct/full/staged as a vertical.\n"
         "- `domain` is an optional built-in specialization composed with the "
@@ -481,6 +523,7 @@ def build_vertical_decision_prompt(
     verticals_with_purpose: dict[str, str],
     domains_with_purpose: dict[str, str] | None = None,
     existing_data_domains: Sequence[str] = (),
+    existing_data_domain_summaries: Mapping[str, str] | None = None,
     research_target_verticals: Sequence[str] = (),
 ) -> str:
     """Render the grounded vertical and workflow decision prompt."""
@@ -494,7 +537,14 @@ def build_vertical_decision_prompt(
         )
         or "  (none)"
     )
-    existing = ", ".join(f"`{v}`" for v in existing_data_domains) or "(none)"
+    summaries = existing_data_domain_summaries or {}
+    existing = (
+        "\n".join(
+            f"  - `{name}`: {summaries.get(name, 'status=candidate')}"
+            for name in existing_data_domains
+        )
+        or "  (none)"
+    )
     target_verticals = ", ".join(f"`{name}`" for name in research_target_verticals) or "(none)"
     return (
         "You are the MANAGER of an automated research/engineering pipeline. "
@@ -518,9 +568,15 @@ def build_vertical_decision_prompt(
         f"{menu}\n\n"
         "## Optional built-in research domains\n"
         f"{domain_menu}\n\n"
-        f"## Existing project data domains (also selectable): {existing}\n\n"
+        "## Existing project data domains (also selectable)\n"
+        f"{existing}\n\n"
         "## How to choose (in this order)\n"
-        "1. If a BUILT-IN vertical above fits the Task, choose it — built-ins "
+        "1. If a `status=formal` project data domain precisely matches this recurring "
+        "platform/domain objective, choose it before a broader built-in. Formal means "
+        "the specialization was already verified for this project; do not route an "
+        "exact Apple/MLX deployment task back to generic kernel engineering merely "
+        "because both can edit kernels.\n"
+        "2. Otherwise, if a BUILT-IN vertical above fits the Task, choose it — built-ins "
         "carry expert reviewer checklists a fresh domain would lack. E.g. a "
         "production/repository GPU kernel implementation, optimization, or PR is "
         "`kernel_engineering`; a fixed GPU/CUDA/SOL-ExecBench competition objective "
@@ -535,8 +591,8 @@ def build_vertical_decision_prompt(
         "   Chemistry research uses `vertical=research` plus `domain=chemistry`; "
         "the domain adds chemistry tools and review criteria without replacing "
         "the research-to-paper stage lifecycle.\n"
-        "2. Else if an existing project data domain fits, choose it.\n"
-        "3. ONLY if nothing above provides the stable capability the Task needs, "
+        "3. Else if another existing project data domain fits, choose it.\n"
+        "4. ONLY if nothing above provides the stable capability the Task needs, "
         "AUTHOR a new data domain. Do not author one merely to encode this "
         "mission's route, deliverable subtype, or task DAG. A new domain is a slug "
         "name plus an ordered list of Stages (a phase of work each, lowercase slug, "
@@ -568,11 +624,15 @@ def build_vertical_decision_prompt(
         "`target_venue`; otherwise use null. Do not infer one from the topic.\n\n"
         "When your investigation is done, state the decision on its own lines. "
         "Explain what you found in prose around them — only these lines are "
-        "read. In both shapes the chosen name goes on the VERTICAL line:\n"
+        "read. `EXECUTION_TASK` must be a complete standalone Planner/Engineer "
+        "objective. Resolve pronouns or ellipses from any marked conversation context, "
+        "but never copy context markers or transcript rows into it. In both shapes the "
+        "chosen name goes on the VERTICAL line:\n"
         "CHOICE=existing\n"
         "VERTICAL=<one of the names above>\n"
         "DOMAIN=<built-in research domain, or none>\n"
         "WORKFLOW_MODE=<direct|staged>\n"
+        "EXECUTION_TASK=<complete standalone objective>\n"
         "RATIONALE=<why it fits, citing what you found in the repo>\n"
         "RESEARCH_TARGET_LEVEL=<exploratory|publishable|doctoral when the "
         "vertical declares a target contract, otherwise none>\n"
@@ -582,6 +642,7 @@ def build_vertical_decision_prompt(
         "VERTICAL=<a new lowercase a-z0-9_ slug, distinct from every name above>\n"
         "STAGES=<stage1>; <stage2>; <stage3>\n"
         "WORKFLOW_MODE=<direct|staged>\n"
+        "EXECUTION_TASK=<complete standalone objective>\n"
         "RATIONALE=<why no existing vertical fits + what you found>\n"
         "CONFIDENCE=<0.0-1.0>\n"
         "(If your new slug collides with an existing name it is auto-suffixed.)\n"
@@ -1260,6 +1321,7 @@ __all__ = [
     "build_skill_placement_prompt",
     "build_skill_placements_prompt",
     "build_stage_decision_prompt",
+    "build_steer_confirmation_prompt",
     "build_vertical_decision_prompt",
     "manager_rendering_prompt",
     "manager_workspace_capability_prompt",

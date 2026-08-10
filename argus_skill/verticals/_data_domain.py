@@ -199,6 +199,27 @@ def list_data_domains(project_root: object = ".") -> list[str]:
     return out
 
 
+def data_domain_summaries(project_root: object = ".") -> dict[str, str]:
+    """Return concise Manager-facing purpose/status summaries."""
+    summaries: dict[str, str] = {}
+    for name in list_data_domains(project_root):
+        try:
+            payload = json.loads(
+                _domain_path(project_root, name).read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        status = str(payload.get("status") or "candidate").strip().lower()
+        purpose = str(payload.get("purpose") or "").strip()
+        summary = f"status={status}"
+        if purpose:
+            summary += f"; {purpose}"
+        summaries[name] = summary
+    return summaries
+
+
 def migrate_data_domains(source_root: object, target_root: object) -> None:
     """Copy valid legacy domains into an empty session state root."""
     for name in list_data_domains(source_root):
@@ -299,6 +320,7 @@ def mark_promoted(project_root: object, name: str) -> None:
 __all__ = [
     "DataDomain",
     "DEFAULT_COMPLETION_GATE",
+    "data_domain_summaries",
     "is_valid_domain_name",
     "load_data_domain",
     "data_domain_exists",

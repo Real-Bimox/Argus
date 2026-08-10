@@ -376,7 +376,7 @@ def test_web_process_restart_seeds_one_startup_handoff(
     assert classified == ["new question", "next question"]
 
 
-def test_status_snapshot_preserves_warm_session_and_pending_handoff(
+def test_status_question_uses_model_path_and_consumes_pending_handoff(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -389,13 +389,24 @@ def test_status_snapshot_preserves_warm_session_and_pending_handoff(
         "needs_startup_handoff": True,
     })
     model_calls: list[str] = []
+
+    def _classify(_mem, _text, chat_state, **_kwargs):
+        model_calls.append("classify")
+        chat_state["_frontdoor_self_mode"] = "inspect"
+        return None, None, "simple"
+
+    def _triage(_mem, body, _chat_state, **_kwargs):
+        model_calls.append("triage")
+        assert body == "What is the current status?"
+        return "model status reply"
+
     monkeypatch.setattr(
         "argus_skill.manager.config_intent._front_door_classify",
-        lambda *_args, **_kwargs: model_calls.append("classify"),
+        _classify,
     )
     monkeypatch.setattr(
         "argus_skill.manager.front_door.manager_triage",
-        lambda *_args, **_kwargs: model_calls.append("triage"),
+        _triage,
     )
 
     result = manager_bridge.manager_message(
@@ -405,12 +416,11 @@ def test_status_snapshot_preserves_warm_session_and_pending_handoff(
     )
 
     assert result["kind"] == "chat"
-    assert "Current live status:" in result["reply"]
-    assert model_calls == []
-    assert state["turns"] == 4
-    assert state["last_thread_id"] == "warm-thread"
-    assert state["needs_startup_handoff"] is True
-    assert int(state.get("rotations", 0)) == 0
+    assert result["reply"] == "model status reply"
+    assert model_calls == ["classify", "triage"]
+    assert state["turns"] == 5
+    assert "needs_startup_handoff" not in state
+    assert int(state.get("startup_handoffs", 0)) == 0
 
 
 def test_natural_language_config_change_is_applied_inline(tmp_path: Path, monkeypatch) -> None:
@@ -448,11 +458,11 @@ def test_natural_language_config_change_is_applied_inline(tmp_path: Path, monkey
     assert "xhigh" in r["reply"]
     assert triaged == []  # config short-circuits BEFORE triage — not enqueued
 
-    # A pure status read bypasses both config classification and model triage.
+    # A status-looking read now uses the same model-selected SELF path.
     r2 = manager_bridge.manager_message("s-cfg00001", "how's it going?", global_root=tmp_path)
     assert r2["kind"] == "chat"
-    assert "Current live status:" in r2["reply"]
-    assert triaged == []
+    assert r2["reply"] == "chatted"
+    assert triaged == ["how's it going?"]
 
 
 def test_active_mission_config_change_is_still_applied_inline(

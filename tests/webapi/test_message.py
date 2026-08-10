@@ -406,26 +406,26 @@ def test_contextual_greeting_calls_real_manager(
     assert result == {"kind": "chat", "reply": "当前任务仍在推进。"}
 
 
-def test_advertised_what_are_you_doing_query_never_starts_manager_tool_loop(
+def test_advertised_what_are_you_doing_query_uses_frontdoor_manager_path(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    sid = "s-status-no-loop"
+    sid = "s-status-frontdoor"
     life = _make_project(tmp_path, sid)
     manager_state._STATES.clear()
-    monkeypatch.setattr(
-        config_intent,
-        "_front_door_classify",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("bounded status must not call the classifier")
-        ),
-    )
-    monkeypatch.setattr(
-        front_door,
-        "manager_triage",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("bounded status must not start a Manager tool turn")
-        ),
-    )
+    classified = threading.Event()
+    calls: list[tuple[str, str, str | None]] = []
+
+    def classify(mem, text, chat_state, **kwargs):
+        calls.append(("classify", text, None))
+        classified.set()
+        return None, None, "simple"
+
+    def triage(mem, body, chat_state, **kwargs):
+        calls.append(("triage", body, kwargs.get("route")))
+        return "当前即时状态由 Manager 读取项目状态后回复。"
+
+    monkeypatch.setattr(config_intent, "_front_door_classify", classify)
+    monkeypatch.setattr(front_door, "manager_triage", triage)
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         with manager_state.manager_context_lock(sid):
@@ -435,14 +435,19 @@ def test_advertised_what_are_you_doing_query_never_starts_manager_tool_loop(
                 "你在干什么？",
                 global_root=tmp_path,
             )
-            result = future.result(timeout=2)
+            assert not classified.wait(timeout=0.05)
+            assert not future.done()
+        result = future.result(timeout=2)
 
-    assert result["kind"] == "chat"
-    assert result["reply"].startswith("当前即时状态：")
+    assert result == {"kind": "chat", "reply": "当前即时状态由 Manager 读取项目状态后回复。"}
+    assert calls == [
+        ("classify", "你在干什么？", None),
+        ("triage", "你在干什么？", "simple"),
+    ]
     assert LifeMemory.open(life).backlog.all() == []
 
 
-def test_natural_pause_disables_loop_and_bypasses_pending_question_model(
+def test_natural_pause_is_frontdoor_control_after_pending_question_manager_check(
     tmp_path: Path, monkeypatch,
 ) -> None:
     from argus_skill.daemon.state import read_continuous_state, write_continuous_config
@@ -456,13 +461,20 @@ def test_natural_pause_disables_loop_and_bypasses_pending_question_model(
     blocked.pending_question = "Which route?"
     memory.backlog.add(blocked)
     write_continuous_config(life, enabled=True, objective="keep optimizing")
-    monkeypatch.setattr(
-        front_door,
-        "manager_triage",
-        lambda *args, **kwargs: (_ for _ in ()).throw(
-            AssertionError("pause must bypass pending-question/Manager calls")
-        ),
-    )
+    calls: list[str] = []
+
+    def triage(mem, body, chat_state, **kwargs):
+        calls.append("pending-question-manager")
+        assert "Operator response:\n停一下，你在干什么？" in body
+        return "IS_ANSWER=false\nRESOLVED=false\nDECISION=\nREPLY=\n"
+
+    def classify(mem, text, chat_state, **kwargs):
+        calls.append("frontdoor-classifier")
+        assert text == "停一下，你在干什么？"
+        return None, "pause", "simple"
+
+    monkeypatch.setattr(front_door, "manager_triage", triage)
+    monkeypatch.setattr(config_intent, "_front_door_classify", classify)
 
     result = manager_bridge.manager_message(
         sid,
@@ -470,6 +482,7 @@ def test_natural_pause_disables_loop_and_bypasses_pending_question_model(
         global_root=tmp_path,
     )
 
+    assert calls == ["pending-question-manager", "frontdoor-classifier"]
     assert result["kind"] == "control"
     assert result["control"] == "pause"
     assert result["pause_persisted"] is True
@@ -480,11 +493,27 @@ def test_natural_pause_disables_loop_and_bypasses_pending_question_model(
     assert next(row for row in stored if row.id == blocked.id).pending_question == "Which route?"
 
 
-def test_natural_pause_does_not_wait_for_busy_manager_session_lock(
-    tmp_path: Path,
+def test_natural_pause_waits_for_busy_manager_session_lock_and_uses_classifier(
+    tmp_path: Path, monkeypatch,
 ) -> None:
-    sid = "s-pause-lock-bypass"
+    sid = "s-pause-lock-frontdoor"
     _make_project(tmp_path, sid)
+    manager_state._STATES.clear()
+    classified = threading.Event()
+
+    def classify(mem, text, chat_state, **kwargs):
+        classified.set()
+        assert text == "停一下"
+        return None, "pause", "simple"
+
+    monkeypatch.setattr(config_intent, "_front_door_classify", classify)
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("classified pause control must not fall through to triage")
+        ),
+    )
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         with manager_state.manager_context_lock(sid):
@@ -494,45 +523,69 @@ def test_natural_pause_does_not_wait_for_busy_manager_session_lock(
                 "停一下",
                 global_root=tmp_path,
             )
-            result = future.result(timeout=2)
+            assert not classified.wait(timeout=0.05)
+            assert not future.done()
+        result = future.result(timeout=2)
 
+    assert classified.is_set()
     assert result["kind"] == "control"
     assert result["control"] == "pause"
 
 
-def test_pause_supersedes_inflight_manager_dispatch(
+def test_pause_is_serialized_after_inflight_manager_turn(
     tmp_path: Path, monkeypatch,
 ) -> None:
-    sid = "s-pause-supersedes"
+    sid = "s-pause-serialized"
     life = _make_project(tmp_path, sid)
     entered = threading.Event()
     release = threading.Event()
+    call_order: list[str] = []
 
-    def slow_classify(*args, **kwargs):
-        entered.set()
-        assert release.wait(timeout=3)
-        return None, None, "complex"
+    def classify(mem, text, chat_state, **kwargs):
+        if "start another long-running task" in text:
+            call_order.append("first-classify")
+            entered.set()
+            assert release.wait(timeout=3)
+            return None, None, "simple"
+        call_order.append("pause-classify")
+        assert text == "停一下"
+        return None, "pause", "simple"
 
-    monkeypatch.setattr(config_intent, "_front_door_classify", slow_classify)
+    def triage(mem, body, chat_state, **kwargs):
+        call_order.append("first-triage")
+        assert body == "start another long-running task"
+        return "First Manager turn completed inline."
 
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        stale = pool.submit(
+    monkeypatch.setattr(config_intent, "_front_door_classify", classify)
+    monkeypatch.setattr(front_door, "manager_triage", triage)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(
             manager_bridge.manager_message,
             sid,
             "start another long-running task",
             global_root=tmp_path,
         )
         assert entered.wait(timeout=2)
-        paused = manager_bridge.manager_message(
+        paused_future = pool.submit(
+            manager_bridge.manager_message,
             sid,
             "停一下",
             global_root=tmp_path,
         )
+        time.sleep(0.05)
+        assert not paused_future.done()
         release.set()
-        stale_result = stale.result(timeout=3)
+        first_result = first.result(timeout=3)
+        paused = paused_future.result(timeout=3)
 
+    assert first_result == {
+        "kind": "chat",
+        "reply": "First Manager turn completed inline.",
+    }
+    assert paused["kind"] == "control"
     assert paused["control"] == "pause"
-    assert stale_result["kind"] == "cancelled"
+    assert call_order == ["first-classify", "first-triage", "pause-classify"]
     assert LifeMemory.open(life).backlog.all() == []
 
 
@@ -1475,6 +1528,23 @@ def _parse_sse(text: str) -> list[dict]:
         if line.startswith("data:"):
             out.append(json.loads(line[len("data:"):].strip()))
     return out
+
+
+def test_turn_emitter_schedules_learning_only_for_chat(tmp_path: Path) -> None:
+    from argus_skill.webapi.manager_dispatch import _TurnEmitter
+
+    reviewed: list[str] = []
+    emitter = _TurnEmitter(
+        life_dir=tmp_path,
+        turn_id="turn-1",
+        fragment=lambda *_args: None,
+        after_reply=reviewed.append,
+    )
+
+    emitter.respond("answer", {"kind": "chat"})
+    emitter.respond("queued", {"kind": "task"})
+
+    assert reviewed == ["answer"]
 
 
 def test_manager_stream_heartbeat_uses_real_silence_and_stops_on_done() -> None:

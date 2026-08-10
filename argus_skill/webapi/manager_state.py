@@ -127,18 +127,18 @@ def _prewarm_manager_context(
         prewarm = getattr(backend, "prewarm_acp_client", None)
         if not callable(prewarm):
             return
-        import os
-
         from ..core.knobs import (
+            resolve_knob,
             resolve_manager_classify_model,
             resolve_manager_reply_model,
             resolve_role_reasoning_effort,
         )
 
         cwd = str(state.get("manager_runner_workdir") or Path.cwd())
-        classify_effort = (
-            os.environ.get("ARGUS_SKILL_FRONTDOOR_CLASSIFY_EFFORT", "low").strip() or "low"
-        )
+        classify_effort = resolve_knob(
+            "ARGUS_SKILL_FRONTDOOR_CLASSIFY_EFFORT",
+            "medium",
+        ).value.strip() or "medium"
         prewarm(
             model=resolve_manager_classify_model(),
             reasoning_effort=classify_effort,

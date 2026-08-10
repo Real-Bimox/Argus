@@ -8,7 +8,7 @@ from typing import Any, Callable
 
 from ..apps._life_actions import append_note
 from .front_door import (
-    _accepts_keyword,
+    _accepts_parameter,
     _ensure_manager_runner,
     _maybe_name_session,
 )
@@ -69,7 +69,7 @@ def _front_door_classify(
     *,
     root_task_id: str | None = None,
     ensure_runner: Callable[[dict[str, Any], Any], Any] | None = None,
-    accepts_keyword: Callable[[Any, str], bool] | None = None,
+    accepts_parameter: Callable[[Any, str], bool] | None = None,
     active_mission: bool = False,
 ) -> "tuple[Any, str | None, str]":
     """ONE merged LLM call for the Manager front-door: returns
@@ -102,7 +102,7 @@ def _front_door_classify(
         if mgr is None or not hasattr(mgr, "classify_front_door"):
             chat_state["_frontdoor_failure"] = "classifier unavailable"
             return None, None, "complex"
-        accepts = accepts_keyword or _accepts_keyword
+        accepts = accepts_parameter or _accepts_parameter
         kwargs: dict[str, Any] = {}
         if root_task_id is not None and accepts(
             mgr.classify_front_door,

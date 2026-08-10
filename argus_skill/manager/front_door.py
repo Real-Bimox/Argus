@@ -195,6 +195,7 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
             manager_session_root=str(session_root) if session_root else None,
             project_state_dir=str(session_root) if session_root else None,
             global_root=str(mem.global_root),
+            skills_dir=str(Path(mem.global_root) / "skills"),
             life_dir=getattr(mem, "root", None),
             stop_event=None,
         )
@@ -305,7 +306,7 @@ def _manager_current_stage(manager: Any) -> str:
         return ""
 
 
-def _accepts_keyword(fn: Any, name: str) -> bool:
+def _accepts_parameter(fn: Any, name: str) -> bool:
     try:
         parameters = signature(fn).parameters.values()
     except (TypeError, ValueError):
@@ -552,7 +553,7 @@ def prepare_manager_execution_task(
         if manager is None:
             raise ManagerHandoffError("runner was constructed without a Manager")
 
-        if root_task_id is None or not _accepts_keyword(
+        if root_task_id is None or not _accepts_parameter(
             manager.decide_vertical,
             "root_task_id",
         ):
@@ -853,47 +854,6 @@ def manager_continuous_handoff(
     return prepared.execution_task
 
 
-_DO_NOT_RUN_MARKERS: tuple[str, ...] = (
-    # Chinese (simplified + a few traditional variants)
-    "不要运行", "不要執行", "不要执行", "不要启动", "不要啟動",
-    "别运行", "別運行", "别启动", "別啟動", "不要跑", "不要派发", "不要分派",
-    "不要运行任务", "只做状态检查", "只检查状态", "只看状态", "只查状态",
-    "状态检查", "狀態檢查", "请回复状态正常", "請回復狀態正常",
-    # English
-    "do not run", "don't run", "dont run",
-    "do not execute", "don't execute", "dont execute",
-    "do not start", "don't start", "dont start",
-    "do not launch", "don't launch", "do not dispatch", "do not spawn",
-    "status check only", "status-only", "status only",
-    "just check status", "only check status",
-)
-
-
-def looks_like_do_not_run_request(text: str) -> bool:
-    """True iff ``text`` explicitly forbids running / asks for status only.
-
-    This protects the failure fallback: classification errors normally bias to
-    task dispatch, but an explicit no-run instruction must remain side-effect
-    free. A successful classification always takes precedence.
-    """
-    if not text:
-        return False
-    raw = str(text)
-    low = raw.lower()
-    for marker in _DO_NOT_RUN_MARKERS:
-        if marker in raw or marker.lower() in low:
-            return True
-    return False
-
-
-_DO_NOT_RUN_SAFE_REPLY = (
-    "[not dispatched] The Manager could not classify this request and your "
-    "message asks not to run anything (status-only / do-not-run), so no task was "
-    "queued. Use /status for pipeline state or /doctor to diagnose; rephrase "
-    "without the do-not-run constraint if you actually want to queue work."
-)
-
-
 def _fallback_request_excerpt(body: str) -> str:
     compact = " ".join(str(body or "").split())
     return compact if len(compact) <= 160 else compact[:157] + "..."
@@ -1069,9 +1029,9 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
             "phase_cb": _runner_phase,
             "route": route,
         }
-        if _accepts_keyword(runner.chat_reply_if_conversational, "self_mode"):
+        if _accepts_parameter(runner.chat_reply_if_conversational, "self_mode"):
             triage_kwargs["self_mode"] = "reply" if quick_reply else "inspect"
-        if root_task_id is not None and _accepts_keyword(
+        if root_task_id is not None and _accepts_parameter(
             runner.chat_reply_if_conversational,
             "root_task_id",
         ):
@@ -1091,17 +1051,10 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
                 chat_state["last_thread_id"] = getattr(runner, "last_thread_id", None)
                 return captured[0] if captured else empty_reply
         except Exception as exc:  # noqa: BLE001 — triage failure
-            if looks_like_do_not_run_request(body):
-                return _DO_NOT_RUN_SAFE_REPLY
             if is_pre_provider_refusal_error(exc):
                 return _pre_provider_refusal_reply(exc, body)
             return None
-    except Exception as exc:  # noqa: BLE001 — triage failure: bias to task ("never drop
-        # work to a bad classify") UNLESS the operator explicitly forbade running
-        # (status-only / do-not-run). Dispatching a real mission on a classify we
-        # could not even complete is how a status request reached the Engineer.
-        if looks_like_do_not_run_request(body):
-            return _DO_NOT_RUN_SAFE_REPLY
+    except Exception as exc:  # noqa: BLE001 — triage failure: bias to task
         if is_pre_provider_refusal_error(exc):
             return _pre_provider_refusal_reply(exc, body)
         return None
@@ -1132,8 +1085,7 @@ def _extract_chat_reply_text(msg: str) -> str:
     return msg
 
 __all__ = [
-    "_DO_NOT_RUN_SAFE_REPLY",
-    "_accepts_keyword",
+    "_accepts_parameter",
     "_MANAGER_RUNNER_UNAVAILABLE",
     "ManagerHandoffError",
     "ManagerHandoffSupersededError",
@@ -1145,7 +1097,6 @@ __all__ = [
     "_life_dir_for",
     "_manager_divide_user_task",
     "_maybe_name_session",
-    "looks_like_do_not_run_request",
     "manager_execution_task",
     "manager_bounded_handoff",
     "manager_continuous_handoff",

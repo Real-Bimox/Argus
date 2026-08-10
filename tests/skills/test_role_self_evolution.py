@@ -6,8 +6,11 @@ from argus_skill.manager import Manager
 from argus_skill.planner import Planner
 from argus_skill.reviewer import Reviewer
 from argus_skill.roles.prompts.engineer import build_mission_prompt
-from argus_skill.skills.missions import PlannerMission
+from argus_skill.skills.layered import LayeredSkillStore
+from argus_skill.skills.missions import PlannerMission, SelfMission
 from argus_skill.skills.role_memory import (
+    profile_role_skill_dir,
+    profile_self_skill_dir,
     project_role_skill_dir,
     role_skill_maintenance_block,
     role_skill_maintenance_enabled,
@@ -32,6 +35,45 @@ def test_role_skill_directories_are_isolated(tmp_path) -> None:
 
     for role in ("manager", "planner", "engineer", "reviewer"):
         assert project_role_skill_dir(store, role) == (tmp_path / "skills" / role).resolve()
+
+
+def test_profile_role_skill_directories_are_cross_session(tmp_path) -> None:
+    store = SimpleNamespace(global_=SimpleNamespace(skills_dir=tmp_path / "profile"))
+
+    for role in ("self", "manager", "planner", "engineer", "reviewer"):
+        assert profile_role_skill_dir(store, role) == (
+            tmp_path / "profile" / role
+        ).resolve()
+    assert profile_self_skill_dir(store) == (tmp_path / "profile" / "self").resolve()
+
+
+def test_new_session_discovers_profile_self_skill(tmp_path) -> None:
+    profile = tmp_path / "profile"
+    self_dir = profile / "self"
+    self_dir.mkdir(parents=True)
+    learned = self_dir / "operator-vocabulary.md"
+    learned.write_text(
+        "---\nname: operator vocabulary\ndescription: Interpret recurring terms\n---\n",
+        encoding="utf-8",
+    )
+    first = LayeredSkillStore(
+        project_dir=tmp_path / "session-a",
+        global_dir=profile,
+    )
+    second = LayeredSkillStore(
+        project_dir=tmp_path / "session-b",
+        global_dir=profile,
+    )
+
+    assert self_dir.resolve() in SelfMission(first).libraries().native_paths
+    assert self_dir.resolve() in SelfMission(second).libraries().native_paths
+    manager = Manager(
+        project_root=tmp_path,
+        runner=SimpleNamespace(),
+        skill_store=second,
+    )
+    assert manager._session is not None
+    assert str(self_dir.resolve()) in manager._session.skill_paths
 
 
 def test_role_maintenance_block_has_a_clean_ab_switch(tmp_path) -> None:

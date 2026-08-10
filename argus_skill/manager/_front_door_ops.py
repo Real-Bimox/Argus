@@ -137,15 +137,14 @@ class _FrontDoorMixin:
         if run_exec is None:
             if self.runner is None:
                 return None, None, "complex"
-            import os
-
-            from ..core.knobs import resolve_manager_classify_model
+            from ..core.knobs import resolve_knob, resolve_manager_classify_model
             from ..core.models import RunnerOptions
 
             _backend = self.runner
-            _effort = os.environ.get(
-                "ARGUS_SKILL_FRONTDOOR_CLASSIFY_EFFORT", "low"
-            ).strip() or "low"
+            _effort = resolve_knob(
+                "ARGUS_SKILL_FRONTDOOR_CLASSIFY_EFFORT",
+                "medium",
+            ).value.strip() or "medium"
 
             def run_exec(prompt: str) -> Any:  # noqa: ANN401
                 return gateway_run_exec(

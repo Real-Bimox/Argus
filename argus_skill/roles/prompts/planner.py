@@ -236,7 +236,10 @@ def build_continuous_prompt(
     from ...core.project import resolve_project_root
     from ...core.research_contract import resolve_research_target_level
     from ...skills.ground_truth import ground_truth_mandate
-    from ...skills.vertical_select import resolve_evidence_mode
+    from ...skills.vertical_select import (
+        resolve_evidence_mode,
+        resolve_workflow_mode,
+    )
     from .registry import resolve_role_prompt
 
     cycle_line = f"This is planning cycle #{planning_cycle + 1}."
@@ -244,6 +247,7 @@ def build_continuous_prompt(
     prompt_context = resolve_role_prompt(continuous_request(_proot))
     stage = prompt_context.stage
     stage_checklist = prompt_context.stage_checklist
+    workflow_mode = resolve_workflow_mode(_proot)
     stage_order = prompt_context.stage_order
     stage_idx = stage_order.index(stage) if stage in stage_order else 0
     earlier_stages = ", ".join(stage_order[:stage_idx]) or "(none)"
@@ -334,20 +338,35 @@ def build_continuous_prompt(
         _gate_idx = 0
     _gate_earlier = ", ".join(_vstage_order[:_gate_idx]) or "(none)"
     _gate_downstream = ", ".join(_vstage_order[_gate_idx + 1 :]) or "(none)"
-    stage_gate_block = (
-        "## Stage gate — finish the CURRENT stage before anything downstream\n"
-        f"`current_stage` (from research/PIPELINE_STATE.json) is `{stage}`.\n"
-        f"Pipeline stage order for this vertical: {', '.join(_vstage_order)}.\n"
-        f"Earlier stages already passed: {_gate_earlier}.\n"
-        f"Downstream stages (LOCKED until the Manager advances the stage): "
-        f"{_gate_downstream}.\n"
-        "Advance stages STRICTLY IN ORDER. Until the checklist above is "
-        "satisfied, downstream work is FORBIDDEN; perform only current-stage work. "
-        "Manager owns stage transitions; Planner and Engineer never edit "
-        "`research/PIPELINE_STATE.json`. If the stage itself blocks a necessary "
-        "prerequisite, explain that in `reason` instead of silently working ahead. A paper "
-        "overlap exception exists only when an explicit block below enables it."
-    )
+    if workflow_mode == "direct":
+        stage_checklist = ""
+        stage_gate_block = (
+            "## Direct workflow — objective first\n"
+            f"`workflow_mode=direct`; `{stage}` is semantic context, not a mandatory "
+            "artifact phase. This overrides the generic instruction to work only the "
+            "active stage. Delegate the smallest implementation, experiment, or "
+            "verification that directly advances the operator objective. Do not create, "
+            "repair, or certify stage bundles, frontier snapshots, pipeline state, "
+            "checkpoints, reports, or setup documents unless the operator explicitly "
+            "requested that artifact or it is strictly necessary to execute the work. "
+            "Use existing process artifacts as optional evidence; their absence must not "
+            "displace substantive work."
+        )
+    else:
+        stage_gate_block = (
+            "## Stage gate — finish the CURRENT stage before anything downstream\n"
+            f"`current_stage` (from research/PIPELINE_STATE.json) is `{stage}`.\n"
+            f"Pipeline stage order for this vertical: {', '.join(_vstage_order)}.\n"
+            f"Earlier stages already passed: {_gate_earlier}.\n"
+            f"Downstream stages (LOCKED until the Manager advances the stage): "
+            f"{_gate_downstream}.\n"
+            "Advance stages STRICTLY IN ORDER. Until the checklist above is "
+            "satisfied, downstream work is FORBIDDEN; perform only current-stage work. "
+            "Manager owns stage transitions; Planner and Engineer never edit "
+            "`research/PIPELINE_STATE.json`. If the stage itself blocks a necessary "
+            "prerequisite, explain that in `reason` instead of silently working ahead. "
+            "A paper overlap exception exists only when an explicit block below enables it."
+        )
 
     # Parallel paper-drafting track: while a long experiment grinds in the
     # background during `run`/`analysis`, drafting manuscript prose is not

@@ -214,7 +214,28 @@ def test_grounded_vertical_prompt_has_bounded_inspection_and_no_rendering_work()
     assert "choose Live View artifacts" in prompt
     assert "expand the Engineer task" in prompt
     assert "presentations" not in prompt
-    assert "execution_task" not in prompt
+    assert "EXECUTION_TASK=<complete standalone objective>" in prompt
+
+
+def test_vertical_prompts_prefer_matching_formal_project_domain() -> None:
+    kwargs = {
+        "verticals_with_purpose": VERTICAL_PURPOSES,
+        "existing_data_domains": ["apple_mlx_inference"],
+        "existing_data_domain_summaries": {
+            "apple_mlx_inference": (
+                "status=formal; Apple Silicon MLX/Metal deployment and inference optimization"
+            )
+        },
+    }
+
+    fast = build_fast_vertical_decision_prompt("Optimize MiniMax H3 on M4 Pro", **kwargs)
+    grounded = build_vertical_decision_prompt("Optimize MiniMax H3 on M4 Pro", **kwargs)
+
+    for prompt in (fast, grounded):
+        assert "status=formal" in prompt
+        assert "Apple Silicon MLX/Metal deployment" in prompt
+    assert "choose it over a broader built-in" in fast
+    assert "choose it before a broader built-in" in grounded
 
 
 def test_a_string_of_earlier_stages_is_not_rendered_letter_by_letter() -> None:
