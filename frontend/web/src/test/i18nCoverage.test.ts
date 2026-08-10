@@ -46,4 +46,10 @@ describe('Chinese localization coverage', () => {
 
     expect(missing).toEqual([]);
   });
+
+  it('does not remount the application when locale changes', () => {
+    const source = readFileSync(join(here, '..', 'main.tsx'), 'utf8');
+
+    expect(source).not.toMatch(/<App\s+key=\{locale\}/);
+  });
 });
