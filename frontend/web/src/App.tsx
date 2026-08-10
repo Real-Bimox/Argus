@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { artifactRefreshEventKey, snapshotRefreshEventKey, useProjects, useProjectCosts, useSnapshot, useEventStream, useProjectActions, useArtifacts, useTranscript, useJournal, useGitDiff } from './hooks';
 import { api, type EventMsg } from './api';
 import { TopBar } from './components/TopBar';
@@ -63,6 +63,10 @@ interface ActiveMessageRequest {
   controller: AbortController;
 }
 let noticeSequence = 0;
+const ResearchWorkbenchPanel = lazy(async () => {
+  const module = await import('./research-workbench/ResearchWorkbenchPanel');
+  return { default: module.ResearchWorkbenchPanel };
+});
 
 export default function App() {
   const { locale, t } = useI18n();
@@ -103,6 +107,17 @@ export default function App() {
     themeMode,
     workspaceView,
   } = useWorkbenchLayout();
+  const [standardWorkspaceView, setStandardWorkspaceView] = useState<'mission' | 'activity'>(
+    () => workspaceView === 'mission' ? 'mission' : 'activity',
+  );
+  const [workbenchOpened, setWorkbenchOpened] = useState(workspaceView === 'workbench');
+  useEffect(() => {
+    if (workspaceView === 'workbench') {
+      setWorkbenchOpened(true);
+      return;
+    }
+    setStandardWorkspaceView(workspaceView);
+  }, [workspaceView]);
   // Publishes --keyboard-inset so the composer clears the software keyboard.
   useVisualViewport();
   const [composerFocus, setComposerFocus] = useState(0);
@@ -224,7 +239,7 @@ export default function App() {
   const loadedSid = snap?.session.id === activeSid ? activeSid : null;
   const continuous = snap?.continuous;
   const artifactsQ = useArtifacts(loadedSid, true);
-  const gitDiffQ = useGitDiff(loadedSid, workspaceView === 'mission');
+  const gitDiffQ = useGitDiff(loadedSid, standardWorkspaceView === 'mission');
   const { events, connected } = useEventStream(loadedSid, eventView.reconnectKey);
   const artifactRefreshKey = useMemo(() => artifactRefreshEventKey(events), [events]);
   const snapshotRefreshKey = useMemo(() => snapshotRefreshEventKey(events), [events]);
@@ -243,7 +258,7 @@ export default function App() {
     });
   }, [loadedSid, queryClient, snapshotRefreshKey]);
   const guardianAlert = useMemo(() => activeGuardianAlert(events), [events]);
-  const transcriptQ = useTranscript(loadedSid, workspaceView === 'activity', 120);
+  const transcriptQ = useTranscript(loadedSid, standardWorkspaceView === 'activity', 120);
   const journalQ = useJournal(activeSid, 20, overlay === 'inspector');
   const {
     answerPendingReply,
@@ -695,54 +710,64 @@ export default function App() {
                   <span className="workspace-tab-indicator" aria-hidden="true" />
                   <button type="button" onClick={() => setWorkspaceView('mission')} className="workspace-tab" data-selected={workspaceView === 'mission'}>{t('mobile.mission')}</button>
                   <button type="button" onClick={() => setWorkspaceView('activity')} className="workspace-tab" data-selected={workspaceView === 'activity'}>{t('mobile.activity')}</button>
+                  <button type="button" onClick={() => setWorkspaceView('workbench')} className="workspace-tab" data-selected={workspaceView === 'workbench'}>{t('mobile.workbench')}</button>
                 </div>
                 {workspaceView === 'mission' ? <span className="ml-auto hidden max-w-72 truncate text-[10px] text-ink-faint sm:block">{missionView?.active_role ? t('mission.roleActive', { role: missionView.active_role }) : t('mission.overview')}</span> : <span className="ml-auto" />}
                 {!kiosk ? <button type="button" onClick={() => setOverlay('operations')} className="rounded border border-line/60 px-2 py-1 text-[10px] text-ink-faint hover:border-blue/50 hover:text-blue">{t('mission.operations')}</button> : null}
               </div>
-              <GuardianBanner alert={guardianAlert} />
-              {workspaceView === 'mission' && missionView ? (
-                <MissionControl view={missionView} gitDiff={gitDiffQ.data} onOpenArtifact={setArtifactPath} />
-              ) : (
-                <EventStream
-                  events={activityEvents}
-                  connected={connected}
-                  showReasoning={showReasoning}
-                  onToggleReasoning={() => setShowReasoning((value) => !value)}
-                  embedded
-                  filter={eventFilter}
-                  query={eventQuery}
-                  skipFirst={eventView.skipFirst}
-                />
-              )}
-              {!kiosk ? (
-                <div className="composer-dock shrink-0 px-4 pt-3">
-                  <div className="mx-auto w-full max-w-full lg:max-w-[61.8vw]">
-                  <PendingBanner
-                    questions={snap.pending_questions ?? []}
-                    backlog={snap.backlog}
-                    onAnswer={() => setPendingReplyOpen(true)}
-                  />
-                  <ChatBox
-                    key={activeSid || 'no-session'}
-                    value={composerDraft}
-                    onChange={setComposerDraft}
-                    onSend={sendMessage}
-                    onCancel={stopWaiting}
-                    disabled={!activeSid}
-                    pending={chatPending}
-                    focusSignal={composerFocus}
+              <div className={`${workspaceView === 'workbench' ? 'hidden' : 'flex'} min-h-0 flex-1 flex-col`}>
+                <GuardianBanner alert={guardianAlert} />
+                {standardWorkspaceView === 'mission' && missionView ? (
+                  <MissionControl view={missionView} gitDiff={gitDiffQ.data} onOpenArtifact={setArtifactPath} />
+                ) : (
+                  <EventStream
+                    events={activityEvents}
+                    connected={connected}
+                    showReasoning={showReasoning}
+                    onToggleReasoning={() => setShowReasoning((value) => !value)}
                     embedded
-                    phase={managerPhase}
-                    heartbeat={managerPhaseHeartbeat}
-                    quietS={managerPhaseQuietS}
-                    steps={managerSteps}
-                    startedAt={managerStartedAt}
-                    onRewrite={rewriteDraft}
-                    rewriting={rewriting}
-                    slashSelection={slashSelection}
-                    onSlashSelectionChange={setSlashSelection}
+                    filter={eventFilter}
+                    query={eventQuery}
+                    skipFirst={eventView.skipFirst}
                   />
+                )}
+                {!kiosk ? (
+                  <div className="composer-dock shrink-0 px-4 pt-3">
+                    <div className="mx-auto w-full max-w-full lg:max-w-[61.8vw]">
+                    <PendingBanner
+                      questions={snap.pending_questions ?? []}
+                      backlog={snap.backlog}
+                      onAnswer={() => setPendingReplyOpen(true)}
+                    />
+                    <ChatBox
+                      key={activeSid || 'no-session'}
+                      value={composerDraft}
+                      onChange={setComposerDraft}
+                      onSend={sendMessage}
+                      onCancel={stopWaiting}
+                      disabled={!activeSid}
+                      pending={chatPending}
+                      focusSignal={composerFocus}
+                      embedded
+                      phase={managerPhase}
+                      heartbeat={managerPhaseHeartbeat}
+                      quietS={managerPhaseQuietS}
+                      steps={managerSteps}
+                      startedAt={managerStartedAt}
+                      onRewrite={rewriteDraft}
+                      rewriting={rewriting}
+                      slashSelection={slashSelection}
+                      onSlashSelectionChange={setSlashSelection}
+                    />
+                    </div>
                   </div>
+                ) : null}
+              </div>
+              {workbenchOpened && activeSid ? (
+                <div className={`${workspaceView === 'workbench' ? 'flex' : 'hidden'} min-h-0 flex-1`}>
+                  <Suspense fallback={<div className="flex min-h-0 flex-1 items-center justify-center text-xs text-ink-faint">{t('common.loading')}</div>}>
+                    <ResearchWorkbenchPanel sid={activeSid} active={workspaceView === 'workbench'} />
+                  </Suspense>
                 </div>
               ) : null}
             </section>
