@@ -15,7 +15,7 @@ function PaperCard({ paper, selected, onClick }: { paper: LiteraturePaper; selec
   const { text } = useWorkbenchText();
   return (
     <button type="button" className={`paper-card ${selected ? 'is-selected' : ''}`} onClick={onClick}>
-      <div className="paper-card__meta"><Badge tone={paper.evidenceStatus === 'verified_artifact' ? 'success' : paper.evidenceStatus === 'metadata' ? 'info' : 'warn'}>{paper.evidenceStatus === 'verified_artifact' ? text('原文文件已验证', 'Source verified') : paper.evidenceStatus === 'metadata' ? text('仅元数据', 'Metadata only') : text('待核验', 'Needs verification')}</Badge><span>{paper.year || '—'}{paper.venue ? ` · ${paper.venue}` : ''}</span></div>
+      <div className="paper-card__meta"><Badge tone={paper.evidenceStatus === 'verified_artifact' ? 'success' : paper.evidenceStatus === 'metadata' ? 'info' : 'warn'}>{paper.evidenceStatus === 'verified_artifact' ? text('原文文件已验证', 'Source verified') : paper.evidenceStatus === 'metadata' ? text('仅元数据', 'Metadata only') : text('待核验', 'Needs verification')}</Badge><span className="paper-card__year">{paper.year || '—'}{paper.venue ? ` · ${paper.venue}` : ''}</span></div>
       <h3>{paper.title}</h3>
       {paper.authors.length ? <p className="paper-card__authors">{paper.authors.slice(0, 4).join(', ')}{paper.authors.length > 4 ? ' et al.' : ''}</p> : null}
       <p className="paper-card__summary">{paper.relevance || paper.abstract || text('该记录尚未写入项目相关性摘要。', 'No project-relevance summary has been recorded.')}</p>
