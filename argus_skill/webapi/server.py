@@ -627,6 +627,7 @@ def create_app(
     from .routes.meta import register_meta_routes
     from .routes.projects import register_project_routes
     from .routes.workitems import register_workitem_routes
+    from .routes.workspace_v2 import register_workspace_v2_routes
 
     ctx = ServerContext(
         global_root=global_root,
@@ -656,6 +657,7 @@ def create_app(
     register_artifact_routes(app, ctx, server_mod)
     register_manager_routes(app, ctx, server_mod)
     register_meta_routes(app, ctx, server_mod)
+    register_workspace_v2_routes(app, ctx, server_mod)
 
     # ── static web UI (optional) ──────────────────────────────────────────
     # When the React frontend has been built (`npm run build` in frontend/web),

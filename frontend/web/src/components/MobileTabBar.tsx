@@ -2,13 +2,14 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBars,
   faDiagramProject,
+  faFlask,
   faListUl,
   faWindowMaximize,
 } from '@fortawesome/free-solid-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { useI18n } from '../i18n';
 
-export type MobileTab = 'sessions' | 'mission' | 'activity' | 'preview';
+export type MobileTab = 'sessions' | 'mission' | 'activity' | 'workbench' | 'preview';
 
 /** Bottom navigation for phones.
  *
@@ -30,6 +31,7 @@ export function MobileTabBar({
   const tabs: { id: Exclude<MobileTab, 'sessions'>; label: string; icon: IconDefinition }[] = [
     { id: 'mission', label: t('mobile.mission'), icon: faDiagramProject },
     { id: 'activity', label: t('mobile.activity'), icon: faListUl },
+    { id: 'workbench', label: t('mobile.workbench'), icon: faFlask },
     { id: 'preview', label: t('mobile.preview'), icon: faWindowMaximize },
   ];
 

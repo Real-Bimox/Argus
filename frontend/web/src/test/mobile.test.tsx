@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MobileTabBar } from '../components/MobileTabBar';
 
 describe('MobileTabBar', () => {
-  const markup = (active: 'mission' | 'activity' | 'preview' = 'activity') =>
+  const markup = (active: 'mission' | 'activity' | 'workbench' | 'preview' = 'activity') =>
     renderToStaticMarkup(
       <MobileTabBar active={active} onSelect={() => {}} onOpenSessions={() => {}} />,
     );
@@ -11,7 +11,7 @@ describe('MobileTabBar', () => {
   it('offers every destination that is otherwise reachable only on desktop', () => {
     const html = markup();
 
-    for (const label of ['Sessions', 'Mission', 'Activity', 'Preview']) {
+    for (const label of ['Sessions', 'Mission', 'Activity', 'Workbench', 'Preview']) {
       expect(html).toContain(`>${label}<`);
     }
   });
@@ -24,9 +24,8 @@ describe('MobileTabBar', () => {
   it('keeps every target at or above the touch-size minimum', () => {
     const html = markup();
 
-    // 3.25rem = 52px, past Apple's 44pt and Material's 48dp. Four buttons:
-    // sessions plus the three views.
-    expect(html.match(/min-h-\[3\.25rem\]/g)).toHaveLength(4);
+    // 3.25rem = 52px, past Apple's 44pt and Material's 48dp.
+    expect(html.match(/min-h-\[3\.25rem\]/g)).toHaveLength(5);
   });
 
   it('respects the safe area and rides above the keyboard', () => {
@@ -44,7 +43,7 @@ describe('MobileTabBar', () => {
     );
 
     expect(html).not.toContain('>Sessions<');
-    expect(html.match(/min-h-\[3\.25rem\]/g)).toHaveLength(3);
+    expect(html.match(/min-h-\[3\.25rem\]/g)).toHaveLength(4);
   });
 });
 
