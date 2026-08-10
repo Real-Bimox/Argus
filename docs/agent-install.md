@@ -51,6 +51,7 @@ command -v codex || true
 command -v claude || true
 command -v pi || true
 command -v opencode || true
+command -v grok || true
 ```
 
 Select the CLI hosting the current conversation when possible. Otherwise,
@@ -64,6 +65,7 @@ values are:
 | Claude Code | `claude` |
 | Pi | `pi` |
 | OpenCode | `opencode` |
+| xAI Grok Build | `grok` |
 
 If prerequisites are missing, explain the proposed installation command and
 obtain approval before using a system package manager, `sudo`, or making a
@@ -116,7 +118,7 @@ From the Argus checkout, run:
 
 ```bash
 .venv/bin/argus --setup --non-interactive \
-  --backend <copilot|codex|claude|pi|opencode> \
+  --backend <copilot|codex|claude|pi|opencode|grok> \
   --accept-house-rules
 ```
 

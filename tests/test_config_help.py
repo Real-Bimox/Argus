@@ -164,7 +164,11 @@ def test_cockpit_value_normalization_is_typed() -> None:
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "COPILOT") == "copilot"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "opencod") == "opencode"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "PI") == "pi"
-    with pytest.raises(ValueError, match="codex, claude, copilot, opencode, or pi"):
+    assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "GROK") == "grok"
+    with pytest.raises(
+        ValueError,
+        match="codex, claude, copilot, opencode, pi, or grok",
+    ):
         normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "magic")
     with pytest.raises(ValueError, match="non-negative integer"):
         normalize_cockpit_knob_value("ARGUS_SKILL_MAX_ACTIVE_DAEMONS", "-1")

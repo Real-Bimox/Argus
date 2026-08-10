@@ -431,9 +431,16 @@ def normalize_cockpit_knob_value(name: str, value: str) -> str:
         backend = raw.lower()
         if backend == "opencod":
             backend = "opencode"
-        if backend not in {"codex", "claude", "copilot", "opencode", "pi"}:
+        if backend not in {
+            "codex",
+            "claude",
+            "copilot",
+            "opencode",
+            "pi",
+            "grok",
+        }:
             raise ValueError(
-                f"{name} must be codex, claude, copilot, opencode, or pi"
+                f"{name} must be codex, claude, copilot, opencode, pi, or grok"
             )
         return backend
     if name in _EFFORT_KNOBS:
@@ -567,7 +574,8 @@ def resolve_role_model(
 
 
 def resolve_role_backend(role: str, *, env: Mapping[str, str] | None = None) -> str:
-    """Resolve a role's agent-CLI backend (codex / claude / copilot / opencode / pi / memory)
+    """Resolve a role's agent-CLI backend
+    (codex / claude / copilot / opencode / pi / grok / memory)
     using Argus's runtime precedence.
 
     Precedence: role-specific override (``ARGUS_SKILL_<ROLE>_BACKEND``) ->

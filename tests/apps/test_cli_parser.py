@@ -91,6 +91,11 @@ def test_parser_accepts_pi_backend() -> None:
     assert args.backend == "pi"
 
 
+def test_parser_accepts_grok_backend() -> None:
+    args = build_parser().parse_args(["--doctor", "--backend", "grok"])
+    assert args.backend == "grok"
+
+
 def test_parser_exposes_cli_doctor() -> None:
     args = build_parser().parse_args(["--doctor", "--backend", "copilot"])
 

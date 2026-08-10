@@ -88,13 +88,21 @@ def _prompt(label: str, default: str = "", secret: bool = False) -> str:
     return val if val else default
 
 
-_SUPPORTED_AGENT_BACKENDS = ("copilot", "codex", "claude", "opencode", "pi")
+_SUPPORTED_AGENT_BACKENDS = (
+    "copilot",
+    "codex",
+    "claude",
+    "opencode",
+    "pi",
+    "grok",
+)
 _BACKEND_INSTALL_COMMANDS = {
     "copilot": "npm install -g @github/copilot",
     "codex": "npm install -g @openai/codex@latest",
     "claude": "npm install -g @anthropic-ai/claude-code",
     "opencode": "curl -fsSL https://opencode.ai/install | bash",
     "pi": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
+    "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
 }
 
 
@@ -139,11 +147,11 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
     selected = (
         str(requested).strip().lower()
         if requested is not None
-        else _prompt("Backend (copilot/codex/claude/opencode/pi)", default).lower()
+        else _prompt("Backend (copilot/codex/claude/opencode/pi/grok)", default).lower()
     )
     if selected not in _SUPPORTED_AGENT_BACKENDS:
         print(_yellow(f"  Unknown backend '{selected}'."))
-        print(_dim("    Choose one of: copilot, codex, claude, opencode, pi"))
+        print(_dim("    Choose one of: copilot, codex, claude, opencode, pi, grok"))
         print()
         return None
 
@@ -157,6 +165,8 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
             print(_dim("    Then authenticate with: opencode auth login"))
         elif selected == "pi":
             print(_dim("    Then run `pi` and use `/login` to authenticate."))
+        elif selected == "grok":
+            print(_dim("    Then authenticate with: grok login"))
         print()
         return None
 
@@ -213,7 +223,7 @@ def _run_noninteractive_setup(
     if not backend:
         sys.stderr.write(
             "argus: --setup --non-interactive requires --backend "
-            "{copilot,codex,claude,opencode,pi}\n"
+            "{copilot,codex,claude,opencode,pi,grok}\n"
         )
         return SETUP_EXIT_USAGE
     selected = str(backend).strip().lower()

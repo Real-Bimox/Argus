@@ -36,7 +36,7 @@
 | **四角色运行时** | Manager、Planner、Engineer 和 Reviewer 分别拥有明确的权威与职责。 |
 | **真实工具调用** | Agent 直接使用文件、终端、实验、API 和可检查的产物。 |
 | **领域扩展** | Vertical 可以定义专属阶段、工具、证据要求与完成标准。 |
-| **多种 Backend** | 支持 GitHub Copilot CLI、Pi、Codex CLI、Claude Code 与 OpenCode。 |
+| **多种 Backend** | 支持 GitHub Copilot CLI、Pi、Codex CLI、Claude Code、OpenCode 与 Grok Build。 |
 
 ## 运行模型
 
@@ -49,7 +49,7 @@
 
 项目可以停止、恢复、跨运行时替换，并从最近一次已验证位置继续推进。
 
-**原生 Backend：** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode`
+**原生 Backend：** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
 
 ## 快速安装
 
@@ -78,7 +78,7 @@ uv venv --python 3.12 --seed .venv
 
 > [!TIP]
 > **无需手动逐条安装。** 将下面整段提示词发送给 Codex CLI、Claude Code、
-> GitHub Copilot CLI、Pi 或 OpenCode。Agent 会检查环境、安装 Argus、连接当前
+> GitHub Copilot CLI、Pi、OpenCode 或 Grok Build。Agent 会检查环境、安装 Argus、连接当前
 > backend，并运行 `argus --doctor` 验收。
 
 ```text
@@ -114,7 +114,18 @@ argus --setup --non-interactive \
   --accept-house-rules
 ```
 
-`--backend` 可使用 `copilot`、`pi`、`codex`、`claude` 或 `opencode`。
+`--backend` 可使用 `copilot`、`pi`、`codex`、`claude`、`opencode` 或 `grok`。
+
+使用 Grok Build 时，请先安装并登录 xAI 官方 CLI：
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+grok login
+argus --setup --non-interactive --backend grok --accept-house-rules
+```
+
+无界面环境也可以使用 `XAI_API_KEY`。Argus 通过 Grok 原生 headless JSON
+流运行、按 Session ID 续接，并避免把角色 prompt 放进进程参数。
 
 #### 为多 provider 的 CLI 指定 provider
 
@@ -260,9 +271,9 @@ Vertical 可以为你的领域提供专属阶段、Skill、数据集、工具、
 
 ### 让其他 Agent 成为外层入口
 
-你可以通过 GitHub Copilot、Pi、Codex、Claude Code、OpenCode、OpenClaw 或 Hermes 调用 Argus、检查状态、操作本地 CLI 或 Web/API，并继续迭代自己的部署。
+你可以通过 GitHub Copilot、Pi、Codex、Claude Code、OpenCode、Grok Build、OpenClaw 或 Hermes 调用 Argus、检查状态、操作本地 CLI 或 Web/API，并继续迭代自己的部署。
 
-- **Argus 原生 Backend：** GitHub Copilot CLI、Pi、Codex CLI、Claude Code、OpenCode
+- **Argus 原生 Backend：** GitHub Copilot CLI、Pi、Codex CLI、Claude Code、OpenCode、Grok Build
 - **外层 Agent：** OpenClaw、Hermes，或任何能够使用 Shell / HTTP API 的 Agent
 
 常用入口：

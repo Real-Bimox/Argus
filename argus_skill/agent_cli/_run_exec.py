@@ -16,6 +16,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from ._env import (
     _CAPTURE_JSON_EVENTS_ENV,
@@ -103,21 +104,25 @@ class RunExecMixin:
             if acp_result is not None:
                 return acp_result
         options = self._apply_sandbox_policy(options)
-        command, process, spawn_failure = self._spawn_turn_process(
+        command, process, spawn_failure, prompt_path = self._spawn_turn_process(
             prompt=prompt, resume_thread_id=resume_thread_id, options=options
         )
         if spawn_failure is not None:
             return spawn_failure
-        state = self._stream_turn_output(
-            process=process,
-            command=command,
-            options=options,
-            run_label=run_label,
-            thread_id=resume_thread_id,
-        )
-        return self._finalize_turn_result(
-            process=process, command=command, options=options, state=state
-        )
+        try:
+            state = self._stream_turn_output(
+                process=process,
+                command=command,
+                options=options,
+                run_label=run_label,
+                thread_id=resume_thread_id,
+            )
+            return self._finalize_turn_result(
+                process=process, command=command, options=options, state=state
+            )
+        finally:
+            if prompt_path is not None:
+                prompt_path.unlink(missing_ok=True)
 
     @classmethod
     def _cleanup_orphan_process_group(
@@ -184,11 +189,16 @@ class RunExecMixin:
 
     def _spawn_turn_process(
         self, *, prompt: str, resume_thread_id: str | None, options
-    ) -> tuple[list[str], subprocess.Popen[str] | None, AgentRunResult | None]:
+    ) -> tuple[
+        list[str],
+        subprocess.Popen[str] | None,
+        AgentRunResult | None,
+        Path | None,
+    ]:
         command = self._build_command(
             resume_thread_id=resume_thread_id, options=options
         )
-        command, stdin_prompt = self._prepare_prompt_delivery(command, prompt)
+        command, stdin_prompt, prompt_path = self._prepare_prompt_delivery(command, prompt)
         command[0] = self._resolve_executable(command[0])
         if options.isolate_workdir:
             try:
@@ -210,25 +220,31 @@ class RunExecMixin:
                         turn_failed=True,
                         fatal_error=f"maintenance isolation unavailable: {exc}",
                     ),
+                    prompt_path,
                 )
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            # Pin UTF-8 explicitly: without this, text mode uses the OS locale
-            # encoding, which is cp1252 on Windows and raises UnicodeEncodeError
-            # when the prompt or streamed model output contains non-Latin-1
-            # characters (e.g. "\u2192", CJK, emoji). errors="replace" keeps the
-            # reader from crashing on malformed bytes mid-stream.
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            cwd=options.working_dir or None,
-            env=self._child_env(options),
-            start_new_session=os.name != "nt",
-        )
+        try:
+            process = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                # Pin UTF-8 explicitly: without this, text mode uses the OS locale
+                # encoding, which is cp1252 on Windows and raises UnicodeEncodeError
+                # when the prompt or streamed model output contains non-Latin-1
+                # characters (e.g. "\u2192", CJK, emoji). errors="replace" keeps the
+                # reader from crashing on malformed bytes mid-stream.
+                encoding="utf-8",
+                errors="replace",
+                bufsize=1,
+                cwd=options.working_dir or None,
+                env=self._child_env(options),
+                start_new_session=os.name != "nt",
+            )
+        except BaseException:
+            if prompt_path is not None:
+                prompt_path.unlink(missing_ok=True)
+            raise
         if stdin_prompt is not None:
             self._write_prompt(
                 process=process,
@@ -236,7 +252,7 @@ class RunExecMixin:
             )
         else:
             self._close_stdin(process)
-        return command, process, None
+        return command, process, None, prompt_path
 
     def _stream_turn_output(
         self,

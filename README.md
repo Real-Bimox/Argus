@@ -36,7 +36,7 @@ Most agents are optimized for one conversation or one coding turn. Argus is buil
 | **Four-role runtime** | Manager, Planner, Engineer, and Reviewer have distinct authority and responsibilities. |
 | **Real tool use** | Agents work through files, terminals, experiments, APIs, and inspectable artifacts. |
 | **Domain extensibility** | Verticals can define custom stages, tools, evidence requirements, and completion standards. |
-| **Multiple backends** | Run with GitHub Copilot CLI, Pi, Codex CLI, Claude Code, or OpenCode. |
+| **Multiple backends** | Run with GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, or Grok Build. |
 
 ## Runtime model
 
@@ -49,7 +49,7 @@ Most agents are optimized for one conversation or one coding turn. Argus is buil
 
 A project can stop, resume, survive a runtime replacement, and continue from its latest verified position.
 
-**Native backends:** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode`
+**Native backends:** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
 
 ## Quick Install
 
@@ -78,7 +78,7 @@ uv venv --python 3.12 --seed .venv
 
 > [!TIP]
 > **Skip the manual installation steps.** Send the complete prompt below to
-> Codex CLI, Claude Code, GitHub Copilot CLI, Pi, or OpenCode. The agent will
+> Codex CLI, Claude Code, GitHub Copilot CLI, Pi, OpenCode, or Grok Build. The agent will
 > inspect the environment, install Argus, connect the current backend, and
 > verify it with `argus --doctor`.
 
@@ -117,7 +117,19 @@ argus --setup --non-interactive \
   --accept-house-rules
 ```
 
-Use `copilot`, `pi`, `codex`, `claude`, or `opencode` for `--backend`.
+Use `copilot`, `pi`, `codex`, `claude`, `opencode`, or `grok` for `--backend`.
+
+For Grok Build, install and authenticate the official xAI CLI first:
+
+```bash
+curl -fsSL https://x.ai/cli/install.sh | bash
+grok login
+argus --setup --non-interactive --backend grok --accept-house-rules
+```
+
+`XAI_API_KEY` is also supported for headless environments. Argus uses Grok's
+native headless JSON stream, resumes sessions by ID, and keeps role prompts out
+of process arguments.
 
 #### Choosing a provider on the multi-provider CLIs
 
@@ -271,9 +283,9 @@ A Vertical gives your field its own stages, Skills, datasets, tools, evidence ex
 
 ### Use another agent as the outer layer
 
-GitHub Copilot, Pi, Codex, Claude Code, OpenCode, OpenClaw, or Hermes can be the environment from which you invoke Argus, inspect its state, operate its local CLI or Web/API surface, and continue improving the deployment.
+GitHub Copilot, Pi, Codex, Claude Code, OpenCode, Grok Build, OpenClaw, or Hermes can be the environment from which you invoke Argus, inspect its state, operate its local CLI or Web/API surface, and continue improving the deployment.
 
-- **Native Argus backends:** GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode
+- **Native Argus backends:** GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, Grok Build
 - **External agent operators:** OpenClaw, Hermes, or any agent that can use a shell or HTTP API
 
 Useful entry points:

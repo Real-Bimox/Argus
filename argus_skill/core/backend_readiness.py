@@ -29,7 +29,9 @@ SETUP_EXIT_USAGE = 2
 SETUP_EXIT_NOT_READY = 3
 SETUP_EXIT_PERSISTENCE = 4
 
-_SUPPORTED_BACKENDS = frozenset({"codex", "copilot", "claude", "opencode", "pi"})
+_SUPPORTED_BACKENDS = frozenset(
+    {"codex", "copilot", "claude", "opencode", "pi", "grok"}
+)
 _VERSION_RE = re.compile(
     r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?:[-+]([0-9A-Za-z.-]+))?"
 )
@@ -44,6 +46,7 @@ _INSTALL_COMMANDS = {
     "claude": "npm install -g @anthropic-ai/claude-code",
     "opencode": "curl -fsSL https://opencode.ai/install | bash",
     "pi": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
+    "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
 }
 _LOGIN_COMMANDS = {
     "codex": "codex login",
@@ -51,6 +54,7 @@ _LOGIN_COMMANDS = {
     "claude": "claude auth login",
     "opencode": "opencode auth login",
     "pi": "pi, then /login",
+    "grok": "grok login",
 }
 
 
@@ -368,6 +372,22 @@ def _probe_cli_auth(
     if backend == "pi":
         _catalog, detail = _probe_pi_catalog(executable, timeout_s)
         return (bool(_catalog), detail)
+    if backend == "grok":
+        if str(os.environ.get("XAI_API_KEY") or "").strip():
+            return True, ""
+        grok_home = Path(
+            str(os.environ.get("GROK_HOME") or Path.home() / ".grok")
+        ).expanduser()
+        auth_file = grok_home / "auth.json"
+        try:
+            if auth_file.is_file() and auth_file.stat().st_size > 2:
+                return True, ""
+        except OSError as exc:
+            return False, f"{type(exc).__name__}: {exc}"
+        return False, (
+            "no XAI_API_KEY or cached Grok login was found; "
+            "Grok Build does not expose a read-only auth-status command"
+        )
     suffix = _AUTH_COMMANDS.get(backend)
     if suffix is None:
         return False, f"no read-only authentication probe is defined for {backend}"

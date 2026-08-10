@@ -20,6 +20,7 @@ _BACKEND_LABEL = {
     "copilot": "Copilot",
     "opencode": "OpenCode",
     "pi": "Pi",
+    "grok": "Grok Build",
     "memory": "memory",
 }
 
@@ -68,8 +69,8 @@ _ROLE_DESC = {
 @dataclass(frozen=True)
 class RoleConfig:
     role: str
-    backend: str  # normalized: codex / claude / copilot / opencode / pi / memory
-    backend_label: str  # display: Codex / Claude Code / Copilot / OpenCode / Pi
+    backend: str  # codex / claude / copilot / opencode / pi / grok / memory
+    backend_label: str  # Codex / Claude Code / Copilot / OpenCode / Pi / Grok
     model: str
     effort: str | None  # None → not a reasoning model (effort N/A)
     desc: str

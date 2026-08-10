@@ -46,7 +46,7 @@ def test_openai_catalog_backends_keep_the_cheap_openai_id(backend: str) -> None:
     )
 
 
-@pytest.mark.parametrize("backend", ["pi", "claude", "opencode"])
+@pytest.mark.parametrize("backend", ["pi", "claude", "opencode", "grok"])
 def test_provider_agnostic_backends_fall_back_to_the_role_model(
     backend: str,
 ) -> None:
@@ -63,7 +63,10 @@ def test_provider_agnostic_backends_fall_back_to_the_role_model(
     )
 
 
-@pytest.mark.parametrize("backend", ["codex", "copilot", "pi", "claude"])
+@pytest.mark.parametrize(
+    "backend",
+    ["codex", "copilot", "pi", "claude", "grok"],
+)
 def test_explicit_knob_wins_on_every_backend(backend: str) -> None:
     assert (
         resolve_cheap_route_model(

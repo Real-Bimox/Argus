@@ -6,6 +6,7 @@ from argus_skill.agent_cli.agent_cli_runner import AgentCliRunner
 from argus_skill.agent_cli.runner_backend import (
     BACKEND_CODEX,
     BACKEND_COPILOT,
+    BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
     resolve_available_runner,
@@ -46,6 +47,16 @@ def test_pi_runner_uses_pi_binary(tmp_path: Path, monkeypatch) -> None:
 
     assert resolve_runner_bin(BACKEND_PI) == str(executable)
     assert AgentCliRunner(backend=BACKEND_PI).agent_bin == str(executable)
+
+
+def test_grok_runner_uses_grok_binary(tmp_path: Path, monkeypatch) -> None:
+    executable = tmp_path / "grok"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    assert resolve_runner_bin(BACKEND_GROK) == str(executable)
+    assert AgentCliRunner(backend=BACKEND_GROK).agent_bin == str(executable)
 
 
 def test_opencode_runner_resolves_standard_install_directory(
