@@ -746,8 +746,9 @@ def manager_continuous_handoff(
     ensure_runner: Callable[[dict[str, Any], Any], Any] | None = None,
     cancelled: Callable[[], bool] | None = None,
     prepared_handoff: PreparedManagerHandoff | None = None,
+    persist: Callable[[str, Any], Any] | None = None,
 ) -> str:
-    """Atomically enable a Manager-authored continuous objective."""
+    """Atomically enable a Manager-authored continuous objective and first task."""
     from ..daemon.state import (
         compare_and_swap_continuous_config,
         read_continuous_state,
@@ -812,6 +813,11 @@ def manager_continuous_handoff(
                 chat_state,
                 prepared.execution_task or body,
                 replacing=True,
+            )
+        if persist is not None:
+            committed["persisted"] = persist(
+                prepared.execution_task,
+                committed["division"],
             )
 
     from ._session_ops import (

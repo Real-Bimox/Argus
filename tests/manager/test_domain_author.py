@@ -143,6 +143,17 @@ def test_new_domain_starts_with_real_work_not_process_ceremony() -> None:
     assert "first stage must implement or measure" in prompt
 
 
+def test_vertical_prompt_preserves_explicit_operator_actions() -> None:
+    prompt = build_vertical_decision_prompt(
+        "Download the BF16 model, quantize it, and run local inference.",
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+
+    assert "Preserve every concrete operator action" in prompt
+    assert "must not replace them with cleanup" in prompt
+    assert "authorizes a real attempt within policy" in prompt
+
+
 def test_vertical_prompts_do_not_use_software_as_performance_catch_all() -> None:
     task = "Continuously optimize an MLX inference runtime on Apple Silicon."
     fast = build_fast_vertical_decision_prompt(

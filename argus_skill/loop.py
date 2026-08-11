@@ -240,6 +240,11 @@ class SkillLoop(
             reviewer_config=ReviewerConfig(
                 model=self.config.resolved_reviewer_model(),
                 active_vertical=self.config.active_vertical,
+                vertical_state_root=(
+                    str(self.config.vertical_state_root)
+                    if self.config.vertical_state_root is not None
+                    else None
+                ),
                 reasoning_effort=self.config.reviewer_reasoning_effort,
                 extra_args=self.config.extra_args or [],
                 full_auto=self.config.full_auto,

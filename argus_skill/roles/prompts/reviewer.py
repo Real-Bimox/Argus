@@ -293,6 +293,7 @@ def render_reviewer_prompt(
     engineer_call_id: str = "",
     preselected_skill_block: str | None = None,
     working_dir: str | Path | None = None,
+    vertical_state_root: str | Path | None = None,
     vertical: str = "",
 ) -> tuple[str, str]:
     """Render the complete Reviewer prompt as ``(static_preamble, round_delta)``."""
@@ -304,7 +305,7 @@ def render_reviewer_prompt(
     error_text = main_error or "none"
     # Reviewer receives Skill-library paths and searches independently; no
     # Skill body is selected or injected by the runtime.
-    _proot = resolve_project_root(working_dir)
+    _proot = resolve_project_root(vertical_state_root or working_dir)
     scope_normalized = (scope or "").strip().lower().replace("-", "_")
     _persisted = _persisted_vertical(_proot)
     explicit_vertical = str(vertical or "").strip()

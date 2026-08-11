@@ -377,6 +377,26 @@ class _ClassifyResult:
     frontdoor_failure: str
 
 
+def _self_skill_context_available(chat_state: dict[str, Any]) -> bool:
+    runner = chat_state.get("manager_runner")
+    manager = getattr(runner, "manager", None)
+    mission = getattr(manager, "self_mission", None)
+    libraries = getattr(mission, "libraries", None)
+    if not callable(libraries):
+        return False
+    try:
+        paths = list(getattr(libraries(), "native_paths", []) or [])
+    except Exception:  # noqa: BLE001 - a discovery failure keeps the cheap path
+        return False
+    for raw_path in paths:
+        try:
+            if any(Path(raw_path).glob("*.md")):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def _classify_operator_turn(
     mem: Any,
     body: str,
@@ -479,6 +499,17 @@ def _classify_operator_turn(
     fast_reply = str(
         chat_state.pop("_frontdoor_fast_reply", "") or ""
     ).strip()
+    if (
+        fast_reply
+        and self_mode == "reply"
+        and _self_skill_context_available(chat_state)
+    ):
+        # A stateless classifier cannot apply profile terminology/preferences.
+        # Route this turn through the normal SELF runner, which receives the
+        # profile Skill library, rather than returning a plausible but stale reply.
+        fast_reply = ""
+        self_mode = "inspect"
+        chat_state["_frontdoor_self_mode"] = "inspect"
     greeting_reply = str(
         chat_state.pop("_frontdoor_greeting_reply", "") or ""
     ).strip()

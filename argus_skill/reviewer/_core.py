@@ -38,6 +38,7 @@ class ReviewerConfig:
     sandbox_mode: str | None = None
     isolate_workdir: bool = False
     working_dir: str | None = None
+    vertical_state_root: str | None = None
 
 
 def _load_wiki_curator_skill_if_present(
@@ -157,6 +158,7 @@ class Reviewer:
             engineer_call_id=engineer_call_id,
             preselected_skill_block=preselected_skill_block,
             working_dir=config.working_dir,
+            vertical_state_root=config.vertical_state_root,
             vertical=config.active_vertical,
         )
         static, delta_base = self._render(resumed=False, **common)
@@ -334,6 +336,7 @@ class Reviewer:
         engineer_call_id: str = "",
         preselected_skill_block: str | None = None,
         working_dir: str | Path | None = None,
+        vertical_state_root: str | Path | None = None,
         vertical: str = "",
     ) -> tuple[str, str]:
         """F7: render the reviewer prompt as ``(static_preamble, round_delta)``.
@@ -368,6 +371,7 @@ class Reviewer:
             engineer_call_id=engineer_call_id,
             preselected_skill_block=preselected_skill_block,
             working_dir=working_dir,
+            vertical_state_root=vertical_state_root,
             vertical=vertical,
         )
 

@@ -186,6 +186,50 @@ def test_message_only_fast_reply_uses_only_frontdoor_call(
     assert LifeMemory.open(life).backlog.all() == []
 
 
+def test_profile_self_skill_disables_stateless_fast_reply(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    sid = "s-profile-self-reply"
+    life = _make_project(tmp_path, sid)
+    manager_state._STATES.clear()
+    skill_dir = tmp_path / "skills" / "self"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "terminology.md").write_text(
+        "---\nname: terminology\ndescription: Apply learned terminology\n---\n",
+        encoding="utf-8",
+    )
+    state = manager_state._chat_state_for(sid)
+    state["manager_runner"] = SimpleNamespace(
+        manager=SimpleNamespace(
+            self_mission=SimpleNamespace(
+                libraries=lambda: SimpleNamespace(native_paths=[skill_dir])
+            )
+        )
+    )
+
+    def classify(mem, text, chat_state, **kwargs):
+        chat_state["_frontdoor_self_mode"] = "reply"
+        chat_state["_frontdoor_fast_reply"] = "generic stale answer"
+        return None, None, "simple"
+
+    monkeypatch.setattr(config_intent, "_front_door_classify", classify)
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *args, **kwargs: "learned terminology answer",
+    )
+
+    result = manager_bridge.manager_message(
+        sid,
+        "What does the learned term mean?",
+        global_root=tmp_path,
+    )
+
+    assert result == {"kind": "chat", "reply": "learned terminology answer"}
+    assert LifeMemory.open(life).backlog.all() == []
+
+
 def test_explicit_authorization_persists_current_blocker_and_never_dispatches(
     tmp_path: Path, monkeypatch,
 ) -> None:
@@ -1169,10 +1213,14 @@ def test_finite_staged_paper_request_does_not_enter_bounded_dag(
     result = manager_bridge.manager_message(sid, objective, global_root=tmp_path)
 
     assert result["kind"] == "task"
-    assert result["item"] is None
+    assert result["item"] is not None
     assert result["continuous"] is True
     assert decisions == [objective]
-    assert LifeMemory.open(life).backlog.all() == []
+    queued = LifeMemory.open(life).backlog.all()
+    assert len(queued) == 1
+    assert queued[0].id == result["item"]["id"]
+    assert queued[0].objective == objective
+    assert "operator_priority" in queued[0].tags
     continuous = json.loads((life / "continuous.json").read_text(encoding="utf-8"))
     assert continuous["enabled"] is True
     assert continuous["objective"] == objective
