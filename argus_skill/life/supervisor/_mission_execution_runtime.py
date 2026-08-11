@@ -92,9 +92,10 @@ class MissionExecutionRuntimeMixin:
             from ...skills.vertical_select import resolve_vertical
             from ...verticals._base import load_vertical_contract
 
+            vertical_state_root = Path(self._artifact_root())
             contract = load_vertical_contract(
-                resolve_vertical(resolved_mission_workdir),
-                project_root=resolved_mission_workdir,
+                resolve_vertical(vertical_state_root),
+                project_root=vertical_state_root,
             )
             block = contract.prepare_mission(
                 stage=state.pipeline_stage_at_start,
@@ -341,19 +342,23 @@ class MissionExecutionRuntimeMixin:
                 manager_decision.get("vertical") or ""
             ).strip()
             if execution_vertical:
-                from ...skills.vertical_select import require_vertical
+                from ...skills.vertical_select import (
+                    UnknownVerticalError,
+                    require_vertical,
+                )
                 from ...verticals._data_domain import (
                     materialize_learned_data_domain,
                 )
 
+                vertical_state_root = Path(self._artifact_root())
                 materialize_learned_data_domain(
                     self._budget_global_root(),
-                    state.execution_workdir,
+                    vertical_state_root,
                     execution_vertical,
                 )
                 try:
-                    require_vertical(execution_vertical, state.execution_workdir)
-                except LookupError:
+                    require_vertical(execution_vertical, vertical_state_root)
+                except UnknownVerticalError:
                     execution_vertical = ""
             try:
                 from inspect import Parameter, signature

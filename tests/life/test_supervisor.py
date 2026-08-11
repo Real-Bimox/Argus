@@ -202,6 +202,102 @@ def test_skill_changes_require_explicit_mission_permission(tmp_path) -> None:
     assert supervisor._vertical_resolved is False
 
 
+def test_candidate_vertical_executes_from_session_state_with_separate_worktree(
+    tmp_path,
+) -> None:
+    from argus_skill.skills.vertical_select import persist_vertical
+    from argus_skill.verticals._data_domain import write_data_domain
+
+    memory = LifeMemory.open(tmp_path / "life")
+    sink = _RecordingSink(memory.root)
+    runner = _MaintenanceRunner()
+    project = tmp_path / "target-repo"
+    project.mkdir()
+    write_data_domain(
+        memory.root,
+        "embodied_eval_campaign",
+        stages=["runtime_gate", "task_coverage", "evaluation"],
+        status="candidate",
+        purpose="RoboTwin runtime and paired evaluation",
+        require_independent_review=True,
+    )
+    persist_vertical(
+        memory.root,
+        "embodied_eval_campaign",
+        workflow_mode="staged",
+    )
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=runner,
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=project,
+            artifact_root=memory.root,
+        ),
+    )
+    memory.backlog.add(BacklogItem.new(
+        title="run candidate-domain mission",
+        objective="exercise the project-local vertical",
+        tags=["planner", "review:required", "scope:bounded"],
+        manager_decision={
+            "routed": True,
+            "vertical": "embodied_eval_campaign",
+            "workflow_mode": "staged",
+            "learned_vertical_status": "candidate",
+        },
+    ))
+    supervisor._vertical_resolved = True
+
+    result = supervisor.tick()
+
+    assert result is not None and result["status"] == "done"
+    assert runner.kwargs["vertical_override"] == "embodied_eval_campaign"
+    assert not (
+        project
+        / "research"
+        / "DOMAINS"
+        / "embodied_eval_campaign.json"
+    ).exists()
+
+
+def test_stale_item_vertical_falls_back_without_unknown_vertical_crash(
+    tmp_path,
+) -> None:
+    from argus_skill.skills.vertical_select import persist_vertical
+
+    memory = LifeMemory.open(tmp_path / "life")
+    sink = _RecordingSink(memory.root)
+    runner = _MaintenanceRunner()
+    project = tmp_path / "target-repo"
+    project.mkdir()
+    persist_vertical(memory.root, "software", workflow_mode="direct")
+    supervisor = LifeSupervisor(
+        memory=memory,
+        runner=runner,
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=project,
+            artifact_root=memory.root,
+        ),
+    )
+    memory.backlog.add(BacklogItem.new(
+        title="run stale routed mission",
+        objective="execute despite stale route metadata",
+        tags=["planner", "scope:bounded"],
+        manager_decision={
+            "routed": True,
+            "vertical": "missing_candidate",
+            "workflow_mode": "staged",
+        },
+    ))
+    supervisor._vertical_resolved = True
+
+    result = supervisor.tick()
+
+    assert result is not None and result["status"] == "done"
+    assert runner.kwargs["vertical_override"] == ""
+
+
 def test_manager_reselects_vertical_for_each_planned_mission(tmp_path) -> None:
     from argus_skill.manager.directive import set_active_manager_directive
     from argus_skill.skills.vertical_select import persist_vertical

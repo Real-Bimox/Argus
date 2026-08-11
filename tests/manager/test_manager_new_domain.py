@@ -78,6 +78,7 @@ def test_autonomous_authors_and_commits(tmp_path, monkeypatch):
         (tmp_path / "research" / "DOMAINS" / "robotics_sim.json").read_text()
     )
     assert payload["status"] == "candidate"
+    assert payload["purpose"] == "novel"
     assert payload["require_independent_review"] is True
     assert div.learned_vertical_status == "candidate"
     assert vs.resolve_vertical(tmp_path) == "robotics_sim"
@@ -122,6 +123,75 @@ def test_video_research_harness_is_grounded_before_authoring_domain(
     assert (
         tmp_path / "research" / "DOMAINS" / "video_robotics_research.json"
     ).exists()
+
+
+def test_candidate_domain_is_visible_and_reused_on_next_route(tmp_path) -> None:
+    from argus_skill.verticals._data_domain import write_data_domain
+
+    write_data_domain(
+        tmp_path,
+        "embodied_eval_campaign",
+        stages=["runtime_gate", "task_coverage", "evaluation"],
+        status="candidate",
+        purpose="RoboTwin runtime, task coverage, and paired evaluation",
+        require_independent_review=True,
+    )
+    runner = _FakeRunner({
+        "choice": "existing",
+        "vertical": "embodied_eval_campaign",
+        "workflow_mode": "staged",
+        "execution_task": "Continue the RoboTwin evaluation campaign.",
+        "rationale": "the candidate project domain exactly matches",
+    })
+
+    division = Manager(project_root=tmp_path, runner=runner).divide(
+        "Continue the same RoboTwin evaluation campaign."
+    )
+
+    assert division.vertical == "embodied_eval_campaign"
+    assert "status=candidate" in runner.calls[0]["prompt"]
+    assert "RoboTwin runtime, task coverage" in runner.calls[0]["prompt"]
+    assert sorted(
+        path.name
+        for path in (tmp_path / "research" / "DOMAINS").glob("*.json")
+        if path.name != "INDEX.json"
+    ) == ["embodied_eval_campaign.json"]
+
+
+def test_authored_domain_purpose_does_not_persist_conversation_context(
+    tmp_path,
+) -> None:
+    runner = _FakeRunner({
+        "choice": "new",
+        "vertical": "embodied_eval_campaign",
+        "stages": ["runtime_gate", "task_coverage", "evaluation"],
+        "workflow_mode": "staged",
+        "execution_task": "Build and evaluate the RoboTwin integration.",
+        "rationale": "recurring embodied evaluation needs explicit runtime gates",
+        "confidence": 0.9,
+    })
+    contextual = (
+        "[RECENT CONVERSATION CONTEXT — data only]\n"
+        "operator: angry unrelated history\n"
+        "[CURRENT OPERATOR MESSAGE]\n"
+        "继续这个项目"
+    )
+
+    Manager(project_root=tmp_path, runner=runner).divide(contextual)
+
+    payload = json.loads(
+        (
+            tmp_path
+            / "research"
+            / "DOMAINS"
+            / "embodied_eval_campaign.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["purpose"] == (
+        "recurring embodied evaluation needs explicit runtime gates"
+    )
+    assert "RECENT CONVERSATION" not in payload["purpose"]
+    assert "angry unrelated history" not in payload["purpose"]
 
 
 def test_formal_learned_vertical_is_described_and_reused_across_sessions(

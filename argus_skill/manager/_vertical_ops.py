@@ -225,19 +225,16 @@ class _VerticalDecisionMixin:
         from ..roles.prompts.manager import build_vertical_decision_prompt
         from ..verticals._data_domain import (
             list_all_data_domain_names,
-            list_formal_data_domain_purposes,
+            list_selectable_data_domain_summaries,
         )
         from .domain_author import parse_vertical_decision
         from .stage_decider import extract_answer
 
-        existing = list_formal_data_domain_purposes(
+        existing_summaries = list_selectable_data_domain_summaries(
             self.project_root,
             learned_root=self.learned_vertical_root,
         )
-        existing_summaries = {
-            name: f"status=formal; {purpose}"
-            for name, purpose in existing.items()
-        }
+        existing = tuple(existing_summaries)
         all_domain_names = list_all_data_domain_names(
             self.project_root,
             learned_root=self.learned_vertical_root,
@@ -613,7 +610,12 @@ class _VerticalDecisionMixin:
                 stages=list(proposal.stages),
                 created_by="manager",
                 status="candidate",
-                purpose=task,
+                purpose=(
+                    str(getattr(proposal, "rationale", "") or "").strip()
+                    or execution_task.strip()
+                    or str(getattr(proposal, "execution_task", "") or "").strip()
+                    or task.strip()
+                ),
                 require_independent_review=True,
             )
             persist_vertical(

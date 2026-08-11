@@ -276,6 +276,52 @@ def list_formal_data_domain_purposes(
     return purposes
 
 
+def list_selectable_data_domain_summaries(
+    project_root: object = ".",
+    *,
+    learned_root: object | None = None,
+) -> dict[str, str]:
+    """Return local candidate/formal domains plus learned formal domains.
+
+    Candidate domains are selectable only inside their owning project and stay
+    explicitly labelled ``status=candidate`` so Manager can reuse them without
+    treating them as independently verified. A learned formal domain overrides
+    a stale local candidate with the same name.
+    """
+    summaries: dict[str, tuple[str, str]] = {}
+    roots = [(_domains_dir(project_root), False)]
+    if learned_root is not None:
+        roots.append((_learned_domains_dir(learned_root), True))
+    for root, learned in roots:
+        try:
+            entries = sorted(root.glob("*.json"), key=lambda path: path.name)
+        except OSError:
+            continue
+        for entry in entries:
+            if entry.name == INDEX_FILE or not is_valid_domain_name(entry.stem):
+                continue
+            payload = _read_payload(entry)
+            if payload is None:
+                continue
+            status = str(payload.get("status") or "formal").strip().lower()
+            if status not in {"candidate", "formal"}:
+                continue
+            if learned and status != "formal":
+                continue
+            purpose = str(
+                payload.get("purpose")
+                or payload.get("role_banner")
+                or entry.stem
+            ).strip()[:600]
+            current = summaries.get(entry.stem)
+            if current is None or (current[0] == "candidate" and status == "formal"):
+                summaries[entry.stem] = (status, purpose)
+    return {
+        name: f"status={status}; {purpose}"
+        for name, (status, purpose) in sorted(summaries.items())
+    }
+
+
 def data_domain_summaries(project_root: object = ".") -> dict[str, str]:
     """Compatibility summaries for formal project-local domains."""
     return {
@@ -506,6 +552,7 @@ __all__ = [
     "list_data_domains",
     "list_all_data_domain_names",
     "list_formal_data_domain_purposes",
+    "list_selectable_data_domain_summaries",
     "materialize_learned_data_domain",
     "migrate_data_domains",
     "promote_data_domain",

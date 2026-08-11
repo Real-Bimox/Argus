@@ -48,6 +48,39 @@ def test_data_domain_summaries_expose_formal_purpose(tmp_path):
     }
 
 
+def test_selectable_summaries_include_local_candidate_and_prefer_learned_formal(
+    tmp_path,
+) -> None:
+    project = tmp_path / "project"
+    learned = tmp_path / "learned"
+    dd.write_data_domain(
+        project,
+        "robotics_eval",
+        stages=["integrate", "evaluate"],
+        status="candidate",
+        purpose="project-local embodied evaluation",
+    )
+    assert dd.list_selectable_data_domain_summaries(project) == {
+        "robotics_eval": "status=candidate; project-local embodied evaluation",
+    }
+
+    source = tmp_path / "source"
+    dd.write_data_domain(
+        source,
+        "robotics_eval",
+        stages=["integrate", "evaluate", "report"],
+        status="candidate",
+        purpose="verified embodied evaluation",
+    )
+    assert dd.promote_data_domain(source, learned, "robotics_eval")
+    assert dd.list_selectable_data_domain_summaries(
+        project,
+        learned_root=learned,
+    ) == {
+        "robotics_eval": "status=formal; verified embodied evaluation",
+    }
+
+
 def test_index_is_written(tmp_path):
     dd.write_data_domain(tmp_path, "alpha", stages=["a", "b"])
     index = json.loads((tmp_path / "research" / "DOMAINS" / "INDEX.json").read_text())
