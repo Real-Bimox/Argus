@@ -51,7 +51,12 @@ def test_manager_in_role_subdirs_and_pools() -> None:
     assert "manager" in _ROLE_SUBDIRS
     assert ROLE_SKILL_POOLS["manager"] == frozenset({"manager"})
     # Manager sees every other role's standards as read-only references.
-    assert ROLE_CROSS_READ_POOLS["manager"] == frozenset({"engineer", "reviewer", "planner"})
+    assert ROLE_CROSS_READ_POOLS["manager"] == frozenset({
+        "engineer",
+        "reviewer",
+        "planner",
+        "self",
+    })
 
 
 def test_manager_role_skill_file_exists_and_loads() -> None:

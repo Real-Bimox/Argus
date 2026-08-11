@@ -110,7 +110,7 @@ def role_skill_libraries(
         library_roots=roots,
         own_paths=own_paths,
         reference_paths=reference_paths,
-        native_paths=own_paths,
+        native_paths=[*own_paths, *reference_paths],
         block=render_skill_library_paths(skill_store, role=role),
     )
 

@@ -230,6 +230,51 @@ def test_profile_self_skill_disables_stateless_fast_reply(
     assert LifeMemory.open(life).backlog.all() == []
 
 
+def test_profile_skill_upgrades_reply_mode_without_fast_reply(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    sid = "s-profile-skill-reply-mode"
+    life = _make_project(tmp_path, sid)
+    manager_state._STATES.clear()
+    skill_dir = tmp_path / "skills" / "engineer"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "procedure.md").write_text(
+        "---\nname: procedure\ndescription: Apply learned procedure\n---\n",
+        encoding="utf-8",
+    )
+    state = manager_state._chat_state_for(sid)
+    state["manager_runner"] = SimpleNamespace(
+        manager=SimpleNamespace(
+            self_mission=SimpleNamespace(
+                libraries=lambda: SimpleNamespace(native_paths=[skill_dir])
+            )
+        )
+    )
+    seen: dict[str, str] = {}
+
+    def classify(mem, text, chat_state, **kwargs):
+        chat_state["_frontdoor_self_mode"] = "reply"
+        return None, None, "simple"
+
+    def triage(*args, **kwargs):
+        seen["self_mode"] = kwargs["self_mode"]
+        return "learned procedure answer"
+
+    monkeypatch.setattr(config_intent, "_front_door_classify", classify)
+    monkeypatch.setattr(front_door, "manager_triage", triage)
+
+    result = manager_bridge.manager_message(
+        sid,
+        "How should this learned procedure work?",
+        global_root=tmp_path,
+    )
+
+    assert result == {"kind": "chat", "reply": "learned procedure answer"}
+    assert seen["self_mode"] == "inspect"
+    assert LifeMemory.open(life).backlog.all() == []
+
+
 def test_followup_self_turn_disables_stateless_fast_reply(
     tmp_path: Path,
     monkeypatch,

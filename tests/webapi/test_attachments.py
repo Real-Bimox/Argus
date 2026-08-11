@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import os
 import shutil
@@ -168,7 +167,8 @@ def test_upload_attachment_writes_to_canonical_workdir(
     assert attachment["mime"] == "text/markdown"
     assert attachment["original_name"] == "notes.md"
     assert attachment["size_bytes"] == len(payload)
-    assert attachment["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert "sha256" not in attachment
+    assert "integrity" not in attachment
     assert attachment["relative_path"].startswith(".argus/attachments/s-upload0/att-")
 
 
@@ -223,8 +223,8 @@ def test_message_route_resolves_attachment_metadata(
     assert forwarded[0]["relative_path"].endswith("/report.csv")
     assert forwarded[0]["mime"] == "text/csv"
     assert forwarded[0]["size_bytes"] == len(b"a,b\n1,2\n")
-    assert isinstance(forwarded[0]["sha256"], str) and len(forwarded[0]["sha256"]) == 64
-    assert " " in str(forwarded[0]["integrity"])
+    assert "sha256" not in forwarded[0]
+    assert "integrity" not in forwarded[0]
 
 
 def test_message_stream_route_resolves_attachment_metadata(

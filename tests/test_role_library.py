@@ -48,11 +48,35 @@ def test_each_role_searches_same_library_independently(tmp_path: Path) -> None:
     assert reviewer.block != ""
     assert engineer.library_roots == reviewer.library_roots
     assert "OWN: engineer, root" in engineer.block
-    assert "REFERENCE only: reviewer" in engineer.block
+    assert "REFERENCE only: reviewer, self" in engineer.block
     assert "OWN: reviewer" in reviewer.block
-    assert "REFERENCE only: engineer" in reviewer.block
-    assert engineer.native_paths == [store.skills_dir.resolve() / "engineer"]
-    assert reviewer.native_paths == [store.skills_dir.resolve() / "reviewer"]
+    assert "REFERENCE only: engineer, self" in reviewer.block
+    assert engineer.native_paths == [
+        store.skills_dir.resolve() / "engineer",
+        store.skills_dir.resolve() / "reviewer",
+    ]
+    assert reviewer.native_paths == [
+        store.skills_dir.resolve() / "reviewer",
+        store.skills_dir.resolve() / "engineer",
+    ]
+
+
+def test_self_and_team_role_libraries_are_cross_visible(tmp_path: Path) -> None:
+    store = SkillStore(tmp_path / "skills")
+    for role in ("self", "manager", "planner", "engineer", "reviewer"):
+        (store.skills_dir / role).mkdir()
+
+    self_path = store.skills_dir.resolve() / "self"
+    for role in ("manager", "planner", "engineer", "reviewer"):
+        libraries = role_skill_libraries(store, role=role)
+        assert self_path in libraries.reference_paths
+        assert self_path in libraries.native_paths
+
+    self_libraries = role_skill_libraries(store, role="self")
+    assert store.skills_dir.resolve() / "manager" in self_libraries.own_paths
+    assert store.skills_dir.resolve() / "engineer" in self_libraries.own_paths
+    assert store.skills_dir.resolve() / "planner" in self_libraries.reference_paths
+    assert store.skills_dir.resolve() / "reviewer" in self_libraries.reference_paths
 
 
 def test_general_native_root_requires_a_direct_skill(tmp_path: Path) -> None:

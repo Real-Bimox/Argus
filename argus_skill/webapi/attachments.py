@@ -9,7 +9,6 @@ workspace.
 from __future__ import annotations
 
 import errno
-import hashlib
 import json
 import os
 import re
@@ -76,8 +75,6 @@ class _PreparedAttachment:
     suffix: str
     mime: str
     size_bytes: int
-    sha256: str
-    integrity: str
     content: bytes
 
 
@@ -208,7 +205,6 @@ def attachment_context_refs(
                 "original_name": str(row.get("original_name") or "").strip(),
                 "mime": str(row.get("mime") or "").strip(),
                 "size_bytes": str(row.get("size_bytes") or "").strip(),
-                "integrity": str(row.get("integrity") or "").strip(),
             }
         )
     return refs
@@ -222,7 +218,6 @@ def attachment_context_block(
     lines = [
         "## Operator attachments",
         "The operator uploaded these session-scoped files into the canonical project workdir before this message.",
-        "Each `integrity` value is the attachment's SHA-256 fingerprint written in grouped chunks.",
     ]
     for row in attachments:
         relative_path = str(row.get("relative_path") or "").strip()
@@ -235,7 +230,6 @@ def attachment_context_block(
                 f"  original_name: {str(row.get('original_name') or '').strip()}",
                 f"  mime: {str(row.get('mime') or '').strip()}",
                 f"  size_bytes: {str(row.get('size_bytes') or '').strip()}",
-                f"  integrity: {str(row.get('integrity') or '').strip()}",
             ]
         )
     return "\n".join(lines)
@@ -275,7 +269,6 @@ def _prepare_attachment_upload(
         content=content,
         original_name=original_name,
     )
-    sha256 = hashlib.sha256(content).hexdigest()
     attachment_id = f"att-{uuid4().hex[:12]}"
     return _PreparedAttachment(
         attachment_id=attachment_id,
@@ -284,8 +277,6 @@ def _prepare_attachment_upload(
         suffix=suffix,
         mime=canonical_mime,
         size_bytes=size_bytes,
-        sha256=sha256,
-        integrity=_grouped_integrity(sha256),
         content=content,
     )
 
@@ -365,10 +356,6 @@ def _decode_text_attachment(content: bytes, original_name: str) -> str:
     if any(ord(char) < 32 and char not in "\n\r\t\f\b" for char in text):
         raise ValueError(f"{original_name} contains unsupported binary control bytes")
     return text
-
-
-def _grouped_integrity(sha256: str) -> str:
-    return " ".join(sha256[index:index + 8] for index in range(0, len(sha256), 8))
 
 
 def _require_secure_attachment_storage() -> None:
@@ -516,8 +503,6 @@ def _store_prepared_attachment(
             "stored_name": item.stored_name,
             "mime": item.mime,
             "size_bytes": item.size_bytes,
-            "sha256": item.sha256,
-            "integrity": item.integrity,
             "created_at": time.time(),
         }
         _write_file_atomic(
@@ -576,7 +561,7 @@ def _load_attachment_metadata(session_fd: int, sid: str, attachment_id: str) -> 
             expected_size = int(payload.get("size_bytes") or 0)
         except (TypeError, ValueError) as exc:
             raise ValueError(f"attachment metadata is malformed for {attachment_id}") from exc
-        actual_size, actual_sha256 = _hash_regular_file(
+        actual_size = _measure_regular_file(
             attachment_fd,
             stored_name,
             display_path=_attachment_payload_relative_path(sid, attachment_id, stored_name),
@@ -593,11 +578,6 @@ def _load_attachment_metadata(session_fd: int, sid: str, attachment_id: str) -> 
 
     if actual_size != expected_size:
         raise ValueError(f"attachment payload size mismatch for {attachment_id}")
-    expected_sha256 = str(payload.get("sha256") or "").strip().lower()
-    if actual_sha256 != expected_sha256:
-        raise ValueError(f"attachment payload hash mismatch for {attachment_id}")
-    payload["sha256"] = actual_sha256
-    payload["integrity"] = _grouped_integrity(actual_sha256)
     return payload
 
 
@@ -669,9 +649,8 @@ def _read_regular_file_bytes(
         os.close(descriptor)
 
 
-def _hash_regular_file(parent_fd: int, name: str, *, display_path: str) -> tuple[int, str]:
+def _measure_regular_file(parent_fd: int, name: str, *, display_path: str) -> int:
     descriptor = _open_regular_file(parent_fd, name, display_path=display_path)
-    digest = hashlib.sha256()
     total = 0
     try:
         while True:
@@ -681,8 +660,7 @@ def _hash_regular_file(parent_fd: int, name: str, *, display_path: str) -> tuple
             total += len(chunk)
             if total > MESSAGE_ATTACHMENT_MAX_BYTES:
                 raise ValueError(f"attachment payload size mismatch for {Path(display_path).parent.name}")
-            digest.update(chunk)
-        return total, digest.hexdigest()
+        return total
     finally:
         os.close(descriptor)
 

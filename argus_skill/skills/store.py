@@ -36,10 +36,10 @@ ROLE_SKILL_POOLS: dict[str, frozenset[str]] = {
 }
 ROLE_CROSS_READ_POOLS: dict[str, frozenset[str]] = {
     "self": frozenset({"planner", "reviewer"}),
-    "engineer": frozenset({"reviewer"}),
-    "reviewer": frozenset({"engineer"}),
-    "planner": frozenset({"engineer", "reviewer"}),
-    "manager": frozenset({"engineer", "reviewer", "planner"}),
+    "engineer": frozenset({"reviewer", "self"}),
+    "reviewer": frozenset({"engineer", "self"}),
+    "planner": frozenset({"engineer", "reviewer", "self"}),
+    "manager": frozenset({"engineer", "reviewer", "planner", "self"}),
 }
 _ROLE_SUBDIRS = frozenset({"self", "engineer", "reviewer", "planner", "manager"})
 

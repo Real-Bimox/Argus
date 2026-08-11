@@ -352,8 +352,6 @@ describe('web API protocol handshake', () => {
             stored_name: 'notes.md',
             mime: 'text/markdown',
             size_bytes: 7,
-            sha256: 'a'.repeat(64),
-            integrity: 'aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa aaaaaaaa',
           }],
           limits: {
             max_count: 5,

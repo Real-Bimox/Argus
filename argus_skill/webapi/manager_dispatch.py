@@ -500,8 +500,7 @@ def _classify_operator_turn(
         chat_state.pop("_frontdoor_fast_reply", "") or ""
     ).strip()
     if (
-        fast_reply
-        and self_mode == "reply"
+        self_mode == "reply"
         and (
             int(chat_state.get("turns", 0) or 0) > 1
             or _self_skill_context_available(chat_state)

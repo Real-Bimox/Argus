@@ -129,8 +129,6 @@ export interface UploadedAttachment {
   stored_name: string;
   mime: string;
   size_bytes: number;
-  sha256: string;
-  integrity: string;
 }
 export interface MessageAttachmentRef {
   attachment_id: string;

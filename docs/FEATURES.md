@@ -1,0 +1,310 @@
+# Argus Features and Runtime Flows
+
+This document describes implemented behavior, role transitions, learning
+visibility, and the reliability scenarios used to verify them.
+
+## 1. Entry routing
+
+Every operator message enters through Manager's front door.
+
+| Message outcome | Route | Execution |
+| --- | --- | --- |
+| Conversation or answer from current text | SELF reply | One Manager response |
+| Read-only project/status inspection or simple single-role operation | SELF inspect | Manager uses project tools directly |
+| File/artifact change, engineering, experiment, background work, or independent review | TEAM | Manager → Planner → Engineer → optional Reviewer |
+| Explicit pause/abort/authorization | Control | Host changes durable runtime state |
+| New task while a TEAM mission is active | TEAM queue | Current mission continues; new work is durable and serial |
+
+Follow-up SELF turns use the persistent Manager session. A stateless fast reply
+is allowed only when no conversation history or learned SELF Skill is needed.
+
+## 2. Four-role state machine
+
+```mermaid
+flowchart TD
+    U[Operator message] --> F[Manager front door]
+    F -->|SELF| S[Manager SELF turn]
+    S --> SR[Reply]
+    SR --> SL{Five completed user turns?}
+    SL -->|Yes| SLR[Isolated SELF learning review]
+    SL -->|No| IDLE[Ready]
+    SLR --> IDLE
+
+    F -->|TEAM| M[Manager vertical, workflow, lifetime]
+    M -->|Bounded direct| BP[Planner bounded DAG]
+    M -->|Staged or standing| CP[Continuous Planner cycle]
+    BP --> Q[Durable backlog]
+    CP --> Q
+    Q --> E[Engineer mission]
+    E -->|continue| E
+    E -->|operator-only blocker| OP[Paused for operator]
+    E -->|decision point| R{Independent review required?}
+    R -->|No| SETTLE[Host settlement]
+    R -->|Yes| RV[Reviewer verdict]
+    RV -->|done| SETTLE
+    RV -->|continue| E
+    RV -->|replan requested| CP
+    RV -->|blocked + question| OP
+    RV -->|research pause| PAUSED[Recoverable pause]
+    SETTLE --> TL[Isolated TEAM learning review]
+    TL --> NEXT{More durable work?}
+    NEXT -->|Yes| Q
+    NEXT -->|No| IDLE
+
+    F -->|pause| P[Abort current mission and stop daemon]
+    P --> PAUSED
+    PAUSED -->|Explicit resume with work| M
+    OP -->|Manager-approved operator answer| Q
+```
+
+### Manager
+
+Manager owns:
+
+- SELF versus TEAM routing;
+- pause, abort, steering, and authorization controls;
+- vertical selection or project-local vertical creation;
+- direct versus staged workflow;
+- bounded versus standing lifetime;
+- a clean standalone `execution_task`.
+
+Manager never treats transcript wrappers as the Engineer objective. A short
+contextual request is reduced to its current operator message if a model copies
+the wrapper instead of resolving it.
+
+### Planner
+
+Planner is read-only and delegates work.
+
+For bounded work it produces a small dependency DAG. One coherent deliverable
+normally stays in one node. For staged or standing work it chooses one
+decision-sized next mission from current evidence.
+
+Planner outcomes are:
+
+- `planned`: executable work was added;
+- `completed`: the finite operator objective is complete;
+- `research_incomplete`, `paused_no_breakthrough`, or
+  `exhausted_current_methods`: recoverable research pauses;
+- `paused_budget`, `provider_cooldown`, or `infra_blocked`: recoverable runtime
+  pauses;
+- `error`: planning failed and is surfaced.
+
+### Engineer
+
+Engineer owns implementation, commands, tests, evidence, and the requested
+deliverable.
+
+- `MILESTONE_STATUS=done`: the mission reached its decision point.
+- `MILESTONE_STATUS=continue`: another Engineer round is required.
+- `OPERATOR_QUESTION=<question>`: only an operator-owned decision blocks work.
+
+Engineer does not create process artifacts merely to prove that work happened.
+Named-output constraints apply to new outputs and never authorize deletion of
+pre-existing files.
+
+### Reviewer
+
+Reviewer independently inspects the Engineer result when review is required.
+The main Reviewer is read-only.
+
+| Reviewer verdict | Transition |
+| --- | --- |
+| `done` | Settle mission successfully |
+| `continue` | Return `NEXT_ACTION` to Engineer |
+| `replan_requested` | Return to Planner |
+| `blocked` with operator question | Persist `paused_operator` and wait |
+| `research_incomplete` | Preserve evidence and pause recoverably |
+| `paused_no_breakthrough` | Pause until a new route or evidence exists |
+| `exhausted_current_methods` | Pause without pretending project completion |
+
+New custom verticals require independent review before promotion. Ordinary
+formal direct tasks may complete without a separate Reviewer call when the Host
+contract does not require one.
+
+## 3. Durable task and daemon behavior
+
+- A project daemon runs at most one mission at a time.
+- Later TEAM requests are persisted and ordered without interrupting the active
+  mission.
+- A recent identical request reuses the existing backlog item by directly
+  comparing its existing objective; no content hash or extra idempotency field
+  is stored.
+- Different requests remain separate missions.
+- Web restart does not lose backlog state or cause a recent request to execute
+  twice.
+- Separate project daemons have separate workspaces, backlogs, transcripts, and
+  output files.
+
+Explicit pause stops the current mission and daemon while preserving the goal
+and backlog. An explicit resume that runs commands or changes artifacts is TEAM
+work; it is not executed inline as a SELF reply.
+
+## 4. Verticals and workflows
+
+Argus includes built-in verticals for recurring software, research,
+mathematical, literary, hardware, and optimization work.
+
+When no existing capability fits:
+
+1. Manager inspects the real operator workspace.
+2. Manager creates a small reusable project-local vertical.
+3. The vertical starts as `candidate`.
+4. Engineer executes under it immediately.
+5. Reviewer resolves the same vertical contract from session state.
+6. Successful independent review promotes it to `formal`.
+7. Later tasks and sessions using the same profile can select it directly.
+
+`direct` is used for one coherent work package. `staged` is used only when the
+outcome genuinely requires dependent phases or independent evidence tracks.
+Missing scope, manifest, checkpoint, Wiki, or report files are not automatic
+reasons to delay substantive work.
+
+## 5. SELF and TEAM evolution
+
+### SELF evolution
+
+- Trigger: after every five completed user turns.
+- Input: bounded recent conversation evidence.
+- Learns: stable terminology, interpretation rules, reply preferences, and
+  reusable SELF procedures.
+- Destination: profile `skills/self/`.
+- First use: the next applicable turn in the same session.
+- Reuse: later tasks and later sessions using the same profile.
+
+### TEAM evolution
+
+- Trigger: after a TEAM mission settles.
+- Success rule: one canonical successful mission is verified evidence for a
+  reusable project candidate.
+- Failure rule: learn only from a verified root cause or a repeated failure
+  mechanism.
+- Input: canonical mission result plus bounded project Skill candidates.
+- Excluded input: raw transcript, agent I/O, daemon logs, and usage logs.
+- Destination: the matching profile role directory:
+  `manager/`, `planner/`, `engineer/`, or `reviewer/`.
+- First use: the next applicable mission.
+- Reuse: later tasks and later sessions using the same profile.
+
+### Cross-role visibility
+
+`OWN` means the role may maintain that pool. `REFERENCE` means it may read and
+apply it but must not edit it as its own knowledge.
+
+| Reader | SELF Skills | Manager Skills | Planner Skills | Engineer Skills | Reviewer Skills |
+| --- | --- | --- | --- | --- | --- |
+| SELF | OWN | OWN | REFERENCE | OWN | REFERENCE |
+| Manager | REFERENCE | OWN | REFERENCE | REFERENCE | REFERENCE |
+| Planner | REFERENCE | — | OWN | REFERENCE | REFERENCE |
+| Engineer | REFERENCE | — | — | OWN | REFERENCE |
+| Reviewer | REFERENCE | — | — | REFERENCE | OWN |
+
+Consequences:
+
+- SELF-evolved terminology and user preferences are available as read-only
+  reference knowledge to all four TEAM roles.
+- TEAM-evolved Manager, Planner, Engineer, and Reviewer procedures are available
+  to SELF according to the table above.
+- Task instructions, current evidence, and role boundaries always override a
+  Skill.
+- Project Skills override vertical and profile Skills for the same operation.
+
+### Cross-task and cross-session timing
+
+| Learning source | Same task | Next task, same session | New session | Different machine/profile |
+| --- | --- | --- | --- | --- |
+| SELF review | Cannot change the reply that triggered it | Available | Available | Only if the profile is copied or synced |
+| TEAM review | Cannot change the settled mission | Available | Available | Only if the profile is copied or synced |
+| Custom vertical promotion | Applies after review | Available | Available | Only if learned vertical data is copied or synced |
+
+Learning is profile-scoped, not silently cloud-synchronized.
+
+## 6. Restrained execution and token efficiency
+
+Argus treats hashes, manifests, provenance files, repeated checks, and process
+documents as work only when the operator or an external interface requires
+them. They are not default evidence of correctness.
+
+Implemented controls:
+
+- Manager preserves the operator's requested action and does not replace it
+  with cleanup, Wiki, manifest, provenance, checksum, or extra verification.
+- Planner defaults a coherent bounded request to one DAG node and folds reading,
+  implementation, and one decisive validation into that node.
+- Direct workflow does not require stage bundles, scope files, frontier files,
+  checkpoints, or reports before substantive work.
+- Engineer is instructed to use one decisive validation per claim and not
+  repeat an equivalent passing check.
+- Reviewer reuses trustworthy Engineer evidence and is not asked to create
+  evidence packets or process files.
+- Attachment upload and message context do not compute or expose content hashes.
+- Recent duplicate requests are detected by directly comparing the existing
+  backlog objective; no request fingerprint, hash field, or extra idempotency
+  record is created.
+
+Token controls:
+
+- A context-free first SELF reply may use the lean quick path.
+- Follow-up SELF turns and turns with learned Skills use the persistent
+  Skill-aware Manager session so speed does not discard context.
+- Planner does not run a second planning pass for a preplanned backlog node.
+- Reviewer receives the mission objective and necessary evidence rather than a
+  full project transcript.
+- TEAM learning receives only the canonical result and bounded candidate Skill
+  excerpts. It is explicitly denied raw transcript, agent I/O, daemon log, and
+  usage-log input.
+- A no-learning mission can stop without opening project evidence or writing a
+  Skill.
+
+Measured in the custom-vertical reliability scenario, removing recursive
+post-mission log inspection reduced TEAM learning input from about 190,000
+tokens to about 1,800 tokens when no Skill was warranted. A real promotion used
+about 8,600 input tokens and produced one concise profile Skill.
+
+## 7. Attachments and Unicode
+
+- Session-scoped uploads support text, Markdown, JSON, CSV, image, and PDF
+  files.
+- Unicode attachment names and Unicode deliverable names are preserved.
+- Boundaries include count, size, MIME, regular-file, session ownership, and
+  no-symlink checks.
+- Attachment metadata contains the path, original name, MIME, and size. It does
+  not compute or expose a content hash.
+
+## 8. Reliability scenarios
+
+The following ordinary-user scenarios are exercised through the real Web API,
+Web UI, Manager model, and daemon:
+
+| Scenario | Expected result |
+| --- | --- |
+| Several sequential SELF messages | Context remains ordered and coherent |
+| Two Manager messages overlap | Per-session Manager lock preserves order |
+| SELF question during TEAM mission | SELF replies; TEAM direction and daemon remain unchanged |
+| Same TEAM request repeated | One backlog item and one execution |
+| Different TEAM requests during active work | Durable serial queue; maximum one running mission |
+| Web restart followed by client retry | Existing recent item is reused |
+| Pause during a long command | Mission stops, daemon exits, no partial success claim |
+| Explicit resume of paused write task | New TEAM mission completes the work |
+| Simple read-only file task | SELF performs it without creating a TEAM |
+| Two project daemons run concurrently | Outputs and state remain project-local |
+| Cross-session attachment id | Rejected with HTTP 400 |
+| Delete or change workdir while daemon runs | Rejected with HTTP 409 |
+| CSV plus Unicode text attachments | Correct calculated Unicode deliverable, no extra user files |
+| Empty message | Rejected with HTTP 400 |
+| SELF Skill used by TEAM | Engineer opens the SELF Skill and applies the user rule |
+| TEAM Skill used by SELF | SELF opens the role Skill and applies the verified procedure |
+
+## 9. Project lifecycle
+
+Project lifecycle states are:
+
+```text
+incubating → running → writing → done → archived
+                 ↘ quarantined
+```
+
+Lifecycle state is distinct from an individual backlog item. A bounded item can
+finish while the project remains active. A completed project can accept new
+TEAM work through an explicit Manager dispatch; quarantined and archived
+projects require explicit recovery.

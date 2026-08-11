@@ -57,6 +57,8 @@ def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     )
     assert "VERTICAL:" not in prompt
     assert "TARGET:" not in prompt
+    assert "explicit continue/resume after a pause is not a control token" in prompt
+    assert "resumed paused tasks with those effects are TEAM" in prompt
     assert "WORKFLOW:" not in prompt
     assert "FAST_REPLY:" not in prompt
     assert "ACTIVE_MISSION: YES" in prompt
