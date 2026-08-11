@@ -196,6 +196,22 @@ def test_execute_config_loads_custom_vertical_from_session_state(
         workdir / "research" / "DOMAINS" / "physical_archive_restoration.json"
     ).exists()
 
+    from argus_skill.reviewer import Reviewer
+
+    prompt = Reviewer(_FakeBackend())._build_prompt(
+        objective="Review the condition assessment scaffold.",
+        operator_messages=[],
+        planner_review_instruction="",
+        round_index=1,
+        session_id="custom-vertical",
+        main_summary="Implemented and tested.",
+        main_error=None,
+        working_dir=workdir,
+        vertical_state_root=state_root,
+        vertical="physical_archive_restoration",
+    )
+    assert "## Reviewer role" in prompt
+
 
 # ---------- Manager SELF fast-path: runner unit tests ----------------------
 
