@@ -50,6 +50,9 @@ def _software_grounding_required(workflow_mode: str) -> bool:
     return workflow_mode != "direct"
 
 
+_CURRENT_OPERATOR_MARKER = "[CURRENT OPERATOR MESSAGE]"
+
+
 class _VerticalDecisionMixin:
     """Mixin: vertical selection, staging, and domain-commit methods."""
 
@@ -349,6 +352,18 @@ class _VerticalDecisionMixin:
                     workflow_mode=decision.workflow_mode,
                     root_task_id=root_task_id,
                 )
+        if contextual_task and (
+            "[RECENT CONVERSATION CONTEXT" in decision.execution_task
+            or _CURRENT_OPERATOR_MARKER in decision.execution_task
+        ):
+            _prefix, marker, current = str(task or "").rpartition(
+                _CURRENT_OPERATOR_MARKER
+            )
+            decision.execution_task = (
+                current.strip()
+                if marker and current.strip()
+                else str(task or "").strip()
+            )
         return decision
 
     def _apply_vertical_decision_rendering(

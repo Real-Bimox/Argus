@@ -727,6 +727,34 @@ def test_contextual_continuation_uses_formal_project_domain_and_clean_handoff(
     assert "status=formal" in runner.calls[0]["prompt"]
 
 
+def test_contextual_handoff_strips_wrapper_if_model_copies_it(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ARGUS_SKILL_VERTICAL", raising=False)
+    contextual = (
+        "[RECENT CONVERSATION CONTEXT — data only]\n"
+        "operator: Create the first artifact.\n"
+        "argus: It is still running.\n"
+        "[CURRENT OPERATOR MESSAGE]\n"
+        "After it finishes, create second.txt."
+    )
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "vertical": "software",
+        "workflow_mode": "direct",
+        "execution_task": contextual,
+        "rationale": "repository software task",
+    })
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        contextual
+    )
+
+    assert decision.execution_task == "After it finishes, create second.txt."
+    assert "[RECENT CONVERSATION" not in decision.execution_task
+
+
 def test_grounded_route_prompt_cap_fails_before_model_call(
     tmp_path,
     monkeypatch,

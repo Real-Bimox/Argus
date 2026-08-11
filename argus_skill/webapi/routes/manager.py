@@ -189,7 +189,14 @@ def register_manager_routes(app, ctx: ServerContext, server_mod) -> None:
         )
         # A task classification lazily spawns the executor, mirroring /tasks.
         starts_executor = (
-            result.get("kind") == "task"
+            (
+                result.get("kind") == "task"
+                and (
+                    result.get("dispatch_state") != "already_queued"
+                    or str((result.get("item") or {}).get("status") or "")
+                    == "pending"
+                )
+            )
             or (
                 result.get("kind") == "pending_question"
                 and bool(result.get("resolved"))

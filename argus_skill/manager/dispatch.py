@@ -263,7 +263,7 @@ def enqueue_mission(
             title = compact if len(compact) <= 160 else compact[:157] + "..."
             item = BacklogItem.new(
                 item_id=root_task_id,
-                title=title,
+                title=title.replace("`", ""),
                 objective=execution_body,
                 priority=min(head_priority - 1, -1),
                 tags=[
@@ -451,7 +451,7 @@ def enqueue_mission(
             )
             item = BacklogItem.new(
                 item_id=ids[node.key],
-                title=node.title,
+                title=str(node.title).replace("`", ""),
                 objective=node.objective,
                 priority=priority + index,
                 tags=[

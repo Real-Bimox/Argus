@@ -48,6 +48,29 @@ from .manager_state import (
 log = logging.getLogger(__name__)
 
 _PLAN_PREVIEW_CACHE_TTL_S = 60.0
+_TEAM_REPLAY_WINDOW_S = 90.0
+
+
+def _recent_team_replay(
+    mem: Any,
+    body: str,
+) -> Any | None:
+    request = " ".join(str(body or "").split())
+    items = mem.backlog.all()
+    for item in sorted(items, key=lambda row: float(row.ts), reverse=True):
+        if time.time() - float(item.ts) > _TEAM_REPLAY_WINDOW_S:
+            break
+        prior = " ".join(
+            str(item.original_objective or item.objective or "").split()
+        )
+        if prior == request and str(item.status) in {
+            "pending",
+            "running",
+            "done",
+            "paused_operator",
+        }:
+            return item
+    return None
 
 
 def _answer_inline(sid: str, life_dir: Any, question: str) -> str:
@@ -255,6 +278,32 @@ def manager_message(
             pass
         _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
 
+        duplicate_item = _recent_team_replay(mem, body)
+        if duplicate_item is not None:
+            from ..manager.dispatch import _daemon_status
+
+            daemon_alive, daemon_pid = _daemon_status(life_dir)
+            item_payload = _item_to_dict(duplicate_item, operator_text or body)
+            title = str(
+                (item_payload or {}).get("title")
+                or (item_payload or {}).get("objective")
+                or operator_text
+                or body
+            )
+            emitter.emit_only(f"Already queued · {title}")
+            return {
+                "kind": "task",
+                "reply": None,
+                "item": item_payload,
+                "daemon_alive": daemon_alive,
+                "daemon_pid": daemon_pid,
+                "continuous": bool(
+                    chat_state.get("config", {}).get("continuous")
+                ),
+                "dispatch_state": "already_queued",
+                "duplicate": True,
+            }
+
         pending_questions = [
             item
             for item in mem.backlog.all()
@@ -416,6 +465,21 @@ def manager_message(
     }
     if item_payload is None and result["continuous"]:
         result["dispatch_state"] = "planner_pending"
+    elif item_payload is not None and daemon_alive:
+        running_id = next(
+            (
+                str(row.id)
+                for row in mem.backlog.all()
+                if str(row.status) == "running"
+            ),
+            "",
+        )
+        if running_id == str(item_payload.get("id") or ""):
+            result["dispatch_state"] = "running"
+        elif running_id:
+            result["dispatch_state"] = "queued_after_current"
+        else:
+            result["dispatch_state"] = "queued"
     title = str(
         (item_payload or {}).get("title")
         or (item_payload or {}).get("objective")

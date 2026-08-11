@@ -631,7 +631,22 @@ def record_task_dispatch_ack(
     daemon_alive = result.get("daemon_alive", False)
 
     # Derive truthful human-readable text
-    if result.get("dispatch_state") == "planner_pending":
+    dispatch_state = result.get("dispatch_state")
+    if dispatch_state == "already_queued":
+        status = str((result.get("item") or {}).get("status") or "queued")
+        text = (
+            f"request already queued ({status}); no duplicate task was created"
+        )
+    elif dispatch_state == "queued_after_current":
+        text = (
+            "queued after current work; the active executor remains on its "
+            "current mission"
+        )
+    elif dispatch_state == "queued":
+        text = "queued; the active executor will pick up this task"
+    elif dispatch_state == "running":
+        text = "task is running on the active executor"
+    elif dispatch_state == "planner_pending":
         text = (
             "campaign updated; the active executor will sequence this objective "
             "through Planner after current work"

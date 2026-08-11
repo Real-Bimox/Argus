@@ -1386,6 +1386,43 @@ def test_dispatch_ack_distinguishes_durable_campaign_update(tmp_path: Path) -> N
     assert "executor already running" not in text
 
 
+@pytest.mark.parametrize(
+    ("dispatch_state", "expected"),
+    [
+        ("queued_after_current", "queued after current work"),
+        ("queued", "active executor will pick up"),
+        ("running", "task is running on the active executor"),
+        ("already_queued", "no duplicate task was created"),
+    ],
+)
+def test_dispatch_ack_describes_queue_state(
+    tmp_path: Path,
+    dispatch_state: str,
+    expected: str,
+) -> None:
+    from argus_skill.webapi.manager_pending_question import record_task_dispatch_ack
+
+    life_dir = tmp_path / "projects" / "s-queue-ack"
+    life_dir.mkdir(parents=True)
+    result = {
+        "kind": "task",
+        "daemon_alive": True,
+        "daemon": None,
+        "dispatch_state": dispatch_state,
+        "item": {"status": "running"},
+        "reply": None,
+    }
+
+    text = record_task_dispatch_ack(
+        "s-queue-ack",
+        result,
+        global_root=tmp_path,
+    )
+
+    assert expected in text
+    assert "executor already running" not in text
+
+
 def test_dispatch_ack_raises_on_transcript_write_failure(
     tmp_path: Path,
     monkeypatch,

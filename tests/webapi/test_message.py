@@ -230,6 +230,74 @@ def test_profile_self_skill_disables_stateless_fast_reply(
     assert LifeMemory.open(life).backlog.all() == []
 
 
+def test_followup_self_turn_disables_stateless_fast_reply(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    sid = "s-contextual-self-reply"
+    life = _make_project(tmp_path, sid)
+    manager_state._STATES.clear()
+    state = manager_state._chat_state_for(sid)
+    state["turns"] = 1
+
+    def classify(mem, text, chat_state, **kwargs):
+        chat_state["_frontdoor_self_mode"] = "reply"
+        chat_state["_frontdoor_fast_reply"] = "I do not know your name."
+        return None, None, "simple"
+
+    monkeypatch.setattr(config_intent, "_front_door_classify", classify)
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *args, **kwargs: "Your name is Xiaobei.",
+    )
+
+    result = manager_bridge.manager_message(
+        sid,
+        "What was my name?",
+        global_root=tmp_path,
+    )
+
+    assert result == {"kind": "chat", "reply": "Your name is Xiaobei."}
+    assert LifeMemory.open(life).backlog.all() == []
+
+
+def test_recent_identical_team_request_reuses_durable_existing_item(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    sid = "s-team-replay"
+    life = _make_project(tmp_path, sid)
+    manager_state._STATES.clear()
+    request = "Create result.txt."
+    item = LifeMemory.open(life).backlog.add(
+        BacklogItem.new(
+            title="Create result",
+            objective=request,
+            manager_decision={"routed": True},
+        )
+    )
+    monkeypatch.setattr(
+        config_intent,
+        "_front_door_classify",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("duplicate TEAM replay must not call the model")
+        ),
+    )
+
+    result = manager_bridge.manager_message(
+        sid,
+        request,
+        global_root=tmp_path,
+    )
+
+    assert result["kind"] == "task"
+    assert result["duplicate"] is True
+    assert result["dispatch_state"] == "already_queued"
+    assert result["item"]["id"] == item.id
+    assert len(LifeMemory.open(life).backlog.all()) == 1
+
+
 def test_explicit_authorization_persists_current_blocker_and_never_dispatches(
     tmp_path: Path, monkeypatch,
 ) -> None:

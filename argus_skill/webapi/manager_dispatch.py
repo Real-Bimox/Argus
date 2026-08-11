@@ -502,11 +502,14 @@ def _classify_operator_turn(
     if (
         fast_reply
         and self_mode == "reply"
-        and _self_skill_context_available(chat_state)
+        and (
+            int(chat_state.get("turns", 0) or 0) > 1
+            or _self_skill_context_available(chat_state)
+        )
     ):
-        # A stateless classifier cannot apply profile terminology/preferences.
-        # Route this turn through the normal SELF runner, which receives the
-        # profile Skill library, rather than returning a plausible but stale reply.
+        # A stateless classifier cannot apply profile terminology/preferences or
+        # prior conversation. Route follow-ups through the persistent SELF runner
+        # rather than returning a plausible but stale one-call answer.
         fast_reply = ""
         self_mode = "inspect"
         chat_state["_frontdoor_self_mode"] = "inspect"

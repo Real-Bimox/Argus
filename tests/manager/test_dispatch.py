@@ -51,7 +51,7 @@ def test_bounded_dispatch_persists_manager_handoff_and_root_id(memory, monkeypat
                 SimpleNamespace(
                     key="execute",
                     deps=(),
-                    title="managed task",
+                    title="`managed task`",
                     objective="managed: operator request",
                 ),
             ),
@@ -66,6 +66,7 @@ def test_bounded_dispatch_persists_manager_handoff_and_root_id(memory, monkeypat
     )
 
     assert item.id == "root-task-1"
+    assert item.title == "managed task"
     assert item.objective == "managed: operator request"
     assert item.priority < older.priority
     assert (alive, pid) == (False, None)
