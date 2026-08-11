@@ -91,5 +91,19 @@ def test_engineer_does_not_create_extra_handoff_packets():
     assert "git ls-files --error-unmatch" not in out
 
 
+def test_engineer_surfaces_operator_only_blockers_to_host():
+    full = _prompt("Continue until an operator-owned choice is required.")
+    compact = SkillLoop._build_engineer_prompt(
+        task="Continue until an operator-owned choice is required.",
+        skill_text="",
+        next_action="Ask only if the operator owns the decision.",
+        include_static=False,
+    )
+
+    for out in (full, compact):
+        assert "OPERATOR_QUESTION=" in out
+        assert "parks the task" in out or "Never keep opening fresh rounds" in out
+
+
 def test_engineer_fixed_prompt_stays_token_efficient():
     assert len(_prompt("Refactor the data loader and add unit tests.")) < 2_300

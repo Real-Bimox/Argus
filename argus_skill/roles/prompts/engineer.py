@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...core.model_visible_text import sanitize_model_visible_text
-from ..task_contract import EFFECTIVE_TASK_CONTRACT, native_shell_contract
+from ..task_contract import (
+    EFFECTIVE_TASK_CONTRACT,
+    native_shell_contract,
+    native_shell_summary,
+)
 from .types import RoleName, RolePromptRequest
 
 MISSION = "mission"
@@ -97,8 +101,9 @@ def build_mission_prompt(
     """Build the complete per-round Engineer mission prompt."""
     sections: list[str] = [EFFECTIVE_TASK_CONTRACT]
     shell_contract = native_shell_contract()
-    if shell_contract:
-        sections.append(shell_contract)
+    shell_summary = native_shell_summary()
+    if shell_summary:
+        sections.append(shell_summary)
     delta_sections: list[str] = []
     if role_banner.strip():
         sections.append("## Active vertical role\n" + role_banner.strip())
@@ -167,7 +172,10 @@ def build_mission_prompt(
         "decisive check. The Host invokes Reviewer only when required; do not spawn "
         "a Reviewer subagent. End with `MILESTONE_STATUS=done` only when the full "
         "milestone reached its decision point; otherwise write the next action to "
-        "CHECKPOINT.md and end with `MILESTONE_STATUS=continue`."
+        "CHECKPOINT.md and end with `MILESTONE_STATUS=continue`. Also end with "
+        "`OPERATOR_QUESTION=<question>` only when blocked by a decision or input "
+        "that only the operator can provide; otherwise use `OPERATOR_QUESTION=none`. "
+        "Never keep opening fresh rounds while waiting for that answer."
     )
     static_text = "\n\n".join(sections)
     delta_text = "\n\n".join(delta_sections)
@@ -186,7 +194,9 @@ def build_mission_prompt(
         "## Handoff\n"
         "CHECKPOINT.md remains the only role-maintained cross-round handoff file. "
         "End with a concise natural summary, decisive check, and "
-        "`MILESTONE_STATUS=done|continue`."
+        "`MILESTONE_STATUS=done|continue`. End with "
+        "`OPERATOR_QUESTION=<operator-only question|none>`; a real question parks "
+        "the task instead of opening another Engineer round."
     )
     if shell_contract:
         compact = shell_contract + "\n\n" + compact
