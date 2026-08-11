@@ -18,18 +18,18 @@ def contextualize_operator_turn(
     body: str,
     prior_turns: Iterable[Mapping[str, object]],
 ) -> str:
-    """Attach bounded factual dialogue context to short turns."""
+    """Attach bounded factual dialogue context for Manager handoff."""
     text = " ".join(str(body or "").split()).strip()
-    if not text or len(text) > 120:
+    if not text:
         return str(body or "").strip()
     rows: list[str] = []
-    for turn in list(prior_turns)[-6:]:
+    for turn in list(prior_turns)[-4:]:
         role = str(turn.get("role") or "")
         if role not in {"operator", "argus"}:
             continue
         value = _turn_text(turn)
         if value:
-            rows.append(f"{role}: {value[:400]}")
+            rows.append(f"{role}: {value[:300]}")
     if not rows:
         return str(body or "").strip()
     return (

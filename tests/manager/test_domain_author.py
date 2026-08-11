@@ -152,6 +152,9 @@ def test_vertical_prompt_preserves_explicit_operator_actions() -> None:
     assert "Preserve every concrete operator action" in prompt
     assert "must not replace them with cleanup" in prompt
     assert "authorizes a real attempt within policy" in prompt
+    assert "Match the operator's requested ACTION" in prompt
+    assert "quoted commit titles, logs, filenames, or error text" in prompt
+    assert "never turn those quoted subjects into implementation work" in prompt
 
 
 def test_vertical_prompts_do_not_use_software_as_performance_catch_all() -> None:

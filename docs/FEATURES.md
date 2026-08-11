@@ -276,10 +276,15 @@ current operator instruction
 
 Prompt-isolation rules:
 
-- Front-door classification sees the current message and bounded conversation
-  context; it does not choose the vertical or rewrite the execution plan.
+- Front-door classification sees only the current message; it does not choose
+  the vertical or rewrite the execution plan. TEAM handoff
+  separately receives at most four recent turns, capped at 300 characters each,
+  so a long correction keeps necessary context without polluting route control.
 - Manager must emit a standalone `execution_task`. If a model copies the
   transcript wrapper, the Host keeps only the current operator message.
+- Manager selects a vertical from the requested action. Quoted commit subjects,
+  logs, filenames, and errors remain evidence and are never expanded into new
+  implementation work.
 - Follow-up SELF turns use the persistent Manager session instead of a
   stateless answer.
 - Any available SELF or TEAM Skill upgrades SELF reply mode to the full
@@ -335,6 +340,8 @@ Web UI, Manager model, and daemon:
 | SELF Skill used by TEAM | Engineer opens the SELF Skill and applies the user rule |
 | TEAM Skill used by SELF | SELF opens the role Skill and applies the verified procedure |
 | Exact task after unrelated conversation | Standalone Manager handoff; no transcript wrapper |
+| Long correction listing commit titles | Prior author-rewrite goal retained; quoted titles are not implemented |
+| Formal domain plus Git metadata correction | `software` wins because the requested action is history maintenance |
 | Default identity template | Excluded from model prompts until the operator edits it |
 | Operator pause | Not captured or replayed as a failure lesson |
 | Planner acceptance check | No unconditional-success or tautological checks |

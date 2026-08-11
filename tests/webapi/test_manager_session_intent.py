@@ -60,7 +60,7 @@ def test_directory_question_reaches_llm_front_door_classifier(
     assert LifeMemory.open(life).backlog.all() == []
 
 
-def test_short_turn_is_supplied_to_classification_and_dispatch(
+def test_current_turn_is_classified_raw_and_dispatched_with_context(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -100,23 +100,29 @@ def test_short_turn_is_supplied_to_classification_and_dispatch(
     )
 
     assert result["kind"] == "task"
-    assert "请修复解析器的转义错误" in seen["classify"]
-    assert "[CURRENT OPERATOR MESSAGE]\n那就按刚才说的做" in seen["classify"]
-    assert seen["dispatch"] == seen["classify"]
+    assert seen["classify"] == "那就按刚才说的做"
+    assert "请修复解析器的转义错误" in seen["dispatch"]
+    assert "[CURRENT OPERATOR MESSAGE]\n那就按刚才说的做" in seen["dispatch"]
 
 
-def test_contextualization_is_bounded_by_turn_length() -> None:
+def test_contextualization_is_bounded_but_keeps_long_corrections() -> None:
     prior = [
-        {"role": "operator", "text": "old task"},
-        {"role": "argus", "text": "old reply"},
+        {"role": "operator", "text": "discarded old task"},
+        {"role": "argus", "text": "discarded old reply"},
+        {"role": "operator", "text": "relevant task"},
+        {"role": "argus", "text": "relevant reply"},
+        {"role": "operator", "text": "newer task"},
+        {"role": "argus", "text": "x" * 400},
     ]
 
     enriched = contextualize_operator_turn("那就列出修改", prior)
-    assert "old task" in enriched
+    assert "discarded old task" not in enriched
+    assert "relevant task" in enriched
+    assert ("x" * 300) in enriched
+    assert ("x" * 301) not in enriched
     assert "[CURRENT OPERATOR MESSAGE]\n那就列出修改" in enriched
 
-    generic = contextualize_operator_turn("itemize the changes", prior)
-    assert "old task" in generic
-    assert "[CURRENT OPERATOR MESSAGE]\nitemize the changes" in generic
-    long_text = "那" + ("x" * 120)
-    assert contextualize_operator_turn(long_text, prior) == long_text
+    long_text = "这些 commit 的作者仍然没有改：" + ("x" * 200)
+    long_context = contextualize_operator_turn(long_text, prior)
+    assert "relevant task" in long_context
+    assert f"[CURRENT OPERATOR MESSAGE]\n{long_text}" in long_context

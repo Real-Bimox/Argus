@@ -321,7 +321,7 @@ def manager_message(
             contextualize_operator_turn(operator_text, prior_turns),
             resolved_attachments,
         ).strip()
-        chat_state["_frontdoor_contextual_text"] = routing_body
+        chat_state["_frontdoor_contextual_text"] = body
         chat_state["_frontdoor_dispatch_body"] = routing_body
 
         # A web-process restart necessarily loses the live ACP process. Resume
