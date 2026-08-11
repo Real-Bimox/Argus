@@ -29,6 +29,7 @@ class _Result:
         self.thread_id = thread_id
         self.last_agent_message = msg
         self.exit_code = 0
+        self.tool_activity_observed = True
 
 
 class _RecordingRunner:
@@ -348,8 +349,9 @@ def test_manager_calls_flow_through_one_session(tmp_path):
 
     # is_conversational → manager-converse turn (first → resume None).
     mgr.is_conversational("hello there")
-    # divide → Manager tool-free classification on a fresh call. It must not inherit
-    # unrelated Manager chat history because that defeats its context cap.
+    # divide → Manager repository-grounded classification on a fresh call. It
+    # must not inherit unrelated Manager chat history because that defeats its
+    # context cap.
     mgr.divide("write a paper for EMNLP submission")
     # Two calls total, both fresh: chat owns the persisted session; routing does not.
     assert len(fake.resumes) == 2

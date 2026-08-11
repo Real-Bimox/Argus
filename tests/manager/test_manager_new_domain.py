@@ -1,8 +1,7 @@
 """Tests for the Manager new-domain authoring flow in ``Manager.divide``.
 
-The Manager's tool-free classification pass must escalate potential new domains to one bounded
-grounded call, which may then author the domain. Fake runners exercise both
-requests without a real backend.
+The Manager always uses one bounded repository-grounded call, which may author
+the domain. Fake runners exercise the flow without a real backend.
 """
 from __future__ import annotations
 
@@ -21,6 +20,7 @@ class _FakeResult:
         self.last_agent_message = msg
         self.agent_messages = [msg]
         self.thread_id = "t1"
+        self.tool_activity_observed = True
 
 
 class _FakeRunner:
@@ -82,6 +82,46 @@ def test_autonomous_authors_and_commits(tmp_path, monkeypatch):
     assert div.learned_vertical_status == "candidate"
     assert vs.resolve_vertical(tmp_path) == "robotics_sim"
     assert sc.current_stage(tmp_path) == "scope"
+
+
+def test_video_research_harness_is_grounded_before_authoring_domain(
+    tmp_path,
+) -> None:
+    runner = _FakeRunner({
+        "choice": "new",
+        "vertical": "video_robotics_research",
+        "stages": [
+            "environment_gate",
+            "provider_integration",
+            "task_coverage",
+            "tier_evaluation",
+            "evidence_freeze",
+        ],
+        "workflow_mode": "staged",
+        "execution_task": (
+            "Reproduce Video4CaP, integrate a VLM, map RoboTwin tasks, and "
+            "run paired tier evaluations with oracle separation."
+        ),
+        "rationale": (
+            "repository evidence shows recurring experiment gates and integrity "
+            "contracts that the generic software delivery checklist does not own"
+        ),
+        "confidence": 0.91,
+    })
+
+    division = Manager(project_root=tmp_path, runner=runner).divide(
+        "Continue the Video4CaP repository: install dependencies, integrate a "
+        "VLM provider, map all robot tasks, and run the tier evaluation grid."
+    )
+
+    assert division.vertical == "video_robotics_research"
+    assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-grounded",
+    ]
+    assert "Repository inspection is mandatory" in runner.calls[0]["prompt"]
+    assert (
+        tmp_path / "research" / "DOMAINS" / "video_robotics_research.json"
+    ).exists()
 
 
 def test_formal_learned_vertical_is_described_and_reused_across_sessions(
@@ -161,7 +201,6 @@ def test_vertical_env_cannot_replace_manager_authored_domain(
 
     assert div.vertical == "math_conjecture"
     assert [call["run_label"] for call in runner.calls] == [
-        "manager-classify-fast",
         "manager-classify-grounded",
     ]
     assert (tmp_path / "research" / "DOMAINS" / "math_conjecture.json").exists()
@@ -193,7 +232,6 @@ def test_vertical_env_does_not_override_manager_reclassification(
 
     assert div.vertical == "math_conjecture_2"
     assert [call["run_label"] for call in runner.calls] == [
-        "manager-classify-fast",
         "manager-classify-grounded",
     ]
     state = json.loads(
@@ -254,7 +292,6 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     mgr.divide(_NOVEL_TASK)
 
     assert [call["run_label"] for call in runner.calls] == [
-        "manager-classify-fast",
         "manager-classify-grounded",
     ]
     call = next(c for c in runner.calls if c["run_label"] == "manager-classify-grounded")
@@ -268,7 +305,7 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     assert "investigate" in call["prompt"].lower()
 
 
-def test_copilot_vertical_decision_does_not_auto_inject_repo_instructions(
+def test_copilot_vertical_decision_keeps_tools_available_for_repo_inspection(
     tmp_path,
     monkeypatch,
 ):
@@ -280,17 +317,18 @@ def test_copilot_vertical_decision_does_not_auto_inject_repo_instructions(
         "write a research paper",
     )
 
-    call = next(c for c in runner.calls if c["run_label"] == "manager-classify-fast")
+    call = next(
+        c for c in runner.calls if c["run_label"] == "manager-classify-grounded"
+    )
     assert call["options"].extra_args == [
         "--no-custom-instructions",
         "--disable-builtin-mcps",
-        "--available-tools=",
         "--context",
         "default",
     ]
     assert call["options"].sandbox_mode is None
-    assert "NO tools" in call["prompt"]
-    assert "shell access" not in call["prompt"].lower()
+    assert "Repository inspection is mandatory" in call["prompt"]
+    assert "full repository tool environment" in call["prompt"]
 
 
 def test_authoring_call_respects_safe_mode(tmp_path, monkeypatch):

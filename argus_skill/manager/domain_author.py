@@ -1,8 +1,9 @@
 """Manager vertical decision + domain authoring: prompts and strict parsers.
 
-``Manager.decide_vertical`` first makes one compact, tool-free routing request.
-A clear existing vertical commits immediately; uncertainty or a potentially new
-domain escalates once to a bounded, read-only repository investigation. This
+``Manager.decide_vertical`` always makes one bounded, repository-grounded
+routing request before any vertical can commit. The legacy fast-route parser
+remains available for wire/source compatibility, but it no longer controls
+formal project routing. This
 Prompt bodies live in :mod:`argus_skill.roles.prompts.manager` and are
 re-exported here for source compatibility; this module owns their fail-closed
 parsers.
@@ -269,12 +270,10 @@ class VerticalDecision:
 
 @dataclass(frozen=True)
 class FastVerticalRoute:
-    """Tool-free first-pass route returned before any repository inspection.
+    """Legacy tool-free first-pass route retained for compatibility.
 
-    ``needs_grounding`` is true when the model cannot confidently reuse an
-    existing vertical from the task text alone (including when it believes a
-    new data domain may be required).  The grounded fallback remains the only
-    path allowed to inspect repository files or author a domain.
+    Formal Manager routing no longer consumes this shape: every project task
+    uses the grounded decision path before persistence.
     """
 
     needs_grounding: bool

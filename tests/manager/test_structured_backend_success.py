@@ -34,6 +34,7 @@ class _Result:
         fatal_error: str | None = None,
         stderr_lines: list[str] | None = None,
         thread_id: str = "thread-1",
+        tool_activity_observed: bool = True,
     ) -> None:
         self.exit_code = exit_code
         self.turn_completed = turn_completed
@@ -43,6 +44,7 @@ class _Result:
         self.agent_messages = [message] if message else []
         self.last_agent_message = message
         self.thread_id = thread_id
+        self.tool_activity_observed = tool_activity_observed
 
 
 class _Runner:
@@ -74,7 +76,7 @@ def test_success_with_stderr_proceeds_once_and_retains_diagnostic(
 
     assert decision.vertical == "software"
     assert [call["run_label"] for call in runner.calls] == [
-        "manager-classify-fast",
+        "manager-classify-grounded",
     ]
     assert result.stderr_lines == [diagnostic]
 

@@ -460,7 +460,7 @@ def build_fast_vertical_decision_prompt(
     existing_data_domain_summaries: Mapping[str, str] | None = None,
     research_target_verticals: Sequence[str] = (),
 ) -> str:
-    """Render the compact, tool-free first-pass vertical router prompt."""
+    """Render the legacy tool-free router prompt for compatibility callers."""
     menu = (
         "\n".join(f"  - `{name}`: {purpose}" for name, purpose in verticals_with_purpose.items())
         or "  (none)"
@@ -590,8 +590,9 @@ def build_vertical_decision_prompt(
         "for built-ins, expert per-stage reviewer checklists. It is NOT the "
         "task-specific route or DAG of literature, experiment, proof, and review "
         "work that the Planner may create inside one mission.\n\n"
-        "Your tool-free classification pass requested grounded context. INVESTIGATE with "
-        "the full repository tool environment. Use ONE focused inspection batch of at "
+        "Repository inspection is mandatory before every formal vertical decision. "
+        "INVESTIGATE with the full repository tool environment before choosing an "
+        "existing vertical or authoring a new domain. Use ONE focused inspection batch of at "
         "most four file/search operations, then decide. Avoid broad recursive "
         "searches and do not read unrelated UI, generated, vendor, or build-output "
         "trees. Read `AGENTS.md`/`README` only when they are directly useful, and "
