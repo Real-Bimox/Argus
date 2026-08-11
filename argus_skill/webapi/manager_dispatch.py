@@ -660,6 +660,50 @@ def _handle_steer_control(
         manager_directive,
         source="manager.steer",
     )
+    lifetime = str(
+        chat_state.pop("_frontdoor_lifetime", "") or ""
+    ).strip().lower()
+    promoted_to_standing = False
+    if lifetime == "standing":
+        from ..daemon.state import (
+            compare_and_swap_continuous_config,
+            read_continuous_state,
+        )
+        from ..life.memory import LifeMemory
+
+        current = read_continuous_state(life_dir)
+        running = [
+            item
+            for item in LifeMemory.open(life_dir).backlog.all()
+            if str(getattr(item, "status", "") or "") == "running"
+        ]
+        active_objective = ""
+        if running:
+            active = max(
+                running,
+                key=lambda item: float(getattr(item, "started_ts", 0.0) or 0.0),
+            )
+            active_objective = str(
+                getattr(active, "original_objective", "")
+                or getattr(active, "objective", "")
+                or ""
+            ).strip()
+        standing_objective = active_objective or current.objective or manager_directive
+        promoted_to_standing = compare_and_swap_continuous_config(
+            life_dir,
+            expected=current,
+            enabled=True,
+            objective=standing_objective,
+            open_ended=True,
+        )
+        if not promoted_to_standing:
+            latest = read_continuous_state(life_dir)
+            promoted_to_standing = bool(
+                latest.enabled and latest.open_ended
+            )
+        if promoted_to_standing:
+            chat_state.setdefault("config", {})["continuous"] = True
+            chat_state["continuous_objective"] = standing_objective
     directive = active_manager_directive_message(life_dir)
     queue_inbox_message(
         life_dir,
@@ -667,9 +711,18 @@ def _handle_steer_control(
         source="manager.steer",
     )
     reply = f"我已调整团队方向：{manager_directive}"
+    if lifetime == "standing":
+        if promoted_to_standing:
+            reply += " 当前任务已升级为持续任务，本轮结束后会继续规划下一项工作。"
+        else:
+            reply += " 但持续任务状态未能持久化；本轮方向已更新，请重试持续运行指令。"
     return emitter.respond(
         reply,
-        {"kind": "control", "control": "steer"},
+        {
+            "kind": "control",
+            "control": "steer",
+            "continuous": promoted_to_standing,
+        },
         message_id="steer",
     )
 

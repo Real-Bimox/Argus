@@ -370,16 +370,18 @@ def test_authorization_question_does_not_create_authority() -> None:
 
 def test_steer_control_routes_running_mission_direction_inline() -> None:
     directives: list[str] = []
+    lifetimes: list[str] = []
     intent, control, route = classify_front_door(
         "停止当前自创路线，改为先上网查别人怎么解决这个问题",
         run_exec=_exec_sequence(
             "CONFIG: NONE\nCONTROL: STEER\n"
             "STEER_DIRECTIVE: 暂停当前自创路线；检索最接近的前人方法和基础理论，形成来源审计后由 Planner 决定下一证明节点。\n"
             "ROUTE: TEAM\n"
-            "LIFETIME: NONE\nNAME: 调整数学方向",
+            "LIFETIME: STANDING\nNAME: 调整数学方向",
             "STEER",
         ),
         steering_sink=directives.append,
+        lifetime_sink=lifetimes.append,
         active_mission=True,
     )
     assert intent is None
@@ -388,6 +390,7 @@ def test_steer_control_routes_running_mission_direction_inline() -> None:
     assert directives == [
         "暂停当前自创路线；检索最接近的前人方法和基础理论，形成来源审计后由 Planner 决定下一证明节点。"
     ]
+    assert lifetimes == ["standing"]
 
 
 def test_question_about_profiling_cannot_mutate_active_mission() -> None:

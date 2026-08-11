@@ -415,22 +415,30 @@ def classify_front_door(
             except Exception:  # noqa: BLE001 - optional fast reply only
                 pass
     lifetime: LifetimeIntent | None = None
+    lifetime_parts = str(lifetime_line or "").strip().split(maxsplit=1)
+    lifetime_token = (
+        lifetime_parts[0].replace("-", "_").upper()
+        if lifetime_parts
+        else ""
+    )
     if route == "complex":
-        # Missing/malformed output keeps the conservative standing default.
         # BOUNDED_INCREMENT preserves an operator's explicit instruction to do
         # only one named stage/increment even when vertical classification later
         # identifies a normally-staged workflow.
-        lifetime_parts = str(lifetime_line or "").strip().split(maxsplit=1)
-        lifetime_token = (
-            lifetime_parts[0].replace("-", "_").upper()
-            if lifetime_parts
-            else ""
-        )
         if lifetime_token == "BOUNDED_INCREMENT":
             lifetime = "bounded_increment"
         elif lifetime_token == "STANDING":
             lifetime = "standing"
         else:
+            lifetime = "bounded"
+    elif control == "steer":
+        # A steering turn stays on the SELF control path, but it may explicitly
+        # promote the active bounded mission to a standing campaign.
+        if lifetime_token == "STANDING":
+            lifetime = "standing"
+        elif lifetime_token == "BOUNDED_INCREMENT":
+            lifetime = "bounded_increment"
+        elif lifetime_token == "BOUNDED":
             lifetime = "bounded"
     if callable(lifetime_sink) and lifetime is not None:
         try:

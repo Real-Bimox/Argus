@@ -14,12 +14,14 @@ class _Manager:
         self_mode: str = "inspect",
         reply: str = "",
         failure: str = "",
+        control: str | None = None,
     ) -> None:
         self.route = route
         self.lifetime = lifetime
         self.self_mode = self_mode
         self.reply = reply
         self.failure = failure
+        self.control = control
 
     def classify_front_door(
         self,
@@ -34,7 +36,9 @@ class _Manager:
     ):
         if self.failure and failure_sink is not None:
             failure_sink(self.failure)
-        if self.route == "complex" and lifetime_sink is not None:
+        if (
+            self.route == "complex" or self.control == "steer"
+        ) and lifetime_sink is not None:
             lifetime_sink(self.lifetime)
         if self.route == "simple" and self_mode_sink is not None:
             self_mode_sink(self.self_mode)
@@ -44,7 +48,7 @@ class _Manager:
             greeting_sink("你好，我是 Argus Manager。")
         if name_sink is not None:
             name_sink("test")
-        return None, None, self.route
+        return None, self.control, self.route
 
 
 def test_front_door_wrapper_routes_team_work_as_complex() -> None:
@@ -94,6 +98,26 @@ def test_front_door_wrapper_caches_explicit_bounded_increment() -> None:
 
     assert decision == (None, None, "complex")
     assert state["_frontdoor_lifetime"] == "bounded_increment"
+
+
+def test_front_door_wrapper_caches_standing_lifetime_for_steer() -> None:
+    state: dict = {}
+
+    decision = _front_door_classify(
+        object(),
+        "keep working after this attempt",
+        state,
+        ensure_runner=lambda *_args: SimpleNamespace(
+            manager=_Manager(
+                route="simple",
+                lifetime="standing",
+                control="steer",
+            )
+        ),
+    )
+
+    assert decision == (None, "steer", "simple")
+    assert state["_frontdoor_lifetime"] == "standing"
 
 
 def test_front_door_wrapper_carries_one_turn_greeting_reply() -> None:

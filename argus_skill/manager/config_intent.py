@@ -165,17 +165,20 @@ def _front_door_classify(
             )
             if not existing_thread and self_mode == "reply" and fast_reply:
                 chat_state["_frontdoor_fast_reply"] = fast_reply
+        lifetime = next(
+            (
+                str(value).strip().lower()
+                for value in lifetime_decisions
+                if str(value).strip().lower() in {
+                    "bounded_increment", "bounded", "standing",
+                }
+            ),
+            "",
+        )
         if normalized_route == "complex":
-            lifetime = next(
-                (
-                    str(value).strip().lower()
-                    for value in lifetime_decisions
-                    if str(value).strip().lower() in {
-                        "bounded_increment", "bounded", "standing",
-                    }
-                ),
-                "bounded",
-            )
+            lifetime = lifetime or "bounded"
+            chat_state["_frontdoor_lifetime"] = lifetime
+        elif control == "steer" and lifetime:
             chat_state["_frontdoor_lifetime"] = lifetime
         elif intent is None and control not in {"abort", "pause", "no_dispatch", "steer"}:
             greeting_reply = next(

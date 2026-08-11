@@ -732,6 +732,7 @@ def test_manager_steer_persists_high_priority_live_directive(
             "暂停当前形式化路线；先检索最接近的前人研究，再由 Planner "
             "根据来源证据安排下一节点。"
         )
+        chat_state["_frontdoor_lifetime"] = "standing"
         return None, "steer", "simple"
 
     monkeypatch.setattr(config_intent, "_front_door_classify", classify)
@@ -751,7 +752,9 @@ def test_manager_steer_persists_high_priority_live_directive(
 
     assert result["kind"] == "control"
     assert result["control"] == "steer"
+    assert result["continuous"] is True
     assert "我已调整团队方向" in result["reply"]
+    assert "已升级为持续任务" in result["reply"]
     inbox = [
         json.loads(line)
         for line in (life / "inbox.jsonl").read_text().splitlines()
@@ -765,6 +768,12 @@ def test_manager_steer_persists_high_priority_live_directive(
     assert active is not None
     assert "检索最接近的前人研究" in active.text
     assert "发明新的数学工具" not in active.text
+    from argus_skill.daemon.state import read_continuous_state
+
+    continuous = read_continuous_state(life)
+    assert continuous.enabled is True
+    assert continuous.open_ended is True
+    assert continuous.objective == active.text
 
 
 def test_message_task_lazily_spawns_daemon(client: TestClient, monkeypatch) -> None:
