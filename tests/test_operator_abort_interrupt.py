@@ -40,6 +40,9 @@ def test_operator_abort_pattern_is_recognized() -> None:
     assert fatal_error_looks_like_operator_abort_request(
         "EXTERNAL INTERRUPT: OPERATOR ABORT REQUESTED: whatever"
     )
+    assert fatal_error_looks_like_operator_abort_request(
+        "refused before start: operator abort requested: pause session"
+    )
 
 
 def test_operator_abort_pattern_rejects_unrelated_or_empty_text() -> None:

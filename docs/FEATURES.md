@@ -261,7 +261,47 @@ post-mission log inspection reduced TEAM learning input from about 190,000
 tokens to about 1,800 tokens when no Skill was warranted. A real promotion used
 about 8,600 input tokens and produced one concise profile Skill.
 
-## 7. Attachments and Unicode
+## 7. Instruction following and prompt isolation
+
+Argus keeps model-visible authority ordered as:
+
+```text
+current operator instruction
+→ Manager standalone execution task
+→ current Planner mission
+→ current evidence and Reviewer guidance
+→ project/vertical/profile Skills
+→ advisory memory
+```
+
+Prompt-isolation rules:
+
+- Front-door classification sees the current message and bounded conversation
+  context; it does not choose the vertical or rewrite the execution plan.
+- Manager must emit a standalone `execution_task`. If a model copies the
+  transcript wrapper, the Host keeps only the current operator message.
+- Follow-up SELF turns use the persistent Manager session instead of a
+  stateless answer.
+- Any available SELF or TEAM Skill upgrades SELF reply mode to the full
+  Skill-aware path.
+- The untouched default identity-card template is never injected into role
+  prompts. Only an operator-edited identity is model-visible.
+- Recent project journal entries are not injected into Engineer by default.
+  Mission-specific context comes from the current backlog item and handoff.
+- Operator pause/abort is classified as intentional control, not stored as a
+  reusable failure lesson.
+- A failure capsule does not repeat the same text as both Outcome and Lessons.
+- Planner acceptance checks must be capable of failing; tautologies such as
+  `or True` and `|| true` are forbidden.
+- Current operator constraints are repeated only where role authority requires
+  them: original request, current mission, and explicit acceptance/non-goals.
+
+The prompt A/B fixture verifies that an exact two-line file request preserves
+the operator text in Manager handoff, contains no default identity, recent
+mission history, prior failure block, or tautological check in Engineer prompt,
+and creates no file other than the requested deliverable.
+
+## 8. Attachments and Unicode
 
 - Session-scoped uploads support text, Markdown, JSON, CSV, image, and PDF
   files.
@@ -271,7 +311,7 @@ about 8,600 input tokens and produced one concise profile Skill.
 - Attachment metadata contains the path, original name, MIME, and size. It does
   not compute or expose a content hash.
 
-## 8. Reliability scenarios
+## 9. Reliability scenarios
 
 The following ordinary-user scenarios are exercised through the real Web API,
 Web UI, Manager model, and daemon:
@@ -294,8 +334,12 @@ Web UI, Manager model, and daemon:
 | Empty message | Rejected with HTTP 400 |
 | SELF Skill used by TEAM | Engineer opens the SELF Skill and applies the user rule |
 | TEAM Skill used by SELF | SELF opens the role Skill and applies the verified procedure |
+| Exact task after unrelated conversation | Standalone Manager handoff; no transcript wrapper |
+| Default identity template | Excluded from model prompts until the operator edits it |
+| Operator pause | Not captured or replayed as a failure lesson |
+| Planner acceptance check | No unconditional-success or tautological checks |
 
-## 9. Project lifecycle
+## 10. Project lifecycle
 
 Project lifecycle states are:
 

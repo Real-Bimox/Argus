@@ -142,6 +142,15 @@ def test_planner_keeps_operator_actions_ahead_of_optional_hardening(
     assert "Optional hardening never keeps a finite objective alive" in prompt
 
 
+def test_bounded_planner_rejects_tautological_acceptance_checks() -> None:
+    from argus_skill.roles.prompts.planner import build_bounded_dag_prompt
+
+    prompt = build_bounded_dag_prompt("Create exact.txt without changing README.")
+
+    assert "must fail when its claimed requirement is violated" in prompt
+    assert "never emit `or True`, `|| true`, unconditional success" in prompt
+
+
 def test_mature_math_prompt_keeps_only_bounded_terminal_history(
     tmp_path,
     monkeypatch,

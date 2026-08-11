@@ -1920,6 +1920,10 @@ class IdentityCard:
             return ""
         return self.path.read_text(encoding="utf-8")
 
+    def prompt_text(self) -> str:
+        text = self.read().strip()
+        return "" if text == _DEFAULT_IDENTITY.strip() else text
+
     def ensure_default(self) -> bool:
         if self.path.exists():
             return False
@@ -2027,7 +2031,7 @@ class LifeMemory:
         *,
         objective: str = "",
         identity_chars: int = 600,
-        max_journal_entries: int = 3,
+        max_journal_entries: int = 0,
     ) -> str:
         """Render the memory block we inject as ``prelude_context``.
 
@@ -2035,10 +2039,14 @@ class LifeMemory:
         the engineer/reviewer prompts can downweight it on conflict.
         Returns an empty string if there's nothing useful to inject.
         """
-        identity = self.identity.read().strip()
+        identity = self.identity.prompt_text()
         if identity_chars > 0:
             identity = identity[:identity_chars]
-        relevant = self.recent_journal(max_entries=max_journal_entries)
+        relevant = (
+            self.recent_journal(max_entries=max_journal_entries)
+            if max_journal_entries > 0
+            else []
+        )
 
         failure_context = self.render_failure_experience_context(objective)
 
@@ -2048,9 +2056,8 @@ class LifeMemory:
         lines: list[str] = []
         lines.append("### Memory context (non-authoritative)")
         lines.append(
-            "The following identity card and prior-mission notes are advisory. "
-            "If they conflict with the current objective, the live repo state, "
-            "or explicit user instructions, **ignore them**."
+            "This memory is advisory. If it conflicts with the current objective, "
+            "live repo state, or explicit user instructions, **ignore it**."
         )
         if identity:
             lines.append("")
@@ -2457,7 +2464,7 @@ class MemoryBundle:
         *,
         objective: str = "",
         identity_chars: int = 600,
-        max_project_entries: int = 3,
+        max_project_entries: int = 0,
     ) -> str:
         """Render a unified memory prelude for prompt injection.
 
@@ -2466,11 +2473,15 @@ class MemoryBundle:
         workspace prompts must not satisfy or steer the current mission with
         artifacts from another project.
         """
-        identity = self.global_mem.identity.read().strip()
+        identity = self.global_mem.identity.prompt_text()
         if identity_chars > 0:
             identity = identity[:identity_chars]
 
-        project_hits = self.project.recent_journal(max_entries=max_project_entries)
+        project_hits = (
+            self.project.recent_journal(max_entries=max_project_entries)
+            if max_project_entries > 0
+            else []
+        )
 
         failure_context = self.render_failure_experience_context(objective)
 
@@ -2480,10 +2491,8 @@ class MemoryBundle:
         lines: list[str] = []
         lines.append("### Memory context (non-authoritative)")
         lines.append(
-            "The following identity card and prior-mission "
-            "notes are advisory. If they conflict with the current "
-            "objective, the live repo state, or explicit user "
-            "instructions, **ignore them**."
+            "This memory is advisory. If it conflicts with the current objective, "
+            "live repo state, or explicit user instructions, **ignore it**."
         )
         if identity:
             lines.append("")

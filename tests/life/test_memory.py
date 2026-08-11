@@ -340,6 +340,13 @@ def test_identity_user_edit_preserved(tmp_path: Path) -> None:
     card = IdentityCard(p)
     assert card.ensure_default() is False
     assert "my own card" in card.read()
+    assert "my own card" in card.prompt_text()
+
+
+def test_default_identity_is_not_model_context(tmp_path: Path) -> None:
+    card = IdentityCard(tmp_path / "identity.md")
+    card.ensure_default()
+    assert card.prompt_text() == ""
 
 
 # ---------- LifeMemory facade + retrieval ----------------------------------
@@ -423,12 +430,11 @@ def test_render_prelude_marks_non_authoritative(tmp_path: Path) -> None:
             tags=["database", "migration"],
         )
     )
-    block = mem.render_prelude()
+    block = mem.render_prelude(max_journal_entries=1)
     assert "non-authoritative" in block.lower()
-    assert "ignore them" in block.lower()
+    assert "ignore it" in block.lower()
     assert "Database migration helper" in block
-    # Identity card text appears too:
-    assert "argus-skill" in block.lower() or "voice" in block.lower()
+    assert "operator identity card" not in block.lower()
 
 
 def test_render_prelude_never_reinjects_planner_error_verdict_body(
