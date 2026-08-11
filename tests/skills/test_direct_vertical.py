@@ -47,6 +47,7 @@ def test_manager_can_commit_software_with_direct_workflow(tmp_path) -> None:
         )
         agent_messages = [last_agent_message]
         thread_id = "manager-direct"
+        tool_activity_observed = True
 
     class _Runner:
         def run_exec(self, **kwargs):

@@ -504,6 +504,7 @@ class _VerticalDecisionMixin:
         from ..verticals._data_domain import (
             load_data_domain,
             materialize_learned_data_domain,
+            revise_data_domain_stages,
         )
 
         materialize_learned_data_domain(
@@ -511,9 +512,27 @@ class _VerticalDecisionMixin:
             self.project_root,
             vertical,
         )
-        stages = self.plan_stages(vertical)
         pipeline_state = self.project_root / "research" / "PIPELINE_STATE.json"
-        with _restore_files_on_error([pipeline_state]):
+        domain_path = (
+            self.project_root / "research" / "DOMAINS" / f"{vertical}.json"
+        )
+        index_path = self.project_root / "research" / "DOMAINS" / "INDEX.json"
+        adapted = bool(
+            decision.adapted_stages
+            and load_data_domain(vertical, self.project_root) is not None
+        )
+        restore_paths = [pipeline_state]
+        if adapted:
+            restore_paths.extend((domain_path, index_path))
+        with _restore_files_on_error(restore_paths):
+            if adapted:
+                revise_data_domain_stages(
+                    self.project_root,
+                    vertical,
+                    stages=decision.adapted_stages,
+                    reason=decision.adaptation_reason or task,
+                )
+            stages = self.plan_stages(vertical)
             persist_vertical(
                 self.project_root,
                 vertical,
@@ -526,7 +545,7 @@ class _VerticalDecisionMixin:
                 self.project_root,
                 old_vertical=old_vertical,
                 new_vertical=vertical,
-                force_replacement=force_stage_reset,
+                force_replacement=force_stage_reset or adapted,
                 evidence_root=self.execution_workdir,
             )
         division = Division(

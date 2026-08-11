@@ -99,6 +99,18 @@ def daemon_drain_requested(life_dir: Path, *, pid: int) -> bool:
         return False
 
 
+def daemon_drain_pid(life_dir: Path) -> int | None:
+    """Return the PID still owning a persisted graceful-drain request."""
+    try:
+        payload = json.loads(
+            _daemon_drain_request_path(life_dir).read_text(encoding="utf-8")
+        )
+        pid = int(payload.get("pid") or 0) if isinstance(payload, dict) else 0
+        return pid if pid > 0 else None
+    except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
 def clear_daemon_drain_request(life_dir: Path, *, pid: int) -> None:
     """Remove the drain request only when it still targets ``pid``."""
     if not daemon_drain_requested(life_dir, pid=pid):
@@ -497,22 +509,20 @@ def read_daemon_status(life_dir: Path | None = None) -> DaemonStatus:
     from .health import read_daemon_health
 
     pid_path = _daemon_pid_path(life_dir)
-    if not pid_path.exists():
-        return DaemonStatus(
-            alive=False, pid=None, started_at_iso=None,
-            uptime_seconds=None, life_dir=life_dir, pid_path=pid_path,
-            health_state="stopped",
-        )
+    draining_owner = False
     try:
         pid = int(pid_path.read_text().strip())
-    except (OSError, ValueError):
-        return DaemonStatus(
-            alive=False, pid=None, started_at_iso=None,
-            uptime_seconds=None, life_dir=life_dir, pid_path=pid_path,
-            health_state="stopped",
-        )
+    except (FileNotFoundError, OSError, ValueError):
+        pid = daemon_drain_pid(life_dir) or 0
+        draining_owner = bool(pid and _process_alive(pid))
+        if not draining_owner:
+            return DaemonStatus(
+                alive=False, pid=None, started_at_iso=None,
+                uptime_seconds=None, life_dir=life_dir, pid_path=pid_path,
+                health_state="stopped",
+            )
     alive = _process_alive(pid)
-    if alive and _daemon_pid_lock_held(pid_path) is False:
+    if alive and not draining_owner and _daemon_pid_lock_held(pid_path) is False:
         alive = False
     started_iso: str | None = None
     backend: str | None = None

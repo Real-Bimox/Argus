@@ -158,6 +158,56 @@ def test_candidate_domain_is_visible_and_reused_on_next_route(tmp_path) -> None:
     ) == ["embodied_eval_campaign.json"]
 
 
+def test_existing_data_domain_is_adapted_in_place_for_matching_task(tmp_path) -> None:
+    from argus_skill.verticals import _data_domain as dd
+
+    dd.write_data_domain(
+        tmp_path,
+        "regulated_localization",
+        stages=["translate"],
+        status="formal",
+        purpose="regulated product localization",
+    )
+    runner = _FakeRunner({
+        "choice": "existing",
+        "vertical": "regulated_localization",
+        "stages": [
+            "terminology_lock",
+            "translation",
+            "regulatory_review",
+            "layout_qa",
+            "linguistic_qa",
+            "release",
+        ],
+        "workflow_mode": "staged",
+        "execution_task": "Localize and release the regulated product UI.",
+        "rationale": "the existing one-stage skeleton is materially underfit",
+    })
+
+    division = Manager(project_root=tmp_path, runner=runner).divide(
+        "Localize the regulated product UI."
+    )
+
+    assert division.vertical == "regulated_localization"
+    assert division.stages == [
+        "terminology_lock",
+        "translation",
+        "regulatory_review",
+        "layout_qa",
+        "linguistic_qa",
+        "release",
+    ]
+    revised = dd.load_data_domain("regulated_localization", tmp_path)
+    assert revised is not None
+    assert revised.STAGE_ORDER == division.stages
+    assert sc.current_stage(tmp_path) == "terminology_lock"
+    assert sorted(
+        path.name
+        for path in (tmp_path / "research" / "DOMAINS").glob("*.json")
+        if path.name != "INDEX.json"
+    ) == ["regulated_localization.json"]
+
+
 def test_authored_domain_purpose_does_not_persist_conversation_context(
     tmp_path,
 ) -> None:

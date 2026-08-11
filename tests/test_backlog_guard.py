@@ -212,6 +212,44 @@ def test_guard_uses_injected_supervisor_runner(tmp_path, monkeypatch) -> None:
     }
 
 
+def test_guard_reroutes_unknown_persisted_vertical(tmp_path, monkeypatch) -> None:
+    from argus_skill.life.memory import LifeMemory
+    from argus_skill.manager import front_door
+
+    memory = LifeMemory.open(tmp_path)
+    item = memory.backlog.add(
+        BacklogItem.new(
+            title="Run portable MLX baseline",
+            objective="Build the MLX quantization baseline.",
+            manager_decision={
+                "routed": True,
+                "vertical": "mlx_model_optimization",
+            },
+        )
+    )
+
+    def fake_prepare(mem, objective, state, **kwargs):
+        del mem, state, kwargs
+        assert objective == "Build the MLX quantization baseline."
+        return SimpleNamespace(
+            execution_task=objective,
+            decision=SimpleNamespace(
+                vertical="software",
+                workflow_mode="direct",
+            ),
+        )
+
+    monkeypatch.setattr(front_door, "prepare_manager_execution_task", fake_prepare)
+
+    routed = ensure_manager_decision(memory, item)
+
+    assert routed.manager_decision == {
+        "vertical": "software",
+        "workflow_mode": "direct",
+        "routed": True,
+    }
+
+
 # -- the wiring, which once went missing -----------------------------------
 
 def test_the_backlog_item_carries_the_field() -> None:

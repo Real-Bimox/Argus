@@ -492,9 +492,12 @@ class SkillLoopExecuteMixin:
             if args.workdir
             else Path.cwd()
         )
+        # Execution happens in the operator workspace, but vertical contracts
+        # live in session state. A working-dir override must not make a freshly
+        # authored project-local vertical disappear before Engineer starts.
         _proot = (
             workdir
-            if maintenance_mission or working_dir_override
+            if maintenance_mission
             else Path(getattr(self, "_artifact_root", None) or workdir)
         )
         active_vertical = str(vertical_override or "").strip()

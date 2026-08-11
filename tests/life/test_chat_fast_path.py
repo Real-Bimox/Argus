@@ -149,6 +149,53 @@ def _make_runner(backend: _FakeBackend) -> Any:
     return runner
 
 
+def test_execute_config_loads_custom_vertical_from_session_state(
+    tmp_path: Path,
+) -> None:
+    from argus_skill.apps._runtime_helpers import _ExecuteState
+    from argus_skill.verticals._data_domain import write_data_domain
+
+    state_root = tmp_path / "life"
+    workdir = tmp_path / "workspace"
+    workdir.mkdir()
+    write_data_domain(
+        state_root,
+        "physical_archive_restoration",
+        stages=["condition_assessment", "restoration", "delivery"],
+        status="candidate",
+        purpose="physical archive restoration",
+        require_independent_review=True,
+    )
+    runner = _make_runner(_FakeBackend())
+    runner._artifact_root = state_root
+    runner._role_memory_maintenance_enabled = True
+    runner._args.project_state_dir = str(state_root)
+    runner._args.workdir = str(workdir)
+    from argus_skill.loop import SkillLoopConfig
+
+    runner._SkillLoopConfig = SkillLoopConfig
+
+    state = _ExecuteState()
+    runner._build_execute_config(
+        state,
+        working_dir_override=str(workdir),
+        maintenance_mission=False,
+        vertical_override="physical_archive_restoration",
+        require_independent_review=False,
+        max_rounds_override=1,
+        context_packet_path="",
+        mission_id="custom-vertical",
+        workflow_mode_override="staged",
+    )
+
+    assert state.workdir == workdir
+    assert state.config.active_vertical == "physical_archive_restoration"
+    assert state.config.require_independent_review is True
+    assert not (
+        workdir / "research" / "DOMAINS" / "physical_archive_restoration.json"
+    ).exists()
+
+
 # ---------- Manager SELF fast-path: runner unit tests ----------------------
 
 def test_execute_dispatches_to_manager_self_path_on_greeting(monkeypatch) -> None:

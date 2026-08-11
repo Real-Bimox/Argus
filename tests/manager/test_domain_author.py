@@ -229,6 +229,40 @@ def test_vertical_parser_rejects_domain_on_non_research_workflow() -> None:
     assert decision is None
 
 
+def test_vertical_parser_accepts_in_place_data_domain_adaptation() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "vertical": "regulated_localization",
+            "stages": [
+                "terminology_lock",
+                "translation",
+                "regulatory_review",
+                "layout_qa",
+                "linguistic_qa",
+                "release",
+            ],
+            "workflow_mode": "staged",
+            "execution_task": "Localize and release the regulated product UI.",
+            "rationale": "the matching one-stage domain is materially underfit",
+        }),
+        known_verticals=VERTICALS,
+        existing_data_domains=["regulated_localization"],
+    )
+
+    assert decision is not None
+    assert decision.choice == "existing"
+    assert decision.vertical == "regulated_localization"
+    assert decision.adapted_stages == (
+        "terminology_lock",
+        "translation",
+        "regulatory_review",
+        "layout_qa",
+        "linguistic_qa",
+        "release",
+    )
+
+
 def test_fast_vertical_parser_sends_new_or_uncertain_work_to_grounding() -> None:
     route = parse_fast_vertical_decision(
         json.dumps({

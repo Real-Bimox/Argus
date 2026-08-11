@@ -1362,6 +1362,30 @@ def test_dispatch_ack_blocking_persists_truthful_text(
     assert any(t["role"] == "argus" and expected_substr in t["text"] for t in turns)
 
 
+def test_dispatch_ack_distinguishes_durable_campaign_update(tmp_path: Path) -> None:
+    from argus_skill.webapi.manager_pending_question import record_task_dispatch_ack
+
+    life_dir = tmp_path / "projects" / "s-ack"
+    life_dir.mkdir(parents=True)
+    result = {
+        "kind": "task",
+        "daemon_alive": True,
+        "daemon": None,
+        "dispatch_state": "planner_pending",
+        "reply": None,
+    }
+
+    text = record_task_dispatch_ack(
+        "s-ack",
+        result,
+        global_root=tmp_path,
+    )
+
+    assert "campaign updated" in text
+    assert "after current work" in text
+    assert "executor already running" not in text
+
+
 def test_dispatch_ack_raises_on_transcript_write_failure(
     tmp_path: Path,
     monkeypatch,

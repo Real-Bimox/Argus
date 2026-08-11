@@ -414,13 +414,21 @@ def manager_message(
         "daemon_pid": daemon_pid,
         "continuous": bool(chat_state.get("config", {}).get("continuous")),
     }
+    if item_payload is None and result["continuous"]:
+        result["dispatch_state"] = "planner_pending"
     title = str(
         (item_payload or {}).get("title")
         or (item_payload or {}).get("objective")
         or operator_text
         or body
     )
-    emitter.emit_only(f"Queued · {title}")
+    if result.get("dispatch_state") == "planner_pending":
+        emitter.emit_only(
+            "Campaign updated · Planner will sequence this objective after "
+            f"current work · {title}"
+        )
+    else:
+        emitter.emit_only(f"Queued · {title}")
     return result
 
 

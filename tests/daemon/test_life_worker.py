@@ -638,6 +638,32 @@ def test_force_drain_clears_pid_bound_request(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
+def test_draining_daemon_remains_alive_if_pid_path_disappears(tmp_path: Path) -> None:
+    pid = _spawn_fake_daemon(
+        tmp_path,
+        pre_ready="signal.signal(signal.SIGTERM, signal.SIG_IGN)\n",
+        post_ready="time.sleep(60)\n",
+    )
+    try:
+        assert (
+            life_worker_mod.stop_daemon(
+                tmp_path,
+                drain=True,
+                drain_timeout=0.1,
+            )
+            == 2
+        )
+        life_worker_mod._daemon_pid_path(tmp_path).unlink()
+
+        status = life_worker_mod.read_daemon_status(tmp_path)
+
+        assert status.alive is True
+        assert status.pid == pid
+    finally:
+        _reap_fake_daemon(pid)
+
+
+@pytest.mark.integration
 def test_life_worker_drains_successive_missions_and_stops_on_signal(
     tmp_path: Path,
 ) -> None:

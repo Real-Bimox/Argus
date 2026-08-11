@@ -631,7 +631,14 @@ def record_task_dispatch_ack(
     daemon_alive = result.get("daemon_alive", False)
 
     # Derive truthful human-readable text
-    if daemon is None and daemon_alive:
+    if result.get("dispatch_state") == "planner_pending":
+        text = (
+            "campaign updated; the active executor will sequence this objective "
+            "through Planner after current work"
+            if daemon_alive
+            else "campaign updated; executor is starting and Planner will sequence it"
+        )
+    elif daemon is None and daemon_alive:
         text = "executor already running"
     elif isinstance(daemon, dict):
         if daemon.get("admission_required"):

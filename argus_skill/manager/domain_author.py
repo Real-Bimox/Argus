@@ -239,6 +239,10 @@ class VerticalDecision:
     # Orthogonal execution topology chosen by Manager; never encoded as a vertical.
     workflow_mode: str = "staged"
     proposal: DomainProposal | None = None
+    # Existing project data domains may be refined in place when their stage
+    # skeleton is materially too weak for the matching recurring capability.
+    adapted_stages: tuple[str, ...] = ()
+    adaptation_reason: str = ""
     # Optional, independently-grounded choice of which workspace files the Web
     # cockpit should keep beside the live event stream. ``live_view_decided``
     # distinguishes an explicit null (clear the panel) from an older backend
@@ -479,12 +483,37 @@ def parse_vertical_decision(
             target_venue = ""
         stated, ambiguities = _stated_requirements(obj)
         if name and name in known:
+            adapted_stages: tuple[str, ...] = ()
+            raw_stages = obj.get("stages")
+            existing_domains = {
+                str(value).strip().lower()
+                for value in existing_data_domains
+            }
+            if name in existing_domains and isinstance(raw_stages, list):
+                raw_tokens = [
+                    str(value or "").strip().casefold()
+                    for value in raw_stages
+                    if str(value or "").strip()
+                ]
+                if raw_tokens not in ([], ["none"]):
+                    normalized = tuple(
+                        dict.fromkeys(
+                            slug
+                            for value in raw_stages
+                            if (slug := _sluggify_name(value))
+                        )
+                    )
+                    if not (_MIN_STAGES <= len(normalized) <= _MAX_STAGES):
+                        return None
+                    adapted_stages = normalized
             return VerticalDecision(
                 choice="existing",
                 vertical=name,
                 domain=domain,
                 workflow_mode=workflow_mode,
                 proposal=None,
+                adapted_stages=adapted_stages,
+                adaptation_reason=str(obj.get("rationale") or "").strip()[:600],
                 live_view=parsed_live_view,
                 live_view_decided=live_view_decided,
                 execution_task=execution_task,

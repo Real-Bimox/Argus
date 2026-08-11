@@ -121,7 +121,38 @@ def ensure_manager_decision(
     diagnostic surface already reports the item as undecided.
     """
     if not needs_manager_decision(item):
-        return item
+        decision = getattr(item, DECISION_KEY, None)
+        vertical = (
+            str(decision.get("vertical") or "").strip()
+            if isinstance(decision, dict)
+            else ""
+        )
+        if not vertical:
+            return item
+        from pathlib import Path
+
+        from ...skills.vertical_select import UnknownVerticalError, require_vertical
+        from ...verticals._data_domain import materialize_learned_data_domain
+
+        state_root = Path(getattr(memory, "root", ".")).expanduser()
+        learned_root = Path(
+            getattr(memory, "global_root", None) or state_root
+        ).expanduser()
+        materialize_learned_data_domain(
+            learned_root,
+            state_root,
+            vertical,
+        )
+        try:
+            require_vertical(vertical, state_root)
+        except UnknownVerticalError:
+            log.warning(
+                "backlog guard: routed vertical %s is unavailable; rerouting item %s",
+                vertical,
+                getattr(item, "id", "?"),
+            )
+        else:
+            return item
 
     objective = str(getattr(item, "objective", "") or "").strip()
     if not objective:

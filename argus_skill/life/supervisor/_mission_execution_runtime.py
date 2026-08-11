@@ -359,6 +359,10 @@ class MissionExecutionRuntimeMixin:
                 try:
                     require_vertical(execution_vertical, vertical_state_root)
                 except UnknownVerticalError:
+                    # The backlog guard already attempted a fresh Manager route.
+                    # If that authority is temporarily unavailable, execute under
+                    # the persisted project contract rather than crash repeatedly
+                    # on stale cross-machine route metadata.
                     execution_vertical = ""
             try:
                 from inspect import Parameter, signature
