@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ...core.model_visible_text import sanitize_model_visible_text
+from ..task_contract import native_shell_contract, native_shell_summary
 from .types import ChecklistMode, RoleName, RolePromptRequest
 
 CONTINUOUS = "continuous"
@@ -115,9 +116,13 @@ def preview_request(project_root: Path | str) -> RolePromptRequest:
 
 
 def build_bounded_dag_prompt(objective: str) -> str:
+    shell_contract = native_shell_contract()
+    shell_block = "\n\n" + shell_contract if shell_contract else ""
     return sanitize_model_visible_text(
         "You are the bounded-task Planner. Decompose the Manager handoff into a "
-        "small executable backlog DAG; do not solve the task and do not create files.\n\n"
+        "small executable backlog DAG; do not solve the task and do not create files."
+        + shell_block
+        + "\n\n"
         "Rules:\n"
         "- Default to ONE cohesive node for one code or deliverable change. Use "
         "multiple nodes only for genuinely independent artifacts or hard dependencies.\n"
@@ -542,6 +547,7 @@ def build_continuous_prompt(
         standing_research_block,
         standing_continuous_block,
         _PLANNER_CORE_CONTRACT,
+        native_shell_summary(),
         host_policy_block,
         objective_contract_block,
         external_target_block,

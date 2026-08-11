@@ -11,6 +11,11 @@ from ...core.model_visible_text import (
     MODEL_INTEGRITY_BOUNDARY,
     sanitize_model_visible_text,
 )
+from ..task_contract import (
+    EFFECTIVE_TASK_CONTRACT,
+    format_native_shell_command,
+    native_shell_summary,
+)
 from .types import ChecklistMode, RoleName, RolePromptRequest
 
 EVALUATE = "evaluate"
@@ -172,14 +177,17 @@ def _engineer_log_audit_block(
             "the result and next research decision.\n\n"
         )
     if call_id:
-
-        def shell_quote(value: str) -> str:
-            return "'" + value.replace("'", "'\"'\"'") + "'"
-
-        current_call_rows = (
-            f"{shell_quote(sys.executable)} -I -m "
-            "argus_skill.tools.event_log_query "
-            f"--log {shell_quote(path)} --call-id {shell_quote(call_id)}"
+        current_call_rows = format_native_shell_command(
+            [
+                sys.executable,
+                "-I",
+                "-m",
+                "argus_skill.tools.event_log_query",
+                "--log",
+                path,
+                "--call-id",
+                call_id,
+            ]
         )
         query_block = (
             f"Current engineer call id: `{call_id}`. Scope every audit command "
@@ -291,7 +299,6 @@ def render_reviewer_prompt(
     from ...core.project import resolve_project_root
     from ...core.research_contract import resolve_research_target_level
     from ...skills.vertical_select import _persisted_vertical
-    from ..task_contract import EFFECTIVE_TASK_CONTRACT
     from .registry import resolve_role_prompt
 
     error_text = main_error or "none"
@@ -581,11 +588,13 @@ def render_reviewer_prompt(
         rollback_block = ""
         final_submission_block = ""
     # Byte-stable static policy; every fresh Reviewer receives it in full.
+    shell_contract = native_shell_summary()
     static = (
         optimize_banner
         + research_target_instruction
         + EFFECTIVE_TASK_CONTRACT
         + "\n\n"
+        + (shell_contract + "\n\n" if shell_contract else "")
         + MODEL_INTEGRITY_BOUNDARY
         + "\n\n## Reviewer role\n"
         "Judge the objective against real evidence. Bounded work may finish before "
