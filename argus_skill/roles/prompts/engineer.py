@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...core.model_visible_text import sanitize_model_visible_text
-from ..task_contract import EFFECTIVE_TASK_CONTRACT
+from ..task_contract import (
+    EFFECTIVE_TASK_CONTRACT,
+    native_shell_contract,
+    native_shell_summary,
+)
 from .types import RoleName, RolePromptRequest
 
 MISSION = "mission"
@@ -96,6 +100,10 @@ def build_mission_prompt(
 ) -> str:
     """Build the complete per-round Engineer mission prompt."""
     sections: list[str] = [EFFECTIVE_TASK_CONTRACT]
+    shell_contract = native_shell_contract()
+    shell_summary = native_shell_summary()
+    if shell_summary:
+        sections.append(shell_summary)
     delta_sections: list[str] = []
     if role_banner.strip():
         sections.append("## Active vertical role\n" + role_banner.strip())
@@ -190,6 +198,8 @@ def build_mission_prompt(
         "`OPERATOR_QUESTION=<operator-only question|none>`; a real question parks "
         "the task instead of opening another Engineer round."
     )
+    if shell_contract:
+        compact = shell_contract + "\n\n" + compact
     if learning_block:
         compact += "\n\n" + learning_block
     return sanitize_model_visible_text(
