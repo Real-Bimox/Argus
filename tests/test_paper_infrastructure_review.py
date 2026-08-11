@@ -6,10 +6,10 @@ from pathlib import Path
 from argus_skill.verticals.research.paper_infrastructure_review import (
     REQUIRED_CHECKED_SCOPES,
     PaperInfrastructureReviewError,
+    _review_prompt,
     generate_paper_infrastructure_review,
 )
 from argus_skill.verticals.research.paper_infrastructure_review import (
-    _review_prompt,
     main as paper_infrastructure_review_main,
 )
 
