@@ -505,6 +505,54 @@ def test_wiki_hook_warning_triggers_manager_audit(tmp_path: Path) -> None:
     assert observation["details"]["operation"] == "rebuild_indexes"
 
 
+def test_compact_mission_error_observation_retains_bounded_manager_diagnostics(
+    tmp_path: Path,
+) -> None:
+    controller = _controller(tmp_path, _Manager(action="no_action"))
+
+    controller.observe({
+        "type": "life.mission.completed",
+        "ts": 10.0,
+        "item_id": "mission-123",
+        "title": "Repair mission completion error reporting",
+        "objective": "private full objective must not be captured",
+        "scope": "private scope must not be captured",
+        "status": "error",
+        "terminal_status": "error",
+        "failure_reason": "UnknownVerticalError: multimodal_video_generation",
+        "stop_reason": "unknown vertical",
+        "stop_kind": "permanent_error",
+        "recoverable": False,
+        "resumable": True,
+        "usage_record_count": 2,
+        "usage_records": [{"prompt": "full prompt payload must not leak"}],
+        "planner_report": {"private": "full report must not leak"},
+        "context_packet": "/private/context/latest.json",
+    })
+    controller.observe({
+        "type": "not.observed",
+        "ts": 11.0,
+        "failure_reason": "must not broaden event capture",
+    })
+
+    state = controller._state()
+    [observation] = state["observations"]
+    assert observation["type"] == "life.mission.completed"
+    details = observation["details"]
+    assert details == {
+        "status": "error",
+        "item_id": "mission-123",
+        "title": "Repair mission completion error reporting",
+        "terminal_status": "error",
+        "failure_reason": "UnknownVerticalError: multimodal_video_generation",
+        "stop_reason": "unknown vertical",
+        "stop_kind": "permanent_error",
+        "recoverable": False,
+        "resumable": True,
+        "usage_record_count": 2,
+    }
+
+
 def test_budget_block_prevents_manager_maintenance_call(tmp_path: Path) -> None:
     manager = _Manager()
     controller = _controller(tmp_path, manager)

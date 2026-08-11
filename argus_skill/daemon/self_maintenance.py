@@ -58,6 +58,36 @@ _EVENT_AUDIT_TYPES = frozenset({
     "life.planner.error",
     "wiki.hook.warning",
 })
+_COMMON_OBSERVATION_DETAIL_KEYS = (
+    "status",
+    "error",
+    "reason",
+    "stop_kind",
+    "prompt_mode",
+    "prompt_chars",
+    "prompt_estimated_tokens",
+    "input_tokens",
+    "cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "cost_usd",
+    "elapsed_seconds",
+    "model_call_skipped",
+    "wait_mode",
+    "waiting_contract",
+    "prompt_block_stats",
+    "operation",
+)
+_MISSION_COMPLETED_OBSERVATION_DETAIL_KEYS = (
+    "item_id",
+    "title",
+    "terminal_status",
+    "failure_reason",
+    "stop_reason",
+    "recoverable",
+    "resumable",
+    "usage_record_count",
+)
 
 
 @dataclass(frozen=True)
@@ -186,26 +216,10 @@ def _compact_event(event: dict[str, Any]) -> dict[str, Any] | None:
     if event_type not in _OBSERVED_EVENT_TYPES:
         return None
     details: dict[str, Any] = {}
-    for key in (
-        "status",
-        "error",
-        "reason",
-        "stop_kind",
-        "prompt_mode",
-        "prompt_chars",
-        "prompt_estimated_tokens",
-        "input_tokens",
-        "cached_input_tokens",
-        "output_tokens",
-        "reasoning_output_tokens",
-        "cost_usd",
-        "elapsed_seconds",
-        "model_call_skipped",
-        "wait_mode",
-        "waiting_contract",
-        "prompt_block_stats",
-        "operation",
-    ):
+    detail_keys = _COMMON_OBSERVATION_DETAIL_KEYS
+    if event_type == "life.mission.completed":
+        detail_keys = detail_keys + _MISSION_COMPLETED_OBSERVATION_DETAIL_KEYS
+    for key in detail_keys:
         value = event.get(key)
         if value in (None, "", [], {}):
             continue
