@@ -324,7 +324,11 @@ def enqueue_mission(
             )
         chat_state["last_objective"] = execution_body
         chat_state["continuous_objective"] = execution_body
-        front_door._maybe_name_session(chat_state, execution_body)
+        front_door._maybe_name_session(
+            chat_state,
+            execution_body,
+            promote_task_name=True,
+        )
         alive, pid = _daemon_status(life_dir)
         return item, alive, pid
 
@@ -537,7 +541,11 @@ def enqueue_mission(
                 })
         except Exception:  # noqa: BLE001
             pass
-        front_door._maybe_name_session(chat_state, execution_body)
+        front_door._maybe_name_session(
+            chat_state,
+            execution_body,
+            promote_task_name=True,
+        )
         return item
 
     item = front_door.manager_bounded_handoff(

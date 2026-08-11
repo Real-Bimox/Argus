@@ -227,6 +227,33 @@ def test_message_route_resolves_attachment_metadata(
     assert "integrity" not in forwarded[0]
 
 
+def test_resolve_legacy_attachment_drops_hash_metadata(tmp_path: Path) -> None:
+    workspace = _make_project(tmp_path, "s-upload0")
+    uploaded = upload_attachments(
+        "s-upload0",
+        [("notes.md", "text/markdown", b"hello\n")],
+        global_root=tmp_path,
+    )["attachments"][0]
+    metadata_path = (
+        workspace
+        / Path(uploaded["relative_path"]).parent
+        / "metadata.json"
+    )
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["sha256"] = "legacy"
+    metadata["integrity"] = "legacy"
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    resolved = resolve_attachment_refs(
+        "s-upload0",
+        [{"attachment_id": uploaded["attachment_id"]}],
+        global_root=tmp_path,
+    )[0]
+
+    assert "sha256" not in resolved
+    assert "integrity" not in resolved
+
+
 def test_message_stream_route_resolves_attachment_metadata(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

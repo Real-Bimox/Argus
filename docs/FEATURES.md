@@ -342,6 +342,8 @@ Web UI, Manager model, and daemon:
 | Exact task after unrelated conversation | Standalone Manager handoff; no transcript wrapper |
 | Long correction listing commit titles | Prior author-rewrite goal retained; quoted titles are not implemented |
 | Formal domain plus Git metadata correction | `software` wins because the requested action is history maintenance |
+| Legacy attachment metadata | Removed SHA/integrity fields are stripped during read |
+| Greeting followed by first TEAM task | Provisional greeting title is replaced by the substantive task |
 | Default identity template | Excluded from model prompts until the operator edits it |
 | Operator pause | Not captured or replayed as a failure lesson |
 | Planner acceptance check | No unconditional-success or tautological checks |

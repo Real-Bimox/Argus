@@ -578,6 +578,8 @@ def _load_attachment_metadata(session_fd: int, sid: str, attachment_id: str) -> 
 
     if actual_size != expected_size:
         raise ValueError(f"attachment payload size mismatch for {attachment_id}")
+    payload.pop("sha256", None)
+    payload.pop("integrity", None)
     return payload
 
 

@@ -239,7 +239,8 @@ def _maybe_name_session(
     *,
     suggested_name: str = "",
     replacing: bool = False,
-) -> None:
+    promote_task_name: bool = False,
+) -> str:
     """Name the current session after its first real task (once, fail-soft).
 
     A resumed session keeps its original name (``session_named`` is already
@@ -256,25 +257,37 @@ def _maybe_name_session(
     renaming when the session's stated purpose is replaced is the same event the
     Manager already resets the pipeline for.
     """
-    if chat_state.get("session_named") and not replacing:
-        return
+    provisional = str(chat_state.get("_provisional_session_name") or "").strip()
+    if (
+        chat_state.get("session_named")
+        and not replacing
+        and not (promote_task_name and provisional)
+    ):
+        return ""
     sid = chat_state.get("session_id")
     gr = chat_state.get("global_root")
     if not sid or gr is None:
-        return
+        return ""
     try:
         from ..core.session import read_session_meta, touch_session
 
         persisted = read_session_meta(gr, sid)
         if persisted is not None and persisted.display_name.strip() and not replacing:
-            chat_state["session_named"] = True
-            return
+            if not (
+                promote_task_name
+                and provisional
+                and persisted.display_name.strip() == provisional
+            ):
+                chat_state["session_named"] = True
+                chat_state.pop("_provisional_session_name", None)
+                return ""
+            replacing = True
         name = (
             _derive_session_name(suggested_name, limit=32)
             or _derive_session_name(task_text)
         )
         if not name:
-            return
+            return ""
         if replacing:
             # touch_session only fills an *empty* name, so it silently cannot
             # rename. A replacement has to go through the update path.
@@ -287,8 +300,10 @@ def _maybe_name_session(
         else:
             touch_session(gr, sid, display_name=name)
         chat_state["session_named"] = True
+        chat_state.pop("_provisional_session_name", None)
+        return name
     except Exception:  # noqa: BLE001 — naming is cosmetic, never block the task
-        pass
+        return ""
 
 
 def _emit_manager_event(mem: Any, event: dict[str, Any]) -> None:

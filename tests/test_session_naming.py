@@ -68,6 +68,51 @@ def test_maybe_name_session_never_overwrites_persisted_name(tmp_path):
     assert read_session_meta(tmp_path, sid).display_name == "已有名称"
 
 
+def test_first_team_task_replaces_provisional_greeting_name(tmp_path):
+    from argus_skill.core.session import read_session_meta, resolve_session
+
+    sid, _ = resolve_session(global_root=tmp_path, mode="new", cwd=tmp_path, now=1)
+    cs = {"session_named": False, "session_id": sid, "global_root": tmp_path}
+    provisional = _maybe_name_session(cs, "你好", suggested_name="问候")
+    cs["_provisional_session_name"] = provisional
+
+    _maybe_name_session(
+        cs,
+        "重写仓库 commit 作者为 lbx154",
+        suggested_name="修复提交作者",
+        promote_task_name=True,
+    )
+
+    assert read_session_meta(tmp_path, sid).display_name == "修复提交作者"
+
+
+def test_team_task_does_not_replace_manual_name_after_greeting(tmp_path):
+    from argus_skill.core.session import (
+        read_session_meta,
+        resolve_session,
+        update_session_meta,
+    )
+
+    sid, _ = resolve_session(global_root=tmp_path, mode="new", cwd=tmp_path, now=1)
+    cs = {"session_named": False, "session_id": sid, "global_root": tmp_path}
+    provisional = _maybe_name_session(cs, "你好", suggested_name="问候")
+    cs["_provisional_session_name"] = provisional
+    update_session_meta(
+        tmp_path,
+        sid,
+        lambda meta: setattr(meta, "display_name", "用户手工名称"),
+    )
+
+    _maybe_name_session(
+        cs,
+        "重写仓库 commit 作者为 lbx154",
+        suggested_name="修复提交作者",
+        promote_task_name=True,
+    )
+
+    assert read_session_meta(tmp_path, sid).display_name == "用户手工名称"
+
+
 @pytest.mark.parametrize("route", ["simple", "complex"])
 def test_front_door_names_first_message_for_every_route(tmp_path, route):
     from argus_skill.core.session import read_session_meta, resolve_session
