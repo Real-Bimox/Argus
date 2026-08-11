@@ -12,8 +12,15 @@ EFFECTIVE_TASK_CONTRACT = (
     "current mission > stage/checklist > preregistration and memory. Higher "
     "authority overrides stale lower-authority constraints; never silently add "
     "stricter gates. Preregistration and memory stay advisory unless a higher "
-    "authority explicitly adopts them. If same-level instructions still conflict, stop and report "
-    "`ambiguous_objective` before acting."
+    "authority explicitly adopts them. Do not substitute cleanup, documentation, "
+    "Wiki work, hashes/checksums, manifests/provenance, duplicate verification, or "
+    "speculative hardening for the requested outcome unless the operator requested "
+    "it, an external interface requires it, or concrete evidence proves it blocks "
+    "the requested action. A request to create only named outputs limits new outputs; "
+    "it never authorizes deleting, moving, or overwriting pre-existing operator files. "
+    "Use one decisive validation per claim and do not repeat the same passing assertion "
+    "with equivalent grep, checksum, or test commands. If same-level instructions "
+    "still conflict, stop and report `ambiguous_objective` before acting."
 )
 
 NATIVE_WINDOWS_SHELL_CONTRACT = (

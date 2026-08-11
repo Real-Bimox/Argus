@@ -231,6 +231,12 @@ class PlanningContextMixin:
             )
         if item.tags:
             lines.append("- tags: " + ", ".join(item.tags))
+        if any(str(tag).strip().lower() == "operator_priority" for tag in item.tags):
+            lines.append(
+                "- authority: this is the latest explicit operator task. Execute its "
+                "requested actions before autonomously derived cleanup or hardening; "
+                "do not replace its outcome with project housekeeping."
+            )
         if plan_hypothesis:
             lines.append("- planner_working_hypothesis: " + plan_hypothesis)
             lines.append(

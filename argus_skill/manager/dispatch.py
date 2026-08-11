@@ -248,6 +248,57 @@ def enqueue_mission(
         pending_auto_promote = bool(
             chat_state.pop("_continuous_pending_manager_handoff", False)
         )
+        persisted: dict[str, Any] = {}
+
+        def _persist_operator_priority_item(
+            execution_body: str,
+            division: Any,
+        ) -> Any:
+            pending = mem.backlog.pending()
+            head_priority = min((item.priority for item in pending), default=100)
+            from ..life.memory import BacklogItem
+            from ..life.supervisor.backlog_guard import decision_evidence
+
+            compact = " ".join(execution_body.split())
+            title = compact if len(compact) <= 160 else compact[:157] + "..."
+            item = BacklogItem.new(
+                item_id=root_task_id,
+                title=title,
+                objective=execution_body,
+                priority=min(head_priority - 1, -1),
+                tags=[
+                    "manager",
+                    "planner",
+                    "operator",
+                    "operator_priority",
+                    "scope:bounded",
+                    "stage_transition:skip",
+                ],
+                iterate=False,
+                iteration_max_cycles=1,
+                context_refs=_merge_context_refs(context_refs),
+                original_objective=execution_body,
+                manager_decision=decision_evidence(division) or {"routed": True},
+            )
+            mem.backlog.add(item)
+            persisted["item"] = item
+            try:
+                from ..life.event_log import JsonlEventSink
+
+                JsonlEventSink(None, life_dir=Path(life_dir)).append({
+                    "type": "life.planner.task_added",
+                    "item_id": item.id,
+                    "title": item.title,
+                    "objective": item.objective,
+                    "deps": [],
+                    "priority": item.priority,
+                    "source": "manager_operator",
+                    "operator_priority": True,
+                })
+            except Exception:  # noqa: BLE001 - backlog persistence is authoritative
+                pass
+            return item
+
         try:
             execution_body = front_door.manager_continuous_handoff(
                 mem,
@@ -256,6 +307,7 @@ def enqueue_mission(
                 root_task_id=root_task_id,
                 cancelled=cancelled,
                 prepared_handoff=prepared_handoff,
+                persist=_persist_operator_priority_item,
             )
         except Exception:
             if pending_auto_promote:
@@ -264,11 +316,17 @@ def enqueue_mission(
                 ] = False
                 chat_state["continuous_objective"] = ""
             raise
+        item = persisted.get("item")
+        if item is None:
+            item = _persist_operator_priority_item(
+                execution_body,
+                getattr(prepared_handoff, "decision", None),
+            )
         chat_state["last_objective"] = execution_body
         chat_state["continuous_objective"] = execution_body
         front_door._maybe_name_session(chat_state, execution_body)
         alive, pid = _daemon_status(life_dir)
-        return None, alive, pid
+        return item, alive, pid
 
     planned: dict[str, Any] = {}
 

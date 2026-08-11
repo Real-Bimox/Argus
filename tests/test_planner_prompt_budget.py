@@ -122,6 +122,26 @@ def test_direct_workflow_suppresses_stage_artifact_ceremony(
     assert "KERNEL_SCOPE.md" not in prompt
 
 
+def test_planner_keeps_operator_actions_ahead_of_optional_hardening(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_PROJECT_ROOT", str(tmp_path))
+    prompt = Planner._build_planner_prompt(
+        continuous_objective=(
+            "Download the BF16 model, quantize it, and prove local inference works."
+        ),
+        journal_tail="An older 8-bit model already has a local manifest.",
+        planning_cycle=0,
+        open_ended=False,
+    )
+
+    assert "Follow the operator's requested actions and order" in prompt
+    assert "a usable" in prompt
+    assert "alternative do not replace the first unmet requested action" in prompt
+    assert "Optional hardening never keeps a finite objective alive" in prompt
+
+
 def test_mature_math_prompt_keeps_only_bounded_terminal_history(
     tmp_path,
     monkeypatch,

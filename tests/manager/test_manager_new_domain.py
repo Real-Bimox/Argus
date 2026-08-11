@@ -407,8 +407,16 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     safe_mode convention) instead of a text-only classify call with no tools."""
     monkeypatch.delenv("ARGUS_SKILL_VERTICAL", raising=False)
     monkeypatch.delenv("ARGUS_SKILL_SAFE_MODE", raising=False)
+    state_root = tmp_path / "state"
+    workspace = tmp_path / "workspace"
+    state_root.mkdir()
+    workspace.mkdir()
     runner = _FakeRunner(_NEW_DOMAIN_DECISION)
-    mgr = Manager(project_root=tmp_path, runner=runner)
+    mgr = Manager(
+        project_root=state_root,
+        execution_workdir=workspace,
+        runner=runner,
+    )
     mgr.divide(_NOVEL_TASK)
 
     assert [call["run_label"] for call in runner.calls] == [
@@ -416,7 +424,7 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     ]
     call = next(c for c in runner.calls if c["run_label"] == "manager-classify-grounded")
     opts = call["options"]
-    assert opts.working_dir == str(tmp_path)
+    assert opts.working_dir == str(workspace)
     assert opts.sandbox_mode is None
     assert opts.dangerous_yolo is True
     assert opts.full_auto is False

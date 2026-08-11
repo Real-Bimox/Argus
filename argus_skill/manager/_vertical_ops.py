@@ -295,7 +295,7 @@ class _VerticalDecisionMixin:
                 options=RunnerOptions(
                     model=_manager_model(),
                     reasoning_effort=_manager_vertical_reasoning_effort(),
-                    working_dir=str(self.project_root),
+                    working_dir=str(self.execution_workdir),
                     dangerous_yolo=True,
                     skip_git_repo_check=True,
                     extra_args=grounded_extra_args,

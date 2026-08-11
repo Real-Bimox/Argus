@@ -80,8 +80,16 @@ def test_team_learning_promotes_to_profile_and_new_session_discovers_it(
     assert promoted_dir in EngineerMission(next_session).libraries().native_paths
     assert backend.calls[0]["run_label"] == "team-learning-review"
     assert backend.calls[0]["options"].working_dir == str(shared.resolve())
+    assert backend.calls[0]["options"].add_dirs is None
     assert "only location you may edit" in backend.calls[0]["prompt"]
     assert "Project-specific or still-unverified learning stays" in backend.calls[0]["prompt"]
+    assert "Candidate procedure from this project" in backend.calls[0]["prompt"]
+    assert "Never inspect the project or session directories" in backend.calls[0]["prompt"]
+    assert "`agent_io.jsonl`" in backend.calls[0]["prompt"]
+    assert "may be promoted after that one success" in backend.calls[0]["prompt"]
+    assert "Do not reject it merely because it came from one session" in (
+        backend.calls[0]["prompt"]
+    )
     assert [event["type"] for event in events] == [
         "team.learning.review.started",
         "team.learning.review.completed",

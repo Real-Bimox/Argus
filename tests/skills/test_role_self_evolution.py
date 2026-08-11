@@ -100,6 +100,10 @@ def test_engineer_learning_targets_engineer_bucket(tmp_path) -> None:
     )
 
     assert f"Engineer Skill directory (project layer only): {skill_dir}" in prompt
+    assert "Do not substitute cleanup, documentation" in prompt
+    assert "hashes/checksums, manifests/provenance" in prompt
+    assert "never authorizes deleting, moving, or overwriting pre-existing" in prompt
+    assert "do not repeat the same passing assertion" in prompt
 
 
 def test_main_reviewer_never_edits_skills_directly(tmp_path) -> None:

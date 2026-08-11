@@ -338,7 +338,7 @@ def test_bounded_dispatch_rejects_context_revision_changed_before_commit(
     assert memory.backlog.all() == []
 
 
-def test_continuous_dispatch_persists_only_manager_handoff(memory):
+def test_continuous_dispatch_persists_operator_priority_item(memory):
     item, _, _ = dispatch.enqueue_mission(
         memory,
         "operator request",
@@ -348,11 +348,78 @@ def test_continuous_dispatch_persists_only_manager_handoff(memory):
     payload = json.loads(
         (memory.project.root / "continuous.json").read_text(encoding="utf-8")
     )
-    assert item is None
-    assert memory.backlog.all() == []
+    assert item is not None
+    assert memory.backlog.all() == [item]
+    assert item.objective == "managed: operator request"
+    assert item.original_objective == "managed: operator request"
+    assert item.priority == -1
+    assert "operator_priority" in item.tags
+    assert "stage_transition:skip" in item.tags
+    assert item.manager_decision == {"routed": True}
     assert payload["enabled"] is True
     assert payload["objective"] == "managed: operator request"
     assert payload["open_ended"] is True
+
+    events = [
+        json.loads(line)
+        for line in (memory.project.root / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    queued = next(
+        event
+        for event in events
+        if event.get("type") == "life.planner.task_added"
+    )
+    assert queued["item_id"] == item.id
+    assert queued["source"] == "manager_operator"
+    assert queued["operator_priority"] is True
+
+
+def test_continuous_replacement_queues_operator_task_after_running_work(memory):
+    from argus_skill.daemon.state import (
+        read_continuous_state,
+        write_continuous_config,
+    )
+
+    write_continuous_config(
+        memory.project.root,
+        enabled=True,
+        objective="old campaign",
+    )
+    running = memory.backlog.add(
+        BacklogItem.new(
+            title="current mission",
+            objective="finish current safe increment",
+            priority=10,
+            manager_decision={"routed": True},
+        )
+    )
+    memory.backlog.mark_running(running.id)
+    stale = memory.backlog.add(
+        BacklogItem.new(
+            title="autonomous cleanup",
+            objective="reconcile an optional manifest",
+            priority=20,
+            manager_decision={"routed": True},
+        )
+    )
+
+    queued, _, _ = dispatch.enqueue_mission(
+        memory,
+        "download and quantize the BF16 model",
+        {"backend": "codex", "config": {"continuous": True}},
+    )
+
+    rows = {item.id: item for item in memory.backlog.all()}
+    assert rows[running.id].status == "running"
+    assert rows[stale.id].status == "superseded"
+    assert queued is not None
+    assert rows[queued.id].status == "pending"
+    assert memory.backlog.next_pending().id == queued.id
+    assert read_continuous_state(memory.project.root).objective == (
+        "managed: download and quantize the BF16 model"
+    )
 
 
 def test_lifetime_promotion_sets_pending_handoff(memory):
