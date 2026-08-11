@@ -178,6 +178,7 @@ def test_engineer_operator_question_parks_without_reviewer(tmp_path: Path) -> No
     assert len(rounds) == 1
     assert rounds[0].review.review_source == "engineer_operator_question"
     assert rounds[0].review.operator_question == "请选择 A 或 B"
+    assert rounds[0].review.planner_report["authority_impact"] == "operator"
     assert "operator-owned decision" in reason
     review_events = [event for event in events if event["type"] == "round.review.completed"]
     assert review_events[0]["operator_question"] == "请选择 A 或 B"

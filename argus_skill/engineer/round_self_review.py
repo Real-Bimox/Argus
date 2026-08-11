@@ -70,6 +70,11 @@ class RoundSelfReviewMixin:
                     next_action="Resume after the operator answers the pending question.",
                     operator_question=operator_question,
                     review_source="engineer_operator_question",
+                    planner_report={
+                        "plan_signal": "continue",
+                        "challenge": operator_question,
+                        "authority_impact": "operator",
+                    },
                 ),
                 round_index=round_index,
                 supervised_config=supervised_config,
