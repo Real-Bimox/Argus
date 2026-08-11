@@ -145,3 +145,39 @@ def test_engineer_continues_milestone_without_reviewer(tmp_path: Path) -> None:
         "engineer-r2",
     ]
     assert len(rounds) == 1
+
+
+def test_engineer_operator_question_parks_without_reviewer(tmp_path: Path) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message=(
+                "The required choice belongs to the operator.\n"
+                "MILESTONE_STATUS=continue\n"
+                "OPERATOR_QUESTION=请选择 A 或 B"
+            ),
+            thread_id="t1",
+        ),
+    )
+
+    events: list[dict] = []
+    status, rounds, _final, reason, _tid = _engineer(backend).run(
+        objective="write the operator-selected value",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(
+            max_rounds=3,
+            require_independent_review=True,
+        ),
+        workdir=tmp_path,
+        on_event=events.append,
+    )
+
+    assert [label for label, _prompt, _options in backend.history] == ["engineer-r1"]
+    assert status == "blocked"
+    assert len(rounds) == 1
+    assert rounds[0].review.review_source == "engineer_operator_question"
+    assert rounds[0].review.operator_question == "请选择 A 或 B"
+    assert "operator-owned decision" in reason
+    review_events = [event for event in events if event["type"] == "round.review.completed"]
+    assert review_events[0]["operator_question"] == "请选择 A 或 B"

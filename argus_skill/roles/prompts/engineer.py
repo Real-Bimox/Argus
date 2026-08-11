@@ -164,7 +164,10 @@ def build_mission_prompt(
         "decisive check. The Host invokes Reviewer only when required; do not spawn "
         "a Reviewer subagent. End with `MILESTONE_STATUS=done` only when the full "
         "milestone reached its decision point; otherwise write the next action to "
-        "CHECKPOINT.md and end with `MILESTONE_STATUS=continue`."
+        "CHECKPOINT.md and end with `MILESTONE_STATUS=continue`. Also end with "
+        "`OPERATOR_QUESTION=<question>` only when blocked by a decision or input "
+        "that only the operator can provide; otherwise use `OPERATOR_QUESTION=none`. "
+        "Never keep opening fresh rounds while waiting for that answer."
     )
     static_text = "\n\n".join(sections)
     delta_text = "\n\n".join(delta_sections)
@@ -183,7 +186,9 @@ def build_mission_prompt(
         "## Handoff\n"
         "CHECKPOINT.md remains the only role-maintained cross-round handoff file. "
         "End with a concise natural summary, decisive check, and "
-        "`MILESTONE_STATUS=done|continue`."
+        "`MILESTONE_STATUS=done|continue`. End with "
+        "`OPERATOR_QUESTION=<operator-only question|none>`; a real question parks "
+        "the task instead of opening another Engineer round."
     )
     if learning_block:
         compact += "\n\n" + learning_block
