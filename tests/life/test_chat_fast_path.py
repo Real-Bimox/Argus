@@ -190,6 +190,7 @@ def test_execute_config_loads_custom_vertical_from_session_state(
 
     assert state.workdir == workdir
     assert state.config.active_vertical == "physical_archive_restoration"
+    assert state.config.vertical_state_root == state_root
     assert state.config.require_independent_review is True
     assert not (
         workdir / "research" / "DOMAINS" / "physical_archive_restoration.json"

@@ -121,6 +121,9 @@ class SkillLoopConfig:
     # Explicit Manager-routed vertical for isolated worktrees that intentionally
     # carry no project pipeline state (for example framework self-maintenance).
     active_vertical: str = ""
+    # Session-state root that owns project-local vertical contracts. Execution
+    # may happen in a separate operator workspace.
+    vertical_state_root: Path | None = None
     # Explicit signal that this mission is a long-horizon academic-paper /
     # submission task. When True the engineer prompt carries the
     # long-horizon paper execution contract. Replaces the old keyword-based
@@ -268,12 +271,13 @@ class SkillLoop(
         Agents directly from the library paths.
         """
         workdir = Path(workdir) if workdir else Path.cwd()
+        vertical_state_root = Path(self.config.vertical_state_root or workdir)
         run_id = self.config.session_id or f"run-{uuid.uuid4().hex}"
         from .roles.prompts import resolve_role_prompt
         from .roles.prompts.engineer import mission_request
         engineer_prompt_context = resolve_role_prompt(
             mission_request(
-                workdir,
+                vertical_state_root,
                 vertical=self.config.active_vertical or None,
             )
         )

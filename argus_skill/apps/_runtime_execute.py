@@ -562,6 +562,7 @@ class SkillLoopExecuteMixin:
             # undecided task is bounded/non-paper.
             "paper_mission": False,
             "active_vertical": active_vertical,
+            "vertical_state_root": _proot,
             # Shared Markdown checkpoint in internal project state. Engineer
             # and Reviewer receive its absolute path and edit it in sequence;
             # output workdirs contain deliverables only.
