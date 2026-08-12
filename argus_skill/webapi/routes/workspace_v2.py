@@ -9,7 +9,6 @@ literature index, paper watcher, and explicit final-review flow.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import itertools
 import json
 import mimetypes
@@ -100,17 +99,22 @@ def _safe_root(raw: str) -> Path:
     return resolved
 
 
-def _profile_id(path: Path) -> str:
-    return "ws-" + hashlib.sha256(os.fspath(path).encode("utf-8")).hexdigest()[:12]
-
-
 def _workspace_profiles(ctx: ServerContext, sid: str) -> list[dict[str, Any]]:
     rows = ctx.machine_projects(limit=500, include_empty=True)
     profiles: dict[str, dict[str, Any]] = {}
+
+    def add_profile(profile: dict[str, Any]) -> None:
+        key = str(profile["path"])
+        existing = profiles.get(key)
+        if existing is None or (
+            bool(profile["canonical"]) and not bool(existing["canonical"])
+        ):
+            profiles[key] = profile
+
     for row in rows:
         row_sid = str(row.get("id") or "").strip()
         raw_path = str(row.get("workdir") or row.get("launch_cwd") or "").strip()
-        if not raw_path:
+        if not row_sid or not raw_path:
             continue
         try:
             # Project paths come from the authenticated server-side project
@@ -118,30 +122,28 @@ def _workspace_profiles(ctx: ServerContext, sid: str) -> list[dict[str, Any]]:
             root = _resolved_directory(raw_path)
         except HTTPException:
             continue
-        profile_id = _profile_id(root)
-        profiles[profile_id] = {
-            "id": profile_id,
+        add_profile({
+            "id": f"project:{row_sid}",
             "label": str(row.get("display_name") or row.get("label") or row_sid or root.name),
             "path": str(root),
             "source": "project",
             "project_sid": row_sid,
             "canonical": row_sid == sid,
-        }
+        })
     # The running Argus source tree is a deliberate local profile used for its
     # technical report and frontend review; it is explicit rather than an
     # arbitrary browser-supplied absolute path.
     source_root = Path(__file__).resolve().parents[3]
     try:
         source_root = _safe_root(str(source_root))
-        profile_id = _profile_id(source_root)
-        profiles[profile_id] = {
-            "id": profile_id,
+        add_profile({
+            "id": "system:argus-source",
             "label": "Argus source (local)",
             "path": str(source_root),
             "source": "system",
             "project_sid": "",
             "canonical": False,
-        }
+        })
     except HTTPException:
         pass
     configured = os.getenv("ARGUS_V2_WORKSPACE_PROFILES", "").strip()
@@ -152,22 +154,21 @@ def _workspace_profiles(ctx: ServerContext, sid: str) -> list[dict[str, Any]]:
             raise HTTPException(status_code=503, detail="ARGUS_V2_WORKSPACE_PROFILES is not valid JSON") from exc
         if not isinstance(extra_rows, list):
             raise HTTPException(status_code=503, detail="ARGUS_V2_WORKSPACE_PROFILES must be a JSON list")
-        for row in extra_rows:
+        for index, row in enumerate(extra_rows, start=1):
             if not isinstance(row, dict):
                 continue
             try:
                 root = _safe_root(str(row.get("path") or ""))
             except HTTPException:
                 continue
-            profile_id = _profile_id(root)
-            profiles[profile_id] = {
-                "id": profile_id,
+            add_profile({
+                "id": f"configured:{index}",
                 "label": str(row.get("label") or root.name),
                 "path": str(root),
                 "source": "configured",
                 "project_sid": "",
                 "canonical": False,
-            }
+            })
     return sorted(profiles.values(), key=lambda row: (not bool(row["canonical"]), str(row["label"]).casefold()))
 
 
@@ -515,7 +516,7 @@ def _string_list(value: Any) -> list[str]:
     return []
 
 
-def _verified_evidence(root: Path, row: dict[str, Any]) -> tuple[str, str, int]:
+def _verified_evidence(root: Path, row: dict[str, Any]) -> tuple[str, int]:
     for key in ("raw_response_path", "source_artifact", "live_evidence_path"):
         value = row.get(key)
         if not isinstance(value, str) or not value.strip():
@@ -533,8 +534,8 @@ def _verified_evidence(root: Path, row: dict[str, Any]) -> tuple[str, str, int]:
             continue
         if not payload.strip():
             continue
-        return PurePosixPath(raw).as_posix(), hashlib.sha256(payload).hexdigest(), len(payload)
-    return "", "", 0
+        return PurePosixPath(raw).as_posix(), len(payload)
+    return "", 0
 
 
 def _paper(root: Path, row: dict[str, Any], source_path: str, index: int) -> dict[str, Any] | None:
@@ -550,7 +551,7 @@ def _paper(root: Path, row: dict[str, Any], source_path: str, index: int) -> dic
     except (TypeError, ValueError):
         pass
     topics = _string_list(row.get("topic_tags")) + _string_list(row.get("topics")) + _string_list(row.get("topic"))
-    evidence_path, evidence_sha256, evidence_bytes = _verified_evidence(root, row)
+    evidence_path, evidence_bytes = _verified_evidence(root, row)
     evidence = "verified_artifact" if evidence_path else "metadata" if url else "unresolved"
     return {
         "id": str(row.get("key") or row.get("citation_key") or row.get("id") or f"{source_path}:{index}"),
@@ -566,7 +567,6 @@ def _paper(root: Path, row: dict[str, Any], source_path: str, index: int) -> dic
         "retrievedAt": _first_string(row, ["retrieved_utc", "retrieved_at_utc", "retrieved_at", "last_verified_at_utc"]),
         "evidenceStatus": evidence,
         "evidencePath": evidence_path,
-        "evidenceSha256": evidence_sha256,
         "evidenceBytes": evidence_bytes,
     }
 
@@ -772,24 +772,14 @@ def register_workspace_v2_routes(app, ctx: ServerContext, server_mod) -> None:
         manuscript_path = body.manuscript_path or _latest_manuscript(workspace)
         if not manuscript_path:
             raise HTTPException(status_code=409, detail="no final manuscript was found in the approved project workspace")
-        manuscript_hash = ""
         if manuscript_path:
             suffix = PurePosixPath(manuscript_path).suffix.lower()
             if suffix not in {".tex", ".md", ".pdf"}:
                 raise HTTPException(status_code=415, detail="final manuscript must be TeX, Markdown, or PDF")
             fd, _info = _open_confined_file(workspace, manuscript_path)
-            digest = hashlib.sha256()
-            try:
-                while True:
-                    chunk = os.read(fd, 64 * 1024)
-                    if not chunk:
-                        break
-                    digest.update(chunk)
-            finally:
-                os.close(fd)
-            manuscript_hash = digest.hexdigest()
+            os.close(fd)
         created_at = time.time()
-        request_id = f"fr-{int(created_at)}-{hashlib.sha256((sid + manuscript_hash + body.venue).encode('utf-8')).hexdigest()[:8]}"
+        request_id = f"fr-{time.time_ns()}"
         report_path = f"reviews/final_review_{request_id}.md"
         manifest = {
             "schema_version": 1,
@@ -801,7 +791,6 @@ def register_workspace_v2_routes(app, ctx: ServerContext, server_mod) -> None:
             "strictness": body.strictness,
             "request_id": request_id,
             "manuscript_path": manuscript_path,
-            "manuscript_sha256": manuscript_hash,
             "emphasis": list(dict.fromkeys(item.strip() for item in body.emphasis if item.strip())),
             "scope": body.scope.strip(),
             "created_at": created_at,
@@ -849,20 +838,18 @@ def register_workspace_v2_routes(app, ctx: ServerContext, server_mod) -> None:
             raise HTTPException(status_code=404, detail="final review request not found") from exc
         report_path = str(manifest.get("report_path") or "")
         report_exists = False
-        report_sha256 = ""
         if report_path:
             try:
-                report = _read_confined_bytes(workspace, report_path, 2 * 1024 * 1024)
+                fd, _info = _open_confined_file(workspace, report_path)
             except HTTPException:
                 pass
             else:
+                os.close(fd)
                 report_exists = True
-                report_sha256 = hashlib.sha256(report).hexdigest()
         return {
             "request_id": request_id,
             "status": "completed" if report_exists else str(manifest.get("status") or "queued"),
             "manifest": manifest,
             "report_path": report_path,
             "report_exists": report_exists,
-            "report_sha256": report_sha256,
         }

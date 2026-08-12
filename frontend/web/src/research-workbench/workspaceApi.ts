@@ -72,7 +72,6 @@ export interface LiteraturePaper {
   retrievedAt: string;
   evidenceStatus: 'verified_artifact' | 'metadata' | 'unresolved';
   evidencePath?: string;
-  evidenceSha256?: string;
   evidenceBytes?: number;
 }
 

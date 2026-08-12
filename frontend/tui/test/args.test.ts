@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import { parseArgs } from '../src/args.js';
@@ -41,4 +43,20 @@ test('value flags reject missing and invalid values early', () => {
   assert.throws(() => parseArgs(['--host']), /--host requires a value/);
   assert.throws(() => parseArgs(['--port', '0']), /between 1 and 65535/);
   assert.throws(() => parseArgs(['--count', '1.5']), /positive integer/);
+});
+
+test('invalid CLI arguments print one actionable line without a bundle stack', () => {
+  const cli = fileURLToPath(new URL('../src/cli.tsx', import.meta.url));
+  const result = spawnSync(
+    process.execPath,
+    ['--import', 'tsx', cli, '--port', 'nope'],
+    { encoding: 'utf8' },
+  );
+
+  assert.equal(result.status, 1);
+  assert.equal(
+    result.stderr,
+    'argus: --port must be between 1 and 65535; got NaN\n',
+  );
+  assert.doesNotMatch(result.stderr, /\n\s+at /);
 });

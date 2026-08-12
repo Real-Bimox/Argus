@@ -71,7 +71,7 @@ def test_workspace_v2_profiles_tree_file_literature_and_confinement(tmp_path: Pa
     papers = {row["title"]: row for row in literature.json()["papers"]}
     assert papers["A Real Primary Paper"]["evidenceStatus"] == "verified_artifact"
     assert papers["A Real Primary Paper"]["evidencePath"] == "research/_search/paper.html"
-    assert len(papers["A Real Primary Paper"]["evidenceSha256"]) == 64
+    assert "evidenceSha256" not in papers["A Real Primary Paper"]
     assert papers["A Real Primary Paper"]["evidenceBytes"] > 0
     assert papers["Metadata Only Paper"]["evidenceStatus"] == "metadata"
 
@@ -146,10 +146,14 @@ def test_canonical_project_workspace_needs_no_machine_specific_allowed_root(tmp_
         def machine_projects(*, limit: int, include_empty: bool) -> list[dict[str, object]]:
             assert limit == 500
             assert include_empty is True
-            return [{"id": "s-canonical", "display_name": "Canonical", "workdir": str(workspace)}]
+            return [
+                {"id": "s-canonical", "display_name": "Canonical", "workdir": str(workspace)},
+                {"id": "s-other", "display_name": "Other", "workdir": str(workspace)},
+            ]
 
     profile = _workspace_profiles(Context(), "s-canonical")[0]
     assert profile["canonical"] is True
+    assert profile["id"] == "project:s-canonical"
     assert profile["path"] == str(workspace)
 
     fd, _info = _open_confined_file(workspace.resolve(), "README.md")
@@ -157,3 +161,49 @@ def test_canonical_project_workspace_needs_no_machine_specific_allowed_root(tmp_
         assert os.read(fd, 64) == b"canonical"
     finally:
         os.close(fd)
+
+
+def test_final_review_uses_existing_request_id_without_content_hashes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    workspace = tmp_path / "project"
+    manuscript = workspace / "paper" / "main.md"
+    manuscript.parent.mkdir(parents=True)
+    manuscript.write_text("# Manuscript\n", encoding="utf-8")
+    state = tmp_path / "state"
+    created = server.create_daemon(workdir=str(workspace), global_root=state)
+    sid = created["sid"]
+    monkeypatch.setattr(
+        server,
+        "enqueue_task_command",
+        lambda *args, **kwargs: {"ok": True},
+    )
+    client = TestClient(server.create_app(global_root=state))
+
+    response = client.post(
+        f"/api/projects/{sid}/reviews/final",
+        json={
+            "venue": "ICLR",
+            "venue_type": "conference",
+            "strictness": "standard",
+            "manuscript_path": "paper/main.md",
+            "emphasis": ["Novelty"],
+            "scope": "Review the final manuscript.",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    request_id = payload["request_id"]
+    assert request_id.startswith("fr-")
+    assert "manuscript_sha256" not in payload["manifest"]
+
+    report = workspace / payload["report_path"]
+    report.parent.mkdir(exist_ok=True)
+    report.write_text("# Final review\n", encoding="utf-8")
+    status = client.get(f"/api/projects/{sid}/reviews/final/{request_id}")
+
+    assert status.status_code == 200
+    assert status.json()["status"] == "completed"
+    assert "report_sha256" not in status.json()

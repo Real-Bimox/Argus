@@ -330,6 +330,7 @@ async function runOnce(api: ApiClient, count: number): Promise<void> {
 }
 
 main().catch((err) => {
-  process.stderr.write(`argus: ${(err as Error).stack ?? err}\n`);
+  const message = err instanceof Error ? err.message : String(err);
+  process.stderr.write(`argus: ${message}\n`);
   process.exit(1);
 });
