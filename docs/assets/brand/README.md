@@ -8,8 +8,9 @@ Official rounded Argus logo assets.
 - `png/marks/`: square marks at 16, 24, 32, 48, 64, 128, 256, 512, and 1024 px.
 - `png/horizontal/`: horizontal logos at 600, 1200, and 2400 px wide.
 - `png/stacked/`: stacked logos at 800 and 1600 px.
-- `png/white-background/marks/`: matching circular and square
-  white-background marks at every standard mark size from 16 through 1024 px.
+- `png/white-background/marks/`: matching circular, square, and iOS-style
+  rounded-square white-background marks at every standard mark size from 16
+  through 1024 px.
 - `png/white-background/horizontal/`: rectangular white-background horizontal
   logos at 600, 1200, and 2400 px wide.
 - `preview/`: visual size board for quickly reviewing the complete set.
