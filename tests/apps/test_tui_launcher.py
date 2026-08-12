@@ -181,6 +181,38 @@ def test_admin_flags_after_global_options_stay_on_python_admin_path(
     assert seen == [["--life-dir", str(life_dir), "--status"]]
 
 
+@pytest.mark.parametrize("spelling", ["separate", "equals"])
+def test_interactive_life_dir_configures_tui_state_root(
+    monkeypatch,
+    tmp_path: Path,
+    spelling: str,
+) -> None:
+    bundle = tmp_path / "argus.mjs"
+    bundle.write_text("// bundle", encoding="utf-8")
+    life_dir = tmp_path / "state"
+    seen = {}
+    monkeypatch.delenv("ARGUS_SKILL_HOME", raising=False)
+    monkeypatch.setattr(tui_launcher, "_bundle_path", lambda: bundle)
+    monkeypatch.setattr(tui_launcher.shutil, "which", lambda name: "/usr/bin/node")
+    monkeypatch.setattr(tui_launcher, "_node_major", lambda node: 20)
+    monkeypatch.setattr(tui_launcher, "_needs_foreground_spawn", lambda: False)
+    monkeypatch.setattr(
+        tui_launcher.os,
+        "execv",
+        lambda executable, argv: seen.update(executable=executable, argv=argv),
+    )
+    argv = (
+        ["--life-dir", str(life_dir), "--project", "s-demo"]
+        if spelling == "separate"
+        else [f"--life-dir={life_dir}", "--project", "s-demo"]
+    )
+
+    assert tui_launcher.main(argv) == 0
+
+    assert os.environ["ARGUS_SKILL_HOME"] == str(life_dir.resolve())
+    assert seen["argv"] == ["/usr/bin/node", str(bundle), "--project", "s-demo"]
+
+
 def test_admin_flags_after_capability_options_stay_on_python_admin_path(
     monkeypatch,
 ) -> None:

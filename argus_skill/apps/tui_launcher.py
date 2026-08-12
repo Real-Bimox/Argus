@@ -177,6 +177,28 @@ def _configure_tui_backend_bin() -> None:
         os.environ["ARGUS_SKILL_BIN"] = str(sibling)
 
 
+def _configure_tui_life_dir(argv: list[str]) -> list[str]:
+    forwarded: list[str] = []
+    index = 0
+    while index < len(argv):
+        argument = argv[index]
+        if argument == "--life-dir":
+            os.environ["ARGUS_SKILL_HOME"] = str(
+                Path(argv[index + 1]).expanduser().resolve()
+            )
+            index += 2
+            continue
+        if argument.startswith("--life-dir="):
+            os.environ["ARGUS_SKILL_HOME"] = str(
+                Path(argument.split("=", 1)[1]).expanduser().resolve()
+            )
+            index += 1
+            continue
+        forwarded.append(argument)
+        index += 1
+    return forwarded
+
+
 def _needs_foreground_spawn() -> bool:
     """Whether this platform must wait for the cockpit instead of exec-ing it.
 
@@ -191,6 +213,7 @@ def main(argv: list[str] | None = None) -> int:
     forwarded = list(sys.argv[1:] if argv is None else argv)
     if _uses_python_admin(forwarded):
         return _run_python_admin(forwarded)
+    forwarded = _configure_tui_life_dir(forwarded)
     from ..life.special_prompts import describe_special_prompt_gate
 
     ok, detail = describe_special_prompt_gate()
