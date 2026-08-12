@@ -30,7 +30,7 @@ from ...core.models import RunnerResult
 from ...core.runner_errors import result_has_pre_provider_refusal
 from ...core.secret_guard import redact_secrets_text
 from ._exec_finalize import finalize_result, finish_quota
-from ._io_log import _command_metadata, _text_sha256
+from ._io_log import _command_metadata
 from ._io_log import raw_transcript_path as _raw_transcript_path
 from ._result import _extract_copilot_premium_requests, looks_like_auth_failure
 
@@ -48,8 +48,8 @@ def log_start_record(backend: Any, ctx: "_ExecContext") -> None:
     journal, mission view and campaign tally are projections of; the prompt is a
     debug artifact with no reader (the Web UI drops this event type, ``usage``
     takes only ``call_id``). Leaving it there made the history three times its
-    own size — measured 63% of one project's 74.9 MB. The compact record keeps
-    the hash, so the verbatim copy stays identifiable.
+    own size — measured 63% of one project's 74.9 MB. ``call_id`` links the
+    compact record to its verbatim copy.
     """
     start_row: dict[str, Any] = {
         "type": EventType.AGENT_IO_START,
@@ -65,19 +65,16 @@ def log_start_record(backend: Any, ctx: "_ExecContext") -> None:
     }
     if ctx.io_mode == "compact":
         start_row["prompt_chars"] = len(ctx.prompt)
-        start_row["prompt_sha256"] = _text_sha256(ctx.prompt)
         backend._log_agent_io(ctx.log_path, start_row)
     else:
         # Full prompts belong in the bounded raw I/O transcript, not the
-        # authoritative event history. Keep only size and hash in events.jsonl;
+        # authoritative event history. Keep only size in events.jsonl;
         # agent_io.jsonl retains the verbatim copy under ring rotation.
         compact_row = dict(start_row)
         compact_row["prompt_chars"] = len(ctx.prompt)
-        compact_row["prompt_sha256"] = _text_sha256(ctx.prompt)
         backend._log_agent_io(ctx.log_path, compact_row)
 
         start_row["prompt"] = ctx.prompt
-        start_row["prompt_sha256"] = compact_row["prompt_sha256"]
         backend._log_agent_io(_raw_transcript_path(ctx.log_path), start_row)
 
 
@@ -319,9 +316,6 @@ def spawn_and_finish(ctx: "_ExecContext", cli_options: Any) -> RunnerResult:
     complete_row.update({
         "agent_message_count": len(messages),
         "agent_message_chars": sum(len(str(message)) for message in messages),
-        "last_agent_message_sha256": (
-            _text_sha256(messages[-1]) if messages else None
-        ),
         "stdout_line_count": stdout_count,
         "stderr_line_count": stderr_count,
         "json_event_count": event_count,

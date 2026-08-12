@@ -232,6 +232,11 @@ def build_parser() -> argparse.ArgumentParser:
              "default; set ARGUS_SKILL_WEB_TOKEN to require a bearer token.",
     )
     cockpit_grp.add_argument(
+        "--no-open",
+        action="store_true",
+        help="compatibility flag; the Web server does not open a browser",
+    )
+    cockpit_grp.add_argument(
         "--web-host",
         default="127.0.0.1",
         help="bind host for --web (default 127.0.0.1; use 0.0.0.0 to reach it "
@@ -247,6 +252,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cockpit_grp.add_argument(
         "--web-port",
+        "--port",
         type=int,
         default=8799,
         help="port for --web (default 8799)",

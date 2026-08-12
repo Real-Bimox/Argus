@@ -876,7 +876,8 @@ def test_full_io_persists_prompt_once_not_as_user_message_echo(
     raw_start = next(row for row in raw_rows if row["type"] == "agent.io.start")
     streams = [row for row in raw_rows if row["type"] == "agent.io.stream"]
     assert "prompt" not in start
-    assert start["prompt_sha256"] == raw_start["prompt_sha256"]
+    assert "prompt_sha256" not in start
+    assert "prompt_sha256" not in raw_start
     assert raw_start["prompt"] == prompt
     assert len(streams) == 1
     assert "assistant.message_delta" in streams[0]["line"]
@@ -1144,7 +1145,7 @@ def test_default_agent_io_is_bounded_and_drops_duplicate_stream(
         "usage.recorded",
     ]
     assert "prompt" not in rows[0] and rows[0]["prompt_chars"] > 100
-    assert len(rows[0]["prompt_sha256"]) == 64
+    assert "prompt_sha256" not in rows[0]
     assert rows[1]["command"] == ["copilot", "-p", "<prompt>"]
     assert "agent_messages" not in rows[1]
     assert "stdout_lines" not in rows[1]
@@ -1154,7 +1155,7 @@ def test_default_agent_io_is_bounded_and_drops_duplicate_stream(
     assert rows[1]["json_event_count"] == 1
     assert rows[1]["agent_message_count"] == 1
     assert rows[1]["agent_message_chars"] == len("result")
-    assert len(rows[1]["last_agent_message_sha256"]) == 64
+    assert "last_agent_message_sha256" not in rows[1]
     assert len(live) == 1
     assert "assistant.message_delta" in live[0][1]
 

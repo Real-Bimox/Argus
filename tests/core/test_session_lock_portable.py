@@ -41,3 +41,13 @@ def test_session_locks_serialize_threads(
         contender_thread.join(timeout=2)
 
     assert contender_entered.is_set()
+
+
+def test_session_locks_use_the_path_safe_session_id(tmp_path: Path) -> None:
+    with session_meta_lock(tmp_path, "s-readable"):
+        pass
+    with session_lifecycle_lock(tmp_path, "s-readable"):
+        pass
+
+    assert (tmp_path / ".session-locks" / "s-readable.lock").is_file()
+    assert (tmp_path / ".session-lifecycle-locks" / "s-readable.lock").is_file()

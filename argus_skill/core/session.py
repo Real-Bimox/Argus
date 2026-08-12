@@ -20,7 +20,6 @@ projects (no ``session.json``) are still listable/resumable by their id.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import secrets
 import time
@@ -163,7 +162,7 @@ def normalize_session_name(value: str, *, limit: int = 80) -> str:
 def session_meta_lock(global_root: Path | None, sid: str) -> Iterator[None]:
     """Serialize session lifecycle changes without placing the lock in its directory."""
     root = Path(global_root) if global_root is not None else core_paths.global_root()
-    lock_name = hashlib.sha256(sid.encode("utf-8")).hexdigest()
+    lock_name = core_paths.session_state_root(sid, root=root).name
     path = root / ".session-locks" / f"{lock_name}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as handle:
@@ -175,7 +174,7 @@ def session_meta_lock(global_root: Path | None, sid: str) -> Iterator[None]:
 def session_lifecycle_lock(global_root: Path | None, sid: str) -> Iterator[None]:
     """Serialize directory-level create/delete/restore/work mutations for one SID."""
     root = Path(global_root) if global_root is not None else core_paths.global_root()
-    lock_name = hashlib.sha256(sid.encode("utf-8")).hexdigest()
+    lock_name = core_paths.session_state_root(sid, root=root).name
     path = root / ".session-lifecycle-locks" / f"{lock_name}.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as handle:

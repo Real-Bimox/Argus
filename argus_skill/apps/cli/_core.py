@@ -463,6 +463,7 @@ def main(argv: list[str] | None = None) -> int:
         return serve_web(
             host=host,
             port=port,
+            global_root=_resolve_global_root(args),
             auth_token=plan.token or None,
         )
     if args.notify:

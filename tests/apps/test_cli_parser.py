@@ -243,6 +243,35 @@ def test_parser_no_daemon_default_false():
     assert args.no_daemon is False
 
 
+def test_parser_accepts_documented_web_port_alias():
+    args = build_parser().parse_args(["--web", "--port", "8800"])
+    assert args.web_port == 8800
+
+
+def test_web_uses_documented_flags_and_explicit_life_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = {}
+
+    def fake_serve(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr("argus_skill.webapi.server.serve", fake_serve)
+
+    assert main([
+        "--web",
+        "--no-open",
+        "--port",
+        "8800",
+        "--life-dir",
+        str(tmp_path),
+    ]) == 0
+    assert captured["port"] == 8800
+    assert captured["global_root"] == tmp_path
+
+
 def test_parser_daemon_flags_present():
     p = build_parser()
     for flag in ("--daemon", "--daemon-fg", "--daemon-stop", "--status", "--daemon-runbook"):
