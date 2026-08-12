@@ -320,13 +320,13 @@ The most capable setup is often an Argus instance deliberately adapted to your o
 ## Update
 
 ```bash
-cd Argus
-git pull --ff-only
-.venv/bin/python -m pip install -e .
-.venv/bin/argus
+argus update
 ```
 
-Argus detects stale local WebAPI and daemon processes and replaces them at a controlled task boundary.
+The command refuses dirty or detached checkouts, fast-forwards the configured
+upstream, and refreshes the editable installation when the revision changes.
+Run `argus` afterward; it detects stale local WebAPI and daemon processes and
+replaces them at a controlled task boundary.
 
 ## WeChat community
 

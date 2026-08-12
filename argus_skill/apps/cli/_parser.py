@@ -14,6 +14,7 @@ Human cockpit:
 First-time setup and diagnostics:
   argus --setup
   argus --doctor
+  argus update
 
 Automation:
   argus --daemon-fg    supervised foreground worker (systemd/debugging)
@@ -64,6 +65,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--version",
         action="version",
         version=f"argus-skill {__version__} ({release_id})",
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="safely fast-forward and reinstall this source checkout",
     )
 
     daemon_grp = parser.add_argument_group("7×24 daemon")
@@ -425,6 +431,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser(
+        "update",
+        help="Safely fast-forward and reinstall this source checkout",
+    )
     wiki_parser = subparsers.add_parser(
         "wiki",
         help="Per-project idea-wiki operations",

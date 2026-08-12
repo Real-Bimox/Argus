@@ -157,7 +157,9 @@ def test_admin_subcommands_stay_on_python_admin_path(monkeypatch) -> None:
         lambda: (_ for _ in ()).throw(AssertionError("TUI must not launch")),
     )
     assert tui_launcher.main(["wiki", "init", "demo"]) == 7
-    assert seen == [["wiki", "init", "demo"]]
+    assert tui_launcher.main(["update"]) == 7
+    assert tui_launcher.main(["--update"]) == 7
+    assert seen == [["wiki", "init", "demo"], ["update"], ["--update"]]
 
 
 def test_admin_flags_after_global_options_stay_on_python_admin_path(
