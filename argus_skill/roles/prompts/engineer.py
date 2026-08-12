@@ -16,9 +16,17 @@ MISSION = "mission"
 OPERATIONS = frozenset({MISSION})
 
 _LONG_EXPERIMENT_RULE = (
-    "For commands expected to run over two minutes, launch a supervised "
-    "subagent, record its run id, and yield or do independent work. Never hold "
-    "the provider turn open with foreground shell execution or polling."
+    "For commands expected to run over two minutes, use the bash tool to submit "
+    "the command through Argus's durable runner exactly as "
+    "`\"${ARGUS_SKILL_PYTHON:-python3}\" -m "
+    "argus_skill.tools.subagent submit --task-id <id> --mode supervised "
+    "--timeout <seconds> --command '<command>'`. Do not use the provider's native "
+    "`task(mode=\"background\")` tool or a session-owned background shell as the "
+    "owner or supervisor of long-running work. Before ending the turn, require "
+    "the submit JSON receipt to contain `state=submitted`, `task_id`, `run_id`, "
+    "and `check_with`; record that Argus task/run id and status command in "
+    "CHECKPOINT.md when another round must observe it. Then yield or do independent "
+    "work. Never hold the provider turn open with foreground shell execution or polling."
 )
 
 
