@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 from argus_skill.core.session import SessionMeta, write_session_meta
 from argus_skill.core.transcript import append_turn
-from argus_skill.life.memory import LifeMemory
+from argus_skill.life.memory import BacklogItem, LifeMemory
 from argus_skill.manager import config_intent, front_door
 from argus_skill.webapi import manager_bridge, manager_state
 from argus_skill.webapi.manager_session_intent import contextualize_operator_turn
@@ -66,6 +66,16 @@ def test_current_turn_is_classified_raw_and_dispatched_with_context(
 ) -> None:
     sid = "s-contextual-task"
     life, _workspace = _session(tmp_path, sid)
+    memory = LifeMemory.open(life)
+    previous = memory.backlog.add(
+        BacklogItem.new(
+            title="repair parser",
+            objective="请修复解析器的转义错误。",
+            original_objective="请修复解析器的转义错误。",
+            manager_decision={"routed": True},
+        )
+    )
+    memory.backlog.mark_done(previous.id)
     append_turn(life, "operator", "请修复解析器的转义错误。")
     append_turn(life, "argus", "我会保留现有 API，并补充回归测试。")
     seen: dict[str, str] = {}
@@ -101,7 +111,7 @@ def test_current_turn_is_classified_raw_and_dispatched_with_context(
 
     assert result["kind"] == "task"
     assert seen["classify"] == "那就按刚才说的做"
-    assert "请修复解析器的转义错误" in seen["dispatch"]
+    assert "last_team_task: 请修复解析器的转义错误。" in seen["dispatch"]
     assert "[CURRENT OPERATOR MESSAGE]\n那就按刚才说的做" in seen["dispatch"]
 
 
@@ -115,7 +125,12 @@ def test_contextualization_is_bounded_but_keeps_long_corrections() -> None:
         {"role": "argus", "text": "x" * 400},
     ]
 
-    enriched = contextualize_operator_turn("那就列出修改", prior)
+    enriched = contextualize_operator_turn(
+        "那就列出修改",
+        prior,
+        last_team_task="把所有 commit 作者改成 lbx154。",
+    )
+    assert "last_team_task: 把所有 commit 作者改成 lbx154。" in enriched
     assert "discarded old task" not in enriched
     assert "relevant task" in enriched
     assert ("x" * 300) in enriched
@@ -123,6 +138,10 @@ def test_contextualization_is_bounded_but_keeps_long_corrections() -> None:
     assert "[CURRENT OPERATOR MESSAGE]\n那就列出修改" in enriched
 
     long_text = "这些 commit 的作者仍然没有改：" + ("x" * 200)
-    long_context = contextualize_operator_turn(long_text, prior)
+    long_context = contextualize_operator_turn(
+        long_text,
+        prior,
+        last_team_task="把所有 commit 作者改成 lbx154。",
+    )
     assert "relevant task" in long_context
     assert f"[CURRENT OPERATOR MESSAGE]\n{long_text}" in long_context

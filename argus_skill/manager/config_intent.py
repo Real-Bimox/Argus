@@ -219,14 +219,16 @@ def _front_door_classify(
         chat_state["_frontdoor_failure"] = "classifier failed"
         return None, None, "complex"
     finally:
-        named = _maybe_name_session(
-            chat_state,
-            text,
-            suggested_name=next(
-                (name for name in suggested_names if str(name).strip()),
-                "",
-            ),
-        )
+        named = ""
+        if not greeting_replies:
+            named = _maybe_name_session(
+                chat_state,
+                text,
+                suggested_name=next(
+                    (name for name in suggested_names if str(name).strip()),
+                    "",
+                ),
+            )
         if named and locals().get("normalized_route") == "simple":
             chat_state["_provisional_session_name"] = named
 

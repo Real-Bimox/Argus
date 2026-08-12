@@ -280,8 +280,9 @@ Prompt-isolation rules:
   the vertical or rewrite the execution plan. TEAM handoff
   separately receives at most four recent turns, capped at 300 characters each,
   so a long correction keeps necessary context without polluting route control.
-- Manager must emit a standalone `execution_task`. If a model copies the
-  transcript wrapper, the Host keeps only the current operator message.
+- Manager must emit a standalone `execution_task`. If it copies bounded
+  conversation markers, the Host rejects the handoff instead of authoring or
+  guessing a replacement.
 - Manager selects a vertical from the requested action. Quoted commit subjects,
   logs, filenames, and errors remain evidence and are never expanded into new
   implementation work.
@@ -300,6 +301,9 @@ Prompt-isolation rules:
   `or True` and `|| true` are forbidden.
 - Current operator constraints are repeated only where role authority requires
   them: original request, current mission, and explicit acceptance/non-goals.
+- Bounded TEAM context includes the most recent persisted TEAM objective, so a
+  correction remains grounded after intervening SELF conversation or Web
+  restart without expanding the transcript window.
 
 The prompt A/B fixture verifies that an exact two-line file request preserves
 the operator text in Manager handoff, contains no default identity, recent
@@ -343,7 +347,7 @@ Web UI, Manager model, and daemon:
 | Long correction listing commit titles | Prior author-rewrite goal retained; quoted titles are not implemented |
 | Formal domain plus Git metadata correction | `software` wins because the requested action is history maintenance |
 | Legacy attachment metadata | Removed SHA/integrity fields are stripped during read |
-| Greeting followed by first TEAM task | Provisional greeting title is replaced by the substantive task |
+| Greeting followed by first TEAM task, including after Web restart | Greeting does not claim a title; the substantive task names the session |
 | Default identity template | Excluded from model prompts until the operator edits it |
 | Operator pause | Not captured or replayed as a failure lesson |
 | Planner acceptance check | No unconditional-success or tautological checks |

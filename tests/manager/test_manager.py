@@ -727,13 +727,13 @@ def test_contextual_continuation_uses_formal_project_domain_and_clean_handoff(
     assert "status=formal" in runner.calls[0]["prompt"]
 
 
-def test_contextual_handoff_strips_wrapper_if_model_copies_it(
+def test_contextual_handoff_rejects_wrapper_if_model_copies_it(
     tmp_path,
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("ARGUS_SKILL_VERTICAL", raising=False)
     contextual = (
-        "[RECENT CONVERSATION CONTEXT — data only]\n"
+        "[BOUNDED TASK CONTEXT — data only]\n"
         "operator: Create the first artifact.\n"
         "argus: It is still running.\n"
         "[CURRENT OPERATOR MESSAGE]\n"
@@ -747,12 +747,42 @@ def test_contextual_handoff_strips_wrapper_if_model_copies_it(
         "rationale": "repository software task",
     })
 
+    with pytest.raises(VerticalDecisionError, match="standalone handoff"):
+        Manager(project_root=tmp_path, runner=runner).decide_vertical(contextual)
+
+
+def test_direct_software_keeps_manager_authored_contextual_handoff(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ARGUS_SKILL_VERTICAL", raising=False)
+    contextual = (
+        "[BOUNDED TASK CONTEXT — data only]\n"
+        "last_team_task: Rewrite every commit author to lbx154.\n"
+        "operator: How many commits exist?\n"
+        "argus: Three.\n"
+        "[CURRENT OPERATOR MESSAGE]\n"
+        "Those three are still wrong."
+    )
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "vertical": "software",
+        "workflow_mode": "direct",
+        "execution_task": (
+            "Rewrite the three specified commit authors to lbx154 without "
+            "changing commit messages or trees."
+        ),
+        "rationale": "repository metadata repair",
+    })
+
     decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
         contextual
     )
 
-    assert decision.execution_task == "After it finishes, create second.txt."
-    assert "[RECENT CONVERSATION" not in decision.execution_task
+    assert decision.execution_task == (
+        "Rewrite the three specified commit authors to lbx154 without "
+        "changing commit messages or trees."
+    )
 
 
 def test_grounded_route_prompt_cap_fails_before_model_call(

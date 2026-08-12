@@ -138,6 +138,35 @@ def test_front_door_names_first_message_for_every_route(tmp_path, route):
     assert read_session_meta(tmp_path, sid).display_name == "勾股定理简证"
 
 
+def test_pure_greeting_does_not_claim_the_session_name(tmp_path):
+    from argus_skill.core.session import read_session_meta, resolve_session
+
+    sid, _ = resolve_session(global_root=tmp_path, mode="new", cwd=tmp_path, now=1)
+    cs = {"session_named": False, "session_id": sid, "global_root": tmp_path}
+
+    class _GreetingManager:
+        def classify_front_door(
+            self,
+            text,
+            *,
+            name_sink=None,
+            greeting_sink=None,
+        ):
+            name_sink("问候")
+            greeting_sink("你好")
+            return None, None, "simple"
+
+    result = _front_door_classify(
+        object(),
+        "你好",
+        cs,
+        ensure_runner=lambda *_: SimpleNamespace(manager=_GreetingManager()),
+    )
+
+    assert result == (None, None, "simple")
+    assert read_session_meta(tmp_path, sid).display_name == ""
+
+
 def test_front_door_names_first_message_when_classifier_is_unavailable(tmp_path):
     from argus_skill.core.session import read_session_meta, resolve_session
 

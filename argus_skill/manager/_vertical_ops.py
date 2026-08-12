@@ -243,8 +243,11 @@ class _VerticalDecisionMixin:
             learned_root=self.learned_vertical_root,
         )
         contextual_task = (
-            "[RECENT CONVERSATION CONTEXT" in task
-            and "[CURRENT OPERATOR MESSAGE]" in task
+            "[CURRENT OPERATOR MESSAGE]" in task
+            and (
+                "[RECENT CONVERSATION CONTEXT" in task
+                or "[BOUNDED TASK CONTEXT" in task
+            )
         )
         from ..verticals._base import (
             load_vertical,
@@ -346,23 +349,23 @@ class _VerticalDecisionMixin:
                 decision.workflow_mode = _repository_workflow_mode(
                     decision.workflow_mode
                 )
-            if contract.ground_before_handoff:
+            if (
+                contract.ground_before_handoff
+                and _software_grounding_required(decision.workflow_mode)
+            ):
                 decision.execution_task = self._ground_execution_task(
-                    task,
+                    decision.execution_task,
                     workflow_mode=decision.workflow_mode,
                     root_task_id=root_task_id,
                 )
         if contextual_task and (
             "[RECENT CONVERSATION CONTEXT" in decision.execution_task
+            or "[BOUNDED TASK CONTEXT" in decision.execution_task
             or _CURRENT_OPERATOR_MARKER in decision.execution_task
         ):
-            _prefix, marker, current = str(task or "").rpartition(
-                _CURRENT_OPERATOR_MARKER
-            )
-            decision.execution_task = (
-                current.strip()
-                if marker and current.strip()
-                else str(task or "").strip()
+            raise VerticalDecisionError(
+                "Manager execution_task copied bounded conversation context "
+                "instead of producing a standalone handoff"
             )
         return decision
 

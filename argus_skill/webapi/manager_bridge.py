@@ -317,8 +317,19 @@ def manager_message(
         if pending_result is not None:
             return pending_result
 
+        previous_items = mem.backlog.all()
+        last_team_task = ""
+        if previous_items:
+            previous = max(previous_items, key=lambda item: float(item.ts))
+            last_team_task = str(
+                previous.original_objective or previous.objective or ""
+            )
         routing_body = compose_message_body(
-            contextualize_operator_turn(operator_text, prior_turns),
+            contextualize_operator_turn(
+                operator_text,
+                prior_turns,
+                last_team_task=last_team_task,
+            ),
             resolved_attachments,
         ).strip()
         chat_state["_frontdoor_contextual_text"] = body

@@ -1058,8 +1058,9 @@ def test_active_mission_team_message_uses_continuous_dispatch(
     assert result["kind"] == "task"
     assert result["continuous"] is True
     assert seen["classify"] == 1
-    assert seen["promoted"] == "你怎么不动了？"
-    assert seen["enqueued"] == "你怎么不动了？"
+    assert "last_team_task: finish current work" in seen["promoted"]
+    assert "[CURRENT OPERATOR MESSAGE]\n你怎么不动了？" in seen["promoted"]
+    assert seen["enqueued"] == seen["promoted"]
     assert len(memory.backlog.all()) == 1
 
 
