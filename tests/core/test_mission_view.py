@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -112,6 +113,39 @@ def test_load_normalizes_persisted_legacy_manager_failure_label(
     assert view["roles"][0]["label"] == "Manager routing failed"
     assert view["timeline"][0]["title"] == "Manager routing failed"
     assert view["role_work"][0]["title"] == "Manager routing failed"
+
+
+def test_v3_snapshot_rebuilds_to_include_completion_summary(tmp_path: Path) -> None:
+    (tmp_path / "mission-view.json").write_text(
+        '{"schema_version":3,"bootstrapped":true,"mission":{"status":"complete"}}',
+        encoding="utf-8",
+    )
+    (tmp_path / "events.jsonl").write_text(
+        json.dumps({
+            "type": "life.mission.completed",
+            "ts": 1,
+            "item_id": "task-summary",
+            "title": "Create result",
+            "status": "done",
+            "success": True,
+            "summary": "Created RESULT.txt and verified its exact contents.",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+    view = snapshot_mission_view(
+        tmp_path,
+        session={},
+        daemon={},
+        roles=[],
+        backlog=[],
+    )
+
+    assert view["schema_version"] == 4
+    assert view["mission"]["summary"] == (
+        "Created RESULT.txt and verified its exact contents."
+    )
 
 
 def test_venue_and_idea_research_are_visible_as_engineer_work(tmp_path: Path) -> None:
@@ -616,6 +650,29 @@ def test_completed_mission_prefers_normalized_outcome_class(tmp_path: Path) -> N
 
     assert view["mission"]["status"] == "incomplete"
     assert view["timeline"][-1]["title"] == "Work remains"
+
+
+def test_completed_mission_projects_engineer_summary(tmp_path: Path) -> None:
+    view = emit(
+        tmp_path,
+        "life.mission.completed",
+        1,
+        item_id="task-summary",
+        title="Create result",
+        status="done",
+        success=True,
+        summary="Created RESULT.txt and verified its exact contents.",
+    )
+
+    assert view["mission"]["summary"] == (
+        "Created RESULT.txt and verified its exact contents."
+    )
+    assert view["timeline"][-1]["detail"] == (
+        "Created RESULT.txt and verified its exact contents."
+    )
+    assert view["role_work"][-1]["detail"] == (
+        "Created RESULT.txt and verified its exact contents."
+    )
 
 
 def test_final_submission_projects_as_certified_not_merely_completed(

@@ -18,7 +18,7 @@ from ..event_catalog import EventType, canonical_event_type
 
 MISSION_VIEW_FILE = "mission-view.json"
 MISSION_VIEW_LOCK_FILE = "mission-view.lock"
-MISSION_VIEW_SCHEMA_VERSION = 3
+MISSION_VIEW_SCHEMA_VERSION = 4
 MISSION_TIMELINE_LIMIT = 120
 MISSION_ROLE_WORK_LIMIT_PER_ROLE = 40
 MISSION_BOOTSTRAP_MAX_BYTES = 8 * 1024 * 1024
@@ -43,6 +43,7 @@ def empty_mission_view() -> dict[str, Any]:
             "id": "",
             "title": "",
             "objective": "",
+            "summary": "",
             "status": "idle",
             "started_at": None,
             "completed_at": None,
@@ -113,10 +114,12 @@ def _read_unlocked(root: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         return empty_mission_view()
     schema_version = payload.get("schema_version")
-    if schema_version not in {1, 2, MISSION_VIEW_SCHEMA_VERSION}:
+    if schema_version not in {1, 2, 3, MISSION_VIEW_SCHEMA_VERSION}:
         return empty_mission_view()
-    if schema_version in {1, 2}:
+    if schema_version in {1, 2, 3}:
         payload["schema_version"] = MISSION_VIEW_SCHEMA_VERSION
+        if schema_version == 3:
+            payload["bootstrapped"] = False
         for key in (
             "hypotheses",
             "experiments",
@@ -148,6 +151,7 @@ def _read_unlocked(root: Path) -> dict[str, Any]:
             skill.pop("content", None)
             skill.pop("content_truncated", None)
     mission = payload.setdefault("mission", {})
+    mission.setdefault("summary", "")
     mission.setdefault("campaign_started_at", None)
     mission.setdefault("campaign_elapsed_seconds", 0.0)
     for role in payload.setdefault("roles", []):

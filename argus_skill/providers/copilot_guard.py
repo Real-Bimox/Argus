@@ -21,8 +21,8 @@ try:
 except ImportError:  # pragma: no cover - POSIX production path
     fcntl = None  # type: ignore[assignment]
 
-from .knob_store import persisted_knob
-from .paths import global_root
+from ..core.knob_store import persisted_knob
+from ..core.paths import global_root
 
 log = logging.getLogger(__name__)
 

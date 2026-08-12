@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from argus_skill.core.codex_usage import sum_token_counts
 from argus_skill.core.models import RunnerResult
+from argus_skill.core.token_usage import sum_token_counts
 from argus_skill.tools import subagent as _sub
 from argus_skill.tools.subagent import (
     SUPERVISOR_INTERVAL_CAP,

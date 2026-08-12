@@ -126,6 +126,16 @@ export function MissionControl({
             {outcome.map((row) => <span key={row}>{row}</span>)}
           </div>
         ) : null}
+        {view.mission.summary ? (
+          <div className="mt-3 rounded border border-ok/25 bg-ok/5 px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ok">
+              {t('mission.summary')}
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink-dim">
+              {view.mission.summary}
+            </p>
+          </div>
+        ) : null}
         {view.frontier.change ? (
           <div className="mt-3 rounded border border-blue/25 bg-blue/5 px-3 py-2">
             <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-blue-sky">

@@ -12,7 +12,7 @@ from argus_skill.agent_cli import _sandbox_commands as sandbox_commands
 from argus_skill.agent_cli import agent_cli_runner as runner_mod
 from argus_skill.agent_cli.agent_cli_runner import AgentCliRunner, RunnerOptions
 from argus_skill.agent_cli.runner_backend import BACKEND_OPENCODE
-from argus_skill.core.codex_usage import extract_token_usage
+from argus_skill.core.token_usage import extract_token_usage
 
 
 def _runner() -> AgentCliRunner:

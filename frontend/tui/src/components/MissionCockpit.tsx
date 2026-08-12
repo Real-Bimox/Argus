@@ -136,6 +136,12 @@ export function MissionCockpit({
             <Text>{outcome.join(' · ')}</Text>
           </Text>
         ) : null}
+        {view.mission.summary ? (
+          <Text wrap="truncate-end">
+            <Text dimColor>SUMMARY </Text>
+            <Text>{compact(view.mission.summary, Math.max(18, width - 10))}</Text>
+          </Text>
+        ) : null}
         <Box flexDirection="column">
           <Text dimColor>AI RESEARCH TEAM</Text>
           {ROLE_ORDER.map((name) => {
@@ -213,6 +219,12 @@ export function MissionCockpit({
         <Box>
           <Text dimColor>OUTCOME </Text>
           <Text wrap="truncate-end">{outcome.join(' · ')}</Text>
+        </Box>
+      ) : null}
+      {view.mission.summary ? (
+        <Box flexDirection="column" marginTop={1}>
+          <Text dimColor>MISSION SUMMARY</Text>
+          <Text wrap="wrap">{view.mission.summary}</Text>
         </Box>
       ) : null}
 

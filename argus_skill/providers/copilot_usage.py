@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from .paths import global_root
+from ..core.paths import global_root
 
 # Copilot records cost in nano-AI units. 1e9 nano-AIU = 1 AI credit and
 # 1 AI credit = $0.01, therefore one USD is 1e11 nano-AIU.

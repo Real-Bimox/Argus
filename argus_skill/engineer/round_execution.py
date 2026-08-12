@@ -38,9 +38,11 @@ from .round_state import (
     control_return,
 )
 from .round_stop_signals import (
+    authentication_review_decision,
     backend_failure_review_decision,
     daemon_stop_review_decision,
     external_pause_review_decision,
+    fatal_error_looks_like_auth_failure,
     fatal_error_looks_like_daemon_stop_request,
     fatal_error_looks_like_model_configuration,
     fatal_error_looks_like_operator_abort_request,
@@ -379,11 +381,19 @@ class RoundExecutionMixin:
 
         if stop_kind == "permanent_error":
             engineer_session.rotate("permanent_error")
-            review = backend_failure_review_decision(
-                fatal_error=fatal_error,
-                exit_code=getattr(engineer_result, "exit_code", 0),
-                streak=1,
-                threshold=1,
+            auth_failure = fatal_error_looks_like_auth_failure(fatal_error)
+            review = (
+                authentication_review_decision(
+                    fatal_error=fatal_error,
+                    exit_code=getattr(engineer_result, "exit_code", 0),
+                )
+                if auth_failure
+                else backend_failure_review_decision(
+                    fatal_error=fatal_error,
+                    exit_code=getattr(engineer_result, "exit_code", 0),
+                    streak=1,
+                    threshold=1,
+                )
             )
             state.rounds.append(RoundRecord(
                 round_index=round_index,
@@ -394,7 +404,7 @@ class RoundExecutionMixin:
                 stop_kind=stop_kind,
             ))
             return control_return((
-                "error",
+                "blocked" if auth_failure else "error",
                 state.rounds,
                 state.last_engineer_message,
                 review.reason,

@@ -78,6 +78,7 @@ def reduce_mission_lifecycle_event(
             "id": _text(event, "item_id"),
             "title": _text(event, "title", 240),
             "objective": _text(event, "objective", 2000),
+            "summary": "",
             "status": "working",
             "started_at": ts,
             "completed_at": None,
@@ -112,6 +113,7 @@ def reduce_mission_lifecycle_event(
             "id": _text(event, "item_id") or mission.get("id", ""),
             "title": _text(event, "title", 240) or mission.get("title", ""),
             "objective": _text(event, "objective", 2000) or mission.get("objective", ""),
+            "summary": _text(event, "summary", 1200),
             "status": mission_status,
             "completed_at": ts,
         })
@@ -127,7 +129,8 @@ def reduce_mission_lifecycle_event(
             )
         _set_role(view, "engineer", role_status, label, ts)
         detail = (
-            _text(event, "stop_reason", 2000)
+            _text(event, "summary", 1200)
+            or _text(event, "stop_reason", 2000)
             or _text(event, "failure_reason", 2000)
             or _text(event, "title", 500)
             or _text(event, "status", 500)

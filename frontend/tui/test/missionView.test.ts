@@ -64,11 +64,20 @@ test('achievement requires an explicit reviewer certification event', () => {
       item_id: 'task-1',
       title: 'Kernel v7',
       objective: 'Optimize kernel',
+      summary: 'Improved the kernel and verified the measured result.',
     },
   ];
   const completed = projectMissionView(snapshot(), events);
   assert.equal(completed.achievement, null);
   assert.equal(completed.mission.status, 'complete');
+  assert.equal(
+    completed.mission.summary,
+    'Improved the kernel and verified the measured result.',
+  );
+  assert.equal(
+    completed.timeline.at(-1)?.detail,
+    'Improved the kernel and verified the measured result.',
+  );
   assert.notEqual(completed.active_role, 'engineer');
 
   const certified = reduceMissionViewEvent(completed, {

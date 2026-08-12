@@ -67,7 +67,6 @@ class PlanningCycleVerdictMixin:
                 title=item.title,
                 reason=reason or "Planner produced no executable task.",
                 question=question,
-                recommendation="Provide one concrete next direction or stop the campaign.",
                 project_id=self.memory.root.name,
             )
         except Exception:  # noqa: BLE001 - the plain question is sufficient

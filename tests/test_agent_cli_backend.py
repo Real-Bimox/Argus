@@ -33,9 +33,9 @@ from argus_skill.adapters.agent_cli_backend import (
     _sum_token_counts,
     build_agent_cli_backend_from_env,
 )
-from argus_skill.core.codex_usage import extract_token_usage
-from argus_skill.core.copilot_usage import CopilotCallUsage, CopilotModelUsage
 from argus_skill.core.models import RunnerOptions
+from argus_skill.core.token_usage import extract_token_usage
+from argus_skill.providers.copilot_usage import CopilotCallUsage, CopilotModelUsage
 
 
 @dataclass
@@ -1288,9 +1288,41 @@ def test_copilot_policy_denial_with_exit_zero_sets_auth_failure(
 
     assert result.fatal_error == "Error: Access denied by policy settings"
     assert backend._auth_failure_detected is True
-    from argus_skill.core.copilot_guard import copilot_guard_snapshot
+    from argus_skill.providers.copilot_guard import copilot_guard_snapshot
 
     assert copilot_guard_snapshot()["blocked_until"] > 0
+
+
+def test_oauth_refresh_timeout_is_a_permanent_auth_blocker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = AgentCliBackend(backend="pi")
+
+    def fake_run_exec(self: Any, **kwargs: Any) -> AgentRunResult:
+        return AgentRunResult(
+            command=["pi"],
+            exit_code=1,
+            thread_id=None,
+            agent_messages=[],
+            json_events=[],
+            stdout_lines=[],
+            stderr_lines=[],
+            turn_completed=False,
+            turn_failed=True,
+            fatal_error=(
+                "OAuth refresh failed for github-copilot: The operation timed out."
+            ),
+        )
+
+    monkeypatch.setattr(backend._runner.__class__, "run_exec", fake_run_exec, raising=True)
+    result = backend.run_exec(
+        prompt="x",
+        options=RunnerOptions(),
+        run_label="engineer-r1",
+    )
+
+    assert result.stop_kind == "permanent_error"
+    assert backend._auth_failure_detected is True
 
 
 def test_run_exec_normalizes_high_attempt_reconnect_notice(

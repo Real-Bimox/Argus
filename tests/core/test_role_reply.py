@@ -20,6 +20,7 @@ from argus_skill.core.role_reply import (
     read_key_values,
     read_list,
     read_optional,
+    strip_named_lines,
 )
 
 _KEYS = ("VERTICAL", "WORKFLOW_MODE", "CONFIDENCE", "RATIONALE", "TARGET_VENUE")
@@ -261,6 +262,20 @@ OPERATOR_QUESTION=none
     assert read_key_values(reply, _VERDICT)["NEXT_ACTION"] == (
         "Fuse the epilogue and re-measure."
     )
+
+
+def test_internal_handoff_lines_are_removed_from_visible_speech() -> None:
+    visible = strip_named_lines(
+        (
+            "Waiting for your format choice.\n"
+            "MILESTONE_STATUS=continue\n"
+            "OPERATOR_QUESTION=Which format?\n"
+            "OPERATOR_OPTIONS=json :: false :: JSON :: Structured report"
+        ),
+        ("MILESTONE_STATUS", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
+    )
+
+    assert visible == "Waiting for your format choice."
 
 
 def test_a_block_stops_at_the_next_key_not_at_the_end() -> None:

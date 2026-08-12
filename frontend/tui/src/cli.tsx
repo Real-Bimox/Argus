@@ -323,6 +323,7 @@ async function runOnce(api: ApiClient, count: number): Promise<void> {
     daemon_alive: snap.daemon.alive,
     roles: snap.roles.map((r) => `${r.role}:${r.active ? 'active' : 'idle'}`),
     backlog: snap.backlog.length,
+    mission_summary: snap.mission_view?.mission.summary ?? '',
     events,
   };
   process.stdout.write(JSON.stringify(out, null, 2) + '\n');

@@ -14,14 +14,14 @@ import re
 import threading
 from typing import Any
 
-from ...core.codex_usage import TokenUsage, extract_token_usage, sum_token_counts
-from ...core.copilot_usage import CopilotCallUsage
 from ...core.models import RunnerResult
 from ...core.stop_kinds import (
     StopKind,
     normalize_stop_kind,
     stop_kind_from_external_interrupt,
 )
+from ...core.token_usage import TokenUsage, extract_token_usage, sum_token_counts
+from ...providers.copilot_usage import CopilotCallUsage
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +48,8 @@ _AUTH_FAILURE_PATTERNS: tuple[str, ...] = (
     "invalid api key",
     "no api key",
     "missing credentials",
+    "oauth refresh failed",
+    "token refresh failed",
     "no models available",
     "use /login",
 )

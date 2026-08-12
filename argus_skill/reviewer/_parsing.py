@@ -12,6 +12,10 @@ from ..core.model_visible_text import (
     sanitize_model_judgment_text,
 )
 from ..core.models import ReviewDecision
+from ..core.operator_decision import (
+    normalize_agent_options,
+    parse_agent_operator_options,
+)
 from ..core.research_contract import normalize_research_result
 
 _STATUSES = {"done", "continue", "blocked", "replan_requested"}
@@ -265,6 +269,11 @@ def parse_decision_text(
                 reason=reason.strip(),
                 next_action=next_action.strip(),
                 operator_question=str(operator_question or "").strip(),
+                operator_options=normalize_agent_options(
+                    option
+                    for option in (parsed.get("operator_options") or [])
+                    if isinstance(option, dict)
+                ),
                 checkpoint_recommended=bool(parsed.get("checkpoint_recommended", False)),
                 research_result=normalize_research_result(
                     parsed.get("research_result")
@@ -292,6 +301,7 @@ _VERDICT_KEYS = (
     "REASON",
     "NEXT_ACTION",
     "OPERATOR_QUESTION",
+    "OPERATOR_OPTIONS",
     "CHECKPOINT_RECOMMENDED",
     "RESEARCH_RESULT",
     "FORWARD_PROGRESS",
@@ -350,6 +360,7 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
             reason=reason.strip()[:5000],
             next_action=read_block(text, "NEXT_ACTION", _VERDICT_KEYS).strip()[:1500],
             operator_question=read_optional(values, "OPERATOR_QUESTION")[:500],
+            operator_options=parse_agent_operator_options(text),
             checkpoint_recommended=(
                 read_optional(values, "CHECKPOINT_RECOMMENDED").casefold() == "true"
             ),

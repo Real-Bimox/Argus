@@ -38,7 +38,7 @@ export function ExperimentsPage(props: WorkspacePageProps) {
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now() / 1_000), 1_000); return () => clearInterval(timer); }, []);
   const estimate = useMemo(() => deriveProgressEstimate(props.snapshot, props.events, now, locale), [locale, now, props.events, props.snapshot]);
   const view = props.snapshot.mission_view;
-  const dag: MissionDagNode[] = view?.dag?.length ? view.dag : props.snapshot.backlog.map((item) => ({ id: item.id, title: item.title, objective: item.objective, status: item.status, deps: item.deps ?? [] }));
+  const dag: MissionDagNode[] = view?.dag?.length ? view.dag : props.snapshot.backlog.map((item) => ({ id: item.id, title: item.title, objective: item.objective, status: item.status, deps: item.deps ?? [], branch_id: item.id, parent_branch_id: '' }));
   const activeTask = dag.find((task) => ACTIVE.has(task.status)) ?? dag.find((task) => /pending|queued/.test(task.status)) ?? dag.at(-1);
   const selected = dag.find((task) => task.id === selectedTask) ?? activeTask;
   const currentStage = stageIndex(view?.stage.id || view?.stage.label || 'scope');

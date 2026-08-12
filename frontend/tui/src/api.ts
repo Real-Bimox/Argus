@@ -540,6 +540,21 @@ export class ApiClient {
     return (await this.getJson<{ item: BacklogItem }>(`/backlog/${encodeURIComponent(id)}`)).item;
   }
 
+  answerPending(itemId: string, text: string): Promise<Record<string, unknown>> {
+    return this.post(`/backlog/${encodeURIComponent(itemId)}/answer`, { text });
+  }
+
+  resolveDecision(
+    decisionId: string,
+    optionId: string,
+    note: string,
+  ): Promise<Record<string, unknown>> {
+    return this.post(`/decisions/${encodeURIComponent(decisionId)}/resolve`, {
+      option_id: optionId,
+      note,
+    });
+  }
+
   getArtifact(path: string): Promise<ArtifactInfo> {
     const q = new URLSearchParams({ path });
     return this.getJson<ArtifactInfo>(`/artifact?${q}`);

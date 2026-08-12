@@ -6,6 +6,7 @@ import {
   isReasoning,
   isStructuredAgentPayload,
   mergeFragment,
+  visibleAgentText,
 } from '../../../core/src/events';
 import type { Locale } from '../i18n';
 
@@ -85,7 +86,7 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
   const roleLabel = (role: string) => (locale === 'zh-CN' ? ROLE_LABEL_ZH : ROLE_LABEL)[role] || role;
 
   if (t === 'ui.operator') {
-    const body = S(ev, 'text');
+    const body = visibleAgentText(S(ev, 'text'));
     return body ? { role: 'operator', label: l('You', '你'), glyph: '›', text: body, tone: 'bright', rule: true } : null;
   }
   if (t === 'ui.argus') {
@@ -105,7 +106,7 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
     }
     if (kind === 'assistant_message' || kind === 'agent_message' || kind === 'message') {
       if (isStructuredAgentPayload(ev)) return null;
-      const body = trunc(S(ev, 'text'), 280);
+      const body = visibleAgentText(S(ev, 'text'));
       if (!body) return null;
       return { role: layer, label: roleLabel(layer), glyph: '▌', text: body, tone: 'bright' };
     }
@@ -183,11 +184,12 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
     return { role: 'critic', label: 'Critic', glyph: '🔁', text: l('queued next iteration', '已加入下一轮迭代'), tone: 'dim' };
   if (t === 'life.mission.completed' || t === 'mission.completed' || t === 'loop.completed') {
     const presentation = missionOutcomePresentation(ev);
+    const summary = trunc(S(ev, 'summary'), 240);
     return {
       role: 'engineer',
       label: 'Engineer',
       glyph: presentation.glyph,
-      text: presentation.label,
+      text: summary ? `${presentation.label} · ${summary}` : presentation.label,
       tone: presentation.tone,
       rule: true,
     };

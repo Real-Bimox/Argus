@@ -21,9 +21,7 @@ export function PendingReplyDialog({
 }) {
   const { t } = useI18n();
   const defaultOption = useMemo(
-    () => reply?.options.find((option) => option.id === 'recommended')?.id
-      ?? reply?.options[0]?.id
-      ?? 'custom',
+    () => reply?.options[0]?.id ?? 'custom',
     [reply],
   );
   const [optionId, setOptionId] = useState(defaultOption);
@@ -35,10 +33,13 @@ export function PendingReplyDialog({
   }, [defaultOption, open, reply?.id]);
   if (!reply) return null;
 
+  const freeform = reply.options.length === 0;
   const selected = reply.options.find((option) => option.id === optionId);
-  const canSubmit = Boolean(selected && (!selected.requires_note || note.trim()));
+  const canSubmit = freeform
+    ? Boolean(note.trim())
+    : Boolean(selected && (!selected.requires_note || note.trim()));
   const submit = () => {
-    if (!busy && canSubmit) onSubmit(optionId, note.trim());
+    if (!busy && canSubmit) onSubmit(freeform ? 'custom' : optionId, note.trim());
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (isImeComposing(event)) return;
@@ -76,8 +77,9 @@ export function PendingReplyDialog({
 
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{reply.question}</p>
 
-        <div className="space-y-2">
-          {reply.options.map((option) => (
+        {reply.options.length ? (
+          <div className="space-y-2">
+            {reply.options.map((option) => (
             <button
               key={option.id}
               type="button"
@@ -90,10 +92,11 @@ export function PendingReplyDialog({
               <div className="text-sm font-medium text-ink">{option.label}</div>
               <div className="mt-1 text-xs leading-relaxed text-ink-dim">{option.description}</div>
             </button>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : null}
 
-        {selected?.requires_note || note ? (
+        {freeform || selected?.requires_note || note ? (
           <textarea
             data-autofocus
             value={note}
@@ -111,7 +114,13 @@ export function PendingReplyDialog({
           <div className="flex gap-2">
             <button type="button" onClick={onClose} disabled={busy} className="rounded-md px-3 py-2 text-xs text-ink-dim hover:bg-bg disabled:opacity-50">{t('decision.later')}</button>
             <button type="button" onClick={submit} disabled={busy || !canSubmit} className="rounded-md bg-blue-deep px-3 py-2 text-xs font-medium text-white hover:bg-blue-deep/85 disabled:opacity-50">
-              {busy ? t('decision.applying') : optionId === 'stop' ? t('decision.stopCampaign') : t('decision.useOption')}
+              {busy
+                ? t('decision.applying')
+                : freeform
+                  ? t('decision.sendAnswer')
+                  : optionId === 'stop'
+                    ? t('decision.stopCampaign')
+                    : t('decision.useOption')}
             </button>
           </div>
         </div>

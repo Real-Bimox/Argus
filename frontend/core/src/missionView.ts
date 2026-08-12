@@ -33,12 +33,13 @@ function copyView(view: MissionView): MissionView {
 
 export function emptyMissionView(): MissionView {
   return {
-    schema_version: 3,
+    schema_version: 4,
     bootstrapped: false,
     mission: {
       id: '',
       title: '',
       objective: '',
+      summary: '',
       status: 'idle',
       started_at: null,
       completed_at: null,
@@ -288,6 +289,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
       id: S(event, 'item_id'),
       title: S(event, 'title'),
       objective: S(event, 'objective'),
+      summary: '',
       status: 'working',
       started_at: ts,
       completed_at: null,
@@ -476,6 +478,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     view.mission.id = S(event, 'item_id') || view.mission.id;
     view.mission.title = S(event, 'title') || view.mission.title;
     view.mission.objective = S(event, 'objective') || view.mission.objective;
+    view.mission.summary = S(event, 'summary');
     view.mission.status = presentation.missionStatus;
     view.mission.completed_at = ts;
     view.outcome = missionOutcomeDimensions(event);
@@ -491,7 +494,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
       event,
       'engineer',
       presentation.label,
-      S(event, 'title') || S(event, 'status'),
+      S(event, 'summary') || S(event, 'title') || S(event, 'status'),
       missionTimelineTone(presentation.tone),
     );
     addRoleWork(
@@ -500,7 +503,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
       'engineer',
       'completion',
       presentation.label,
-      S(event, 'title') || S(event, 'status'),
+      S(event, 'summary') || S(event, 'title') || S(event, 'status'),
       presentation.missionStatus,
     );
   }

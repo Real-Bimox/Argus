@@ -510,7 +510,6 @@ class LifeSupervisor(
                     title=item.title,
                     reason=str(challenge.get("manager_reason") or ""),
                     question=question,
-                    recommendation="Keep the current operator-owned constraint.",
                     project_id=self.memory.root.name,
                 )
                 self.memory.backlog.update(
@@ -1246,8 +1245,25 @@ class LifeSupervisor(
             item_id = str(event.get("item_id") or "").strip()
             if not item_id:
                 return
+            from ...core.transcript import read_turns
+
+            language_hint = next(
+                (
+                    str(turn.get("text") or "")
+                    for turn in reversed(read_turns(life_dir, limit=20))
+                    if turn.get("role") == "operator"
+                ),
+                "",
+            )
+            chinese = any("\u3400" <= char <= "\u9fff" for char in language_hint)
             title = str(event.get("title") or "Team mission").strip()
             success = bool(event.get("success"))
+            summary = str(event.get("summary") or "").strip()
+            summary_line = (
+                f"{'本次完成' if chinese else 'Mission summary'}: {summary}"
+                if summary
+                else ""
+            )
             outcome = event.get("outcome")
             outcome = outcome if isinstance(outcome, dict) else {}
             review = str(outcome.get("review_status") or "").strip()
@@ -1291,16 +1307,24 @@ class LifeSupervisor(
                         )
                     },
                 )
-                from ...core.transcript import read_turns
-
-                language_hint = next(
-                    (
-                        str(turn.get("text") or "")
-                        for turn in reversed(read_turns(life_dir, limit=20))
-                        if turn.get("role") == "operator"
-                    ),
-                    "",
-                )
+                if operator_question:
+                    publish_operator_message(
+                        life_dir,
+                        text="\n".join(
+                            part
+                            for part in (title, summary_line, operator_question)
+                            if part
+                        ),
+                        message_id=f"mission-result-{item_id}-{status}",
+                        event_fields={
+                            "mission_result": True,
+                            "item_id": item_id,
+                            "success": False,
+                            "operator_question": operator_question,
+                            "summary": summary,
+                        },
+                    )
+                    return
                 text = render_operator_update(
                     title=title,
                     status=status,
@@ -1311,12 +1335,13 @@ class LifeSupervisor(
                 )
                 publish_operator_message(
                     life_dir,
-                    text=text,
+                    text="\n".join(part for part in (text, summary_line) if part),
                     message_id=f"mission-result-{item_id}-{status}",
                     event_fields={
                         "mission_result": True,
                         "item_id": item_id,
                         "success": False,
+                        "summary": summary,
                     },
                 )
                 return
@@ -1342,12 +1367,21 @@ class LifeSupervisor(
                 continuation = "This task is finished."
             publish_operator_message(
                 life_dir,
-                text=f"{result}\n{continuation}",
+                text="\n".join(
+                    part
+                    for part in (
+                        result,
+                        summary_line,
+                        continuation,
+                    )
+                    if part
+                ),
                 message_id=f"mission-result-{item_id}-{str(event.get('status') or '')}",
                 event_fields={
                     "mission_result": True,
                     "item_id": item_id,
                     "success": success,
+                    "summary": summary,
                 },
             )
         except Exception:  # noqa: BLE001 - notification must not break supervision

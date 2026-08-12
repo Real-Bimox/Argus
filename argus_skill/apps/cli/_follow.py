@@ -12,6 +12,7 @@ from typing import Any, Callable, Sequence
 from urllib.parse import urlencode
 
 from ...core import paths as core_paths
+from ...core.role_reply import strip_named_lines
 from ...core.secret_guard import known_secret_values, redact_secrets_text
 from .._inbox import format_inbox_event
 from . import _core
@@ -326,10 +327,14 @@ def _format_follow_agent_message(layer: str, text: str, *, full: bool = False) -
             reason = _clean_follow_text(str(data.get("reason") or ""), limit=None)
             verdict = "project done" if done else f"queue {count} task(s)"
             return f"💭 planner verdict: {verdict}" + (f" · {reason}" if reason else "")
-    body = _clean_follow_text(text, limit=None)
-    # ``full`` (the Ctrl+O reasoning pane) shows the WHOLE thought — the pane
-    # word-wraps it, so there is no edge truncation and no "(+N chars)" tail.
-    return "💭 " + (body if full else _clip_follow_summary(body, 240))
+    body = _clean_follow_text(
+        strip_named_lines(
+            text,
+            ("MILESTONE_STATUS", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
+        ),
+        limit=None,
+    )
+    return "💭 " + body
 
 
 def _format_follow_command(event: dict) -> str:

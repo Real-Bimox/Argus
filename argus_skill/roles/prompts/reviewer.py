@@ -617,6 +617,7 @@ def render_reviewer_prompt(
         "REASON=<the verdict rationale>\n"
         "NEXT_ACTION=<the Engineer instruction; empty for done>\n"
         "OPERATOR_QUESTION=<operator-only blocker, or none>\n"
+        "OPERATOR_OPTIONS=<id :: true|false :: label :: description; ...|none>\n"
         + (
             "RESEARCH_RESULT=<JSON research-result contract>\n"
             if _research_target_level is not None
@@ -669,8 +670,10 @@ def render_reviewer_prompt(
         "work may be done while PLAN_SIGNAL=reconsider.\n"
         "FORWARD_PROGRESS tracks artifact/risk/uncertainty change, not activity or one "
         "proxy. Bounded regressions need all envelope parts. SESSION_SIGNAL needs "
-        "explicit cross-turn evidence. AUTHORITY_IMPACT=operator requires one concrete "
-        "OPERATOR_QUESTION. Final-submission done certifies the project; bounded done "
+        "explicit cross-turn evidence. For operator authority, write the question and up "
+        "to five concrete options in the operator's language; true requires a note and "
+        "stop explicitly stops. No generic choices. Final-submission "
+        "done certifies the project; bounded done "
         "certifies only the mission.\n\n"
         + objective_block
         + "Operator messages:\n"

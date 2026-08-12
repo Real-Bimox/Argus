@@ -21,7 +21,20 @@ def _blocked_project(tmp_path, sid: str = "s-decision"):
         title=item.title,
         reason="Provider access is missing.",
         question="Use the fallback?",
-        recommendation="Use the local fallback.",
+        options=[
+            {
+                "id": "local-fallback",
+                "label": "Use the local fallback",
+                "description": "Use the local fallback.",
+                "requires_note": False,
+            },
+            {
+                "id": "stop",
+                "label": "Stop this campaign",
+                "description": "Keep the current work and stop.",
+                "requires_note": False,
+            },
+        ],
     )
     mem.backlog.update(
         item.id,
@@ -46,7 +59,20 @@ def _bound_blocked_project(tmp_path, sid: str = "s-decision"):
         title=item.title,
         reason="Provider access is missing.",
         question="Use the fallback?",
-        recommendation="Use the local fallback.",
+        options=[
+            {
+                "id": "local-fallback",
+                "label": "Use the local fallback",
+                "description": "Use the local fallback.",
+                "requires_note": False,
+            },
+            {
+                "id": "stop",
+                "label": "Stop this campaign",
+                "description": "Keep the current work and stop.",
+                "requires_note": False,
+            },
+        ],
         project_id=sid,
     )
     mem.backlog.update(
@@ -88,7 +114,7 @@ def test_stop_option_resolves_item_and_disables_campaign(tmp_path) -> None:
     assert "event_validation" not in stopped[-1]
 
 
-def test_recommended_option_routes_text_through_answer_handler(tmp_path, monkeypatch) -> None:
+def test_agent_option_routes_text_through_answer_handler(tmp_path, monkeypatch) -> None:
     _mem, card = _blocked_project(tmp_path)
     seen: dict[str, object] = {}
 
@@ -100,7 +126,7 @@ def test_recommended_option_routes_text_through_answer_handler(tmp_path, monkeyp
     result = manager_pending_question.manager_resolve_operator_decision(
         "s-decision",
         card["id"],
-        "recommended",
+        "local-fallback",
         global_root=tmp_path,
     )
 
@@ -110,7 +136,7 @@ def test_recommended_option_routes_text_through_answer_handler(tmp_path, monkeyp
         "decision_id": card["id"],
     }
     assert seen["text"] == "Use the local fallback."
-    assert seen["kwargs"]["decision_option"] == "recommended"
+    assert seen["kwargs"]["decision_option"] == "local-fallback"
 
 
 def test_repeated_decision_is_idempotent_across_reopened_memory(
@@ -128,13 +154,13 @@ def test_repeated_decision_is_idempotent_across_reopened_memory(
     first = manager_pending_question.manager_resolve_operator_decision(
         "s-decision",
         card["id"],
-        "recommended",
+        "local-fallback",
         global_root=tmp_path,
     )
     second = manager_pending_question.manager_resolve_operator_decision(
         "s-decision",
         card["id"],
-        "recommended",
+        "local-fallback",
         global_root=tmp_path,
     )
 
@@ -178,7 +204,7 @@ def test_campaign_generation_change_does_not_block_pending_decision(
     result = manager_pending_question.manager_resolve_operator_decision(
         "s-decision",
         card["id"],
-        "recommended",
+        "local-fallback",
         global_root=tmp_path,
     )
 
@@ -206,7 +232,7 @@ def test_concurrent_same_decision_returns_accepted_and_already_applied(
         return manager_pending_question.manager_resolve_operator_decision(
             "s-decision",
             card["id"],
-            "recommended",
+            "local-fallback",
             global_root=tmp_path,
         )
 

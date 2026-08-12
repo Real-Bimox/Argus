@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from argus_skill.core.codex_usage import TokenUsage, extract_token_usage
+from argus_skill.core.token_usage import TokenUsage, extract_token_usage
 from argus_skill.core.usage import (
     UsageLedger,
     UsageRecord,

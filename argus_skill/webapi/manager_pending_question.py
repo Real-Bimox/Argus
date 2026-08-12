@@ -510,6 +510,10 @@ def manager_resolve_operator_decision(
             conflict["answered_item_id"] = item.id
             return conflict
         if option_id == "stop":
+            try:
+                operator_text = selected_decision_text(card, option_id, note)
+            except ValueError as exc:
+                return {"error": str(exc)}
             stopped = mem.backlog.stop_for_operator_decision(
                 item.id,
                 note=note,
@@ -551,7 +555,6 @@ def manager_resolve_operator_decision(
             from ..life.event_log import JsonlEventSink
 
             turn_id = f"decision-{decision_id}"
-            operator_text = note.strip() or "Stop this campaign."
             append_turn(
                 mem.project_root,
                 "operator",

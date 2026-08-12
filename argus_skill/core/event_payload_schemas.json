@@ -184,6 +184,7 @@
         "objective": {"type": "string"},
         "scope": {"type": "string"},
         "status": {"type": "string", "minLength": 1},
+        "summary": {"type": "string"},
         "outcome_class": {
           "type": "string",
           "enum": [
@@ -315,6 +316,18 @@
         "reason": {"type": "string"},
         "next_action": {"type": "string"},
         "operator_question": {"type": "string"},
+        "operator_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "label": {"type": "string"},
+              "description": {"type": "string"},
+              "requires_note": {"type": "boolean"}
+            }
+          }
+        },
         "review_source": {"type": "string"},
         "forward_progress": {"type": "boolean"},
         "plan_signal": {"type": "string"},

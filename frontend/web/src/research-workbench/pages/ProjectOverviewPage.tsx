@@ -57,7 +57,7 @@ export function ProjectOverviewPage(props: WorkspacePageProps) {
           <div className="overview-mission">
             <div><TimerReset size={18} /><span>{view?.mission.status || 'idle'}</span></div>
             <h3>{view?.mission.title || props.project.current_task || text('等待新任务', 'Waiting for a new task')}</h3>
-            <p>{view?.frontier.summary || view?.review.reason || text('Argus 的下一步和 Reviewer 边界会在这里同步。', 'Argus next steps and reviewer boundaries appear here.')}</p>
+            <p>{view?.mission.summary || view?.frontier.summary || view?.review.reason || text('Argus 的下一步和 Reviewer 边界会在这里同步。', 'Argus next steps and reviewer boundaries appear here.')}</p>
             <button className="button button--secondary" type="button" onClick={() => props.navigate('experiments')}>{text('查看完整实验进程', 'View experiment progress')} <ArrowRight size={14} /></button>
           </div>
         </Panel>

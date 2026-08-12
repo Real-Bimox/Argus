@@ -301,7 +301,7 @@ class SkillLoop(
         request_anchor = (original_objective or objective_for_skill or task).strip() or task
         self._emit({
             "type": EventType.LOOP_START,
-            "text": f"task: {skill_task[:120]}",
+            "text": f"task: {skill_task}",
         })
 
         mission = MissionContext(

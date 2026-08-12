@@ -20,6 +20,7 @@ import {
 import { DaemonReplacementPicker } from '../src/components/DaemonReplacementPicker.js';
 import { CostGauge } from '../src/components/CostGauge.js';
 import { MissionCockpit } from '../src/components/MissionCockpit.js';
+import { PendingDecisionPrompt } from '../src/components/PendingDecisionPrompt.js';
 import { emptyMissionView } from '../../core/src/missionView.js';
 import type { EventMsg, Snapshot } from '../src/api.js';
 import { SLASH_COMMANDS } from '../src/input/slash.js';
@@ -165,6 +166,7 @@ test('header establishes the autonomous research lab identity without ops clutte
 test('mission cockpit keeps mission, team, and timeline readable at 60 columns', async () => {
   const view = emptyMissionView();
   view.mission.objective = 'Optimize FlashAttention on B200 beyond 65% SOL';
+  view.mission.summary = 'Improved the kernel and verified the measured result.';
   view.mission.elapsed_seconds = 8040;
   view.stage = { id: 'optimize', label: 'Optimize' };
   view.round = { current: 7, max: 24 };
@@ -179,9 +181,84 @@ test('mission cockpit keeps mission, team, and timeline readable at 60 columns',
   assert.match(output, /AI RESEARCH TEAM/);
   assert.match(output, /LIVE RESEARCH TIMELINE/);
   assert.match(output, /Comparing 3 branches/);
+  assert.match(output, /MISSION SUMMARY/);
+  assert.match(output, /Improved the kernel/);
   assert.match(output, /● Comparing 3 branches/);
   assert.doesNotMatch(output, /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
   assert.ok(output.split('\n').every((line) => stringWidth(line) <= 60));
+});
+
+test('operator decision prompt shows the full blocker and answer controls', async () => {
+  const card = {
+    id: 'decision-1',
+    item_id: 'mission-1',
+    revision: 1,
+    status: 'pending' as const,
+    title: 'macOS Accessibility permission required',
+    reason: 'The verification process cannot control System Events.',
+    question: (
+      'Open System Settings → Privacy & Security → Accessibility, enable '
+      + 'Terminal and Node, then return here to retry the verification.'
+    ),
+    evidence: [],
+    options: [
+      {
+        id: 'retry',
+        label: 'Permission enabled — retry',
+        description: 'Resume the same mission and rerun the verification.',
+        requires_note: false,
+      },
+      {
+        id: 'custom',
+        label: 'Give different guidance',
+        description: 'Tell Argus what to do instead.',
+        requires_note: true,
+      },
+    ],
+    selected_option: '',
+    note: '',
+  };
+  const output = await renderNode(React.createElement(PendingDecisionPrompt, {
+    card,
+    selection: 1,
+    note: { value: 'Use the signed helper app', cursor: 25 },
+    busy: false,
+    error: '',
+  }), 80);
+
+  assert.match(output, /ACTION REQUIRED/);
+  assert.match(output, /System Settings/);
+  assert.match(output, /Permission enabled — retry/);
+  assert.match(output, /Use the signed helper app/);
+  assert.match(output, /Enter confirm/);
+  assert.ok(output.split('\n').every((line) => stringWidth(line) <= 80));
+});
+
+test('operator decision prompt never fabricates choices when the agent supplied none', async () => {
+  const output = await renderNode(React.createElement(PendingDecisionPrompt, {
+    card: {
+      id: 'decision-freeform',
+      item_id: 'mission-freeform',
+      revision: 1,
+      status: 'pending',
+      title: 'Accessibility permission required',
+      reason: '',
+      question: 'Which terminal should receive Accessibility permission?',
+      evidence: [],
+      options: [],
+      options_source: 'none',
+      selected_option: '',
+      note: '',
+    },
+    selection: 0,
+    note: { value: 'Visual Studio Code', cursor: 18 },
+    busy: false,
+    error: '',
+  }), 80);
+
+  assert.match(output, /Your response › Visual Studio Code/);
+  assert.match(output, /Type your answer · Enter send/);
+  assert.doesNotMatch(output, /按建议继续|给出其他指示|保留当前结果并停止/);
 });
 
 test('operations panel owns cost, quota, pid, backend, and model details', async () => {

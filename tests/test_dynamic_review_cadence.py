@@ -108,7 +108,8 @@ def test_low_risk_task_can_finish_with_engineer_self_review(tmp_path: Path) -> N
     assert rounds[0].review.review_source == "engineer_self_review"
     review_events = [event for event in events if event["type"] == "round.review.completed"]
     assert review_events[0]["review_source"] == "engineer_self_review"
-    assert "without an independent Reviewer call" in reason
+    assert "independent review was not required" in reason
+    assert "Host-defined" not in reason
     assert tid is None
 
 
@@ -155,7 +156,9 @@ def test_engineer_operator_question_parks_without_reviewer(tmp_path: Path) -> No
             message=(
                 "The required choice belongs to the operator.\n"
                 "MILESTONE_STATUS=continue\n"
-                "OPERATOR_QUESTION=请选择 A 或 B"
+                "OPERATOR_QUESTION=请选择 A 或 B\n"
+                "OPERATOR_OPTIONS=route-a :: false :: 选择 A :: 使用 A 路线继续。; "
+                "route-b :: false :: 选择 B :: 使用 B 路线继续。"
             ),
             thread_id="t1",
         ),
@@ -178,7 +181,12 @@ def test_engineer_operator_question_parks_without_reviewer(tmp_path: Path) -> No
     assert len(rounds) == 1
     assert rounds[0].review.review_source == "engineer_operator_question"
     assert rounds[0].review.operator_question == "请选择 A 或 B"
+    assert [option["label"] for option in rounds[0].review.operator_options] == [
+        "选择 A",
+        "选择 B",
+    ]
     assert rounds[0].review.planner_report["authority_impact"] == "operator"
     assert "operator-owned decision" in reason
     review_events = [event for event in events if event["type"] == "round.review.completed"]
     assert review_events[0]["operator_question"] == "请选择 A 或 B"
+    assert review_events[0]["operator_options"][0]["id"] == "route-a"
