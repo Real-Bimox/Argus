@@ -99,7 +99,7 @@ def render_operator_update(
     else:
         first = f"未能完成：{subject}。" if chinese else f"Could not complete {subject}."
     lines = [first]
-    if why:
+    if why and state not in {"aborted", "cancelled", "canceled"}:
         lines.append(("原因：" if chinese else "Reason: ") + why)
     if action:
         prefix = (

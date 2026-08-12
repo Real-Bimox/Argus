@@ -90,6 +90,7 @@ def test_operator_abort_is_not_rendered_as_a_failure_or_retry() -> None:
 
     assert text.startswith("已取消：Analyze app.py。")
     assert "未能完成" not in text
+    assert "原因" not in text
     assert "下一步" not in text
 
 
