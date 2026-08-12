@@ -191,6 +191,13 @@ argus --status   # 查看当前运行状态
 
 ## 交互界面
 
+### Windows Desktop
+
+Windows x64 源码包含一个 Electron 桌面宿主：它监管由同一套 Argus 运行时冻结得到的
+本地后端，并直接打开现有 Web Cockpit；Manager、Workbench 与 WebAPI 不存在单独的
+Desktop 分叉。源码运行、安全边界、验收和打包命令见
+**[Windows Desktop 文档](docs/windows-desktop.md)**。
+
 ### Terminal Cockpit
 
 ```bash
