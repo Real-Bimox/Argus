@@ -402,13 +402,14 @@ export const api = {
       response = await send();
     }
     await ensureResponseOk(response, 'POST', path);
-    return (await response.json()) as {
+    const result = (await response.json()) as {
       sid: string;
       rc: number;
       daemon: Daemon;
       objective: string;
       workdir: string;
     };
+    return requireDaemonCommand(result);
   },
   updateProject: (sid: string, name: string) =>
     mutationJson<{ ok: boolean; sid: string; name: string }>('PATCH', P(sid), { name }),

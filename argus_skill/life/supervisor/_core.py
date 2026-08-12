@@ -1291,12 +1291,23 @@ class LifeSupervisor(
                         )
                     },
                 )
+                from ...core.transcript import read_turns
+
+                language_hint = next(
+                    (
+                        str(turn.get("text") or "")
+                        for turn in reversed(read_turns(life_dir, limit=20))
+                        if turn.get("role") == "operator"
+                    ),
+                    "",
+                )
                 text = render_operator_update(
                     title=title,
                     status=status,
                     reason=reason,
                     next_action=next_action,
                     user_action_required=intervention.required,
+                    language_hint=language_hint,
                 )
                 publish_operator_message(
                     life_dir,

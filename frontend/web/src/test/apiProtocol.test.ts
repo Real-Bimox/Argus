@@ -230,6 +230,19 @@ describe('web API protocol handshake', () => {
     expect(bodies[0]).not.toHaveProperty('launch_cwd');
   });
 
+  it('rejects an HTTP-successful daemon creation failure', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({
+      rc: 3,
+      command_status: 'failed',
+      error: 'workdir is unavailable',
+    })));
+    const { api } = await import('../api');
+
+    await expect(api.createDaemon('', 'Broken', '/missing')).rejects.toThrow(
+      'workdir is unavailable',
+    );
+  });
+
   it('wires the complete Web administration surface', async () => {
     const fetchMock = vi.fn(async (path: string, _init?: RequestInit) => {
       if (path === '/api/metrics') return Response.json({ slo: { status: 'healthy' } });

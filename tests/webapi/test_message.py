@@ -343,6 +343,43 @@ def test_recent_identical_team_request_reuses_durable_existing_item(
     assert len(LifeMemory.open(life).backlog.all()) == 1
 
 
+def test_recent_identical_raw_team_request_survives_manager_rewording(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from argus_skill.core.transcript import append_turn
+
+    sid = "s-team-reworded-replay"
+    life = _make_project(tmp_path, sid)
+    manager_state._STATES.clear()
+    request = "启动 TEAM，只创建 result.txt。"
+    append_turn(life, "operator", request)
+    item = LifeMemory.open(life).backlog.add(
+        BacklogItem.new(
+            title="Create result",
+            objective="Create only result.txt.",
+            manager_decision={"routed": True},
+        )
+    )
+    monkeypatch.setattr(
+        config_intent,
+        "_front_door_classify",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("duplicate TEAM replay must not call the model")
+        ),
+    )
+
+    result = manager_bridge.manager_message(
+        sid,
+        request,
+        global_root=tmp_path,
+    )
+
+    assert result["duplicate"] is True
+    assert result["item"]["id"] == item.id
+    assert len(LifeMemory.open(life).backlog.all()) == 1
+
+
 def test_explicit_authorization_persists_current_blocker_and_never_dispatches(
     tmp_path: Path, monkeypatch,
 ) -> None:

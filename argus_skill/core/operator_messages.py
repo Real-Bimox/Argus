@@ -72,17 +72,20 @@ def render_operator_update(
     reason: str = "",
     next_action: str = "",
     user_action_required: bool = False,
+    language_hint: str = "",
 ) -> str:
     """Render structured runtime state as a short, plain operator update."""
     subject = str(title or "the current task").strip()
     state = str(status or "").strip().lower()
-    chinese = bool(_CJK_RE.search(subject))
+    chinese = bool(_CJK_RE.search(str(language_hint or subject)))
     why = humanize_runtime_reason(reason, language_hint=subject)
     # Reviewer/Manager next_action is already the actionable instruction. Do
     # not replace it with the generic explanation used for a raw error reason.
     action = str(next_action or "").strip()
     if state in {"done", "completed", "success"}:
         first = f"已完成：{subject}。" if chinese else f"Completed: {subject}."
+    elif state in {"aborted", "cancelled", "canceled"}:
+        first = f"已取消：{subject}。" if chinese else f"Canceled: {subject}."
     elif state in {"continue", "running", "in_progress"}:
         first = f"正在继续：{subject}。" if chinese else f"Still working on {subject}."
     elif state in {"blocked", "infra_blocked", "paused_operator"}:
@@ -109,7 +112,14 @@ def render_operator_update(
             else "Next: "
         )
         lines.append(prefix + action)
-    elif state not in {"done", "completed", "success"}:
+    elif state not in {
+        "done",
+        "completed",
+        "success",
+        "aborted",
+        "cancelled",
+        "canceled",
+    }:
         lines.append(
             "需要你决定后才能继续。"
             if chinese and user_action_required
@@ -148,4 +158,3 @@ __all__ = [
     "publish_operator_message",
     "render_operator_update",
 ]
-

@@ -113,6 +113,21 @@ def test_create_daemon_honours_explicit_execution_workdir(tmp_path: Path) -> Non
     assert meta.workdir == str(workdir.resolve())
 
 
+def test_create_daemon_rejects_an_unavailable_workdir_before_command_submission(
+    tmp_path: Path,
+) -> None:
+    client = TestClient(server.create_app(global_root=tmp_path))
+
+    response = client.post(
+        "/api/daemons",
+        json={"workdir": str(tmp_path / "missing")},
+    )
+
+    assert response.status_code == 400
+    assert "workdir is unavailable" in response.json()["detail"]
+    assert not (tmp_path / "daemon.commands.jsonl").exists()
+
+
 def test_launch_cwd_update_preserves_existing_session_name(tmp_path: Path) -> None:
     created = server.create_daemon(name="Existing name", global_root=tmp_path)
     original = read_session_meta(tmp_path, created["sid"])

@@ -54,21 +54,40 @@ _TEAM_REPLAY_WINDOW_S = 90.0
 def _recent_team_replay(
     mem: Any,
     body: str,
+    prior_turns: list[dict[str, Any]],
 ) -> Any | None:
     request = " ".join(str(body or "").split())
-    items = mem.backlog.all()
-    for item in sorted(items, key=lambda row: float(row.ts), reverse=True):
-        if time.time() - float(item.ts) > _TEAM_REPLAY_WINDOW_S:
+    eligible_statuses = {"pending", "running", "done", "paused_operator"}
+    recent_items = []
+    now = time.time()
+    for item in sorted(mem.backlog.all(), key=lambda row: float(row.ts), reverse=True):
+        if now - float(item.ts) > _TEAM_REPLAY_WINDOW_S:
             break
+        if str(item.status) not in eligible_statuses:
+            continue
+        recent_items.append(item)
         prior = " ".join(
             str(item.original_objective or item.objective or "").split()
         )
-        if prior == request and str(item.status) in {
-            "pending",
-            "running",
-            "done",
-            "paused_operator",
-        }:
+        if prior == request:
+            return item
+
+    previous_operator = next(
+        (
+            turn
+            for turn in reversed(prior_turns)
+            if str(turn.get("role") or "") == "operator"
+        ),
+        None,
+    )
+    if previous_operator is None:
+        return None
+    previous_request = " ".join(str(previous_operator.get("text") or "").split())
+    previous_ts = float(previous_operator.get("ts") or 0.0)
+    if previous_request != request or previous_ts <= 0:
+        return None
+    for item in recent_items:
+        if float(item.ts) >= previous_ts:
             return item
     return None
 
@@ -278,7 +297,7 @@ def manager_message(
             pass
         _emit_ui_turn(life_dir, "operator", body, message_id=f"{turn_id}-operator")
 
-        duplicate_item = _recent_team_replay(mem, body)
+        duplicate_item = _recent_team_replay(mem, body, prior_turns)
         if duplicate_item is not None:
             from ..manager.dispatch import _daemon_status
 

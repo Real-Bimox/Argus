@@ -84,6 +84,8 @@ def test_operator_abort_review_decision_is_honest_daemon_keeps_running() -> None
     )
     assert decision.status == "blocked"
     assert decision.backend_stop_kind == "operator_abort"
+    assert decision.reason == "The operator requested this mission be aborted."
+    assert "Manager decided" not in decision.reason
     # Must NOT claim the daemon itself is restarting/shutting down — only
     # this one mission was interrupted (regression guard against copy-pasting
     # daemon_stop_review_decision's "restart the daemon" wording verbatim,

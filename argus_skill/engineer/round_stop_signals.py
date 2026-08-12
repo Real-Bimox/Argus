@@ -330,7 +330,6 @@ def operator_abort_review_decision(
     fatal_error: str | None,
     exit_code: int,
 ) -> ReviewDecision:
-    error_text = str(fatal_error or f"exit={exit_code}").strip()
     return ReviewDecision(
         status="blocked",
         # Same contract as the daemon-stop sibling: this was an operator's
@@ -338,10 +337,7 @@ def operator_abort_review_decision(
         # shutdown. Keep it structural so the distinction survives being read
         # apart from the round record that also carries ``stop_kind``.
         backend_stop_kind="operator_abort",
-        reason=(
-            "Engineer interrupted because the Manager decided, on the "
-            f"operator's behalf, to abort this mission; error={error_text}"
-        ),
+        reason="The operator requested this mission be aborted.",
         next_action=(
             "This item was intentionally aborted, not a crash — the daemon "
             "process itself keeps running and will continue with the next "
