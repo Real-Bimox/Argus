@@ -8,13 +8,14 @@ import subprocess
 import sys
 from pathlib import Path
 
-_PYTHON_ADMIN_COMMANDS = frozenset({"wiki", "learn"})
+_PYTHON_ADMIN_COMMANDS = frozenset({"update", "wiki", "learn"})
 
 _PYTHON_ADMIN_FLAGS = frozenset(
     {
         "-h",
         "--help",
         "--version",
+        "--update",
         "--daemon",
         "--daemon-fg",
         "--daemon-stop",

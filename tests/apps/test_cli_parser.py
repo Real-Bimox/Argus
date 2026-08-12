@@ -24,6 +24,7 @@ def test_public_help_distinguishes_human_and_automation_surfaces() -> None:
     assert "argus --daemon" in help_text
     assert "persistent unattended background worker" in help_text
     assert "argus --doctor" in help_text
+    assert "argus update" in help_text
     assert "--status" not in help_text
     assert "dashboard" not in help_text.lower()
     assert "wiki" not in help_text
@@ -45,7 +46,17 @@ def test_debug_help_still_exposes_internal_flags(monkeypatch: pytest.MonkeyPatch
     assert "wiki" in help_text
 
 
-def test_parser_has_only_wiki_subcommand():
+def test_parser_exposes_update_subcommand():
+    args = build_parser().parse_args(["update"])
+    assert args.command == "update"
+
+
+def test_parser_exposes_update_flag_alias():
+    args = build_parser().parse_args(["--update"])
+    assert args.update is True
+
+
+def test_parser_has_wiki_subcommand():
     p = build_parser()
     args = p.parse_args(["wiki", "init", "demo"])
     assert args.command == "wiki"

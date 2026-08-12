@@ -300,6 +300,7 @@ def main(argv: list[str] | None = None) -> int:
     # --life-dir are modifiers and may combine with any of them.
     action_flags = (
         bool(args.daemon)
+        + bool(getattr(args, "update", False))
         + bool(args.daemon_fg)
         + bool(args.daemon_stop)
         + bool(args.status)
@@ -362,7 +363,7 @@ def main(argv: list[str] | None = None) -> int:
     if action_flags > 1:
         sys.stderr.write(
             "argus-skill: --daemon / --daemon-fg / --daemon-stop / --status / "
-            "--daemon-runbook / --config-help / --config-snapshot / "
+            "--daemon-runbook / --update / --config-help / --config-snapshot / "
             "--watch / --follow / --notify / --init-identity / "
             "--setup / --doctor / "
             "--model-api-status / --init-model-api / "
@@ -373,6 +374,10 @@ def main(argv: list[str] | None = None) -> int:
             "are mutually exclusive.\n"
         )
         return 2
+    if getattr(args, "update", False) or args.command == "update":
+        from ..update import run_update
+
+        return run_update()
     if args.command == "wiki" and args.wiki_cmd == "init":
         return _run_with_path_resolution_errors(lambda: _cmd_wiki_init(args))
     if args.command == "wiki" and args.wiki_cmd == "ingest":

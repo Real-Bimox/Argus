@@ -118,6 +118,15 @@ Windows 当前覆盖安装、Manager 对话、配对和终端作用域 daemon；
 subagent 后台脱离与文件锁路径尚未完全对齐。Windows CI 有意只运行 portable
 surface，不能据此宣称所有长期任务都已完整支持。
 
+源码安装后可用一条命令更新：
+
+```bash
+argus update
+```
+
+该命令只会更新干净且已配置 upstream 的分支，使用 fast-forward 拉取，并在版本
+变化时刷新 editable 安装。更新后再次运行 `argus`，即可安全接管旧 WebAPI 和 daemon。
+
 私有 Preview 协作者可以改用
 `https://github.com/lbx154/argus-skill.git`。两个仓库的 revision 可能不同，
 请按准备测试的版本选择 URL。
