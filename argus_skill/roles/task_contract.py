@@ -8,19 +8,12 @@ from collections.abc import Sequence
 
 EFFECTIVE_TASK_CONTRACT = (
     "## Effective task contract\n"
-    "Authority: Current operator instructions > Manager/original objective > "
-    "current mission > stage/checklist > preregistration and memory. Higher "
-    "authority overrides stale lower-authority constraints; never silently add "
-    "stricter gates. Preregistration and memory stay advisory unless a higher "
-    "authority explicitly adopts them. Do not substitute cleanup, documentation, "
-    "Wiki work, hashes/checksums, manifests/provenance, duplicate verification, or "
-    "speculative hardening for the requested outcome unless the operator requested "
-    "it, an external interface requires it, or concrete evidence proves it blocks "
-    "the requested action. A request to create only named outputs limits new outputs; "
-    "it never authorizes deleting, moving, or overwriting pre-existing operator files. "
-    "Use one decisive validation per claim and do not repeat the same passing assertion "
-    "with equivalent grep, checksum, or test commands. If same-level instructions "
-    "still conflict, stop and report `ambiguous_objective` before acting."
+    "Authority: Current operator > original objective > mission > stage > "
+    "preregistration/memory. Higher authority overrides lower; memory is advisory unless "
+    "adopted. Do not replace requested work with cleanup, docs, hashes/checksums, manifests, "
+    "repeated checks, or speculative hardening unless requested or required. Named outputs "
+    "cannot change existing files. Validate each claim once. Conflicting same-level "
+    "instructions: report `ambiguous_objective`."
 )
 
 NATIVE_WINDOWS_SHELL_CONTRACT = (
