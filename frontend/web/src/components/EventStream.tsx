@@ -21,6 +21,10 @@ export function activeProviderRequest(events: EventMsg[]): EventMsg | null {
   const active = new Map<string, EventMsg>();
   events.forEach((event) => {
     const type = String(event.type ?? '');
+    if (type === 'life.mission.completed' || type === 'mission.completed') {
+      active.clear();
+      return;
+    }
     const callId = String(event.call_id ?? '');
     if (!callId) return;
     if (type === 'provider.request.started') active.set(callId, event);
