@@ -31,11 +31,18 @@ honest state for most real research-level mathematics is
 Whether ``DISCHARGING_TIERS`` should ever widen is a question for data from a
 real run, not for taste; it is one frozenset in one place when that data
 arrives.
+
+Routes are assessed here too, and they are the one place where this file
+reports something it refuses to act on. A route is an AND over its
+obligations; several routes for one goal are an OR. Neither direction moves the
+goal's status: see ``ClaimAssessment.with_routes`` for why a completed
+decomposition still confers nothing, and ``RouteStatus`` for why a dead one
+refutes nothing.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any
 
@@ -60,6 +67,8 @@ __all__ = [
     "RouteStatus",
     "assess_claim",
     "assess_route",
+    "assess_routes",
+    "route_cycles",
 ]
 
 #: An independent implementation whose errors are uncorrelated with the
@@ -124,10 +133,21 @@ ESTABLISHED_STATUSES = frozenset(
 
 
 class RouteStatus(str, Enum):
-    """``retired`` is not a failure state; it is the recorded reason not to retry."""
+    """``retired`` is not a failure state; it is the recorded reason not to retry.
+
+    ``discharged`` and ``blocked`` are the two ways a route stops being work,
+    and they are deliberately symmetric in what they do *not* do: neither one
+    touches the goal. A discharged route has proved every obligation and has
+    still proved nothing about the goal, because nothing has checked that the
+    obligations imply it. A blocked route — one of its obligations is refuted —
+    is dead as a plan, and the goal may be perfectly true by another route.
+    Collapsing either into the goal's status would let a decomposition nobody
+    verified decide a mathematical question.
+    """
 
     OPEN = "open"
     DISCHARGED = "discharged"
+    BLOCKED = "blocked"
     RETIRED = "retired"
 
 
@@ -145,6 +165,10 @@ class ClaimAssessment:
     system — a statement moved under a finished verification — and
     ``lean_evidence`` records what happens to anything routed somewhere nobody
     reads.
+
+    ``routes`` and ``notes`` are filled in by ``with_routes``, and only by a
+    caller that can see the whole project: ``assess_claim`` cannot assess a
+    route, because a route's obligations are other claims.
     """
 
     claim_id: str
@@ -154,10 +178,59 @@ class ClaimAssessment:
     support: Mapping[EvidenceTier, tuple[str, ...]] = field(default_factory=dict)
     stale_evidence: tuple[str, ...] = ()
     issues: tuple[str, ...] = ()
+    routes: tuple[RouteAssessment, ...] = ()
+    notes: tuple[str, ...] = ()
 
     @property
     def is_kernel(self) -> bool:
         return self.status in ESTABLISHED_STATUSES
+
+    def with_routes(self, routes: Iterable[RouteAssessment]) -> ClaimAssessment:
+        """Attach the decompositions aimed at this claim. Never changes status.
+
+        This is the whole of what "several routes are an OR" means here, and
+        the restraint is the point. A route asserts *these obligations imply
+        this goal*, and nothing in this package checks that implication — there
+        is no ``SubjectKind.ROUTE``, so there is not even a way to record a
+        verifier's answer about it. If a discharged route promoted its goal to
+        a kernel status, an agent could mint ``closed_kernel`` by writing a
+        decomposition nobody read: the same failure as a compiling Lean proof
+        of a mistranslated statement, arriving through the scheduler instead of
+        through the translator. Promotion stays where it is falsifiable, on
+        evidence bound to the claim's own digest.
+
+        So the OR is *reported*: which routes aim here, what each is waiting
+        on, and — in ``notes`` — the two states a reader would otherwise have
+        to infer, namely a decomposition that is finished except for the step
+        nobody can check, and one that is dead without its goal being dead.
+        ``notes`` is separate from ``issues`` because neither is a defect in
+        the records; filing them under ``issues`` would teach a reader that
+        issues are things that need not be fixed.
+
+        When a verifier for the decomposition step exists — a Lean proof of
+        ``obligations → goal`` is the obvious one — this is the method that
+        changes, and the argument for changing it is that the implication has
+        been checked, not that the obligations have.
+        """
+        attached = tuple(routes)
+        notes: list[str] = []
+        for route in attached:
+            if route.status is RouteStatus.DISCHARGED:
+                notes.append(
+                    f"every obligation of route {route.route_id!r} is established, "
+                    "and nothing has verified that they imply this claim; the "
+                    "decomposition step is itself unproved, so it confers no status "
+                    "here"
+                )
+            elif route.status is RouteStatus.BLOCKED:
+                notes.append(
+                    f"route {route.route_id!r} cannot be completed as written, "
+                    "because "
+                    + ", ".join(route.refuted_obligations)
+                    + " is refuted; that refutes the route, not this claim, which "
+                    "another decomposition may still prove"
+                )
+        return replace(self, routes=attached, notes=tuple(notes))
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -173,6 +246,8 @@ class ClaimAssessment:
             },
             "stale_evidence": list(self.stale_evidence),
             "issues": list(self.issues),
+            "routes": [route.as_dict() for route in self.routes],
+            "notes": list(self.notes),
         }
 
 
@@ -319,6 +394,7 @@ class RouteAssessment:
     route_id: str
     status: RouteStatus
     outstanding: tuple[str, ...] = ()
+    refuted_obligations: tuple[str, ...] = ()
     stale_obligations: tuple[str, ...] = ()
     issues: tuple[str, ...] = ()
 
@@ -327,13 +403,17 @@ class RouteAssessment:
             "route_id": self.route_id,
             "status": self.status.value,
             "outstanding": list(self.outstanding),
+            "refuted_obligations": list(self.refuted_obligations),
             "stale_obligations": list(self.stale_obligations),
             "issues": list(self.issues),
         }
 
 
 def assess_route(
-    route: ProofRoute, assessments: Mapping[SubjectRef, ClaimAssessment]
+    route: ProofRoute,
+    assessments: Mapping[SubjectRef, ClaimAssessment],
+    *,
+    in_cycle: Sequence[str] = (),
 ) -> RouteAssessment:
     """Which obligations are left, keyed by reference so a moved statement shows.
 
@@ -342,8 +422,15 @@ def assess_route(
     whose digest is not means the lemma this route was built on has been
     restated. That route may still be a good idea, but it is no longer a plan
     for the claims it names, and a status of ``open`` alone would not say so.
+
+    ``in_cycle`` names the mutually dependent group this route belongs to, if
+    any. One route cannot see that by itself — a cycle is a property of the
+    whole set — so a caller with only one route in hand passes nothing and gets
+    the reading that route supports alone. ``assess_routes`` is the caller that
+    knows.
     """
     outstanding: list[str] = []
+    refuted: list[str] = []
     stale: list[str] = []
     issues: list[str] = []
 
@@ -357,11 +444,37 @@ def assess_route(
         assessment = assessments.get(obligation)
         if assessment is None:
             stale.append(obligation.subject_id)
+        elif assessment.status is ClaimStatus.REFUTED:
+            refuted.append(obligation.subject_id)
         elif assessment.status not in ESTABLISHED_STATUSES:
             outstanding.append(obligation.subject_id)
 
+    if in_cycle:
+        # Reported as an issue, which costs the route ``discharged`` below even
+        # when every obligation is established. That combination is exactly the
+        # state a cycle produces on a hand-edited file, and calling it
+        # discharged would be calling a plan complete that can never be
+        # started.
+        others = sorted(set(in_cycle) - {route.route_id})
+        if others:
+            issues.append(
+                "this route depends on itself through "
+                + ", ".join(others)
+                + ", so no work on it can ever begin"
+            )
+        else:
+            issues.append(
+                "this route lists its own goal among its obligations, so no work "
+                "on it can ever begin"
+            )
+
     if route.retired_because.strip():
         status = RouteStatus.RETIRED
+    elif refuted:
+        # A refuted obligation kills the route however much of the rest is
+        # done, and it says nothing about the goal: that asymmetry is the whole
+        # reason routes and claims have separate status enums.
+        status = RouteStatus.BLOCKED
     elif outstanding or stale or issues:
         status = RouteStatus.OPEN
     elif not route.obligations:
@@ -378,6 +491,147 @@ def assess_route(
         route_id=route.route_id,
         status=status,
         outstanding=tuple(sorted(dict.fromkeys(outstanding))),
+        refuted_obligations=tuple(sorted(dict.fromkeys(refuted))),
         stale_obligations=tuple(sorted(dict.fromkeys(stale))),
         issues=tuple(issues),
+    )
+
+
+def _route_edges(routes: Sequence[ProofRoute]) -> dict[str, tuple[str, ...]]:
+    """``route -> the routes that would prove its obligations``.
+
+    Retired routes are left out of the graph entirely, as sources and as
+    targets. A route nobody will execute cannot make a project loop, and
+    recording a circular attempt together with the reason it was abandoned is
+    precisely what ``retired_because`` is for; a check that refused to let a
+    dead end be written down would be paid for in the same repeated attempt it
+    is meant to prevent.
+
+    Two routes sharing an id — impossible through ``add_route``, reachable by
+    editing the file — have their edges merged rather than one overwriting the
+    other. Merging can only invent a cycle, never hide one, and inventing one
+    costs a false report while hiding one costs the check.
+    """
+    live = [route for route in routes if not route.retired_because.strip()]
+    by_goal: dict[SubjectRef, list[str]] = {}
+    for route in live:
+        by_goal.setdefault(route.goal, []).append(route.route_id)
+
+    targets: dict[str, list[str]] = {route.route_id: [] for route in live}
+    for route in live:
+        for obligation in route.obligations:
+            targets[route.route_id].extend(by_goal.get(obligation, ()))
+    return {
+        route_id: tuple(sorted(dict.fromkeys(reached)))
+        for route_id, reached in targets.items()
+    }
+
+
+def route_cycles(routes: Iterable[ProofRoute]) -> tuple[tuple[str, ...], ...]:
+    """Every group of routes that depends, eventually, on itself.
+
+    A group rather than a path, and that is the difference between a check and
+    a sampler. A graph can hold exponentially many distinct cycles, so any
+    function that returned cycles as paths would either enumerate them (and
+    blow up) or return a few witnesses (and leave routes that are genuinely
+    circular unreported — a route can sit in a mutually dependent group without
+    lying on any one cycle a depth-first search happens to close). Strongly
+    connected components are complete and linear in the graph, so this reports
+    each group once, sorted, with every member named.
+
+    A group is cyclic when it has more than one member, or one member that
+    reaches itself — a route listing its own goal.
+
+    Linear in routes plus obligations. That matters because the write-time
+    check in ``store.MathState.add_route`` calls this on every route added: a
+    per-call cost that grew with the square of the project would make recording
+    a decomposition quietly expensive exactly as the project got interesting.
+    """
+    edges = _route_edges(list(routes))
+    groups: list[tuple[str, ...]] = []
+    for component in _strongly_connected(edges):
+        if len(component) > 1 or component[0] in edges.get(component[0], ()):
+            groups.append(tuple(sorted(component)))
+    return tuple(sorted(groups))
+
+
+def _strongly_connected(edges: Mapping[str, tuple[str, ...]]) -> list[list[str]]:
+    """Tarjan's algorithm, iterative.
+
+    Iterative rather than recursive because the depth is the length of a
+    decomposition chain, which is data — a hand-written or agent-written state
+    file can nest deeper than the interpreter's stack, and a check that raises
+    ``RecursionError`` on a large project is a check that stops running when it
+    is most needed.
+    """
+    order: dict[str, int] = {}
+    low: dict[str, int] = {}
+    on_stack: set[str] = set()
+    stack: list[str] = []
+    components: list[list[str]] = []
+    counter = 0
+
+    for root in sorted(edges):
+        if root in order:
+            continue
+        work: list[tuple[str, int]] = [(root, 0)]
+        order[root] = low[root] = counter
+        counter += 1
+        stack.append(root)
+        on_stack.add(root)
+        while work:
+            node, position = work[-1]
+            children = edges.get(node, ())
+            descended = False
+            while position < len(children):
+                child = children[position]
+                position += 1
+                if child not in order:
+                    work[-1] = (node, position)
+                    order[child] = low[child] = counter
+                    counter += 1
+                    stack.append(child)
+                    on_stack.add(child)
+                    work.append((child, 0))
+                    descended = True
+                    break
+                if child in on_stack:
+                    low[node] = min(low[node], order[child])
+            if descended:
+                continue
+            work[-1] = (node, position)
+            work.pop()
+            if low[node] == order[node]:
+                component: list[str] = []
+                while True:
+                    member = stack.pop()
+                    on_stack.discard(member)
+                    component.append(member)
+                    if member == node:
+                        break
+                components.append(component)
+            if work:
+                parent = work[-1][0]
+                low[parent] = min(low[parent], low[node])
+    return components
+
+
+def assess_routes(
+    routes: Iterable[ProofRoute],
+    assessments: Mapping[SubjectRef, ClaimAssessment],
+) -> tuple[RouteAssessment, ...]:
+    """Assess routes as a set, because being cyclic is a property of the set.
+
+    Returned in the order given, so a caller that holds the routes can pair
+    each assessment with the route it came from — which is how
+    ``store.MathState`` groups them under the goals they aim at.
+    """
+    ordered = list(routes)
+    membership: dict[str, tuple[str, ...]] = {}
+    for group in route_cycles(ordered):
+        for route_id in group:
+            membership[route_id] = group
+    return tuple(
+        assess_route(route, assessments, in_cycle=membership.get(route.route_id, ()))
+        for route in ordered
     )

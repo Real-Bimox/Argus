@@ -110,7 +110,7 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
         if path.is_file() and "__pycache__" not in path.parts
     }
 
-    # Math stays light on machinery compared with kernel_engineering. The four
+    # Math stays light on machinery compared with kernel_engineering. The seven
     # modules below are the exception, and the reason is narrow: without a way
     # to measure the distance to the goal, "how hard was this step" silently
     # replaces "how much closer did this get us". `lean_evidence` is the same
@@ -119,19 +119,25 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
     # be presented as evidence. They measure; they do not add stages, roles, or
     # required paperwork, and a project with no `.lean` file never sees them.
     #
-    # `context_projection` is the sixth and is a different kind of thing: an
-    # adapter, not a measure. It reads the `research_math` state kernel and the
-    # claimed backlog item and renders what *this* mission needs to know about
-    # the one claim it is about. It lives here rather than in `research_math`
-    # because it is the only part that touches an Argus type (`BacklogItem`),
-    # and that package's whole point is that it imports nothing from Argus.
-    # It adds no stage and no required file: a project with no
-    # `research/MATH_STATE.json` never loads it.
+    # Two of them are not measures. `math_state` is the write path into the
+    # research-math kernel, and it lives here rather than inside that package
+    # for two reasons: it holds the repository's file lock, which the kernel may
+    # not import without losing the property that lets it travel, and the rule
+    # it enforces — that no agent-typed argument selects an evidence tier which
+    # confers kernel status — is policy about this host's agents, which the
+    # kernel is deliberately free of. `context_projection` is an adapter: it
+    # reads that same state kernel and the claimed backlog item and renders what
+    # *this* mission needs to know about the one claim it is about, and it lives
+    # here because it is the only part that touches an Argus type
+    # (`BacklogItem`), which that package's whole point is to do without.
+    # Neither adds a stage or a required file: a project with no recorded claim
+    # never loads either.
     assert files == {
         "__init__.py",
         "stages.py",
         "context_projection.py",
         "lean_evidence.py",
+        "math_state.py",
         "objective_mode.py",
         "proof_graph.py",
         "proof_graph_check.py",

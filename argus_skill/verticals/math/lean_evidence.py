@@ -69,6 +69,7 @@ __all__ = [
     "discover_lean_sources",
     "lean_evidence_issues",
     "main",
+    "source_evidence",
     "validate_lean_evidence",
     "verify_lean_source",
 ]
@@ -638,13 +639,19 @@ def _validate_source(source: Path, project_root: Path) -> LeanSourceEvidence:
             )
         )
 
-    # 2. Statement fidelity. The one thing Lean structurally cannot check, and
+    # 2. The recorded compiler answer, loaded before fidelity is judged because
+    #    the digest it carries is what makes the fidelity check a check about
+    #    the document that was actually in force.
+    result, result_path, load_note = _load_result(source)
+
+    # 3. Statement fidelity. The one thing Lean structurally cannot check, and
     #    the reason a compiling proof can still be the wrong answer.
     fidelity = _find_fidelity(source, project_root)
-    issues.extend(_fidelity_issues(source_text, fidelity, display, project_root))
+    issues.extend(
+        _fidelity_issues(source_text, fidelity, display, project_root, result)
+    )
 
-    # 3. The recorded compiler answer.
-    result, result_path, load_note = _load_result(source)
+    # 4. Whether that answer is usable.
     environment_failure = ""
     if load_note:
         issues.append(LeanIssue("lean_result_unreadable", display, load_note))
@@ -685,6 +692,7 @@ def _fidelity_issues(
     fidelity: Path | None,
     display: str,
     project_root: Path,
+    result: dict[str, Any] | None = None,
 ) -> list[LeanIssue]:
     if fidelity is None:
         return [
@@ -729,6 +737,18 @@ def _fidelity_issues(
                 "statement fidelity document names none of the declarations it "
                 f"must describe ({', '.join(declarations[:5])}); it cannot be "
                 "checked against this source",
+            )
+        ]
+    recorded = str((result or {}).get("statement_fidelity_sha256") or "").strip().lower()
+    if recorded and recorded != _sha256(text.encode("utf-8")):
+        return [
+            LeanIssue(
+                "lean_fidelity_changed",
+                fidelity_display,
+                "the statement fidelity document has been edited since this "
+                "result was recorded, so the compiler's answer is paired with a "
+                "reading of the theorem that was written afterwards. The "
+                f"compile is still valid and its meaning is not; {_VERIFY_HINT}",
             )
         ]
     return []
@@ -922,6 +942,38 @@ def lean_evidence_issues(project_root: Path | str) -> tuple[str, ...]:
     return rendered
 
 
+def source_evidence(source: Path | str, project_root: Path | str) -> LeanSourceEvidence:
+    """Judge one Lean source and the artifacts beside it, without discovery.
+
+    ``validate_lean_evidence`` sweeps a project and is what the completion gate
+    wants. A caller holding one specific source — the kernel recorder in
+    ``math_state`` — wants exactly the same judgement about exactly that file,
+    and must not get a pass because some *other* source in the tree was the one
+    with a defect, nor a refusal because some unrelated source was broken.
+
+    Sources outside the project are refused rather than judged: an artifact path
+    recorded in project state has to name something inside the project, or the
+    record cites a file that no reader of the repository can see.
+    """
+    root = Path(str(project_root)).expanduser().resolve()
+    path = Path(str(source)).expanduser().resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return LeanSourceEvidence(
+            source=path,
+            issues=(
+                LeanIssue(
+                    "lean_source_external",
+                    str(path),
+                    f"the Lean source is outside the project root {root}; "
+                    "evidence must cite an artifact the project carries",
+                ),
+            ),
+        )
+    return _validate_source(path, root)
+
+
 # -- producing the evidence --------------------------------------------------
 
 def verify_lean_source(
@@ -937,9 +989,17 @@ def verify_lean_source(
     """Compile one source and record the answer beside it, hash included.
 
     Thin over ``lean_check``: it reuses that module's canonical artifact
-    preparation, directory lock, atomic writes, and log rendering, and adds
-    only ``source_sha256``, which is what later lets staleness be decided by
+    preparation, directory lock, atomic writes, and log rendering, and adds two
+    digests. ``source_sha256`` is what later lets staleness be decided by
     identity rather than guessed from modification order.
+    ``statement_fidelity_sha256`` does the same for the other half of the
+    argument: the compiler's answer is only evidence about a mathematical claim
+    in the presence of a document saying what the formal statement means, and
+    without a digest that document could be rewritten after the compile to make
+    a proof of one thing read as a proof of another — with every existing check
+    still passing, because they only ask whether *some* substantive note names
+    the declaration. Nothing here establishes that the note is *true*; no tool
+    in this repository does, and no field claims otherwise.
 
     ``use_lake`` defaults to ``None``, meaning *decide from the host*: compile
     through ``lake env lean`` when a Lake workspace applies to this source, and
@@ -993,6 +1053,12 @@ def verify_lean_source(
         )
         result["source_sha256"] = _sha256(canonical_source.read_bytes())
         result["statement_fidelity"] = str(canonical_fidelity)
+        # Hashed through `read_text` rather than from the raw bytes because the
+        # check that later compares against it reads the document the same way;
+        # a digest over bytes would report a BOM as a changed meaning.
+        result["statement_fidelity_sha256"] = _sha256(
+            canonical_fidelity.read_text(encoding="utf-8").encode("utf-8")
+        )
         result["lake_workspace"] = str(workspace) if through_lake and workspace else ""
         result["environment_failure"] = classify_environment_failure(result)
         _atomic_artifact_write(
@@ -1019,6 +1085,21 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("source", type=Path)
     verify.add_argument("--statement-fidelity", type=Path, required=True)
     verify.add_argument("--artifact-dir", type=Path)
+    verify.add_argument(
+        "--claim",
+        help=(
+            "record the outcome as mechanical evidence about this claim in "
+            "research/MATH_STATE.json. This is the only way mechanical "
+            "evidence is ever written: the tier is chosen by the code that "
+            "read the compiler's answer, never passed in"
+        ),
+    )
+    verify.add_argument(
+        "--project-root",
+        type=Path,
+        default=Path("."),
+        help="the project whose state --claim writes to, and the root artifact paths are recorded against",
+    )
     verify.add_argument("--timeout", type=float, default=30.0)
     verify.add_argument("--lean-bin")
     verify.add_argument("--lake-bin")
@@ -1075,8 +1156,30 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, UnicodeError, ValueError) as exc:
             print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
             return 2
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        return 0 if result.get("status") == "success" else 1
+        payload = dict(result)
+        if args.claim:
+            # The canonical source, not `args.source`: verify may have copied a
+            # descriptively-named file into the artifact directory, and what was
+            # compiled is what the evidence is about.
+            from .math_state import (  # noqa: PLC0415 — avoids an import cycle
+                record_lean_evidence,
+            )
+
+            recording = record_lean_evidence(
+                args.project_root,
+                claim_id=args.claim,
+                source=Path(str(result.get("source") or args.source)),
+                expect_result=result,
+            )
+            payload["kernel"] = recording.as_dict()
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        if result.get("status") != "success":
+            return 1
+        # A compile that succeeded and was asked to be recorded, but was not,
+        # has not done what it was told to do. Reporting 0 here would let a
+        # completion gate read "proved" off an exit code while the state file
+        # holds nothing.
+        return 1 if args.claim and payload["kernel"]["recorded"] is None else 0
 
     report = validate_lean_evidence(args.project_root.expanduser().resolve())
     payload = report.as_dict()
