@@ -101,6 +101,7 @@ class MissionExecutionRuntimeMixin:
                 stage=state.pipeline_stage_at_start,
                 project_root=resolved_mission_workdir,
                 state_root=self.memory.root,
+                mission=item,
             )
             if block:
                 state.prelude = (

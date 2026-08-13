@@ -79,8 +79,20 @@ def stage_completion_issues(stage: str, project_root) -> tuple[str, ...]:  # noq
     return ()
 
 
-def prepare_mission(stage: str, project_root, state_root) -> str:
-    """Preserve legacy explicit baseline isolation without making it a stage gate."""
+def prepare_mission(  # noqa: ARG001 - baseline isolation is per stage, not per item
+    *,
+    stage: str,
+    project_root,
+    state_root,
+    mission,
+) -> str:
+    """Preserve legacy explicit baseline isolation without making it a stage gate.
+
+    Keyword-only because the framework forwards this hook by keyword; the
+    parameter names are the contract. ``mission`` is accepted and unread: the
+    baseline workspace is one shared tree per stage, and making it depend on
+    which item claimed it would hand two concurrent missions two baselines.
+    """
     raw_stage = str(stage or "").strip().lower()
     state_path = Path(project_root) / "research" / "PIPELINE_STATE.json"
     try:
