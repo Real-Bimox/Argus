@@ -699,6 +699,22 @@ def test_daemon_start_delegates(ctx, monkeypatch) -> None:
     assert calls["life_dir"] == life.resolve() and calls["quiet"] is True
 
 
+def test_daemon_start_surfaces_clean_launcher_failure(ctx, monkeypatch) -> None:
+    root, sid, _life = ctx
+
+    def fail_spawn(_config, *, quiet=False):
+        assert quiet is True
+        raise RuntimeError("ModuleNotFoundError: No module named 'uvicorn'")
+
+    monkeypatch.setattr(server, "spawn_detached_daemon", fail_spawn)
+    client = TestClient(server.create_app(global_root=root))
+    response = client.post(f"/api/projects/{sid}/daemon/start")
+
+    assert response.status_code == 200
+    assert response.json()["rc"] == 2
+    assert "ModuleNotFoundError: No module named 'uvicorn'" in response.json()["error"]
+
+
 def test_daemon_start_resume_reenables_preserved_continuous_objective(
     ctx,
     monkeypatch,

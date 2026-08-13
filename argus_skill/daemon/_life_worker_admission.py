@@ -343,8 +343,14 @@ def spawn_detached_daemon_clean(
         if not quiet:
             sys.stderr.write(f"argus-skill: clean daemon launcher failed: {exc}\n")
         return 2
-    if completed.returncode != 0 and not quiet:
+    if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout or "").strip()
+        if quiet:
+            final_line = next(
+                (line.strip() for line in reversed(detail.splitlines()) if line.strip()),
+                f"clean daemon launcher exited with code {completed.returncode}",
+            )
+            raise RuntimeError(final_line)
         if detail:
             sys.stderr.write(detail + "\n")
     return int(completed.returncode)

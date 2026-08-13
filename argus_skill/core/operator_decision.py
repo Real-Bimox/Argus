@@ -32,6 +32,8 @@ def normalize_agent_options(
         option_id = re.sub(r"[^a-z0-9_-]+", "-", raw_id).strip("-_")
         if not option_id:
             option_id = f"option-{index + 1}"
+        elif option_id == "custom":
+            option_id = f"option-{index + 1}"
         base_id = option_id
         suffix = 2
         while option_id in used_ids:
@@ -131,8 +133,7 @@ def build_operator_decision(
 
 def selected_decision_text(card: Mapping[str, Any], option_id: str, note: str) -> str:
     note = note.strip()
-    options = card.get("options", [])
-    if not options and option_id == "custom":
+    if option_id == "custom":
         if not note:
             raise ValueError("this decision requires an answer")
         return note

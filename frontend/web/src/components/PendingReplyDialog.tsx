@@ -133,7 +133,7 @@ export function PendingReplyDialog({
             <button type="button" onClick={submit} disabled={busy} className="rounded-md bg-blue-deep px-3 py-2 text-xs font-medium text-white hover:bg-blue-deep/85 disabled:opacity-50">
               {busy
                 ? t('decision.applying')
-                : freeform
+                : freeform || optionId === 'custom'
                   ? t('decision.sendAnswer')
                   : optionId === 'stop'
                     ? t('decision.stopCampaign')

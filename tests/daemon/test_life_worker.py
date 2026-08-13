@@ -453,6 +453,28 @@ def test_clean_spawn_execs_helper_without_inheriting_parent_fds(
     assert str(shadow) not in stdout
 
 
+def test_clean_spawn_surfaces_quiet_helper_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = LifeWorkerConfig(life_dir=tmp_path / "life", global_root=tmp_path)
+    monkeypatch.setattr(
+        life_worker_mod.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr=(
+                "Traceback (most recent call last):\n"
+                "ModuleNotFoundError: No module named 'uvicorn'"
+            ),
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="ModuleNotFoundError.*uvicorn"):
+        life_worker_mod.spawn_detached_daemon_clean(config, quiet=True)
+
+
 def test_stop_daemon_does_not_sigkill_after_pid_identity_is_lost(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

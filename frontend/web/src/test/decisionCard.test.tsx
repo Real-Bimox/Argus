@@ -70,9 +70,10 @@ describe('operator decision cards', () => {
       />,
     );
 
-    expect(row.options).toEqual([]);
+    expect(row.options.map((option) => option.id)).toEqual(['custom']);
     expect(row.evidence).toEqual([]);
     expect(html).toContain('Send answer');
+    expect(html).toContain('Write my own answer');
     expect(html).not.toContain('按建议继续');
     expect(html).not.toContain('保留当前结果并停止');
   });
