@@ -259,9 +259,16 @@ def test_non_string_live_search_stage_is_rejected_not_coerced() -> None:
 
 
 def test_core_has_no_vertical_package_imports() -> None:
+    """Core defines the vertical contract and must never resolve one.
+
+    ``rglob``, not ``glob``: ``core/`` grew subpackages after this test was
+    written, and a non-recursive scan silently stopped covering them. A
+    subpackage is exactly where the import would appear, since that is where
+    the code long enough to want a shortcut lives.
+    """
     core = Path(__file__).parents[2] / "argus_skill" / "core"
     offenders: list[str] = []
-    for path in core.glob("*.py"):
+    for path in core.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and "verticals" in str(node.module or ""):
