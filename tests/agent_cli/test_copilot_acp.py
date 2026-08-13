@@ -964,3 +964,190 @@ def test_acp_registry_isolates_manager_scopes() -> None:
         )
         is second
     )
+
+
+def test_acp_registry_bounds_clients_per_manager_scope(monkeypatch) -> None:
+    copilot_acp._CLIENTS.clear()
+    monkeypatch.setattr(copilot_acp, "_MAX_CLIENTS_PER_SCOPE", 2)
+    closed: list[CopilotAcpClient] = []
+    monkeypatch.setattr(
+        CopilotAcpClient,
+        "close",
+        lambda self: closed.append(self),
+    )
+
+    first = copilot_acp.get_client(
+        "copilot-bin",
+        "model-a",
+        "low",
+        scope="manager:s-bounded",
+    )
+    second = copilot_acp.get_client(
+        "copilot-bin",
+        "model-b",
+        "low",
+        scope="manager:s-bounded",
+    )
+    third = copilot_acp.get_client(
+        "copilot-bin",
+        "model-c",
+        "low",
+        scope="manager:s-bounded",
+    )
+
+    scoped = [
+        client
+        for key, client in copilot_acp._CLIENTS.items()
+        if key[-1] == "manager:s-bounded"
+    ]
+    assert scoped == [second, third]
+    assert closed == [first]
+    copilot_acp._CLIENTS.clear()
+
+
+def test_acp_windows_close_terminates_the_owned_process_tree(monkeypatch) -> None:
+    class _Proc:
+        pid = 4242
+
+        def __init__(self) -> None:
+            self.alive = True
+            self.terminate_calls = 0
+
+        def poll(self):
+            return None if self.alive else 0
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+            self.alive = False
+
+        def wait(self, timeout=None):  # noqa: ARG002
+            return 0
+
+        def kill(self) -> None:
+            self.alive = False
+
+    proc = _Proc()
+    client = CopilotAcpClient("copilot-bin")
+    client._proc = proc
+    client._alive = True
+    observed: list[int] = []
+
+    def _terminate_tree(process, *, identity_check):
+        assert identity_check() is True
+        observed.append(process.pid)
+        process.alive = False
+        return True
+
+    monkeypatch.setattr(copilot_acp.os, "name", "nt")
+    monkeypatch.setattr(copilot_acp, "_terminate_windows_acp_tree", _terminate_tree)
+
+    client.close()
+
+    assert observed == [4242]
+    assert proc.terminate_calls == 0
+    assert client._proc is None
+
+
+def test_acp_windows_close_falls_back_when_tree_snapshot_fails(monkeypatch) -> None:
+    class _Proc:
+        pid = 4243
+
+        def __init__(self) -> None:
+            self.alive = True
+            self.terminate_calls = 0
+
+        def poll(self):
+            return None if self.alive else 0
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+            self.alive = False
+
+        def wait(self, timeout=None):  # noqa: ARG002
+            return 0
+
+        def kill(self) -> None:
+            self.alive = False
+
+    proc = _Proc()
+    client = CopilotAcpClient("copilot-bin")
+    client._proc = proc
+    client._alive = True
+    monkeypatch.setattr(copilot_acp.os, "name", "nt")
+    monkeypatch.setattr(
+        copilot_acp,
+        "_terminate_windows_acp_tree",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("snapshot failed")),
+    )
+
+    client.close()
+
+    assert proc.terminate_calls == 1
+    assert client._proc is None
+
+
+def test_acp_respawn_terminates_stale_process_before_replacement(monkeypatch) -> None:
+    class _Proc:
+        def __init__(self, pid: int) -> None:
+            self.pid = pid
+            self.alive = True
+
+        def poll(self):
+            return None if self.alive else 0
+
+    stale = _Proc(100)
+    replacement = _Proc(101)
+    client = CopilotAcpClient("copilot-bin")
+    client._proc = stale
+    client._alive = False
+    terminated: list[int] = []
+
+    def _terminate(process) -> None:
+        terminated.append(process.pid)
+        process.alive = False
+
+    def _spawn() -> None:
+        client._proc = replacement
+        client._alive = True
+
+    monkeypatch.setattr(client, "_terminate_subprocess", _terminate)
+    monkeypatch.setattr(client, "_spawn", _spawn)
+
+    client._ensure_started()
+
+    assert terminated == [100]
+    assert client._proc is replacement
+    assert client._alive is True
+
+
+def test_acp_initialization_failure_terminates_spawned_process(monkeypatch) -> None:
+    class _Proc:
+        pid = 200
+
+        def __init__(self) -> None:
+            self.alive = True
+
+        def poll(self):
+            return None if self.alive else 0
+
+    failed = _Proc()
+    client = CopilotAcpClient("copilot-bin")
+    terminated: list[int] = []
+
+    def _spawn() -> None:
+        client._proc = failed
+        client._alive = False
+        raise RuntimeError("initialize failed")
+
+    def _terminate(process) -> None:
+        terminated.append(process.pid)
+        process.alive = False
+
+    monkeypatch.setattr(client, "_spawn", _spawn)
+    monkeypatch.setattr(client, "_terminate_subprocess", _terminate)
+
+    with pytest.raises(RuntimeError, match="initialize failed"):
+        client._ensure_started()
+
+    assert terminated == [200]
+    assert client._proc is None

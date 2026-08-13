@@ -373,6 +373,65 @@ def test_manager_no_action_never_creates_make_work(tmp_path: Path) -> None:
     assert manager.calls == 2
 
 
+def test_repeated_failed_repair_family_is_suppressed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    manager = _Manager()
+    controller = _controller(tmp_path, manager)
+    events: list[dict[str, object]] = []
+    controller.on_event = events.append
+    from argus_skill.core.runtime_identity import source_revision
+
+    revision = str(source_revision() or controller.framework_root)
+    paths = sorted(manager.affected_paths)
+    controller._write_state(repair_revision=revision, repair_paths=paths)
+    controller._record_repair_failure(
+        controller._state(),
+        phase="review_rejected",
+        error="provider failed before completion",
+    )
+    controller._record_repair_failure(
+        controller._state(),
+        phase="review_rejected",
+        error="provider failed before completion",
+    )
+    controller.observe({
+        "type": "life.planner.error",
+        "ts": 20.0,
+        "error": "same planner schema family failed again",
+    })
+    controller._write_state(
+        phase="",
+        event_audit_pending=True,
+        last_audit_at=0.0,
+        active_item_id="",
+    )
+    monkeypatch.setattr(
+        controller,
+        "_prepare_worktree",
+        lambda _incident_id: (_ for _ in ()).throw(
+            AssertionError("suppressed repair must not create a worktree")
+        ),
+    )
+
+    assert controller.audit_if_due(daemon_state={}) == ""
+
+    state = controller._state()
+    assert manager.calls == 1
+    assert controller.memory.backlog.all() == []
+    assert state["phase"] == "repair_suppressed"
+    assert state["repair_revision"] == revision
+    assert state["repair_paths"] == paths
+    assert state["failed_repair_attempts"] == 2
+    assert events[-1] == {
+        "type": "manager.self_maintenance.repair_suppressed",
+        "failure_count": 2,
+        "affected_paths": paths,
+        "agent_layer": "manager",
+    }
+
+
 def test_unmerged_local_repair_blocks_a_new_maintenance_audit(
     tmp_path: Path,
 ) -> None:
@@ -1183,6 +1242,15 @@ def test_paused_or_failed_result_is_not_positive_canary_health(
         "results": [{"status": "paused_budget", "success": False}],
     }) == ""
     assert controller._state()["phase"] == "canary_running"
+    controller._write_state(canary_started_at=time.time() - 60.0)
+    assert controller.publish_after_canary(summary={
+        "stopped_by": "backlog_empty",
+        "results": [],
+    }) == ""
+    state = controller._state()
+    assert state["phase"] == "canary_running"
+    assert state["canary_mission_observed"] is True
+    assert state["canary_success_observed"] is False
 
 
 def test_stable_idle_canary_is_accepted_locally(

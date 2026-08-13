@@ -337,16 +337,17 @@ class RunExecMixin:
                 except queue.Full:
                     continue
 
+        process_id = int(getattr(process, "pid", 0) or 0)
         stdout_thread = threading.Thread(
             target=consume_pipe,
             args=("stdout", process.stdout),
-            name=f"argus-provider-pipe-{process.pid}-stdout",
+            name=f"argus-provider-pipe-{process_id}-stdout",
             daemon=True,
         )
         stderr_thread = threading.Thread(
             target=consume_pipe,
             args=("stderr", process.stderr),
-            name=f"argus-provider-pipe-{process.pid}-stderr",
+            name=f"argus-provider-pipe-{process_id}-stderr",
             daemon=True,
         )
         stdout_thread.start()
@@ -587,8 +588,10 @@ class RunExecMixin:
         for pipe, reader in pipe_readers:
             reader.join(timeout=2.0)
             if not reader.is_alive() and pipe is not None:
+                close = getattr(pipe, "close", None)
                 try:
-                    pipe.close()
+                    if callable(close):
+                        close()
                 except OSError:
                     pass
         return state

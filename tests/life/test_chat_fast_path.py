@@ -19,6 +19,7 @@ import argparse
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -459,6 +460,74 @@ def test_self_learning_review_catches_up_after_missed_cadence(
         event for event in events if event["type"] == "self.learning.review.started"
     ]
     assert started[0]["operator_turn_count"] == 6
+
+
+def test_self_learning_review_reports_applied_skill_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from argus_skill.core.transcript import append_turn
+    from argus_skill.skills.layered import LayeredSkillStore
+
+    class _ImmediateThread:
+        def __init__(self, *, target, **_kwargs):
+            self._target = target
+
+        @staticmethod
+        def is_alive() -> bool:
+            return False
+
+        def start(self) -> None:
+            self._target()
+
+    runner = _make_runner(_FakeBackend(response_message="unused"))
+    runner._manager_session_root = tmp_path / "life"
+    runner.manager.skill_store = LayeredSkillStore(
+        project_dir=tmp_path / "project-skills",
+        global_dir=tmp_path / "profile-skills",
+    )
+    runner.manager.memory_maintenance_enabled = True
+    for index in range(5):
+        append_turn(runner._manager_session_root, "operator", f"turn {index}")
+
+    def _learn(*_args, options, **_kwargs):
+        skill_dir = Path(options.working_dir)
+        (skill_dir / "answer-preference.md").write_text(
+            "---\n"
+            'name: "Answer preference"\n'
+            'description: "Use the operator preferred answer shape."\n'
+            "---\n\n"
+            "# Answer preference\n\nUse concise evidence-first answers.\n",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(exit_code=0, fatal_error="")
+
+    monkeypatch.setattr(
+        "argus_skill.apps._self_reply.threading.Thread",
+        _ImmediateThread,
+    )
+    monkeypatch.setattr(
+        "argus_skill.apps._self_reply.gateway_run_exec",
+        _learn,
+    )
+
+    runner._schedule_self_learning_review(objective="turn 4", reply="answer")
+
+    events = [
+        json.loads(line)
+        for line in (runner._manager_session_root / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    completed = next(
+        event
+        for event in events
+        if event["type"] == "self.learning.review.completed"
+    )
+    assert completed["learning_applied"] is True
+    assert completed["created"] == ["answer-preference.md"]
+    assert completed["updated"] == []
+    assert completed["removed"] == []
 
 
 def test_manager_self_progress_blocks_redacted_before_live_sink() -> None:

@@ -1347,6 +1347,73 @@ def test_life_worker_post_mission_hook_canaries_reviewed_self_maintenance(
     assert "self-maintenance" in str(spawned["reason"])
 
 
+def test_life_worker_post_mission_hook_closes_canary_during_continuous_drain(
+    tmp_path: Path,
+) -> None:
+    summaries: list[dict[str, object]] = []
+    outcome = {"status": "done", "success": True, "item_id": "mission-1"}
+
+    class _Maintenance:
+        def publish_after_canary(self, *, summary):
+            summaries.append(summary)
+            return "reviewed-commit"
+
+        @staticmethod
+        def prepare_reviewed_change(_outcome):
+            return None
+
+    worker = LifeWorker(LifeWorkerConfig(life_dir=tmp_path, backend="memory"))
+    worker._self_maintenance = _Maintenance()
+
+    assert worker._post_mission_hook(outcome) == ""
+    assert summaries == [{
+        "stopped_by": "",
+        "planning_cycles": 0,
+        "results": [outcome],
+    }]
+    assert not worker._stop.is_set()
+
+
+def test_life_worker_post_mission_hook_rolls_back_failed_canary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rollback = tmp_path / "rollback"
+    rollback.mkdir()
+    spawned: dict[str, object] = {}
+
+    class _Maintenance:
+        @staticmethod
+        def publish_after_canary(*, summary):  # noqa: ARG004
+            return f"rollback:{rollback}"
+
+        @staticmethod
+        def prepare_reviewed_change(_outcome):
+            raise AssertionError("failed canary must roll back before preparing work")
+
+        @staticmethod
+        def mark_handoff_failed(_reason):
+            raise AssertionError("rollback should reach standby")
+
+    def _fake_spawn(config: LifeWorkerConfig, **kwargs: object) -> bool:
+        spawned["config"] = config
+        spawned.update(kwargs)
+        return True
+
+    monkeypatch.setattr(life_worker_mod, "_spawn_handoff_candidate", _fake_spawn)
+    cfg = LifeWorkerConfig(life_dir=tmp_path, backend="memory")
+    worker = LifeWorker(cfg)
+    worker._self_maintenance = _Maintenance()
+
+    assert worker._post_mission_hook({"status": "failed", "success": False}) == (
+        "daemon_handoff"
+    )
+    assert worker._stop.is_set()
+    assert spawned["config"] is cfg
+    assert spawned["candidate_source_root"] == rollback
+    assert "restore prior runtime" in str(spawned["reason"])
+
+
 def test_life_worker_post_mission_hook_noops_without_reviewed_candidate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
