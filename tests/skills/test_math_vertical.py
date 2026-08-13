@@ -110,14 +110,18 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
         if path.is_file() and "__pycache__" not in path.parts
     }
 
-    # Math stays light on machinery compared with kernel_engineering. The three
+    # Math stays light on machinery compared with kernel_engineering. The four
     # modules below are the exception, and the reason is narrow: without a way
     # to measure the distance to the goal, "how hard was this step" silently
-    # replaces "how much closer did this get us". They measure; they do not
-    # add stages, roles, or required paperwork.
+    # replaces "how much closer did this get us". `lean_evidence` is the same
+    # kind of exception for formal proof — it reads what a compiler recorded so
+    # a `sorry`, a stale pass, or a formalization of the wrong statement cannot
+    # be presented as evidence. They measure; they do not add stages, roles, or
+    # required paperwork, and a project with no `.lean` file never sees them.
     assert files == {
         "__init__.py",
         "stages.py",
+        "lean_evidence.py",
         "objective_mode.py",
         "proof_graph.py",
         "proof_graph_check.py",

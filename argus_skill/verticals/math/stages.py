@@ -41,8 +41,9 @@ STAGE_CHECKS: dict[str, list[tuple[str, str]]] = {
 
 
 def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
-    """Validate objective identity and the proof graph when policy requires it."""
+    """Validate objective identity, Lean evidence, and the policy-required graph."""
     from ...core.verification_policy import resolve_policy
+    from .lean_evidence import lean_evidence_issues
     from .objective_mode import resolve_objective
     from .proof_graph import graph_required_for, load_graph
 
@@ -60,15 +61,26 @@ def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
         stage=stage_name,
         vertical="math",
     )
+    # Formalization stays optional: a project with no `.lean` file gets an
+    # empty tuple here and never loads the checker. Once one is present it is a
+    # claim, and every claim must be redeemable — so the source must show a
+    # current, hash-bound compiler result that says the proof went through.
+    # A failure the environment caused (no toolchain, no Mathlib) is worded
+    # differently from a broken proof, because the reviewer needs to tell them
+    # apart, but it does not pass: an unverified formalization is not evidence
+    # however good the excuse. The escape hatch is not committing the source.
+    # This never runs a compiler; it reads what one already recorded.
+    issues = list(lean_evidence_issues(project_root))
     if not graph_required_for(policy.profile, objective.mode):
-        return ()
+        return tuple(issues)
     graph = load_graph(project_root)
     if graph is None:
-        return (
+        issues.append(
             "targeted math under develop/certify requires "
-            "research/PROOF_GRAPH.json",
+            "research/PROOF_GRAPH.json"
         )
-    issues = list(graph.validate())
+        return tuple(issues)
+    issues.extend(graph.validate())
     if graph.goal != objective.goal:
         issues.append(
             "proof graph goal does not match the Manager-owned math_goal"
