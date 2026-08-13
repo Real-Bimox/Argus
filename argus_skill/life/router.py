@@ -1,8 +1,4 @@
-"""Manager front-door parsers and runtime calls.
-
-Prompt builders are re-exported from :mod:`argus_skill.roles.prompts.manager`
-for source compatibility.
-"""
+"""Manager front-door parsers, runtime calls, and active prompt imports."""
 
 from __future__ import annotations
 
@@ -14,9 +10,6 @@ from ..roles.prompts.manager import (
     _IDENTITY_GUARD as _PROMPT_IDENTITY_GUARD,
 )
 from ..roles.prompts.manager import (
-    build_chat_prompt,
-    build_classify_prompt,
-    build_config_intent_prompt,
     build_front_door_prompt,
     build_route_prompt,
     build_simple_prompt,
@@ -51,31 +44,6 @@ def classify_route(
     return _route_from_token(_first_alpha_token(_extract_answer(result)))
 
 
-def classify_is_conversational(
-    text: str,
-    *,
-    run_exec: Callable[[str], Any],
-) -> bool:
-    """Is ``text`` a conversational turn (greeting / capability question / ack)
-    rather than a real task to execute?
-
-    Biases hard toward ``False`` (TASK) — the safe default. Empty input, a
-    classify error, a non-zero exit, or any answer that is not exactly ``CHAT``
-    all resolve to TASK, so a real task is never silently answered as chat
-    instead of being carried out.
-    """
-    cleaned = (text or "").strip()
-    if not cleaned:
-        return False
-    try:
-        result = run_exec(build_classify_prompt(cleaned))
-    except Exception:  # noqa: BLE001
-        return False
-    if int(getattr(result, "exit_code", 0) or 0) != 0:
-        return False
-    return _first_alpha_token(_extract_answer(result)).upper() == "CHAT"
-
-
 
 
 def _extract_answer(result: Any) -> str:
@@ -102,8 +70,8 @@ def _first_alpha_token(text: str) -> str:
 # take a role list; global knobs do not. This is the ONE place natural-language
 # config changes are recognized — no keyword/regex handlers (an LLM decides
 # intent from any wording, and a bare mention of a model/backend is NOT a
-# switch). Mirrors classify_is_conversational/route: one low-reasoning call,
-# biased hard toward None so real work is never swallowed as a config change.
+# switch). The merged front-door call is biased hard toward None so real work
+# is never swallowed as a config change.
 
 _CONFIG_ROLE_KNOBS = frozenset({"backend", "model", "effort"})
 _CONFIG_GLOBAL_KNOBS = frozenset(
@@ -174,9 +142,7 @@ def _greeting_reply(message: str) -> str:
 def _parse_config_line(line: str) -> "ConfigIntent | None":
     """Parse ONE ``SET <knob> <roles> <value>`` line into a ``ConfigIntent``.
 
-    Returns ``None`` for ``NONE`` / empty / malformed. Shared by
-    ``classify_config_intent`` and ``classify_front_door`` so the two paths can
-    never drift on what counts as a valid config write."""
+    Returns ``None`` for ``NONE`` / empty / malformed."""
     line = (line or "").strip()
     if not line or line.upper() == "NONE":
         return None
@@ -230,35 +196,6 @@ def _parse_config_decision(line: str | None) -> ConfigDecision:
         seen.add(identity)
         intents.append(intent)
     return intents[0] if len(intents) == 1 else tuple(intents)
-
-
-def classify_config_intent(
-    text: str,
-    *,
-    run_exec: Callable[[str], Any],
-) -> ConfigDecision:
-    """Does this free text ask to change one of Argus's own runtime knobs?
-
-    Intent recognition, not keyword matching: one low-reasoning model call
-    decides — never a substring/regex guess — so a genuine request phrased in
-    ANY wording is caught, and a message that merely mentions a model/backend/
-    setting (or names one as part of a real task) is not misread as a config
-    change. Biases hard toward ``None`` on any ambiguity, error, or malformed
-    answer, so the message then flows through the normal chat/task path — the
-    safe default, mirroring ``classify_is_conversational``/``classify_route``.
-    """
-    cleaned = (text or "").strip()
-    if not cleaned:
-        return None
-    try:
-        result = run_exec(build_config_intent_prompt(cleaned))
-    except Exception:  # noqa: BLE001
-        return None
-    if int(getattr(result, "exit_code", 0) or 0) != 0:
-        return None
-    answer = _extract_answer(result).strip()
-    line = next((ln.strip() for ln in answer.splitlines() if ln.strip()), "")
-    return _parse_config_decision(line)
 
 
 def _line_after_prefix(answer: str, prefix: str) -> "str | None":
@@ -485,14 +422,9 @@ __all__ = [
     "SelfModeIntent",
     "LifetimeIntent",
     "AuthorizationAction",
-    "classify_is_conversational",
     "classify_route",
-    "classify_config_intent",
     "classify_front_door",
-    "build_classify_prompt",
     "build_route_prompt",
-    "build_config_intent_prompt",
     "build_front_door_prompt",
-    "build_chat_prompt",
     "build_simple_prompt",
 ]

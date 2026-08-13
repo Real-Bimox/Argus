@@ -72,81 +72,49 @@ VERTICALS: tuple[str, ...] = (
 #: expert per-stage reviewer checklists) over authoring a fresh, checklist-less
 #: data domain. Keys must stay in sync with ``VERTICALS``.
 VERTICAL_PURPOSES: dict[str, str] = {
-    "software": "software engineering: repository repairs, features, refactors, "
-    "tests, developer tooling, and ordinary implementation outside Argus itself; "
-    "not specialized hardware/runtime performance research",
-    "argus_maintenance": "maintenance and architectural improvement of the Argus "
-    "framework itself: concise reusable code, core/vertical decoupling, removal of "
-    "unjustified hardcoding/wrappers/fallbacks, independent regression and release checks",
-    "digital_circuit": "digital hardware engineering: Verilog/SystemVerilog RTL, "
-    "testbenches, assertions/formal verification, FPGA/ASIC synthesis, timing, "
-    "and reproducible sign-off evidence",
-    "digital_circuit_benchmark": "single-stage fixed-harness RTL benchmark execution "
-    "under digital_circuit: exact public interface closure, RTL, local verification, "
-    "pre-score elaboration, and immutable attempt handoff without staged overhead",
-    "chip_design": "end-to-end digital ASIC and accelerator design: workload and product "
-    "definition, microarchitecture and memory modeling, EDA/PDK/IP readiness, RTL, "
-    "independent verification, DFT, synthesis, physical implementation, STA/power/"
-    "signal-integrity sign-off, DRC/LVS, fair public-baseline comparison, and a "
-    "provenance-bound pre-tapeout release",
-    "research": "team-scale scholarly survey or original research-PAPER pipeline "
-    "(literature review → optional experiments → draft/review → optional submission); "
-    "use when the goal is substantial synthesis or a written paper, not for reading, "
-    "explaining, critiquing, or summarizing one existing paper",
-    "math": "mathematical conjectures, proofs, and open research problems; dynamically "
-    "choose background retrieval, examples/counterexamples, computation, natural-language "
-    "proof, and Lean formalization as appropriate; not a paper pipeline or a "
-    "metric-optimization vertical",
-    "math_synth": "math-reasoning data synthesis benchmark: maximize the measured "
-    "pass@4-minus-pass@1 gap by improving only the editable generation pipeline while "
-    "keeping the solver, verifier, metric, seeds, and evaluation runner frozen",
-    "physics": "physics tasks on a real physical system; dynamically choose theoretical "
-    "derivation, numerical simulation, data analysis, literature synthesis, or experiment "
-    "design (or an honest negative result) as appropriate, reporting bounded provenance-tracked "
-    "evidence; not a paper pipeline or a metric-optimization vertical",
-    "materials": "materials science and materials processing research across atomistic, "
-    "microstructure, continuum, CAD/CAE, and experimental scales; dynamically choose "
-    "literature/data analysis, DFT/MD/MLIP, constitutive modeling, FEM/process simulation, "
-    "or experiment design, with independent physical validation and provenance",
-    "quant": "finance factor-research REPORT — mine/evaluate equity factors "
-    "(IC/ICIR, backtest, Sharpe) into a reviewer-certified factor report; not a metric loop",
-    "speedrun": "generic single-metric optimize loop on a script/benchmark under a "
-    "wall-clock budget (setup → optimize → measure → report); no paper",
-    "kernel_engineering": "production GPU-kernel engineering in a real repository "
-    "(environment/toolchain audit → correct baseline → profile/optimize → full "
-    "validation → upstream-ready report); use for CUDA/Triton/TileLang/CUTLASS/PyTorch "
-    "library work and PRs, not fixed SOL-ExecBench competition tasks",
+    "software": "software engineering: repository repairs, features, tests, tooling, and "
+    "ordinary implementation; not specialized hardware/runtime performance research",
+    "argus_maintenance": "Argus framework repair and architecture improvement with "
+    "independent regression and release checks",
+    "digital_circuit": "Verilog/SystemVerilog RTL, testbenches, formal verification, "
+    "FPGA/ASIC synthesis, timing, and sign-off",
+    "digital_circuit_benchmark": "single-stage fixed-harness RTL benchmark: interface, RTL, "
+    "local verification, pre-score elaboration, and attempt handoff",
+    "chip_design": "end-to-end digital ASIC/accelerator design from workload and "
+    "microarchitecture through RTL, physical implementation, and sign-off",
+    "research": "substantial scholarly survey or original research paper: literature, "
+    "optional experiments, synthesis, drafting, and review; submission is optional",
+    "math": "mathematical conjectures, proofs, and open problems using literature, "
+    "computation, natural-language proof, or Lean as needed",
+    "math_synth": "math-reasoning data synthesis: maximize pass@4-minus-pass@1 while "
+    "the solver, verifier, metric, seeds, and evaluator stay frozen",
+    "physics": "theory, simulation, data analysis, literature, or experiment design "
+    "for a real physical system with bounded evidence",
+    "materials": "materials science and materials processing across atomistic, "
+    "microstructure, continuum, CAD/CAE, and experimental scales",
+    "quant": "equity factor research (IC/ICIR, backtest, Sharpe) producing a "
+    "reviewer-certified report, not a generic metric loop",
+    "speedrun": "single-metric script/benchmark optimization under a wall-clock budget: "
+    "setup, optimize, measure, report; no paper",
+    "kernel_engineering": "production CUDA/Triton/TileLang/CUTLASS/PyTorch kernel work in "
+    "a repository; not a fixed SOL-ExecBench competition",
     "nanochat": "minimize val_bpb on the nanochat train.py (bits-per-byte, ~300s, 1 GPU)",
     "nanogpt_speedrun": "minimize wall-clock time to reach val_loss<=3.28 on modded-nanogpt (8xH100)",
-    "kernelbench": "maximize SOL score / speedup for GPU kernels (CUDA/Triton/CUTLASS, "
-    "B200, SOL-ExecBench/KernelBench) against a correctness-checked reference",
-    "learning": "ingest operator-provided learning material and update the skill/wiki "
-    "libraries (produce a change plan: create/update/archive skills)",
-    "ale_last_exam": "complete one Agents' Last Exam long-horizon professional "
-    "workflow in a real computer sandbox; hidden-reference, artifact-first GUI+CLI delivery",
-    "fiction_writing": "creative FICTION authoring (zh/en) — write a short story or "
-    "chapter from a brief, OR continue an existing work, holding characters/world/"
-    "timeline consistent via a structured story_state; intake→plan→draft→state_update"
-    "→review→revise. NOT a research paper and NOT a 'literature review' — this "
-    "produces original narrative prose, not a survey of prior work",
-    "classical_poetry": "classical CHINESE poetry (近体诗/古体/词) — compose or "
-    "prosody-check 律诗/绝句/五言/七言; gates the poem on a reproducible machine "
-    "prosody check (押韵/平仄/粘对/孤平/三平尾 via 平水韵) plus live-reviewer 立意/炼字/"
-    "反AI. zh only; NOT modern free verse (route that to modern_poetry) and NOT prose",
-    "modern_poetry": "modern FREE VERSE / prose poems (zh or en) — compose or revise; "
-    "NO 平仄/韵 machine check (free verse is not classical). Gates only DECLARED hard "
-    "constraints (language/line-count/banned-words); imagery/lineation/tone are "
-    "live-reviewer craft. NOT classical regulated verse and NOT narrative prose",
-    "prose": "literary PROSE (抒情/叙事散文/随笔/回忆, zh or en) — compose or revise an "
-    "essay/memoir. Machine layer is thin: prose_state structure completeness + declared "
-    "hard constraints (language/paragraph-count/banned-words). Concrete observation, the "
-    "fact/memory boundary, and paragraph movement are live-reviewer. NOT verse and NOT "
-    "plot-driven fiction",
-    "literary_editor": "EDIT an existing literary text — rewrite/expand/polish/proofread/"
-    "critique. Reuses the Reviewer + revise capability (no new agent). Machine layer is "
-    "edit DISCIPLINE (critique doesn't rewrite, proofread doesn't become a rewrite, expand "
-    "adds, must-keep segments survive); edit quality and fact-fidelity are live-reviewer. "
-    "Requires a source text; NOT from-scratch authoring",
+    "kernelbench": "maximize correctness-checked SOL score/speedup for GPU kernels on "
+    "B200 SOL-ExecBench/KernelBench",
+    "learning": "ingest operator material and create, update, or archive skill/wiki knowledge",
+    "ale_last_exam": "Agents' Last Exam long-horizon professional workflow in a real "
+    "sandbox with hidden-reference, artifact-first GUI+CLI delivery",
+    "fiction_writing": "write or continue original fiction while preserving characters, "
+    "world, and timeline; not a literature review or research task",
+    "classical_poetry": "compose or check classical Chinese 近体诗/古体/词 with reproducible "
+    "押韵/平仄 prosody and literary review",
+    "modern_poetry": "compose or revise modern free verse/prose poems without classical "
+    "prosody checks; enforce only declared hard constraints",
+    "prose": "compose or revise literary essays, memoir, or 抒情/叙事散文/随笔; not verse "
+    "or plot-driven fiction",
+    "literary_editor": "rewrite, expand, polish, proofread, or critique an existing "
+    "literary text while preserving edit scope and source facts",
 }
 
 #: The safe default vertical when intent is unclear or state is missing.

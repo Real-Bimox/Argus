@@ -1,8 +1,7 @@
 """Regression: ``Manager.classify_front_door`` must run FRESH on the raw backend
 — never resume the persistent Manager session, and with bounded classify effort.
 
-Same discipline as ``classify_config_intent`` (see test_config_intent_fresh):
-the merged front-door classify is a stateless three-axis label call. It must go to
+The merged front-door classify is a stateless label call. It must go to
 ``self.runner`` with ``resume_thread_id=None`` (no giant-session resume, which is
 what made every cockpit message slow), at ``medium`` effort by default.
 """

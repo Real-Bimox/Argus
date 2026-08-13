@@ -6,8 +6,6 @@ import json
 from argus_skill.domains import BUILTIN_DOMAINS, DOMAIN_PURPOSES
 from argus_skill.manager.domain_author import (
     DomainProposal,
-    build_domain_author_prompt,
-    build_fast_vertical_decision_prompt,
     build_vertical_decision_prompt,
     parse_domain_proposal,
     parse_fast_vertical_decision,
@@ -55,57 +53,39 @@ def test_parse_dedupes_name_against_known_and_existing():
     assert p is not None and p.name not in ("research", "research_2")
 
 
-def test_prompt_mentions_known_and_existing():
-    prompt = build_domain_author_prompt(
-        "build a control loop", known_verticals=["research", "quant"],
-        existing_data_domains=["robotics_sim"],
-    )
-    assert "research" in prompt and "quant" in prompt and "robotics_sim" in prompt
-    # The prompt still has to state its output shape; since 2026-07-26 that
-    # shape is named lines rather than a JSON schema.
-    assert "NAME=<slug>" in prompt
-    assert "STAGES=" in prompt
-    assert "JSON" not in prompt
-
-
-def test_prompt_instructs_grounded_investigation_not_blind_guess():
-    """Regression: the Manager must be told to actually inspect the repo
-    (shell access, read-only) before proposing a stage skeleton, instead of
-    guessing a generic template from the task sentence alone."""
-    prompt = build_domain_author_prompt(
-        "optimize the slowest function", known_verticals=["research"],
-    )
-    assert "shell access" in prompt.lower()
-    assert "investigate" in prompt.lower()
-    assert "READ-ONLY" in prompt
-    assert "do NOT edit" in prompt
-
-
 def test_vertical_prompt_keeps_math_routes_inside_builtin_math():
     prompt = build_vertical_decision_prompt(
         "Investigate an open conjecture with literature, computation, proof, and review",
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "stable, reusable capability contract" in prompt
-    assert "`math_conjecture`" in prompt
-    assert "dynamic Planner backlog/DAG tasks" in prompt
-    assert "they are not competing verticals" in prompt
+    assert "stable reusable staged capability" in prompt
+    assert "do not replace them with task-specific aliases" in prompt
+    assert "Planner literature/proof/experiment tasks stay inside `math`" in prompt
+    assert "not new verticals" in prompt
+    assert len(prompt) <= 7_500
 
 
 def test_vertical_prompts_do_not_treat_one_paper_reading_as_research_pipeline():
     task = "Read this existing paper, explain it, and give me a concise summary."
-    fast = build_fast_vertical_decision_prompt(
-        task,
-        verticals_with_purpose=VERTICAL_PURPOSES,
-    )
     grounded = build_vertical_decision_prompt(
         task,
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "not for reading, explaining, critiquing, or summarizing one existing paper" in fast
-    assert "belongs on the SELF route before vertical selection" in grounded
+    assert "belongs on SELF" in grounded
+
+
+def test_serious_survey_is_staged_without_implied_publication() -> None:
+    prompt = build_vertical_decision_prompt(
+        "调研 MiniMax-H3 加速部署并形成严肃的中文 PDF survey。",
+        verticals_with_purpose=VERTICAL_PURPOSES,
+        research_target_verticals=("research",),
+    )
+
+    assert "a broad survey plus synthesis" in prompt
+    assert "a serious survey, or a PDF alone does not imply publication intent" in prompt
+    assert "never infer a venue or submission search from the topic" in prompt
 
 
 def test_vertical_prompt_composes_chemistry_with_research() -> None:
@@ -129,7 +109,7 @@ def test_vertical_prompt_does_not_escalate_bounded_repo_fix_to_new_domain() -> N
     )
 
     assert "capability VERTICAL" in prompt
-    assert "workflow_mode" in prompt
+    assert "WORKFLOW_MODE=<direct|staged>" in prompt
     assert "software" in prompt
 
 
@@ -139,8 +119,8 @@ def test_new_domain_starts_with_real_work_not_process_ceremony() -> None:
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "Do not author intake, inventory, planning, or certification-only stages" in prompt
-    assert "first stage must implement or measure" in prompt
+    assert "Do not encode a one-off deliverable/DAG" in prompt
+    assert "first stage implements or measures work" in prompt
 
 
 def test_vertical_prompt_preserves_explicit_operator_actions() -> None:
@@ -149,40 +129,23 @@ def test_vertical_prompt_preserves_explicit_operator_actions() -> None:
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "Preserve every concrete operator action" in prompt
-    assert "must not replace them with cleanup" in prompt
-    assert "authorizes a real attempt within policy" in prompt
-    assert "Match the operator's requested ACTION" in prompt
-    assert "quoted commit titles, logs, filenames, or error text" in prompt
-    assert "never turn those quoted subjects into implementation work" in prompt
+    assert "preserve every requested action" in prompt
+    assert "Do not replace the goal with cleanup" in prompt
+    assert "authorizes a real attempt" in prompt
+    assert "Match the requested ACTION" in prompt
+    assert "quoted filenames, logs, or commit titles" in prompt
+    assert "repository maintenance is `software`" in prompt
 
 
 def test_vertical_prompts_do_not_use_software_as_performance_catch_all() -> None:
     task = "Continuously optimize an MLX inference runtime on Apple Silicon."
-    fast = build_fast_vertical_decision_prompt(
-        task,
-        verticals_with_purpose=VERTICAL_PURPOSES,
-    )
     grounded = build_vertical_decision_prompt(
         task,
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "not specialized hardware/runtime performance research" in fast
-    assert "author a new domain" in grounded
-
-
-def test_fast_vertical_prompt_is_tool_free_and_route_only() -> None:
-    prompt = build_fast_vertical_decision_prompt(
-        "Repair one failing test in the current repository.",
-        verticals_with_purpose=VERTICAL_PURPOSES,
-    )
-
-    assert "NO tools" in prompt
-    assert "choose Live View" in prompt
-    assert "expand the task" in prompt
-    assert "execution_task" not in prompt
-    assert "shell access" not in prompt
+    assert "`new` only when no listed capability fits" in grounded
+    assert "not specialized hardware/runtime performance research" in grounded
 
 
 def test_fast_vertical_parser_accepts_confident_existing_route() -> None:
@@ -297,10 +260,9 @@ def test_grounded_vertical_prompt_has_bounded_inspection_and_no_rendering_work()
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "ONE focused inspection batch" in prompt
-    assert "at most four file/search operations" in prompt
-    assert "choose Live View artifacts" in prompt
-    assert "expand the Engineer task" in prompt
+    assert "one focused batch, at most four file/search operations" in prompt
+    assert "choose Live View content" in prompt
+    assert "perform the task" in prompt
     assert "presentations" not in prompt
     assert "EXECUTION_TASK=<complete standalone objective>" in prompt
 
@@ -316,14 +278,11 @@ def test_vertical_prompts_prefer_matching_formal_project_domain() -> None:
         },
     }
 
-    fast = build_fast_vertical_decision_prompt("Optimize MiniMax H3 on M4 Pro", **kwargs)
     grounded = build_vertical_decision_prompt("Optimize MiniMax H3 on M4 Pro", **kwargs)
 
-    for prompt in (fast, grounded):
-        assert "status=formal" in prompt
-        assert "Apple Silicon MLX/Metal deployment" in prompt
-    assert "choose it over a broader built-in" in fast
-    assert "choose it before a broader built-in" in grounded
+    assert "status=formal" in grounded
+    assert "Apple Silicon MLX/Metal deployment" in grounded
+    assert "Prefer an exact `status=formal` project domain" in grounded
 
 
 def test_a_string_of_earlier_stages_is_not_rendered_letter_by_letter() -> None:

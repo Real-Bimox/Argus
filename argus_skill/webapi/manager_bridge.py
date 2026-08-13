@@ -105,7 +105,7 @@ def _answer_inline(sid: str, life_dir: Any, question: str) -> str:
     from ..core.run_gateway import run_exec as gateway_run_exec
     from ..life.memory import LifeMemory
     from ..manager.front_door import _ensure_manager_runner
-    from ..roles.prompts.manager import build_chat_prompt
+    from ..roles.prompts.manager import build_quick_reply_prompt
 
     try:
         mem = LifeMemory.open(Path(str(life_dir)))
@@ -119,7 +119,7 @@ def _answer_inline(sid: str, life_dir: Any, question: str) -> str:
             )
         result = gateway_run_exec(
             chat_state.get("manager_session") or runner,
-            prompt=build_chat_prompt(objective=question),
+            prompt=build_quick_reply_prompt(objective=question),
             options=RunnerOptions(skip_git_repo_check=True),
             run_label="manager-ask",
         )

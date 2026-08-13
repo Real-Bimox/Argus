@@ -336,7 +336,7 @@ def test_fail_open_when_root_unwritable(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 # 7. Manager wiring — Manager LLM calls flow through the shared session
 # ---------------------------------------------------------------------------
-def test_manager_calls_flow_through_one_session(tmp_path):
+def test_vertical_routing_does_not_pollute_manager_session(tmp_path):
     fake = _RecordingRunner(
         reply=(
             '{"choice": "existing", "vertical": "research", '
@@ -347,18 +347,11 @@ def test_manager_calls_flow_through_one_session(tmp_path):
     )
     mgr = Manager(project_root=tmp_path, runner=fake)
 
-    # is_conversational → manager-converse turn (first → resume None).
-    mgr.is_conversational("hello there")
-    # divide → Manager repository-grounded classification on a fresh call. It
-    # must not inherit unrelated Manager chat history because that defeats its
-    # context cap.
+    # Manager repository-grounded classification is a fresh call and must not
+    # create or resume the persistent Manager conversation.
     mgr.divide("write a paper for EMNLP submission")
-    # Two calls total, both fresh: chat owns the persisted session; routing does not.
-    assert len(fake.resumes) == 2
-    assert fake.resumes[0] is None
-    assert fake.resumes[1] is None
-    # The persistent conversation session remains at the chat turn's thread.
-    assert json.loads((tmp_path / _SESSION_FILE).read_text())["thread_id"] == "t1"
+    assert fake.resumes == [None]
+    assert not (tmp_path / _SESSION_FILE).exists()
 
 
 def test_manager_without_runner_has_no_session(tmp_path):
