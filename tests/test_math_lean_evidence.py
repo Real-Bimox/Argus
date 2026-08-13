@@ -1059,3 +1059,137 @@ def test_a_host_without_lean_records_unavailable_and_still_blocks(
         "lean_unverified_toolchain_absent"
     }
     assert not report.sources[0].verified
+
+
+# -- which toolchain the verify step reaches for -----------------------------
+#
+# `run_lean_check` compiles through bare `lean` unless told otherwise, which is
+# right for a primitive and wrong for a default. Serious formalization imports
+# Mathlib, Mathlib is only on the search path through `lake env lean`, and an
+# Engineer who follows the documented `verify` invocation passes no flags. So
+# for the whole life of this module the recorded verdict on a host *with*
+# Mathlib installed was `missing_dependency` — the one message that tells the
+# reader to go install the library sitting on their disk. These fix the default
+# and pin both overrides, since a decision made for the caller has to be
+# refusable and has to say it was made.
+
+def _fake_lake(tmp_path: Path) -> str:
+    """Answers `--version`, `env lean ...`, and the axiom audit with success."""
+    path = tmp_path / "fake-lake"
+    path.write_text(
+        "#!/usr/bin/env python3\nraise SystemExit(0)\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return str(path)
+
+
+def _mathlib_workspace(home: Path) -> Path:
+    workspace = home / ".local" / "share" / "argus-skill" / "mathlib"
+    workspace.mkdir(parents=True)
+    (workspace / "lakefile.toml").write_text('name = "mathlib"\n', encoding="utf-8")
+    return workspace.resolve()
+
+
+def test_verify_reaches_for_an_installed_mathlib_without_being_asked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    workspace = _mathlib_workspace(home)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    root = _project(tmp_path)
+    source = _write_source(root, MATHLIB_THEOREM)
+    fidelity = _write_fidelity(root)
+
+    result = verify_lean_source(
+        source,
+        statement_fidelity=fidelity,
+        lake_bin=_fake_lake(tmp_path),
+    )
+
+    assert result["tool"] == "lake"
+    assert result["cwd"] == str(workspace)
+    # Recorded, not merely done: a compile whose search path was chosen for the
+    # caller has to name the workspace it was given.
+    assert result["lake_workspace"] == str(workspace)
+    assert json.loads(
+        (_lean_dir(root) / "lean_check.json").read_text(encoding="utf-8")
+    )["lake_workspace"] == str(workspace)
+
+
+def test_verify_stays_on_bare_lean_when_no_workspace_applies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+
+    result = verify_lean_source(
+        source,
+        statement_fidelity=fidelity,
+        lean_bin=_fake_lake(tmp_path),
+    )
+
+    assert result["tool"] == "lean"
+    assert result["lake_workspace"] == ""
+
+
+def test_verify_honours_an_explicit_refusal_to_use_lake(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    _mathlib_workspace(home)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+
+    result = verify_lean_source(
+        source,
+        statement_fidelity=fidelity,
+        lean_bin=_fake_lake(tmp_path),
+        use_lake=False,
+    )
+
+    assert result["tool"] == "lean"
+    assert result["lake_workspace"] == ""
+
+
+def test_verify_cli_defaults_to_lake_and_takes_no_lake_back(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    workspace = _mathlib_workspace(home)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    root = _project(tmp_path)
+    source = _write_source(root, MATHLIB_THEOREM)
+    fidelity = _write_fidelity(root)
+    fake = _fake_lake(tmp_path)
+    invocation = [
+        "verify",
+        str(source),
+        "--statement-fidelity",
+        str(fidelity),
+        "--lean-bin",
+        fake,
+        "--lake-bin",
+        fake,
+    ]
+
+    assert main(invocation) == 0
+    assert json.loads(capsys.readouterr().out)["cwd"] == str(workspace)
+
+    assert main([*invocation, "--no-lake"]) == 0
+    forced = json.loads(capsys.readouterr().out)
+    assert forced["tool"] == "lean"
+    assert forced["lake_workspace"] == ""

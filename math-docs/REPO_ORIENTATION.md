@@ -367,6 +367,23 @@ vertical 用自己的词汇去实例化**（不是 core 规定的枚举）。
 | `research/GROUND_TRUTH.md` | 被引用最多的证据文件（8 处）。 |
 | `research/ROUTE_LEDGER.json` | ⚠️ **陷阱**，见 §11。 |
 
+### 9.4 Lean 工具链：本机装在哪
+
+`~/.local/share/argus-skill/mathlib`（mathlib4 master，pin `leanprover/lean4:v4.34.0-rc1`，
+`.lake` 约 6.9G）。这个路径**不是新约定**——`tools/lean_check.py:445-465`
+`_resolve_lake_workspace()` 里早就写着这条 fallback，只是此前没人往里装东西：
+先从 source 向上找 `lakefile.toml`/`lakefile.lean`，找不到再看
+`ARGUS_SKILL_MATHLIB_WORKSPACE`，最后才落到上面这个固定路径。
+
+`lean_evidence verify` 默认自己决定走 `lake env lean` 还是裸 `lean`：
+解析得到 workspace 就走 lake，没有就走 lean，结果里记 `lake_workspace`。
+`--lake` / `--no-lake` 是显式覆盖。**`run_lean_check` 本身仍是 `use_lake=False` 的哑原语**——
+策略留在 vertical，原语的行为只由参数决定，它那套测试才能在任何 host 上含义不变。
+
+一个真实数字：`import Mathlib` 的单文件 verify 约 12s（含 axiom audit）。
+不带 `--lake` 跑同一个文件会得到 `type_error` + `missing_dependency`——
+库装了但没用对方式调用，这是 8/12 之前的默认行为。
+
 ---
 
 ## 10. 想查某件事，从哪读起

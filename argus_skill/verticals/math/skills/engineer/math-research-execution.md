@@ -36,7 +36,9 @@ stage requires it to show a fresh real compiler run with no proof holes, so run
         --statement-fidelity statement_fidelity.md
 
 which compiles the source and records the answer beside it, stamped with the
-source hash. Editing the source invalidates that record; re-run it.
+source hash. Editing the source invalidates that record; re-run it. If the host
+has Mathlib installed it is used automatically, so `import Mathlib` needs no
+extra flag.
 
 Compilation checks the theorem you encoded, not the one you meant, so the
 separate `statement_fidelity.md` states which objects, quantifiers, hypotheses,

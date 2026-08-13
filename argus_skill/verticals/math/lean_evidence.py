@@ -878,7 +878,7 @@ def verify_lean_source(
     timeout_seconds: float = 30.0,
     lean_bin: str | None = None,
     lake_bin: str | None = None,
-    use_lake: bool = False,
+    use_lake: bool | None = None,
 ) -> dict[str, Any]:
     """Compile one source and record the answer beside it, hash included.
 
@@ -886,12 +886,31 @@ def verify_lean_source(
     preparation, directory lock, atomic writes, and log rendering, and adds
     only ``source_sha256``, which is what later lets staleness be decided by
     identity rather than guessed from modification order.
+
+    ``use_lake`` defaults to ``None``, meaning *decide from the host*: compile
+    through ``lake env lean`` when a Lake workspace applies to this source, and
+    through bare ``lean`` when none does. It used to default to ``False``, and
+    that turned an installed Mathlib into a worse failure than no Mathlib at
+    all — the library was on disk, the import still resolved to nothing, and
+    the recorded verdict said ``missing_dependency``, which reads as "install
+    Mathlib" to the one reader who already had. An Engineer cannot be expected
+    to pass a flag whose only effect is to undo a default that was wrong.
+
+    The decision stays here rather than in ``run_lean_check`` on purpose. That
+    function is the primitive: it does what it is told, so its behaviour is a
+    function of its arguments alone and its tests mean the same thing on every
+    host. Which toolchain a *mission* should use is a policy question, and this
+    is where the Math vertical answers it. The answer is recorded as
+    ``lake_workspace`` in the result, because a compile whose search path was
+    chosen for the caller must say so; an unexplained ``cwd`` three directories
+    away is not an explanation.
     """
     from ...tools.lean_check import (  # noqa: PLC0415 — optional, heavy import
         COMPILE_LOG,
         LEAN_CHECK_RESULT,
         _artifact_directory_lock,
         _atomic_artifact_write,
+        _resolve_lake_workspace,
         prepare_canonical_lean_artifacts,
         render_compile_log,
         run_lean_check,
@@ -909,15 +928,18 @@ def verify_lean_source(
             root,
             statement_fidelity,
         )
+        workspace = _resolve_lake_workspace(canonical_source)
+        through_lake = workspace is not None if use_lake is None else use_lake
         result = run_lean_check(
             canonical_source,
             timeout_seconds=timeout_seconds,
             lean_bin=lean_bin,
             lake_bin=lake_bin,
-            use_lake=use_lake,
+            use_lake=through_lake,
         )
         result["source_sha256"] = _sha256(canonical_source.read_bytes())
         result["statement_fidelity"] = str(canonical_fidelity)
+        result["lake_workspace"] = str(workspace) if through_lake and workspace else ""
         result["environment_failure"] = classify_environment_failure(result)
         _atomic_artifact_write(
             root / LEAN_CHECK_RESULT,
@@ -946,7 +968,17 @@ def _build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--timeout", type=float, default=30.0)
     verify.add_argument("--lean-bin")
     verify.add_argument("--lake-bin")
-    verify.add_argument("--lake", action="store_true")
+    verify.add_argument(
+        "--lake",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "compile through `lake env lean`. Omit to decide from the host: "
+            "lake when a Lake workspace applies to the source, bare lean "
+            "otherwise. Pass --no-lake to force bare lean even where a "
+            "workspace exists"
+        ),
+    )
 
     sub.add_parser("audit", help="report the Lean toolchain this host has")
     return parser
