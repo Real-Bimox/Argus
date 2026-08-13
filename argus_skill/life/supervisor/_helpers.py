@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import unicodedata
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from ..memory import JournalEntry
 from ._constants import PLANNER_RECENT_FAILURE_STATUS
@@ -144,9 +144,10 @@ def _sanitize_planner_task_text(text: str) -> str:
         value,
     )
     for source in sorted(legacy_sources, key=len, reverse=True):
-        if Path(source).name not in {"Argus", "argus-skill"}:
+        source_path = PurePosixPath(source)
+        if source_path.name not in {"Argus", "argus-skill"}:
             continue
-        research_playbook = str(Path(source).parent / "research.md")
+        research_playbook = str(source_path.parent / "research.md")
         value = _replace_path_token(
             value,
             research_playbook,

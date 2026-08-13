@@ -1,8 +1,10 @@
 import log from 'electron-log/main';
 import { join } from 'node:path';
 import { app } from 'electron';
+import { installConsolePipeGuard } from './loggerSafety';
 
 export function createLogger(): typeof log {
+  installConsolePipeGuard(log.transports.console);
   log.initialize();
   if (app.isPackaged) {
     log.transports.console.level = false;

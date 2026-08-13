@@ -10,6 +10,7 @@ project path is prepended to the first post-rotation turn.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -58,6 +59,47 @@ def test_manager_prewarm_schedule_is_one_shot_after_success(
 
     assert calls == [("s-prewarm01", tmp_path)]
     assert manager_state._MANAGER_PREWARMING == set()
+
+
+def test_manager_prewarm_schedule_does_not_wait_for_busy_manager_turn(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A compact snapshot must not queue behind a long-running Manager call."""
+    sid = "s-prewarm-busy"
+    manager_state._STATES.clear()
+    manager_state._MANAGER_PREWARMING.clear()
+    lock_held = threading.Event()
+    release_lock = threading.Event()
+    schedule_returned = threading.Event()
+    prewarm_started = threading.Event()
+
+    def hold_manager_lock() -> None:
+        with manager_state.manager_context_lock(sid):
+            lock_held.set()
+            release_lock.wait(2)
+
+    def fake_prewarm(_sid: str, *, global_root=None) -> None:  # noqa: ANN001
+        prewarm_started.set()
+
+    holder = threading.Thread(target=hold_manager_lock)
+    holder.start()
+    assert lock_held.wait(1)
+    monkeypatch.setattr(manager_state, "_prewarm_manager_context", fake_prewarm)
+
+    def schedule() -> None:
+        manager_state.schedule_manager_prewarm(sid, global_root=tmp_path)
+        schedule_returned.set()
+
+    caller = threading.Thread(target=schedule)
+    caller.start()
+    try:
+        assert schedule_returned.wait(0.5), "prewarm scheduling blocked on the Manager lock"
+        assert prewarm_started.wait(0.5)
+    finally:
+        release_lock.set()
+        holder.join(timeout=1)
+        caller.join(timeout=1)
 
 
 def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
@@ -129,7 +171,9 @@ def test_manager_session_rotates_with_structured_handoff(tmp_path: Path, monkeyp
         assert r["kind"] == "chat"
     events = [
         json.loads(line)
-        for line in (tmp_path / "projects" / "s-rot00001" / "events.jsonl").read_text().splitlines()
+        for line in (tmp_path / "projects" / "s-rot00001" / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
         if line.strip()
     ]
     assert [event["type"] for event in events if event["type"].startswith("ui.")] == [
@@ -276,7 +320,7 @@ def test_manager_stream_and_persisted_reply_share_message_id(
     delta = next(payload for kind, payload in fragments if kind == "delta")
     persisted = [
         json.loads(line)
-        for line in (life / "events.jsonl").read_text().splitlines()
+        for line in (life / "events.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     reply = next(event for event in persisted if event["type"] == "ui.argus")
@@ -326,7 +370,9 @@ def test_natural_language_abort_is_control_not_backlog_work(
     assert result["requested"] is True
     assert result["item_id"] == item.id
     assert len(memory.backlog.all()) == 1
-    request = json.loads((life / "running_item_abort.json").read_text())
+    request = json.loads(
+        (life / "running_item_abort.json").read_text(encoding="utf-8")
+    )
     assert "停止现在的所有任务" in request["reason"]
 
 

@@ -38,13 +38,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
-from ..core.event_catalog import EventType, canonical_event_type
+import portalocker
 
-fcntl: Any
-try:  # pragma: no cover - platform-specific import
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+from ..core.event_catalog import EventType, canonical_event_type
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -1100,25 +1096,11 @@ class Backlog:
         """Serialize backlog read-modify-write operations across processes."""
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock_path.open("a+b") as fh:
-            if fcntl is not None:  # POSIX
-                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-                try:
-                    yield
-                finally:
-                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-            else:  # pragma: no cover - Windows fallback
-                import msvcrt
-
-                lock = getattr(msvcrt, "locking")
-                lk_lock = getattr(msvcrt, "LK_LOCK")
-                lk_unlock = getattr(msvcrt, "LK_UNLCK")
-                fh.seek(0)
-                lock(fh.fileno(), lk_lock, 1)
-                try:
-                    yield
-                finally:
-                    fh.seek(0)
-                    lock(fh.fileno(), lk_unlock, 1)
+            portalocker.lock(fh, portalocker.LOCK_EX)
+            try:
+                yield
+            finally:
+                portalocker.unlock(fh)
 
     # --- write ---
     def add(self, item: BacklogItem) -> BacklogItem:

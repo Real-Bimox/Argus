@@ -17,6 +17,7 @@ import {
   writeOwnershipRecord as writeOwnershipRecordImpl,
   type ApiOwnershipRecord,
 } from './apiOwnership.js';
+import { requestWithTimeout } from './network.js';
 
 /**
  * Make `argus` a true one-command launch: if the backend API isn't up, start
@@ -73,35 +74,41 @@ export async function probeApi(
   token?: string,
 ): Promise<ApiProbeResult> {
   try {
-    const ctrl = AbortSignal.timeout(1200);
     const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-    const r = await fetch(`http://${host}:${port}/api/meta`, { signal: ctrl, headers });
-    if (!r.ok) {
-      const suffix = r.status === 404
-        ? 'service does not expose /api/meta; it is an older Argus checkout or another process'
-        : `GET /api/meta returned HTTP ${r.status}`;
-      return { state: 'incompatible', message: suffix };
-    }
-    let body: unknown;
-    try {
-      body = await r.json();
-    } catch {
-      return { state: 'incompatible', message: 'backend returned malformed /api/meta JSON' };
-    }
-    const compatibility = inspectApiMeta(body, localRuntimeExpectation());
-    if (!compatibility.compatible || !compatibility.meta) {
-      return {
-        state: 'incompatible',
-        message: compatibility.reason,
-        meta: compatibility.meta,
-      };
-    }
-    return {
-      state: 'compatible',
-      message: describeApiRuntime(compatibility.meta),
-      warning: compatibility.warning,
-      meta: compatibility.meta,
-    };
+    return await requestWithTimeout(
+      `http://${host}:${port}/api/meta`,
+      { headers },
+      1_200,
+      async (r): Promise<ApiProbeResult> => {
+        if (!r.ok) {
+          const suffix = r.status === 404
+            ? 'service does not expose /api/meta; it is an older Argus checkout or another process'
+            : `GET /api/meta returned HTTP ${r.status}`;
+          return { state: 'incompatible', message: suffix };
+        }
+        let body: unknown;
+        try {
+          body = await r.json();
+        } catch (error) {
+          if (!(error instanceof SyntaxError)) throw error;
+          return { state: 'incompatible', message: 'backend returned malformed /api/meta JSON' };
+        }
+        const compatibility = inspectApiMeta(body, localRuntimeExpectation());
+        if (!compatibility.compatible || !compatibility.meta) {
+          return {
+            state: 'incompatible',
+            message: compatibility.reason,
+            meta: compatibility.meta,
+          };
+        }
+        return {
+          state: 'compatible',
+          message: describeApiRuntime(compatibility.meta),
+          warning: compatibility.warning,
+          meta: compatibility.meta,
+        };
+      },
+    );
   } catch (error) {
     return {
       state: 'unreachable',
@@ -127,6 +134,18 @@ export interface EnsureResult {
   spawned: boolean;
   message: string;
   warning?: string;
+  /** Exact record written for an API process tree created by this invocation. */
+  spawnedApi?: SpawnedApiReceipt;
+}
+
+export interface SpawnedApiReceipt {
+  ownerFile: string;
+  ownership: ApiOwnershipRecord;
+}
+
+export interface SpawnedApiCleanupResult {
+  stopped: boolean;
+  message: string;
 }
 
 export interface DaemonUpgradeScheduleSummary {
@@ -167,15 +186,17 @@ function compatibleResult(
     spawned: boolean;
     prefix: string;
     onWarning?: (warning: string) => void;
+    spawnedApi?: SpawnedApiReceipt;
   },
 ): EnsureResult {
-  const { spawned, prefix, onWarning } = options;
+  const { spawned, prefix, onWarning, spawnedApi } = options;
   if (probe.warning) onWarning?.(probe.warning);
   return {
     reachable: true,
     spawned,
     message: `${prefix} · ${probe.message}`,
     warning: probe.warning,
+    ...(spawnedApi ? { spawnedApi } : {}),
   };
 }
 
@@ -188,6 +209,122 @@ function compatibleResult(
 function spawnEnv(token?: string): NodeJS.ProcessEnv {
   if (!token?.trim()) return process.env;
   return { ...process.env, ARGUS_SKILL_WEB_TOKEN: token.trim() };
+}
+
+function spawnedOwnershipRecord(
+  probe: ApiProbeResult,
+  rootPid: number,
+  host: string,
+  port: number,
+  backendBin: string,
+): ApiOwnershipRecord {
+  return {
+    schema: 1,
+    pid: probe.meta?.runtime.pid ?? rootPid,
+    rootPid,
+    host,
+    port,
+    backendBin,
+    startedAt: probe.meta?.runtime.started_at || new Date().toISOString(),
+  };
+}
+
+function sendSigterm(
+  pids: Array<number | undefined>,
+  signal: (pid: number, signal: NodeJS.Signals) => void,
+): { delivered: number; errors: Error[] } {
+  let delivered = 0;
+  const errors: Error[] = [];
+  const validPids = pids.filter((value): value is number => (
+    typeof value === 'number' && Number.isInteger(value) && value > 0
+  ));
+  for (const pid of new Set(validPids)) {
+    try {
+      signal(pid, 'SIGTERM');
+      delivered += 1;
+    } catch (error) {
+      errors.push(error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+  return { delivered, errors };
+}
+
+function exactOwnershipMatch(
+  actual: ApiOwnershipRecord,
+  expected: ApiOwnershipRecord,
+): boolean {
+  return actual.schema === expected.schema
+    && actual.pid === expected.pid
+    && actual.rootPid === expected.rootPid
+    && actual.host === expected.host
+    && actual.port === expected.port
+    && actual.backendBin === expected.backendBin
+    && actual.startedAt === expected.startedAt;
+}
+
+/**
+ * Stop only the API process tree created by this exact TUI invocation.
+ *
+ * Cleanup fails closed unless the endpoint is loopback, the on-disk owner
+ * record still exactly matches the spawn receipt, both Windows listener/root
+ * PIDs still verify as this backend, and /api/meta confirms the same runtime
+ * PID and start identity. This prevents stale records or PID reuse from
+ * authorising a signal to an unrelated process.
+ */
+export async function cleanupSpawnedApi(opts: {
+  result: EnsureResult;
+  token?: string;
+  dependencies?: {
+    readOwnedApi?: (receipt: SpawnedApiReceipt) => Promise<ApiOwnershipRecord | null>;
+    probeApi?: (receipt: SpawnedApiReceipt) => Promise<ApiProbeResult>;
+    signal?: (pid: number, signal: NodeJS.Signals) => void;
+  };
+}): Promise<SpawnedApiCleanupResult> {
+  const receipt = opts.result.spawnedApi;
+  if (!opts.result.spawned || !receipt) {
+    return { stopped: false, message: 'API was not safely owned by this invocation' };
+  }
+  const expected = receipt.ownership;
+  if (!isLocalApiHost(expected.host)) {
+    return { stopped: false, message: 'refused to stop a non-local API endpoint' };
+  }
+
+  const readOwned = opts.dependencies?.readOwnedApi ?? (() => readOwnedApiImpl({
+    path: receipt.ownerFile,
+    host: expected.host,
+    port: expected.port,
+    backendBin: expected.backendBin,
+  }));
+  const actual = await readOwned(receipt);
+  if (!actual || !exactOwnershipMatch(actual, expected)) {
+    return { stopped: false, message: 'API ownership changed; no process was signalled' };
+  }
+
+  const inspectEndpoint = opts.dependencies?.probeApi
+    ?? (() => probeApi(expected.host, expected.port, opts.token));
+  const endpoint = await inspectEndpoint(receipt);
+  if (
+    !endpoint.meta
+    || endpoint.meta.runtime.pid !== expected.pid
+    || endpoint.meta.runtime.started_at !== expected.startedAt
+  ) {
+    return { stopped: false, message: 'API runtime identity changed; no process was signalled' };
+  }
+
+  const signal = opts.dependencies?.signal ?? ((pid: number, sig: NodeJS.Signals) => {
+    process.kill(pid, sig);
+  });
+  const termination = sendSigterm([expected.pid, expected.rootPid], signal);
+  if (termination.errors.length > 0) {
+    return {
+      stopped: termination.delivered > 0,
+      message: `API cleanup signalled ${termination.delivered} process(es); ${termination.errors[0].message}`,
+    };
+  }
+  return {
+    stopped: termination.delivered > 0,
+    message: `stopped owned API process tree (${termination.delivered} process${termination.delivered === 1 ? '' : 'es'})`,
+  };
 }
 
 export async function ensureApi(opts: {
@@ -318,12 +455,13 @@ export async function ensureApi(opts: {
       };
     }
 
-    // SIGTERM only — never escalate to SIGKILL.
+    // SIGTERM only — never escalate to SIGKILL. A Windows console-script
+    // launcher and its Python listener have different PIDs, so signal both
+    // verified members of the ownership record.
     onStatus?.('restarting outdated owned backend…');
     let shutdown = false;
-    try {
-      doSignal(record.pid, 'SIGTERM');
-    } catch (error) {
+    const termination = sendSigterm([record.pid, record.rootPid], doSignal);
+    if (termination.delivered === 0 && termination.errors.length > 0) {
       const afterSignalFailure = await doProbe();
       if (afterSignalFailure.state === 'unreachable') {
         shutdown = true;
@@ -333,7 +471,7 @@ export async function ensureApi(opts: {
           spawned: false,
           message:
             `incompatible Argus API at ${host}:${port}: could not signal owned pid ${record.pid}` +
-            ` (${(error as Error).message})`,
+            ` (${termination.errors[0].message})`,
         };
       }
     }
@@ -372,40 +510,33 @@ export async function ensureApi(opts: {
     onStatus?.('starting backend api…');
     const spawned = await doSpawn();
 
-    // Write new ownership record atomically. If this fails, stop the just-spawned child
-    // with SIGTERM so it does not run as a silent unowned process.
-    try {
-      await doWriteOwnership(ownerFile, {
-        schema: 1,
-        pid: spawned.pid,
-        host,
-        port,
-        backendBin: bin,
-        startedAt: new Date().toISOString(),
-      });
-    } catch (writeErr) {
-      try { doSignal(spawned.pid, 'SIGTERM'); } catch { /* ignore */ }
-      return {
-        reachable: false,
-        spawned: false,
-        message:
-          `incompatible Argus API at ${host}:${port}: ownership write failed after spawn` +
-          ` (${(writeErr as Error).message}); sent SIGTERM to pid ${spawned.pid}`,
-      };
-    }
-
     // Poll for the new backend to come online.
     for (let i = 0; i < 20; i++) {
       await doSleep(500);
       const probe = await doProbe();
       if (probe.state === 'compatible') {
+        const ownership = spawnedOwnershipRecord(probe, spawned.pid, host, port, bin);
+        try {
+          await doWriteOwnership(ownerFile, ownership);
+        } catch (writeErr) {
+          sendSigterm([ownership.pid, ownership.rootPid], doSignal);
+          return {
+            reachable: false,
+            spawned: false,
+            message:
+              `incompatible Argus API at ${host}:${port}: ownership write failed after spawn` +
+              ` (${(writeErr as Error).message}); sent SIGTERM to spawned process tree`,
+          };
+        }
         return compatibleResult(probe, {
           spawned: true,
           prefix: 'api started',
           onWarning,
+          spawnedApi: { ownerFile, ownership },
         });
       }
       if (probe.state === 'incompatible') {
+        sendSigterm([spawned.pid], doSignal);
         return {
           reachable: false,
           spawned: true,
@@ -414,6 +545,7 @@ export async function ensureApi(opts: {
       }
       onStatus?.(`starting backend api… ${i + 1}`);
     }
+    sendSigterm([spawned.pid], doSignal);
     return {
       reachable: false,
       spawned: true,
@@ -464,41 +596,36 @@ export async function ensureApi(opts: {
     };
   }
 
-  // Atomically write ownership immediately after spawn so future stale
-  // recovery can prove we own this process.
-  if (ownerFile) {
-    try {
-      await doNormalWriteOwnership(ownerFile, {
-        schema: 1,
-        pid: spawnedPid,
-        host,
-        port,
-        backendBin: bin,
-        startedAt: new Date().toISOString(),
-      });
-    } catch (writeErr) {
-      try { doNormalSignal(spawnedPid, 'SIGTERM'); } catch { /* ignore */ }
-      return {
-        reachable: false,
-        spawned: false,
-        message:
-          `could not write ownership record (${(writeErr as Error).message}); ` +
-          `sent SIGTERM to pid ${spawnedPid}`,
-      };
-    }
-  }
-
   for (let i = 0; i < 20; i++) {
     await doSleep(500);
     const probe = await doProbe();
     if (probe.state === 'compatible') {
+      let spawnedApi: SpawnedApiReceipt | undefined;
+      if (ownerFile) {
+        const ownership = spawnedOwnershipRecord(probe, spawnedPid, host, port, bin);
+        try {
+          await doNormalWriteOwnership(ownerFile, ownership);
+        } catch (writeErr) {
+          sendSigterm([ownership.pid, ownership.rootPid], doNormalSignal);
+          return {
+            reachable: false,
+            spawned: false,
+            message:
+              `could not write ownership record (${(writeErr as Error).message}); ` +
+              'sent SIGTERM to spawned process tree',
+          };
+        }
+        spawnedApi = { ownerFile, ownership };
+      }
       return compatibleResult(probe, {
         spawned: true,
         prefix: 'api started',
         onWarning,
+        spawnedApi,
       });
     }
     if (probe.state === 'incompatible') {
+      sendSigterm([spawnedPid], doNormalSignal);
       return {
         reachable: false,
         spawned: true,
@@ -507,6 +634,7 @@ export async function ensureApi(opts: {
     }
     onStatus?.(`starting backend api… ${i + 1}`);
   }
+  sendSigterm([spawnedPid], doNormalSignal);
   return {
     reachable: false,
     spawned: true,

@@ -77,6 +77,7 @@ _TRANSIENT_ERROR_PATTERNS = (
     "connection reset",
     "connection refused",
     "stream disconnected",
+    "wall-clock limit reached",
     "service unavailable",
     "502",
     "503",
@@ -103,7 +104,9 @@ def _raw_backend_stop_kind(
         return None
     low = fatal.casefold()
     if low.startswith("external interrupt:"):
-        return stop_kind_from_external_interrupt(fatal)
+        interrupt_kind = stop_kind_from_external_interrupt(fatal)
+        if interrupt_kind is not None:
+            return interrupt_kind
     if any(pattern in low for pattern in _PROVIDER_FENCE_PATTERNS):
         return "provider_fence"
     if any(pattern in low for pattern in _PROVIDER_COOLDOWN_PATTERNS):
@@ -371,6 +374,7 @@ def translate_result(
             {**row, "model": authoritative_usage_model}
             for row in model_usage
         ]
+    raw_fatal_error = str(getattr(cli_result, "fatal_error", "") or "").strip()
     fatal_error = _normalize_fatal_error(cli_result.fatal_error)
     if (
         getattr(cli_result, "turn_failed", False)
@@ -379,6 +383,18 @@ def translate_result(
         fatal_error = "\n".join(
             map(str, getattr(cli_result, "stderr_lines", None) or [])
         ).strip() or "backend reported a failed turn"
+    failure_diagnostic = raw_fatal_error
+    if (
+        getattr(cli_result, "turn_failed", False)
+        or int(getattr(cli_result, "exit_code", 0) or 0) != 0
+    ):
+        stderr_diagnostic = "\n".join(
+            map(str, getattr(cli_result, "stderr_lines", None) or [])
+        ).strip()
+        if stderr_diagnostic and stderr_diagnostic not in failure_diagnostic:
+            failure_diagnostic = "\n".join(
+                part for part in (failure_diagnostic, stderr_diagnostic) if part
+            )
     return RunnerResult(
         exit_code=cli_result.exit_code,
         agent_messages=list(cli_result.agent_messages or []),
@@ -389,7 +405,7 @@ def translate_result(
         stop_kind=(
             normalize_stop_kind(getattr(cli_result, "stop_kind", None))
             or _raw_backend_stop_kind(
-                fatal_error=cli_result.fatal_error,
+                fatal_error=failure_diagnostic,
                 exit_code=cli_result.exit_code,
             )
         ),

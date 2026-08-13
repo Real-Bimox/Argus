@@ -20,6 +20,7 @@ from .state import (
     _new_boot_id,
     _point_active_daemon_log,
     _redirect_std_to_log,
+    _terminate_windows_process_tree,
     read_daemon_status,
 )
 
@@ -91,6 +92,30 @@ def _windows_daemon_command(config: Any) -> list[str]:
     return command
 
 
+def _reap_failed_windows_spawn(process: subprocess.Popen[Any]) -> None:
+    """Reclaim the exact worker tree after a failed publication handshake."""
+    pid = int(process.pid)
+    if process.poll() is None:
+        terminated = _terminate_windows_process_tree(
+            pid,
+            identity_check=lambda: process.pid == pid and process.poll() is None,
+        )
+        if not terminated and process.poll() is None:
+            # Popen owns an OS handle to this exact process, so this fallback
+            # cannot target a reused PID. The tree helper normally handles all
+            # descendants; terminate() is the final root cleanup if Windows
+            # denied process enumeration.
+            process.terminate()
+    try:
+        process.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            log.error("Windows worker pid=%s resisted startup cleanup", pid)
+
+
 def _spawn_windows_background_process(
     config: Any,
     *,
@@ -104,6 +129,10 @@ def _spawn_windows_background_process(
     """Launch the terminal-scoped Windows worker without POSIX fork()."""
     env = os.environ.copy()
     env["ARGUS_BINARY_MODE"] = "cli"
+    # Windows commonly inherits a CP936 console.  The detached worker emits
+    # Unicode status glyphs and must not crash before publishing daemon status.
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
     creationflags = (
         getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         | getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -122,26 +151,48 @@ def _spawn_windows_background_process(
                 creationflags=creationflags,
             )
         deadline = time.monotonic() + _WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS
+        exit_rc: int | None = None
+        stable_since: float | None = None
         while time.monotonic() < deadline:
             if pid_path.exists() and status_path.exists():
                 status = read_daemon_status(config.life_dir)
-                if status.alive and status.pid is not None:
-                    if not quiet:
-                        sys.stdout.write(
-                            f"argus-skill: daemon started (pid {status.pid}, "
-                            f"life_dir={config.life_dir}, log={log_path}).\n"
-                        )
-                    return 0
+                if (
+                    status.alive
+                    and status.pid == process.pid
+                    and not status.status_read_error
+                    and process.poll() is None
+                ):
+                    now = time.monotonic()
+                    if stable_since is None:
+                        stable_since = now
+                    elif now - stable_since >= _DAEMON_STABILITY_SECONDS:
+                        if not quiet:
+                            sys.stdout.write(
+                                f"argus-skill: daemon started (pid {status.pid}, "
+                                f"life_dir={config.life_dir}, log={log_path}).\n"
+                            )
+                        return 0
+                else:
+                    stable_since = None
             if process.poll() is not None:
+                exit_rc = process.returncode
                 break
             time.sleep(0.1)
+        if exit_rc is None:
+            _reap_failed_windows_spawn(process)
         if not quiet:
-            sys.stderr.write(
-                "argus-skill: Windows worker did not publish its status within "
-                f"{_WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS:g}s. "
-                f"Check {log_path} for errors.\n"
-            )
-        return 2
+            if exit_rc is not None:
+                sys.stderr.write(
+                    "argus-skill: Windows worker exited before publishing "
+                    f"daemon status (rc={exit_rc}). Check {log_path} for errors.\n"
+                )
+            else:
+                sys.stderr.write(
+                    "argus-skill: Windows worker did not publish its status within "
+                    f"{_WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS:g}s. "
+                    f"Check {log_path} for errors.\n"
+                )
+        return int(exit_rc) if exit_rc is not None else 2
     finally:
         release_spawn_lock(spawn_lock_fd)
 

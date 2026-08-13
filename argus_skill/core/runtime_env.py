@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import stat as stat_module
 from collections.abc import MutableMapping
 from pathlib import Path
 
@@ -27,7 +28,14 @@ def load_backend_runtime_env(
     path = runtime_root / "runtime" / "claude.env"
     try:
         stat = path.stat()
-        if not path.is_file() or stat.st_mode & 0o022:
+        if (
+            not stat_module.S_ISREG(stat.st_mode)
+            or path.is_symlink()
+            or (
+                os.name != "nt"
+                and stat.st_mode & 0o022
+            )
+        ):
             return {}
         lines = path.read_text(encoding="utf-8").splitlines()
     except OSError:

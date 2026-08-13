@@ -91,12 +91,27 @@ select the executable explicitly.
 From the repository root in PowerShell:
 
 ```powershell
-py -3.11 -m venv .venv
+uv venv --python 3.12 --seed .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -e . pytest ruff "pyinstaller>=6.11,<7"
 
 npm --prefix frontend/web ci
 npm --prefix desktop ci
+```
+
+`py -3.11 -m venv .venv` is also valid when the Python Launcher is installed.
+The `uv` form above works on machines (including this tested setup) where
+`py.exe` is absent. Always run Argus through this repository's `.venv`; a bare
+global Python can appear to start the WebAPI from the source directory and then
+fail to import `argus_skill` after an executor changes into the project
+workdir.
+
+For direct CLI use in a legacy CP936/GBK PowerShell, the launcher now switches
+its streams to UTF-8. For older builds, set these two variables before launch:
+
+```powershell
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 ```
 
 Run the Desktop host against the source runtime:
@@ -110,6 +125,54 @@ npm --prefix desktop run dev
 
 The development host reads the repository release manifest and starts
 `python -m argus_skill --web` from the selected repository root.
+
+Only one managed Argus API should own a host/port. Stop a manually started
+`argus --web` on port 8799 before starting Desktop, otherwise Desktop will
+correctly refuse to take over an unowned process. Also keep separate checkouts
+in separate virtual environments: the public and private repositories share a
+default state root and port but can carry different release identities.
+
+### What exits when the terminal closes
+
+`argus`, the local WebAPI on `127.0.0.1:8799`, and each session's background
+executor are separate processes. The default interactive exit policy is
+`detach`: Ctrl-D (or Ctrl-C twice in the live view) closes only the terminal UI,
+so Web and an in-progress executor remain available. A later plain `argus` in
+the same folder now detects that live session and reattaches instead of trying
+to create a competing executor for the leased workspace.
+
+Choose cleanup explicitly when that is what you want:
+
+```powershell
+argus --exit-policy stop-api  # stop only an API spawned and still owned by this invocation
+argus --exit-policy stop-all  # gracefully stop the current executor, then that owned API
+$env:ARGUS_TUI_EXIT_POLICY = "stop-all"  # optional persistent shell policy
+```
+
+`stop-api` is fail-closed: it checks the loopback endpoint, ownership record,
+runtime PID/start identity, and both Windows launcher/listener PIDs before
+signalling anything. It never stops a pre-existing, remote, unowned, or
+PID-reused service. `stop-all` uses the daemon's graceful stop endpoint; it does
+not recommend or issue `Stop-Process` against a raw PID. Workspace lease errors
+name the safe session command, for example
+`argus --daemon-stop --resume s-12345678`.
+
+## Troubleshooting startup
+
+- **Local backend startup timed out**: inspect the Desktop log and authenticated
+  `/api/meta`. Older source builds confused the `.venv` launcher PID with the
+  actual Python listener PID on Windows; current ownership records both.
+- **Connecting to Argus** after the project list appears: the API handshake and
+  project index already succeeded; the selected snapshot is still pending.
+  Current builds bound that read and no longer let Manager prewarm hold it.
+- **`snapshot refresh failed · fetch failed`**: this is a new REST request that
+  could not reach or finish against the shared local WebAPI, not evidence that
+  CLI and Web maintain separate state. Current TUI output includes the socket
+  cause and retries bounded requests.
+- **`background executor failed to start (rc=...)`**: inspect the diagnostic
+  appended to the UI and the newest `daemons/boot-*.log`. Current builds retain
+  helper stderr, validate the workdir/interpreter, and preserve the Windows
+  child exit code instead of reducing every failure to a bare integer.
 
 ## Verification
 

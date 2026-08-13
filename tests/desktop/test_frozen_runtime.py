@@ -66,14 +66,13 @@ def test_windows_signal_zero_guard_never_delegates_to_terminate_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     delegated: list[tuple[int, int]] = []
-    monkeypatch.setattr(os, "name", "nt")
     monkeypatch.setattr(os, "kill", lambda pid, sig: delegated.append((pid, sig)))
     monkeypatch.setattr(
         "argus_skill.core.daemon_lock.is_pid_running",
         lambda pid: pid == 123,
     )
 
-    _install_windows_signal_zero_guard()
+    _install_windows_signal_zero_guard(platform_name="nt")
 
     os.kill(123, 0)
     with pytest.raises(ProcessLookupError):

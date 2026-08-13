@@ -5,6 +5,7 @@ import App from './App';
 import { adoptTokenFromUrl } from './api';
 import { BootSplash } from './components/BootSplash';
 import { I18nProvider } from './i18n';
+import { queryRetryPolicy } from './hooks';
 import '@fontsource-variable/geist';
 import '@fontsource-variable/geist-mono';
 import './index.css';
@@ -15,7 +16,7 @@ adoptTokenFromUrl();
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { staleTime: 3_000, retry: 1, refetchOnWindowFocus: false },
+    queries: { staleTime: 3_000, retry: queryRetryPolicy, refetchOnWindowFocus: false },
   },
 });
 

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { artifactRefreshEventKey, snapshotRefreshEventKey, useProjects, useProjectCosts, useSnapshot, useEventStream, useProjectActions, useArtifacts, useTranscript, useJournal, useGitDiff } from './hooks';
-import { api, type EventMsg } from './api';
+import { api, isConnectionError, type EventMsg } from './api';
 import { TopBar } from './components/TopBar';
 import { EventStream } from './components/EventStream';
 import { ChatBox } from './components/ChatBox';
@@ -55,6 +55,7 @@ import { usePendingReplySession } from './usePendingReplySession';
 import { useProjectSelection } from './useProjectSelection';
 import { useWorkbenchLayout } from './useWorkbenchLayout';
 import { useI18n } from './i18n';
+import { ConnectionProblemBanner } from './components/ConnectionProblemBanner';
 
 type Overlay = 'none' | 'palette' | 'help' | 'doctor' | 'config' | 'identity' | 'transcript' | 'inspector' | 'operations';
 interface ActiveMessageRequest {
@@ -81,6 +82,8 @@ export default function App() {
     [projectCostsQ.data?.projects, projectsQ.data?.projects],
   );
   const localCwd = projectsQ.data?.local_cwd ?? '';
+  const connectionError = [projectsQ.error, projectCostsQ.error]
+    .find((error) => isConnectionError(error));
 
   const [overlay, setOverlay] = useState<Overlay>('none');
   const {
@@ -636,6 +639,13 @@ export default function App() {
 
   return (
     <div ref={shellRef} className="workbench-shell ambient-canvas flex h-screen h-[100dvh] w-screen max-w-full overflow-hidden text-ink">
+      <ConnectionProblemBanner
+        error={connectionError}
+        onRetry={() => {
+          void projectsQ.refetch();
+          void projectCostsQ.refetch();
+        }}
+      />
       {!kiosk && sidebarOpen ? (
         <button
           type="button"

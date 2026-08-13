@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from argus_skill.core.runtime_env import load_backend_runtime_env
 
 
@@ -25,6 +27,10 @@ def test_load_backend_runtime_env_is_allowlisted_and_non_overriding(tmp_path) ->
     assert "PATH" not in env
 
 
+@pytest.mark.skipif(
+    os.name == "nt",
+    reason="Windows chmod does not expose POSIX group/world write bits",
+)
 def test_load_backend_runtime_env_rejects_writable_file(tmp_path) -> None:
     runtime = tmp_path / "runtime"
     runtime.mkdir()

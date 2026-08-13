@@ -302,10 +302,14 @@ def _enrich_skill_content(
         except OSError:
             continue
         truncated = len(data) > MISSION_SKILL_CONTENT_MAX_BYTES
-        skill["content"] = data[:MISSION_SKILL_CONTENT_MAX_BYTES].decode(
+        content = data[:MISSION_SKILL_CONTENT_MAX_BYTES].decode(
             "utf-8",
             errors="replace",
         )
+        # API snapshots are protocol data, not a byte-for-byte file download.
+        # Canonical LF keeps the response stable across Windows and POSIX and
+        # matches Python's normal text-file reading semantics.
+        skill["content"] = content.replace("\r\n", "\n").replace("\r", "\n")
         skill["content_truncated"] = truncated
 
 

@@ -202,6 +202,7 @@ def test_authorization_fails_closed_on_campaign_or_evidence_drift(tmp_path: Path
 
 def test_authorization_rejects_project_root_and_symlink_write_scopes(
     tmp_path: Path,
+    require_symlink_support,
 ) -> None:
     store = _store(tmp_path)
     identity = store.campaign_identity()
@@ -231,6 +232,7 @@ def test_authorization_rejects_project_root_and_symlink_write_scopes(
 
 def test_validator_repair_rejects_symlink_created_after_authorization(
     tmp_path: Path,
+    require_symlink_support,
 ) -> None:
     store = _store(tmp_path)
     identity = store.campaign_identity()
