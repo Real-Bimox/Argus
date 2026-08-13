@@ -583,17 +583,21 @@ class ProofRoute:
     there — which is why routes live in this package rather than being modelled
     as backlog dependencies.
 
-    Routes confer no status on their goal in this PR. Propagating "all
-    obligations established, therefore the goal is established" is a real
-    inference and it is where an AND–OR search would go; doing it before any of
-    this has been run against a live problem would be fixing a scheduler's
-    semantics with no data. ``assessment.assess_route`` answers the smaller,
-    immediately useful question instead: what is still outstanding, and is the
-    route even about the current statement.
+    Routes confer no status on their goal, and that is a rule rather than a
+    gap: a route asserts that these obligations imply this goal, and nothing
+    checks the implication. Promoting a goal because its decomposition is
+    finished would let an agent mint a kernel status by writing a decomposition
+    nobody verified. What a finished route does instead is get *reported* on
+    its goal's assessment — see ``assessment.ClaimAssessment.with_routes``,
+    which is also the one place to change when a verifier for the
+    decomposition step exists.
 
     ``retired_because`` carries the reason rather than a flag, for the reason
     ``verticals/math/proof_graph.py`` already found the hard way: a route
-    retired without a recorded reason gets retried.
+    retired without a recorded reason gets retried. It is also what makes a
+    circular attempt recordable — retired routes are outside the dependency
+    graph, so writing down that A-via-B needs A is allowed, while planning it
+    is not.
     """
 
     route_id: str

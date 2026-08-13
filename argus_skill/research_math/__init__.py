@@ -44,6 +44,8 @@ from .assessment import (
     RouteStatus,
     assess_claim,
     assess_route,
+    assess_routes,
+    route_cycles,
 )
 from .models import (
     ARTIFACT_REQUIRED_TIERS,
@@ -98,9 +100,11 @@ __all__ = [
     "Verdict",
     "assess_claim",
     "assess_route",
+    "assess_routes",
     "content_digest",
     "load_state",
     "normalize_text",
+    "route_cycles",
     "save_state",
     "state_path",
 ]

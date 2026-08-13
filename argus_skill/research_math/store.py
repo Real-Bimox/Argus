@@ -35,7 +35,8 @@ from .assessment import (
     ClaimAssessment,
     RouteAssessment,
     assess_claim,
-    assess_route,
+    assess_routes,
+    route_cycles,
 )
 from .models import (
     ARTIFACT_REQUIRED_TIERS,
@@ -134,8 +135,38 @@ class MathState:
         return record
 
     def add_route(self, route: ProofRoute) -> ProofRoute:
+        """Record a decomposition, unless it is one the project can chase forever.
+
+        The cycle check lives here as well as in ``validate`` for the same
+        reason the assumption gate does: refusing at write time is what keeps a
+        defect from being written by the API at all, and reporting at read time
+        is what catches the copy that arrived by way of a text editor. Only a
+        cycle *through this route* is refused — a state that was already
+        circular is a defect ``validate`` will report, and blocking unrelated
+        writes until somebody repairs it would help nobody.
+
+        A route that records why it was abandoned is exempt, because it is not
+        a plan: "we tried deriving A from B and B needs A" is a result worth
+        keeping, and the only way to keep it is to be allowed to write it down.
+        """
         if any(item.route_id == route.route_id for item in self.routes):
             raise MathStateError(f"route {route.route_id!r} already exists")
+        closing = next(
+            (
+                group
+                for group in route_cycles([*self.routes, route])
+                if route.route_id in group
+            ),
+            None,
+        )
+        if closing is not None:
+            raise MathStateError(
+                f"route {route.route_id!r} would close a cycle with "
+                f"{', '.join(closing)}: a decomposition that eventually asks for "
+                "the claim it is decomposing proves nothing, and it is the one "
+                "shape an agent can expand forever without noticing. Set "
+                "retired_because if the circular attempt is worth recording."
+            )
         self.routes.append(route)
         return route
 
@@ -370,27 +401,47 @@ class MathState:
             )
         )
 
-    def assess(self, claim_id: str) -> ClaimAssessment:
-        claim = self.latest_claim(claim_id)
-        if claim is None:
-            raise MathStateError(f"no claim {claim_id!r}")
+    def _assess_claim(self, claim: ClaimVersion) -> ClaimAssessment:
+        """One claim from the evidence alone, before any route is attached."""
         return assess_claim(
             claim, self.evidence, inherited_assumptions=self._inherited(claim)
         )
 
+    def _claim_assessments(self) -> dict[SubjectRef, ClaimAssessment]:
+        """The first of two passes: every current claim, without its routes.
+
+        A route's obligations are claims, so routes cannot be assessed until
+        this map exists; and attaching routes to a claim never changes what
+        this pass computed, which is what makes two passes correct rather than
+        merely convenient.
+        """
+        return {claim.ref(): self._assess_claim(claim) for claim in self.current_claims()}
+
+    def assess(self, claim_id: str) -> ClaimAssessment:
+        claim = self.latest_claim(claim_id)
+        if claim is None:
+            raise MathStateError(f"no claim {claim_id!r}")
+        return self.assess_all()[claim.ref()]
+
     def assess_all(self) -> dict[SubjectRef, ClaimAssessment]:
         """Keyed by reference, so a caller cannot confuse two statements that
         happen to share an id."""
+        base = self._claim_assessments()
+        grouped: dict[SubjectRef, list[RouteAssessment]] = {}
+        for route, assessment in zip(
+            self.routes, assess_routes(self.routes, base), strict=True
+        ):
+            grouped.setdefault(route.goal, []).append(assessment)
         return {
-            claim.ref(): assess_claim(
-                claim, self.evidence, inherited_assumptions=self._inherited(claim)
-            )
-            for claim in self.current_claims()
+            ref: assessment.with_routes(grouped.get(ref, ()))
+            for ref, assessment in base.items()
         }
 
     def assess_routes(self) -> tuple[RouteAssessment, ...]:
-        assessments = self.assess_all()
-        return tuple(assess_route(route, assessments) for route in self.routes)
+        # The free function of the same name, not this method: routes are
+        # assessed as a set because whether one is circular is a fact about all
+        # of them.
+        return assess_routes(self.routes, self._claim_assessments())
 
     def undischarged_assumptions(
         self, claim_id: str
@@ -402,7 +453,14 @@ class MathState:
         ``effective_assumptions``, so a dependency that was quietly deleted is
         still reported: it is precisely the one nobody wants to see.
         """
-        open_ids = set(self.assess(claim_id).undischarged)
+        claim = self.latest_claim(claim_id)
+        if claim is None:
+            raise MathStateError(f"no claim {claim_id!r}")
+        # Deliberately not ``assess``: routes cannot change which results a
+        # claim is standing on, and ``open_assumptions`` asks this once per
+        # claim, so answering it through the whole-project route pass would
+        # make a cheap project-wide question quadratic in the claims.
+        open_ids = set(self._assess_claim(claim).undischarged)
         return tuple(
             item
             for item in self.effective_assumptions(claim_id)
@@ -639,7 +697,7 @@ class MathState:
                         "the current version of any claim",
                     )
                 )
-            if route.goal in route.obligations:
+            if route.goal in route.obligations and not route.retired_because.strip():
                 issues.append(
                     StateIssue(
                         "route_circular",
@@ -648,6 +706,23 @@ class MathState:
                         "obligation; a proof that rests on itself proves nothing",
                     )
                 )
+
+        for group in route_cycles(self.routes):
+            if len(group) == 1:
+                # A route that names its own goal is a cycle too, and it is
+                # reported just above under a code whose message can be sharper.
+                # Saying it twice would teach a reader to skim this list.
+                continue
+            issues.append(
+                StateIssue(
+                    "route_cycle",
+                    f"$.routes[{group[0]}].obligations",
+                    "routes " + ", ".join(group) + " depend on each other in a "
+                    "circle: each waits on a claim another of them is meant to "
+                    "prove, so none of them can be started. The file was not "
+                    "written through add_route, which refuses this",
+                )
+            )
         return issues
 
     # -- serialization -----------------------------------------------------
