@@ -795,8 +795,8 @@ def test_execute_uses_full_pipeline_on_real_task(
     assert isinstance(layered, LayeredSkillStore)
     assert layered.project.skills_dir == tmp_path / "project-state" / "skills"
     assert layered.global_.skills_dir == tmp_path / "global-skills"
-    assert loop_kwargs[0]["config"].wiki_enabled is False
-    assert loop_kwargs[0]["config"].auto_init_wiki is False
+    assert loop_kwargs[0]["config"].wiki_enabled is True
+    assert loop_kwargs[0]["config"].auto_init_wiki is True
     assert loop_kwargs[0]["config"].session_id == "mission-tree"
 
     from argus_skill.apps import _runtime
@@ -819,8 +819,8 @@ def test_execute_uses_full_pipeline_on_real_task(
     )
     assert "## Planner execution plan" not in planned_tasks[0]
     assert loop_kwargs[0]["config"].workflow_mode == "direct"
-    assert loop_kwargs[0]["config"].wiki_enabled is False
-    assert loop_kwargs[0]["config"].auto_init_wiki is False
+    assert loop_kwargs[0]["config"].wiki_enabled is True
+    assert loop_kwargs[0]["config"].auto_init_wiki is True
 
     backend.calls.clear()
     planned_tasks.clear()
@@ -836,7 +836,7 @@ def test_execute_uses_full_pipeline_on_real_task(
     assert planned_tasks and "## Planner execution plan" not in planned_tasks[0]
     assert loop_kwargs[0]["config"].max_rounds == 1
     assert loop_kwargs[0]["config"].workflow_mode == "direct"
-    assert loop_kwargs[0]["config"].auto_init_wiki is False
+    assert loop_kwargs[0]["config"].auto_init_wiki is True
 
     planned_tasks.clear()
     loop_kwargs.clear()
@@ -849,6 +849,19 @@ def test_execute_uses_full_pipeline_on_real_task(
     assert planned_tasks
     assert loop_kwargs[0]["config"].active_vertical == "kernel_engineering"
     assert loop_kwargs[0]["config"].workflow_mode == "direct"
+
+    planned_tasks.clear()
+    loop_kwargs.clear()
+    monkeypatch.setenv("ARGUS_SKILL_WIKI", "0")
+    monkeypatch.setenv("ARGUS_SKILL_AUTO_INIT_WIKI", "0")
+    runner.execute(
+        objective="run without project Wiki",
+        sink=_RecordingSink(),
+        preplanned=True,
+        workflow_mode_override="direct",
+    )
+    assert loop_kwargs[0]["config"].wiki_enabled is False
+    assert loop_kwargs[0]["config"].auto_init_wiki is False
 
 
 def test_chat_path_emits_minimum_event_sequence() -> None:
