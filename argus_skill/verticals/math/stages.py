@@ -87,6 +87,33 @@ def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
         )
     return tuple(issues)
 
+def prepare_mission(  # noqa: ARG001 - see the docstring on stage/state_root
+    *,
+    stage: str,
+    project_root: Path,
+    state_root: Path,
+    mission: object,
+) -> str:
+    """Give this mission the state of the claim it is about, and nothing else.
+
+    Keyword-only because the framework forwards this hook by keyword; the
+    parameter names are the contract.
+
+    ``stage`` is unread: what is recorded about a claim is the same fact in
+    `scope`, `solve`, and `review`, and a projection that changed with the
+    stage would be telling three different stories about one statement.
+    ``state_root`` is unread because the mathematical state is project state —
+    it sits in the project's `research/` directory beside `PROOF_GRAPH.json`,
+    not in the per-session runtime root.
+
+    Imported lazily: a project with no `research/MATH_STATE.json` never touches
+    the state kernel, exactly as it never touches the Lean checker.
+    """
+    from .context_projection import project_mission_context
+
+    return project_mission_context(project_root=project_root, mission=mission)
+
+
 REVIEWER_CHECKLISTS: dict[str, tuple[str, str, list[str]]] = {
     "scope": (
         "reviewer/math-research-review.md",
@@ -256,6 +283,7 @@ __all__ = [
     "STAGE_ORDER",
     "WORKFLOW_MODE",
     "completion_gate",
+    "prepare_mission",
     "role_banner",
     "stage_completion_issues",
 ]
