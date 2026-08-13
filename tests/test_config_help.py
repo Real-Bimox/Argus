@@ -165,9 +165,10 @@ def test_cockpit_value_normalization_is_typed() -> None:
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "opencod") == "opencode"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "PI") == "pi"
     assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "GROK") == "grok"
+    assert normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "QODER") == "qoder"
     with pytest.raises(
         ValueError,
-        match="codex, claude, copilot, opencode, pi, or grok",
+        match="codex, claude, copilot, opencode, pi, grok, or qoder",
     ):
         normalize_cockpit_knob_value("ARGUS_SKILL_ENGINEER_BACKEND", "magic")
     with pytest.raises(ValueError, match="non-negative integer"):

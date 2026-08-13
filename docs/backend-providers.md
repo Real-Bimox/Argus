@@ -1,6 +1,6 @@
 # Backend providers
 
-Argus drives six agent CLIs. Two of them — **Pi** and **OpenCode** — are
+Argus drives seven agent CLIs. Two of them — **Pi** and **OpenCode** — are
 provider-agnostic fronts: the CLI holds credentials for one or more provider
 catalogs, and which one serves a request depends on the model id you select.
 This page covers how Argus picks that catalog, and what changed in the
@@ -17,6 +17,7 @@ Argus passes the model id you configured (`ARGUS_SKILL_MODEL`, or a per-role
 | `copilot` | the id verbatim | single catalog |
 | `claude` | the id verbatim | single catalog |
 | `grok` | the id verbatim | xAI Grok Build catalog; login with `grok login` or set `XAI_API_KEY` |
+| `qoder` | the id verbatim | Qoder CLI (`qodercli`, a Claude Code fork); `qodercli login` or set `QODER_PERSONAL_ACCESS_TOKEN` |
 | `pi` | the id verbatim, or `<provider>/<id>` when `ARGUS_SKILL_PI_PROVIDER` is set | Pi resolves a bare id against its authenticated catalogs |
 | `opencode` | `<provider>/<id>`, built from `ARGUS_SKILL_OPENCODE_PROVIDER` | `opencode run --model` rejects a bare id, so without the provider the model setting is dropped |
 
@@ -26,6 +27,7 @@ Run the CLI's own listing to see what you actually hold keys for:
 pi --list-models
 opencode auth list
 grok --version
+qodercli --list-models
 ```
 
 ## Grok Build
@@ -47,6 +49,27 @@ turns with `--resume`.
 Read-only roles receive only `read_file`, `grep`, and `list_dir`. Trusted
 unattended execution maps Argus full-auto mode to Grok's `--yolo`; project or
 organization deny rules still take precedence inside Grok.
+
+## Qoder
+
+Install Qoder's official CLI and authenticate:
+
+```bash
+npm install -g @qoder-ai/qodercli
+qodercli login            # browser OAuth; tokens refresh automatically
+argus --setup --non-interactive --backend qoder --accept-house-rules
+```
+
+For CI or a headless daemon, create a Personal Access Token at
+`https://qoder.com/account/integrations` and set `QODER_PERSONAL_ACCESS_TOKEN`
+instead of the browser login. `qodercli` stores config under `~/.qoder`; point
+`QODER_CONFIG_DIR` at durable storage when `$HOME` is ephemeral.
+
+`qodercli` is a Claude Code fork, so Argus reuses the entire `claude` code path:
+it invokes `qodercli -p --output-format stream-json`, passes the model with
+`--model`, and resumes sessions with `--resume`. List the models your account
+holds with `qodercli --list-models`, then set `ARGUS_SKILL_ENGINEER_MODEL` (and
+the other per-role model knobs) to one of them.
 
 ## Setting a provider
 
@@ -75,6 +98,10 @@ For Grok, readiness checks the CLI version and verifies that either
 model turn. Grok does not currently expose a read-only auth-status command, so
 an expired cached login is reported when the first provider call asks for
 reauthentication.
+
+For Qoder, readiness treats a set `QODER_PERSONAL_ACCESS_TOKEN` as ready;
+otherwise it runs `qodercli --list-models`, which exits non-zero until you log
+in, so an unauthenticated CLI is reported without spending a model turn.
 
 For the Pi backend, readiness reads `pi --list-models` — which lists only
 AUTHENTICATED models — and reports:

@@ -166,7 +166,8 @@ The agent follows the **[installation execution contract](docs/agent-install.md)
 
 ### Backend notes
 
-Use `copilot`, `pi`, `codex`, `claude`, `opencode`, or `grok` for `--backend`.
+Use `copilot`, `pi`, `codex`, `claude`, `opencode`, `grok`, or `qoder` for
+`--backend`.
 When no model override is configured, Argus uses that CLI's native default
 model. It does not pass an OpenAI model id to Claude Code, Pi, OpenCode, or Grok.
 If you have an OpenAI-compatible endpoint, setup installs Pi when needed and

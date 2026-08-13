@@ -124,6 +124,13 @@ def test_grok_backend_has_display_label():
     assert config.backend_label == "Grok Build"
 
 
+def test_qoder_backend_has_display_label():
+    env = {"ARGUS_SKILL_LIFE_BACKEND": "qoder"}
+    config = resolve_role_config("manager", env=env)
+    assert config.backend == "qoder"
+    assert config.backend_label == "Qoder"
+
+
 def test_memory_backend_preserved():
     env = {"ARGUS_SKILL_LIFE_BACKEND": "memory"}
     assert resolve_role_config("engineer", env=env).backend == "memory"

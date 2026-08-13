@@ -91,6 +91,7 @@ _SUPPORTED_AGENT_BACKENDS = (
     "opencode",
     "pi",
     "grok",
+    "qoder",
 )
 _BACKEND_LOGIN_COMMANDS = {
     "copilot": "copilot login",
@@ -99,6 +100,7 @@ _BACKEND_LOGIN_COMMANDS = {
     "opencode": "opencode auth login",
     "pi": "run `pi` and complete `/login`",
     "grok": "grok login",
+    "qoder": "qodercli login",
 }
 
 
@@ -195,11 +197,18 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
     selected = (
         str(requested).strip().lower()
         if requested is not None
-        else _prompt("Backend (copilot/codex/claude/opencode/pi/grok)", default).lower()
+        else _prompt(
+            "Backend (copilot/codex/claude/opencode/pi/grok/qoder)", default
+        ).lower()
     )
     if selected not in _SUPPORTED_AGENT_BACKENDS:
         print(_yellow(f"  Unknown backend '{selected}'."))
-        print(_dim("    Choose one of: copilot, codex, claude, opencode, pi, grok"))
+        print(
+            _dim(
+                "    Choose one of: copilot, codex, claude, opencode, pi, grok, "
+                "qoder"
+            )
+        )
         print()
         return None
 
@@ -217,6 +226,9 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
             print(_dim("    Then run `pi` and use `/login` to authenticate."))
         elif selected == "grok":
             print(_dim("    Then authenticate with: grok login"))
+        elif selected == "qoder":
+            print(_dim("    Then authenticate with: qodercli login"))
+            print(_dim("    Or set QODER_PERSONAL_ACCESS_TOKEN for headless use."))
         print()
         return None
 

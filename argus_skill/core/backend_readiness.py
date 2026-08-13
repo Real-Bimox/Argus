@@ -30,7 +30,7 @@ SETUP_EXIT_NOT_READY = 3
 SETUP_EXIT_PERSISTENCE = 4
 
 _SUPPORTED_BACKENDS = frozenset(
-    {"codex", "copilot", "claude", "opencode", "pi", "grok"}
+    {"codex", "copilot", "claude", "opencode", "pi", "grok", "qoder"}
 )
 _VERSION_RE = re.compile(
     r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?:[-+]([0-9A-Za-z.-]+))?"
@@ -39,6 +39,9 @@ _AUTH_COMMANDS: dict[str, tuple[str, ...]] = {
     "codex": ("login", "status"),
     "claude": ("auth", "status"),
     "opencode": ("auth", "list"),
+    # qodercli exits non-zero from --list-models when unauthenticated, so it
+    # doubles as a read-only auth probe.
+    "qoder": ("--list-models",),
 }
 _INSTALL_COMMANDS = {
     "codex": "npm install -g @openai/codex@latest",
@@ -47,6 +50,7 @@ _INSTALL_COMMANDS = {
     "opencode": "curl -fsSL https://opencode.ai/install | bash",
     "pi": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
     "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
+    "qoder": "npm install -g @qoder-ai/qodercli",
 }
 _LOGIN_COMMANDS = {
     "codex": "codex login",
@@ -55,6 +59,7 @@ _LOGIN_COMMANDS = {
     "opencode": "opencode auth login",
     "pi": "pi, then /login",
     "grok": "grok login",
+    "qoder": "qodercli login",
 }
 
 
@@ -408,6 +413,11 @@ def _probe_cli_auth(
             "no XAI_API_KEY or cached Grok login was found; "
             "Grok Build does not expose a read-only auth-status command"
         )
+    if backend == "qoder":
+        # A PAT is the headless path; otherwise fall through to the generic
+        # `qodercli --list-models` probe below, which reports login state.
+        if str(os.environ.get("QODER_PERSONAL_ACCESS_TOKEN") or "").strip():
+            return True, ""
     suffix = _AUTH_COMMANDS.get(backend)
     if suffix is None:
         return False, f"no read-only authentication probe is defined for {backend}"

@@ -8,11 +8,11 @@ from __future__ import annotations
 import json
 
 from .runner_backend import (
-    BACKEND_CLAUDE,
     BACKEND_COPILOT,
     BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
+    CLAUDE_FAMILY,
 )
 
 
@@ -115,7 +115,8 @@ class EventConsumerMixin:
         turn_failed: bool,
         fatal_error: str | None,
     ) -> tuple[str | None, bool, bool, str | None]:
-        if self.backend == BACKEND_CLAUDE:
+        if self.backend in CLAUDE_FAMILY:
+            # qoder emits the same stream-json schema as claude.
             return self._consume_claude_event(
                 event=event,
                 thread_id=thread_id,

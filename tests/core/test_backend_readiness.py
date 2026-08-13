@@ -236,6 +236,47 @@ def test_grok_readiness_reports_login_when_no_credentials_exist(
     assert "grok login" in report.problems[0].remediation
 
 
+def test_qoder_readiness_accepts_pat_without_spending_a_turn(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("QODER_PERSONAL_ACCESS_TOKEN", "pat-token")
+    monkeypatch.setattr(readiness, "resolve_runner_bin", lambda *_args: "/bin/qodercli")
+
+    def run(command, *, timeout_s, input_text=None):
+        del timeout_s, input_text
+        # PAT short-circuits auth, so the only subprocess is the version probe.
+        assert command[-1] == "--version"
+        return _completed("qodercli 1.1.20\n")
+
+    monkeypatch.setattr(readiness, "_run_text", run)
+
+    report = readiness.check_backend_readiness("qoder", "subscription_cli")
+
+    assert report.ok
+    assert report.auth_checked
+    assert report.version == "1.1.20"
+
+
+def test_qoder_readiness_reports_login_when_unauthenticated(monkeypatch) -> None:
+    monkeypatch.delenv("QODER_PERSONAL_ACCESS_TOKEN", raising=False)
+    monkeypatch.setattr(readiness, "resolve_runner_bin", lambda *_args: "/bin/qodercli")
+
+    def run(command, *, timeout_s, input_text=None):
+        del timeout_s, input_text
+        if command[-1] == "--list-models":
+            # qodercli exits non-zero from --list-models when not logged in.
+            return _completed("", returncode=1, stderr="not authenticated")
+        return _completed("qodercli 1.1.20\n")
+
+    monkeypatch.setattr(readiness, "_run_text", run)
+
+    report = readiness.check_backend_readiness("qoder", "subscription_cli")
+
+    assert not report.ok
+    assert report.problems[0].capability == "authentication"
+    assert "qodercli login" in report.problems[0].remediation
+
+
 def test_subscription_mode_never_loads_model_api_vault(monkeypatch) -> None:
     _fake_codex(monkeypatch, "0.144.5")
     monkeypatch.setattr(

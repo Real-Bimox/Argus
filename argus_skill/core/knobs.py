@@ -437,9 +437,10 @@ def normalize_cockpit_knob_value(name: str, value: str) -> str:
             "opencode",
             "pi",
             "grok",
+            "qoder",
         }:
             raise ValueError(
-                f"{name} must be codex, claude, copilot, opencode, pi, or grok"
+                f"{name} must be codex, claude, copilot, opencode, pi, grok, or qoder"
             )
         return backend
     if name in _EFFORT_KNOBS:

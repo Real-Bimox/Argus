@@ -15,11 +15,11 @@ from ._sandbox_commands import (
 )
 from .copilot_home import apply_copilot_home
 from .runner_backend import (
-    BACKEND_CLAUDE,
     BACKEND_COPILOT,
     BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
+    CLAUDE_FAMILY,
 )
 
 _OPENCODE_CONFIG_CONTENT_ENV = "OPENCODE_CONFIG_CONTENT"
@@ -158,7 +158,7 @@ class PromptDeliveryMixin:
             prepared = list(command)
             prepared.extend(["--prompt-file", str(prompt_path)])
             return prepared, None, prompt_path
-        if self.backend != BACKEND_CLAUDE:
+        if self.backend not in CLAUDE_FAMILY:
             return command, prompt, None
         prepared = list(command)
         if "--bare" in prepared:

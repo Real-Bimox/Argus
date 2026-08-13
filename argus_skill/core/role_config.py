@@ -21,6 +21,7 @@ _BACKEND_LABEL = {
     "opencode": "OpenCode",
     "pi": "Pi",
     "grok": "Grok Build",
+    "qoder": "Qoder",
     "memory": "memory",
 }
 

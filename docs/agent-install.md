@@ -28,6 +28,7 @@ Supported backend values:
 | Pi | `pi` |
 | OpenCode | `opencode` |
 | xAI Grok Build | `grok` |
+| Qoder CLI | `qoder` |
 
 Setup uses the selected CLI's native default model unless the operator already
 configured a model. Never assign an OpenAI model id to Claude Code, Pi, OpenCode,
@@ -43,7 +44,7 @@ Use PowerShell:
 [Environment]::OSVersion.VersionString
 py --version
 node --version
-Get-Command copilot,codex,claude,pi,opencode,grok -ErrorAction SilentlyContinue
+Get-Command copilot,codex,claude,pi,opencode,grok,qodercli -ErrorAction SilentlyContinue
 ```
 
 Require Python 3.11+ from python.org with **Add Python to PATH** selected,
@@ -67,7 +68,7 @@ pip command so the unchanged preview package version cannot leave stale code.
 ### Configure and verify
 
 ```powershell
-argus --setup --non-interactive --backend <copilot|codex|claude|pi|opencode|grok>
+argus --setup --non-interactive --backend <copilot|codex|claude|pi|opencode|grok|qoder>
 argus doctor --deep --advisor auto
 argus --status
 ```
@@ -90,7 +91,7 @@ sw_vers
 uname -m
 uv --version
 node --version
-for cli in copilot codex claude pi opencode grok; do command -v "$cli" || true; done
+for cli in copilot codex claude pi opencode grok qodercli; do command -v "$cli" || true; done
 ```
 
 Require Node.js 22+, one authenticated Agent CLI, and uv. Install uv only with
@@ -114,7 +115,7 @@ uv tool install --force --python 3.12 \
 
 ```bash
 argus --setup --non-interactive \
-  --backend <copilot|codex|claude|pi|opencode|grok>
+  --backend <copilot|codex|claude|pi|opencode|grok|qoder>
 argus doctor --deep --advisor auto
 argus --status
 ```
@@ -134,7 +135,7 @@ uname -a
 python3 --version
 node --version
 git --version
-for cli in copilot codex claude pi opencode grok; do command -v "$cli" || true; done
+for cli in copilot codex claude pi opencode grok qodercli; do command -v "$cli" || true; done
 ```
 
 Require Python 3.11+, Node.js 22+, Git, and one authenticated Agent CLI.
@@ -161,7 +162,7 @@ with `git pull --ff-only`, then refresh the editable install.
 ```bash
 cd "$HOME/Argus"
 .venv/bin/argus --setup --non-interactive \
-  --backend <copilot|codex|claude|pi|opencode|grok>
+  --backend <copilot|codex|claude|pi|opencode|grok|qoder>
 .venv/bin/argus doctor --deep --advisor auto
 .venv/bin/argus --status
 ```

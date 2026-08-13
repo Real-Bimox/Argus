@@ -21,6 +21,8 @@ from .runner_backend import (
     BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
+    BACKEND_QODER,
+    CLAUDE_FAMILY,
     RunnerBackend,
 )
 
@@ -235,7 +237,8 @@ class CommandBuilderMixin:
     def _build_command(
         self, *, resume_thread_id: str | None, options
     ) -> list[str]:
-        if self.backend == BACKEND_CLAUDE:
+        if self.backend in CLAUDE_FAMILY:
+            # qoder is a Claude Code fork; it takes the same headless argv.
             return self._build_claude_command(resume_thread_id=resume_thread_id, options=options)
         if self.backend == BACKEND_COPILOT:
             return self._build_copilot_command(
@@ -277,6 +280,7 @@ class CommandBuilderMixin:
             BACKEND_GROK,
             BACKEND_OPENCODE,
             BACKEND_PI,
+            BACKEND_QODER,
         ):
             return options
         if options.sandbox_mode is not None:
@@ -380,30 +384,41 @@ class CommandBuilderMixin:
     def _build_claude_command(
         self, *, resume_thread_id: str | None, options
     ) -> list[str]:
-        command = [
-            self.agent_bin,
-            "-p",
-            "--verbose",
-            "--output-format",
-            "stream-json",
-        ]
+        command = [self.agent_bin, "-p"]
+        # qodercli is a Claude Code fork that shares claude's headless surface
+        # but differs on three flags: it REJECTS --verbose, spells reasoning
+        # effort as --reasoning-effort (claude uses --effort), and takes
+        # snake_case permission modes (bypass_permissions / accept_edits).
+        is_qoder = self.backend == BACKEND_QODER
+        if not is_qoder:
+            command.append("--verbose")
+        command.extend(["--output-format", "stream-json"])
         if options.model:
             command.extend(["--model", options.model])
         if options.reasoning_effort:
             effort = (
-                "high"
-                if options.reasoning_effort == "xhigh"
-                else options.reasoning_effort
+                options.reasoning_effort
+                if is_qoder or options.reasoning_effort != "xhigh"
+                else "high"
             )
-            command.extend(["--effort", effort])
+            command.extend(
+                ["--reasoning-effort" if is_qoder else "--effort",
+                 effort]
+            )
         if options.disable_tools:
             command.extend(["--tools", ""])
         elif options.sandbox_mode == "read-only":
             command.extend(["--tools", "Read,Glob,Grep"])
         elif options.dangerous_yolo:
-            command.extend(["--permission-mode", "bypassPermissions"])
+            command.extend([
+                "--permission-mode",
+                "bypass_permissions" if is_qoder else "bypassPermissions",
+            ])
         elif options.full_auto:
-            command.extend(["--permission-mode", "acceptEdits"])
+            command.extend([
+                "--permission-mode",
+                "accept_edits" if is_qoder else "acceptEdits",
+            ])
         # --add-dir
         if options.add_dirs:
             for dir_path in options.add_dirs:
