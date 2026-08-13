@@ -13,7 +13,7 @@ def test_named_reviewer_verdict_parses_with_multiline_reason() -> None:
         "A second material fact is also missing.\n"
         "NEXT_ACTION=Collect the missing evidence.\n"
         "OPERATOR_QUESTION=Which route?\n"
-        "OPERATOR_OPTIONS=collect-logs :: false :: Collect logs :: "
+        "OPERATOR_OPTIONS=collect-logs :: Collect logs :: "
         "Collect the missing provider logs.\n"
         "CHECKPOINT_RECOMMENDED=false\n"
         "FORWARD_PROGRESS=false\n"

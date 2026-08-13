@@ -172,9 +172,9 @@ def build_mission_prompt(
         "decisive check. The Host invokes Reviewer only when required; do not spawn "
         "a Reviewer subagent. End with `MILESTONE_STATUS=done|continue`, "
         "`OPERATOR_QUESTION=<operator-only question|none>`, and "
-        "`OPERATOR_OPTIONS=<id :: true|false :: label :: description; ...|none>`. "
+        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. "
         "Agent-author the question and at most five concrete choices in the operator's "
-        "language; true means extra text is essential and `stop` means explicit stop. "
+        "language; each choice must be complete and `stop` means explicit stop. "
         "A question parks the task; no generic choices."
     )
     static_text = "\n\n".join(sections)
@@ -196,9 +196,8 @@ def build_mission_prompt(
         "End with a concise natural summary, decisive check, and "
         "`MILESTONE_STATUS=done|continue`. End with "
         "`OPERATOR_QUESTION=<operator-only question|none>` and "
-        "`OPERATOR_OPTIONS=<id :: true|false :: label :: description; ...|none>`. "
-        "Agent-author the question and exact choices in the operator's language; a real "
-        "choice uses true only when extra text is essential. A real question parks the task."
+        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. Agent-author "
+        "complete choices in the operator's language. A real question parks the task."
     )
     if shell_contract:
         compact = shell_contract + "\n\n" + compact

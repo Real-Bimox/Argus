@@ -52,9 +52,11 @@ export function operatorDecisionCards(
       seen.add(id);
       const optionsSource = text(card.options_source);
       const options = optionsSource === 'agent' && Array.isArray(card.options)
-        ? (card.options as DecisionOption[]).filter((option) => (
-            Boolean(text(option?.id)) && Boolean(text(option?.label))
-          ))
+        ? (card.options as DecisionOption[])
+            .filter((option) => (
+              Boolean(text(option?.id)) && Boolean(text(option?.label))
+            ))
+            .map((option) => ({ ...option, requires_note: false }))
         : [];
       cards.push({
         id,

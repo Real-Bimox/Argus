@@ -80,9 +80,10 @@ def test_option_selection_is_direct_and_custom_requires_text() -> None:
     )
 
     assert selected_decision_text(card, "fallback", "") == "Use fallback."
-    with pytest.raises(ValueError, match="requires guidance"):
-        selected_decision_text(card, "custom", "")
-    assert selected_decision_text(card, "custom", "Try B") == "Try B"
+    assert selected_decision_text(card, "custom", "") == "Describe another route"
+    assert selected_decision_text(card, "custom", "Try B") == (
+        "Describe another route\n\nOperator note: Try B"
+    )
 
 
 def test_missing_agent_options_stays_freeform_without_host_choices() -> None:

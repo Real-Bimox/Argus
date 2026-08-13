@@ -42,7 +42,7 @@ def normalize_agent_options(
             "id": option_id,
             "label": label,
             "description": str(row.get("description") or "").strip()[:1000],
-            "requires_note": bool(row.get("requires_note")),
+            "requires_note": False,
         })
         if len(normalized) >= 8:
             break
@@ -72,17 +72,18 @@ def parse_agent_operator_options(message: str) -> list[dict[str, Any]]:
         )
     options: list[dict[str, Any]] = []
     for encoded in raw.split(";"):
-        parts = [part.strip() for part in encoded.split("::", 3)]
-        if len(parts) != 4:
-            continue
-        option_id, requires_note, label, description = parts
-        if requires_note.casefold() not in {"true", "false"}:
+        parts = [part.strip() for part in encoded.split("::")]
+        if len(parts) == 3:
+            option_id, label, description = parts
+        elif len(parts) == 4:
+            option_id, _legacy_requires_note, label, description = parts
+        else:
             continue
         options.append({
             "id": option_id,
             "label": label,
             "description": description,
-            "requires_note": requires_note.casefold() == "true",
+            "requires_note": False,
         })
     return normalize_agent_options(options)
 
@@ -145,10 +146,14 @@ def selected_decision_text(card: Mapping[str, Any], option_id: str, note: str) -
     )
     if option is None:
         raise ValueError("unknown decision option")
-    if bool(option.get("requires_note")) and not note:
+    requires_note = (
+        bool(option.get("requires_note"))
+        and str(card.get("options_source") or "") != "agent"
+    )
+    if requires_note and not note:
         raise ValueError("this option requires guidance")
     description = str(option.get("description") or "").strip()
-    if bool(option.get("requires_note")) and not description:
+    if requires_note and not description:
         return note
     selected_text = description or str(option.get("label") or "").strip()
     return f"{selected_text}\n\nOperator note: {note}" if note else selected_text

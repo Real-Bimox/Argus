@@ -92,4 +92,27 @@ describe('operator decision cards', () => {
     expect(html).toContain('Use local fallback');
     expect(html).toContain('Stop this campaign');
   });
+
+  it('keeps note-required choices clickable so validation can explain the requirement', () => {
+    const html = renderToStaticMarkup(
+      <PendingReplyDialog
+        reply={{
+          ...card,
+          options: [{
+            id: 'needs-note',
+            label: 'Use another format',
+            description: 'Describe the format.',
+            requires_note: true,
+          }],
+        }}
+        open
+        busy={false}
+        onClose={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('Use this option');
+    expect(html).not.toContain('disabled=""');
+  });
 });
