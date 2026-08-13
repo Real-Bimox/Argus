@@ -34,6 +34,12 @@ _CONTINUE_WORK_SENTINEL = "CONTINUE_WORK:"
 _CONTINUE_WORK_MAX_CHARS = 500
 _DEFAULT_DECISION_PROGRESS_TIMEOUT_SECONDS = 30 * 60
 _RUNNER_DEFAULT_HARD_IDLE_SECONDS = 45 * 60
+# Framework-owned fallback for ``EngineerConfig.live_search_stages``: the
+# research stage, where idea discovery / literature grounding happens. A
+# vertical that owns a different pipeline (math runs scope/solve/review and has
+# no research stage at all) declares its own set through the vertical contract;
+# this stays the answer for every vertical that declares nothing.
+DEFAULT_LIVE_SEARCH_STAGES: frozenset[str] = frozenset({"research"})
 
 
 def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
@@ -92,8 +98,11 @@ class EngineerConfig:
     # Pipeline stages in which the engineer runs with codex's native live
     # web_search enabled (``codex exec --search``). Default: the research stage,
     # so idea discovery / literature grounding does REAL live search instead of
-    # cached/recalled results. Empty set → never enable it.
-    live_search_stages: frozenset[str] = frozenset({"research"})
+    # cached/recalled results. Empty set → never enable it. The active vertical
+    # may override this per mission (``ENGINEER_LIVE_SEARCH_STAGES`` on its
+    # provider, resolved through ``VerticalContract.live_search_stages``); a
+    # vertical that declares nothing keeps this default unchanged.
+    live_search_stages: frozenset[str] = DEFAULT_LIVE_SEARCH_STAGES
 
 
 def _engineer_live_search(workdir: Any, stages: "frozenset[str]") -> bool:

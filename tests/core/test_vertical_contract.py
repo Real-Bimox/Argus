@@ -156,6 +156,108 @@ def test_incomplete_vertical_fails_visibly() -> None:
         )
 
 
+_CORE_LIVE_SEARCH_DEFAULT = frozenset({"research"})
+
+
+def _live_search_provider(**extra: object) -> SimpleNamespace:
+    return SimpleNamespace(
+        CHECKLIST_STAGE_ORDER=("scope", "solve"),
+        CHECKLIST_ITEMS={
+            "scope": (_item("scope.output"),),
+            "solve": (_item("solve.output"),),
+        },
+        completion_gate="none",
+        **extra,
+    )
+
+
+def test_undeclared_live_search_stages_keep_the_framework_default() -> None:
+    """A vertical that says nothing must not have its behaviour changed."""
+    contract = vertical_contract("quiet", _live_search_provider())
+
+    assert contract.engineer_live_search_stages is None
+    assert contract.live_search_stages(_CORE_LIVE_SEARCH_DEFAULT) == (
+        _CORE_LIVE_SEARCH_DEFAULT
+    )
+
+
+def test_vertical_declares_its_own_live_search_stages() -> None:
+    contract = vertical_contract(
+        "declared",
+        _live_search_provider(ENGINEER_LIVE_SEARCH_STAGES=("Scope", " solve ")),
+    )
+
+    assert contract.engineer_live_search_stages == frozenset({"scope", "solve"})
+    assert contract.live_search_stages(_CORE_LIVE_SEARCH_DEFAULT) == frozenset(
+        {"scope", "solve"}
+    )
+
+
+def test_declared_empty_live_search_is_distinct_from_no_declaration() -> None:
+    """An explicit empty set means "never search", not "use the default"."""
+    contract = vertical_contract(
+        "offline",
+        _live_search_provider(ENGINEER_LIVE_SEARCH_STAGES=frozenset()),
+    )
+
+    assert contract.engineer_live_search_stages == frozenset()
+    assert contract.live_search_stages(_CORE_LIVE_SEARCH_DEFAULT) == frozenset()
+
+
+def test_live_search_stage_typos_fail_visibly() -> None:
+    with pytest.raises(VerticalContractError, match="live search for unknown stages"):
+        vertical_contract(
+            "typo",
+            _live_search_provider(ENGINEER_LIVE_SEARCH_STAGES=("research",)),
+        )
+
+    # A bare string would otherwise be iterated character by character.
+    with pytest.raises(VerticalContractError, match="not a collection of stages"):
+        vertical_contract(
+            "stringly",
+            _live_search_provider(ENGINEER_LIVE_SEARCH_STAGES="solve"),
+        )
+
+
+def test_blank_live_search_stage_is_an_error_not_a_silent_drop() -> None:
+    """A dropped blank would forge the "never search" declaration.
+
+    ``frozenset()`` is a meaningful answer ("this vertical never searches"), so
+    quietly discarding a whitespace typo would turn it into that answer with no
+    diagnostic at all.
+    """
+    for blank in ("", "   ", "\t"):
+        with pytest.raises(VerticalContractError, match="blank live search stage"):
+            vertical_contract(
+                "blank",
+                _live_search_provider(
+                    ENGINEER_LIVE_SEARCH_STAGES=("scope", blank),
+                ),
+            )
+
+
+def test_non_string_live_search_stage_is_rejected_not_coerced() -> None:
+    """``str()`` coercion would let anything with a __str__ through."""
+
+    class _LooksLikeAStage:
+        def __str__(self) -> str:
+            return "solve"
+
+    with pytest.raises(VerticalContractError, match="is not a string"):
+        vertical_contract(
+            "coerced",
+            _live_search_provider(
+                ENGINEER_LIVE_SEARCH_STAGES=(_LooksLikeAStage(),),
+            ),
+        )
+
+    with pytest.raises(VerticalContractError, match="is not a string"):
+        vertical_contract(
+            "numeric",
+            _live_search_provider(ENGINEER_LIVE_SEARCH_STAGES=("scope", 1)),
+        )
+
+
 def test_core_has_no_vertical_package_imports() -> None:
     core = Path(__file__).parents[2] / "argus_skill" / "core"
     offenders: list[str] = []

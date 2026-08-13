@@ -15,6 +15,15 @@ CHECKLIST_STAGE_ORDER = STAGE_ORDER
 WORKFLOW_MODE = "proportional"
 RESEARCH_TARGET_LEVELS = ("exploratory", "publishable", "doctoral")
 
+# Math has no ``research`` stage, so the framework's default live-search stage
+# never fires here: without this declaration the Engineer would do literature
+# work from recall alone. ``scope`` needs the literature to state the problem
+# and its known status; ``solve`` needs it to find existing techniques,
+# counterexamples, and prior results. ``review`` is deliberately excluded: it is
+# independent verification of an argument already in hand, and the Reviewer
+# (which always runs with live search) owns the source checks there.
+ENGINEER_LIVE_SEARCH_STAGES = frozenset({"scope", "solve"})
+
 # Math missions end through the ordinary reviewer-certified final-stage path.
 # They are neither paper-submission missions nor metric-optimization campaigns.
 completion_gate = "none"
@@ -227,6 +236,7 @@ __all__ = [
     "CHECKLIST_ITEMS",
     "CHECKLIST_STAGE_ORDER",
     "COMPLETION_CONTRACT_VERSION",
+    "ENGINEER_LIVE_SEARCH_STAGES",
     "PROTECTED_ITEM_IDS",
     "REVIEWER_CHECKLISTS",
     "RESEARCH_TARGET_LEVELS",

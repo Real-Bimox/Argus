@@ -58,6 +58,11 @@ class VerticalContract:
     planner_task_validator: Callable[[str, Path, Any], object] | None = None
     stage_checks: dict[str, tuple[tuple[str, str], ...]] | None = None
     stage_primary_deliverables: dict[str, tuple[str, ...]] | None = None
+    # Stages whose Engineer round runs with live web search enabled. ``None``
+    # means "this vertical declares nothing", which is NOT the same as an
+    # explicitly declared empty set ("never search"): the former keeps the
+    # framework default, the latter overrides it off.
+    engineer_live_search_stages: frozenset[str] | None = None
 
     @property
     def assurance_level(self) -> str:
@@ -85,6 +90,19 @@ class VerticalContract:
 
     def primary_deliverables(self, stage: str) -> tuple[str, ...]:
         return tuple((self.stage_primary_deliverables or {}).get(stage, ()))
+
+    def live_search_stages(self, default: frozenset[str]) -> frozenset[str]:
+        """Stages in which THIS vertical's Engineer runs with live web search.
+
+        Core owns ``default`` and never enumerates vertical stage names: a
+        vertical whose pipeline has no research stage would otherwise never
+        reach a live-search stage at all. Stage names are vertical-local, so
+        each vertical declares its own set and two verticals sharing a stage
+        name (``review``) never leak into each other.
+        """
+        if self.engineer_live_search_stages is None:
+            return default
+        return self.engineer_live_search_stages
 
     def completion_issues(self, stage: str, project_root: Path) -> tuple[str, ...]:
         if self.stage_completion_validator is None:
@@ -284,6 +302,38 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         )
         for stage, values in raw_primary_deliverables.items()
     }
+    raw_live_search_stages = getattr(provider, "ENGINEER_LIVE_SEARCH_STAGES", None)
+    engineer_live_search_stages: frozenset[str] | None = None
+    if raw_live_search_stages is not None:
+        # Declared-empty ("never search") and absent ("use the caller's
+        # baseline") are different answers, so nothing here may silently DROP an
+        # element: a stray blank string would otherwise turn a typo into a
+        # permanent, unreported "live search off".
+        if isinstance(raw_live_search_stages, str) or not isinstance(
+            raw_live_search_stages, (list, tuple, set, frozenset)
+        ):
+            raise VerticalContractError(
+                f"vertical {name!r} live search stages are not a collection of stages"
+            )
+        declared: set[str] = set()
+        for stage in raw_live_search_stages:
+            if not isinstance(stage, str):
+                raise VerticalContractError(
+                    f"vertical {name!r} live search stage {stage!r} is not a string"
+                )
+            normalized = stage.strip().lower()
+            if not normalized:
+                raise VerticalContractError(
+                    f"vertical {name!r} declares a blank live search stage"
+                )
+            declared.add(normalized)
+        engineer_live_search_stages = frozenset(declared)
+        unknown_live_search = sorted(engineer_live_search_stages - set(stage_order))
+        if unknown_live_search:
+            raise VerticalContractError(
+                f"vertical {name!r} declares live search for unknown stages: "
+                f"{', '.join(unknown_live_search)}"
+            )
     return VerticalContract(
         name=str(name or "").strip().lower(),
         stage_order=stage_order,
@@ -332,6 +382,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         planner_task_validator=planner_task_validator,
         stage_checks=stage_checks,
         stage_primary_deliverables=stage_primary_deliverables,
+        engineer_live_search_stages=engineer_live_search_stages,
     )
 
 
