@@ -301,7 +301,7 @@ def build_parser() -> argparse.ArgumentParser:
     capability_grp.add_argument(
         "--accept-house-rules",
         action="store_true",
-        help="with noninteractive --setup: explicitly accept the default house rules",
+        help=argparse.SUPPRESS,
     )
     capability_grp.add_argument(
         "--allow-prerelease",
@@ -309,14 +309,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="allow an explicitly selected prerelease backend CLI",
     )
     capability_grp.add_argument(
-        "--set-git-global",
-        action="store_true",
-        help="with --setup: opt in to changing global Git identity",
+        "--api-url",
+        default=None,
+        help="with --setup: configure an OpenAI-compatible API through Pi",
     )
     capability_grp.add_argument(
-        "--configure-codex",
-        action="store_true",
-        help="with --setup: opt in to writing Codex config/auth files",
+        "--api-key",
+        default=None,
+        help="with --setup: API key (prefer ARGUS_SETUP_API_KEY to avoid shell history)",
+    )
+    capability_grp.add_argument(
+        "--api-model",
+        default=None,
+        help="with --setup: model id for --api-url (default gpt-5.5)",
     )
     capability_grp.add_argument(
         "--model-api-status",

@@ -483,12 +483,9 @@ def main(argv: list[str] | None = None) -> int:
             non_interactive=bool(getattr(args, "non_interactive", False)),
             accept_house_rules=bool(getattr(args, "accept_house_rules", False)),
             allow_prerelease=bool(getattr(args, "allow_prerelease", False)),
-            set_git_global=(
-                True if bool(getattr(args, "set_git_global", False)) else None
-            ),
-            configure_codex=(
-                True if bool(getattr(args, "configure_codex", False)) else None
-            ),
+            api_url=getattr(args, "api_url", None),
+            api_key=getattr(args, "api_key", None),
+            api_model=getattr(args, "api_model", None),
         )
     if getattr(args, "doctor", False):
         return _run_with_path_resolution_errors(lambda: _cmd_doctor(args))

@@ -134,19 +134,24 @@ argus update
 ### 连接后端
 
 ```bash
-argus --setup --non-interactive \
-  --backend copilot \
-  --accept-house-rules
+argus --setup
 ```
 
 `--backend` 可使用 `copilot`、`pi`、`codex`、`claude`、`opencode` 或 `grok`。
+如果已有 OpenAI-compatible URL，setup 会在需要时自动安装 Pi 并完成配置：
+
+```bash
+ARGUS_SETUP_API_KEY=... argus --setup --non-interactive \
+  --api-url https://api.example.com/v1 \
+  --api-model model-id
+```
 
 使用 Grok Build 时，请先安装并登录 xAI 官方 CLI：
 
 ```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
 grok login
-argus --setup --non-interactive --backend grok --accept-house-rules
+argus --setup --non-interactive --backend grok
 ```
 
 无界面环境也可以使用 `XAI_API_KEY`。Argus 通过 Grok 原生 headless JSON
