@@ -15,6 +15,18 @@ export interface Args {
   web: boolean;
   noOpen: boolean;
   objective: string;
+  forceNew: boolean;
+  exitPolicy: ExitPolicy;
+}
+
+export type ExitPolicy = 'detach' | 'stop-api' | 'stop-all';
+
+function exitPolicy(value: string | undefined, source: string): ExitPolicy {
+  const normalized = value?.trim() || 'detach';
+  if (normalized === 'detach' || normalized === 'stop-api' || normalized === 'stop-all') {
+    return normalized;
+  }
+  throw new Error(`${source} must be detach, stop-api, or stop-all; got ${normalized}`);
 }
 
 function valueAfter(argv: string[], index: number, option: string): string {
@@ -42,6 +54,8 @@ export function parseArgs(argv: string[]): Args {
     web: false,
     noOpen: false,
     objective: '',
+    forceNew: false,
+    exitPolicy: exitPolicy(process.env.ARGUS_TUI_EXIT_POLICY, 'ARGUS_TUI_EXIT_POLICY'),
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -84,6 +98,10 @@ export function parseArgs(argv: string[]): Args {
       args.project = undefined;
       args.resume = false;
       args.resumeAll = false;
+      args.forceNew = true;
+    } else if (arg === '--exit-policy') {
+      args.exitPolicy = exitPolicy(valueAfter(argv, i, arg), '--exit-policy');
+      i += 1;
     } else if (arg === '-h' || arg === '--help') {
       args.help = true;
     }
@@ -104,14 +122,21 @@ export const HELP = `argus — the terminal cockpit for the argus-skill autonomo
 
 Usage: argus resume [SID] [--all]
        argus [--resume [SID]] [--host H] [--port P] [--project SID] [--token T]
+             [--exit-policy detach|stop-api|stop-all]
        argus --web [--no-open]  # start Web UI and open/print its URL
        argus --once --json   # headless smoke: fetch snapshot + N events, print JSON, exit
 
 Every launch compares the local source identity with the running backend. It
 auto-starts a missing backend and safely replaces an outdated backend only when
 process ownership is proven; unrelated port occupants are never signalled. A
-plain interactive launch creates a fresh idle session. argus resume shows
+plain interactive launch reattaches to a live executor from this directory, or
+creates a fresh idle session when none is running. argus resume shows
 conversations from this directory; add --all for every account session.
+
+The terminal UI, local API server, and per-session executor are separate
+processes. Ctrl-D (or Ctrl-C twice in the live view) exits only this UI by
+default; the API and executor remain available for Web/reconnect. Use an exit
+policy when this invocation should also perform graceful cleanup.
 
 Options:
   --host H       API host (default 127.0.0.1, env ARGUS_TUI_HOST)
@@ -120,11 +145,15 @@ Options:
   -r, --resume   open the local resume picker; an optional SID resumes directly
   --continue     compatibility alias for the local resume picker
   --all          with resume, include sessions launched outside this directory
-  --new          force a fresh session (the default)
+  --new          force a fresh session instead of reattaching to local live work
   --token T      bearer token if the API requires one (env ARGUS_SKILL_WEB_TOKEN)
   --web          ensure the Web UI backend is running, then open it in a browser
   --no-open      with --web, print the URL without launching a local browser
   --objective X  create and immediately start a fresh campaign with objective X
+  --exit-policy P  detach (default), stop-api, or stop-all
+                   stop-api stops only an API safely owned by this invocation;
+                   stop-all first stops the current executor, then that API
+                   (env ARGUS_TUI_EXIT_POLICY)
   --once --json  connect, print a JSON snapshot+events sample, exit 0 (CI/headless)
   --count N      events to collect in --once mode (default 5)
 `;

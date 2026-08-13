@@ -28,6 +28,7 @@ from ._env import (
     _DEFAULT_STREAM_QUEUE_LINES,
     _STREAM_QUEUE_LINES_ENV,
     _incomplete_turn_error,
+    _is_manager_turn_label,
     _positive_env_int,
     _turn_wall_clock_seconds,
 )
@@ -374,13 +375,15 @@ class RunExecMixin:
                 or time.monotonic() - turn_started_at < turn_wall_clock_seconds
             ):
                 return False
-            subject = (
-                "scientist skill distill"
-                if str(run_label or "").strip().lower() == "scientist.skill_distill"
-                else "engineer turn"
-            )
+            normalized_label = str(run_label or "").strip().lower()
+            if _is_manager_turn_label(normalized_label):
+                subject = "Manager turn"
+            elif normalized_label == "scientist.skill_distill":
+                subject = "scientist skill distill"
+            else:
+                subject = "engineer turn"
             state.watchdog_reason = (
-                f"External interrupt: {subject} time budget reached after "
+                f"External interrupt: {subject} wall-clock limit reached after "
                 f"{turn_wall_clock_seconds}s; yield for review/steering"
             )
             self._emit(

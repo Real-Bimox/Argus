@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from argus_skill.life.memory import (
+    Backlog,
     BacklogItem,
     IllegalStateTransition,
     LifeMemory,
@@ -131,6 +132,32 @@ def test_concurrent_claims_are_unique_and_finish_without_deadlock(
     assert len(ids) == 32
     assert len(set(ids)) == 32
     assert mem.backlog.claim_next() is None
+
+
+def test_concurrent_claims_share_thread_lock_across_backlog_instances(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "backlog.jsonl"
+    first = Backlog(path)
+    second = Backlog(path)
+    first.add_many([
+        BacklogItem.new(title=f"task-{index}", objective="run once")
+        for index in range(32)
+    ])
+
+    backlogs = (first, second)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [
+            pool.submit(backlogs[index % len(backlogs)].claim_next)
+            for index in range(40)
+        ]
+        claimed = [future.result(timeout=5) for future in futures]
+
+    ids = [item.id for item in claimed if item is not None]
+    assert len(ids) == 32
+    assert len(set(ids)) == 32
+    assert first.claim_next() is None
+    assert second.claim_next() is None
 
 
 # ---------------------------------------------------------------------------

@@ -87,6 +87,23 @@ _PYTHON_PRE_ACTION_BOOL_OPTIONS = frozenset(
 )
 
 
+def _configure_windows_console_encoding(*, platform_name: str | None = None) -> None:
+    """Keep the Python admin CLI usable on legacy Windows code pages.
+
+    The CLI deliberately renders status glyphs and multilingual diagnostics.
+    A normal zh-CN PowerShell process still exposes CP936 text streams, where
+    writing one of those glyphs raises ``UnicodeEncodeError`` before the actual
+    command can report its result.  Reconfigure only the Windows console-facing
+    streams; child processes already receive an explicit UTF-8 environment.
+    """
+    if (os.name if platform_name is None else platform_name) != "nt":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def _bundle_path() -> Path | None:
     explicit = os.environ.get("ARGUS_TUI_BUNDLE")
     candidates = [
@@ -211,6 +228,7 @@ def _needs_foreground_spawn() -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_windows_console_encoding()
     forwarded = list(sys.argv[1:] if argv is None else argv)
     if _uses_python_admin(forwarded):
         return _run_python_admin(forwarded)

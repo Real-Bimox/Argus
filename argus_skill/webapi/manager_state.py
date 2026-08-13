@@ -160,10 +160,24 @@ def _prewarm_manager_context(
         state["_manager_acp_prewarmed"] = True
 
 
-def _manager_context_is_prewarmed(sid: str) -> bool:
-    with _lock_for(sid):
+def _manager_context_is_prewarmed(sid: str, *, blocking: bool = True) -> bool:
+    """Return the warm flag without forcing read-only callers to wait.
+
+    Compact snapshot reads schedule a best-effort prewarm.  They must not queue
+    behind a Manager turn that can legitimately hold the per-session lock for
+    several minutes.  ``blocking=False`` treats a busy context as not-yet-warm;
+    the background worker will perform the authoritative check once it can
+    acquire the lock.
+    """
+    lock = _lock_for(sid)
+    acquired = lock.acquire(blocking=blocking)
+    if not acquired:
+        return False
+    try:
         state = _STATES.get(sid)
         return bool(state and state.get("_manager_acp_prewarmed"))
+    finally:
+        lock.release()
 
 
 def schedule_manager_prewarm(
@@ -172,12 +186,12 @@ def schedule_manager_prewarm(
     global_root: Path | str | None = None,
 ) -> None:
     """Warm exactly one project's private Manager ACP pool in background."""
-    if _manager_context_is_prewarmed(sid):
+    if _manager_context_is_prewarmed(sid, blocking=False):
         return
     with _MANAGER_PREWARMING_LOCK:
         if sid in _MANAGER_PREWARMING:
             return
-        if _manager_context_is_prewarmed(sid):
+        if _manager_context_is_prewarmed(sid, blocking=False):
             return
         _MANAGER_PREWARMING.add(sid)
 

@@ -512,7 +512,10 @@ def test_isolated_home_does_not_implicitly_include_user_root(
     assert ids == {"s-isolated"}
 
 
-def test_api_meta_identifies_protocol_capabilities_and_loaded_checkout() -> None:
+def test_api_meta_identifies_protocol_capabilities_and_loaded_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARGUS_DESKTOP_LAUNCH_NONCE", "desktop-launch-test")
     meta = build_api_meta()
     assert meta["service"] == "argus-skill-webapi"
     assert meta["protocol"] == {
@@ -524,6 +527,7 @@ def test_api_meta_identifies_protocol_capabilities_and_loaded_checkout() -> None
     assert meta["capabilities"] == list(API_CAPABILITIES)
     assert Path(meta["runtime"]["source_root"]) == Path(__file__).parents[2]
     assert meta["runtime"]["pid"] > 0
+    assert meta["runtime"]["desktop_launch_nonce"] == "desktop-launch-test"
     runtime = meta["runtime"]
     assert runtime["release_id"].startswith("0.1.1+")
     assert runtime["release_matches_source"] is (
@@ -902,7 +906,11 @@ def test_get_projects(client: TestClient) -> None:
     assert any(p["id"] == "s-testaaaa" for p in r.json()["projects"])
 
 
-def test_get_meta_is_public_versioned_and_uncached(tmp_path: Path) -> None:
+def test_get_meta_is_public_versioned_and_uncached(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARGUS_DESKTOP_LAUNCH_NONCE", "desktop-launch-secret")
     app = server.create_app(global_root=tmp_path, auth_token="secret")
     with TestClient(app) as client:
         r = client.get("/api/meta")
@@ -917,8 +925,21 @@ def test_get_meta_is_public_versioned_and_uncached(tmp_path: Path) -> None:
     )
     assert r.headers["x-argus-release"].startswith("0.1.1+")
     assert r.json()["protocol"]["major"] == API_PROTOCOL_MAJOR
+    assert r.json()["authentication"] == {
+        "required": True,
+        "authenticated": False,
+    }
     assert r.json()["runtime"]["source_root"] == "<redacted>"
+    assert r.json()["runtime"]["desktop_launch_nonce"] is None
     assert authenticated.json()["runtime"]["source_root"] != "<redacted>"
+    assert authenticated.json()["authentication"] == {
+        "required": True,
+        "authenticated": True,
+    }
+    assert (
+        authenticated.json()["runtime"]["desktop_launch_nonce"]
+        == "desktop-launch-secret"
+    )
 
 
 def test_metrics_endpoints_expose_json_slo_and_prometheus(client: TestClient) -> None:

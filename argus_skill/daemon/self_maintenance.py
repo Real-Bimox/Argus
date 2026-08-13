@@ -13,7 +13,7 @@ import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from ..core.file_lock import exclusive_file_lock
@@ -167,7 +167,7 @@ def _run(
 @contextmanager
 def _frontend_dependency_links(source_root: Path, worktree: Path):
     """Expose existing frontend dependencies to a private Git worktree."""
-    created: list[Path] = []
+    created: list[tuple[Path, str]] = []
     try:
         for relative in (
             Path("frontend/web/node_modules"),
@@ -186,12 +186,47 @@ def _frontend_dependency_links(source_root: Path, worktree: Path):
                     f"dependencies at {source}"
                 )
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.symlink_to(source, target_is_directory=True)
-            created.append(target)
+            link_kind = _create_frontend_dependency_link(source, target)
+            created.append((target, link_kind))
         yield
     finally:
-        for path in reversed(created):
-            path.unlink(missing_ok=True)
+        for path, link_kind in reversed(created):
+            try:
+                if link_kind == "junction":
+                    path.rmdir()
+                else:
+                    path.unlink(missing_ok=True)
+            except FileNotFoundError:
+                pass
+
+
+def _create_frontend_dependency_link(source: Path, target: Path) -> str:
+    try:
+        target.symlink_to(source, target_is_directory=True)
+        return "symlink"
+    except OSError as symlink_error:
+        if os.name != "nt":
+            raise
+        # Directory junctions do not require Developer Mode or elevation and
+        # avoid copying a multi-gigabyte node_modules tree into every repair
+        # worktree. ``cmd`` is used only for its built-in mklink command; argv
+        # remains a non-shell list so paths are quoted by subprocess.
+        completed = subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(target), str(source)],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30.0,
+        )
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            raise OSError(
+                "could not expose frontend dependencies with a symlink or "
+                f"Windows junction: {detail or symlink_error}"
+            ) from symlink_error
+        return "junction"
 
 
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
@@ -726,9 +761,10 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         if incident_id == str(state.get("last_incident_id") or ""):
             return ""
         if not affected_paths or any(
-            Path(path).is_absolute()
-            or ".." in Path(path).parts
-            or ".git" in Path(path).parts
+            PurePosixPath(path).is_absolute()
+            or PureWindowsPath(path).is_absolute()
+            or ".." in PurePosixPath(path.replace("\\", "/")).parts
+            or ".git" in PurePosixPath(path.replace("\\", "/")).parts
             for path in affected_paths
         ):
             error = "Manager returned unsafe affected paths"

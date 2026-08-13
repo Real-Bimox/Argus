@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import time
@@ -336,15 +337,25 @@ def test_stop_daemon_returns_1_when_no_daemon(tmp_path: Path) -> None:
     assert stop_daemon(tmp_path) == 1
 
 
-def test_nonblocking_stop_request_revalidates_pid_and_signals_once(
+def test_nonblocking_stop_request_revalidates_daemon_instance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import argus_skill.daemon.state as daemon_state
 
-    status = SimpleNamespace(alive=True, pid=4242, life_dir=tmp_path)
+    started = "2026-08-13T08:00:00+00:00"
+    status = SimpleNamespace(
+        alive=True,
+        pid=4242,
+        life_dir=tmp_path,
+        started_at_iso=started,
+    )
     monkeypatch.setattr(daemon_state, "read_daemon_status", lambda _root: status)
-    monkeypatch.setattr(daemon_state, "_same_daemon_alive", lambda _root, _pid: True)
+    monkeypatch.setattr(
+        daemon_state,
+        "_same_daemon_instance_alive",
+        lambda _root, _pid, _started: True,
+    )
     signals: list[tuple[int, int]] = []
     monkeypatch.setattr(
         daemon_state.os,
@@ -356,7 +367,15 @@ def test_nonblocking_stop_request_revalidates_pid_and_signals_once(
     requested, pid = request_daemon_stop(tmp_path)
 
     assert (requested, pid) == (True, 4242)
-    assert signals == [(4242, daemon_state.signal.SIGTERM)]
+    assert signals == (
+        [] if os.name == "nt" else [(4242, daemon_state.signal.SIGTERM)]
+    )
+    control = daemon_state.read_daemon_control_stop(
+        tmp_path,
+        pid=4242,
+        started_at_iso=started,
+    )
+    assert control is not None and control.drain is False
     assert not (tmp_path / DAEMON_UPGRADE_REQUEST_FILE).exists()
 
 
@@ -366,9 +385,18 @@ def test_nonblocking_stop_request_refuses_stale_pid(
 ) -> None:
     import argus_skill.daemon.state as daemon_state
 
-    status = SimpleNamespace(alive=True, pid=4242, life_dir=tmp_path)
+    status = SimpleNamespace(
+        alive=True,
+        pid=4242,
+        life_dir=tmp_path,
+        started_at_iso="2026-08-13T08:00:00+00:00",
+    )
     monkeypatch.setattr(daemon_state, "read_daemon_status", lambda _root: status)
-    monkeypatch.setattr(daemon_state, "_same_daemon_alive", lambda _root, _pid: False)
+    monkeypatch.setattr(
+        daemon_state,
+        "_same_daemon_instance_alive",
+        lambda _root, _pid, _started: False,
+    )
     monkeypatch.setattr(
         daemon_state.os,
         "kill",
@@ -427,7 +455,15 @@ def test_clean_spawn_execs_helper_without_inheriting_parent_fds(
     import_root = Path(life_worker_mod.__file__).resolve().parents[2]
     assert captured["cwd"] == str(import_root)
     assert captured["env"]["PYTHONSAFEPATH"] == "1"
+    assert captured["env"]["PYTHONUTF8"] == "1"
+    assert captured["env"]["PYTHONIOENCODING"] == "utf-8"
     assert captured["env"]["PYTHONPATH"].split(os.pathsep)[0] == str(import_root)
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
+    if os.name == "nt":
+        assert captured["timeout"] > 180.0
+    else:
+        assert captured["timeout"] == 15.0
     payload = json.loads(captured["input"])
     assert payload["life_dir"] == str(config.life_dir)
     assert payload["continuous_objective"] == "continue research"
@@ -453,26 +489,81 @@ def test_clean_spawn_execs_helper_without_inheriting_parent_fds(
     assert str(shadow) not in stdout
 
 
-def test_clean_spawn_surfaces_quiet_helper_failure(
+def test_clean_spawn_preserves_helper_stderr_for_webapi(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    config = LifeWorkerConfig(life_dir=tmp_path / "life", global_root=tmp_path)
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    config = LifeWorkerConfig(
+        life_dir=tmp_path / "life",
+        global_root=tmp_path,
+        project_workdir=workdir,
+    )
     monkeypatch.setattr(
         life_worker_mod.subprocess,
         "run",
         lambda *_args, **_kwargs: SimpleNamespace(
             returncode=1,
             stdout="",
-            stderr=(
-                "Traceback (most recent call last):\n"
-                "ModuleNotFoundError: No module named 'uvicorn'"
-            ),
+            stderr="Traceback: UnicodeEncodeError in daemon bootstrap",
         ),
     )
 
-    with pytest.raises(RuntimeError, match="ModuleNotFoundError.*uvicorn"):
-        life_worker_mod.spawn_detached_daemon_clean(config, quiet=True)
+    with caplog.at_level(logging.ERROR):
+        rc = life_worker_mod.spawn_detached_daemon_clean(config, quiet=True)
+
+    assert rc == 1
+    assert config.last_spawn_error == "Traceback: UnicodeEncodeError in daemon bootstrap"
+    assert config.last_spawn_error in caplog.text
+
+
+def test_clean_spawn_rejects_missing_interpreter_before_subprocess(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    config = LifeWorkerConfig(
+        life_dir=tmp_path / "life",
+        global_root=tmp_path,
+        project_workdir=workdir,
+    )
+    called = False
+
+    def fail_if_called(*_args, **_kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("preflight must reject a missing interpreter")
+
+    monkeypatch.setattr(life_worker_mod.sys, "executable", str(tmp_path / "python.exe"))
+    monkeypatch.setattr(life_worker_mod.subprocess, "run", fail_if_called)
+
+    assert life_worker_mod.spawn_detached_daemon_clean(config, quiet=True) == 2
+    assert called is False
+    assert "Python interpreter is unavailable" in config.last_spawn_error
+
+
+def test_clean_spawn_rejects_missing_workdir_before_subprocess(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = LifeWorkerConfig(
+        life_dir=tmp_path / "life",
+        global_root=tmp_path,
+        project_workdir=tmp_path / "missing",
+    )
+    monkeypatch.setattr(
+        life_worker_mod.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("preflight must reject a missing workdir")
+        ),
+    )
+
+    assert life_worker_mod.spawn_detached_daemon_clean(config, quiet=True) == 3
+    assert "configured workdir is unavailable" in config.last_spawn_error
 
 
 def test_stop_daemon_does_not_sigkill_after_pid_identity_is_lost(
@@ -483,8 +574,8 @@ def test_stop_daemon_does_not_sigkill_after_pid_identity_is_lost(
 
     statuses = iter(
         [
-            DaemonStatus(True, 123, None, None, tmp_path),
-            DaemonStatus(True, 123, None, None, tmp_path),
+            DaemonStatus(True, 123, "2026-08-13T08:00:00+00:00", None, tmp_path),
+            DaemonStatus(True, 123, "2026-08-13T08:00:00+00:00", None, tmp_path),
             DaemonStatus(False, None, None, None, tmp_path),
         ]
     )
@@ -497,7 +588,9 @@ def test_stop_daemon_does_not_sigkill_after_pid_identity_is_lost(
     )
 
     assert life_worker_mod.stop_daemon(tmp_path, timeout=1.0, force=True) == 0
-    assert signals == [(123, daemon_state.signal.SIGTERM)]
+    assert signals == (
+        [] if os.name == "nt" else [(123, daemon_state.signal.SIGTERM)]
+    )
 
 
 def _spawn_fake_daemon(tmp_path: Path, pre_ready: str, post_ready: str) -> int:
@@ -510,6 +603,10 @@ def _spawn_fake_daemon(tmp_path: Path, pre_ready: str, post_ready: str) -> int:
     stop_daemon's liveness check wrongly report 'still alive'. ``pre_ready``
     installs SIGTERM handling before the ready-marker is touched.
     """
+    if not hasattr(os, "fork"):
+        pytest.skip("detached daemon fixture requires POSIX os.fork")
+    pytest.importorskip("fcntl", reason="detached daemon fixture requires fcntl")
+
     import subprocess
     import sys
 
@@ -965,6 +1062,25 @@ def test_workspace_start_rejects_another_live_session_on_same_workdir(
     )
 
     assert "already owned by active session s-owner" in error
+
+
+def test_workspace_start_rejects_file_instead_of_directory(tmp_path: Path) -> None:
+    root = tmp_path / "state"
+    life_dir = root / "projects" / "s-target"
+    workdir = tmp_path / "not-a-directory.txt"
+    life_dir.mkdir(parents=True)
+    workdir.write_text("not a workspace", encoding="utf-8")
+
+    error = _workspace_start_error(
+        LifeWorkerConfig(
+            life_dir=life_dir,
+            global_root=root,
+            project_workdir=workdir,
+            project_fingerprint="s-target",
+        )
+    )
+
+    assert "configured workdir is not a directory" in error
 
 
 def test_workspace_start_rejects_another_session_on_adopted_child_repo(

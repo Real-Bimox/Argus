@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +55,11 @@ class LifeWorkerConfig:
     # mission alive after the planner certifies ``project_done`` instead of
     # hard-stopping. Set False (via ``--bounded``) for a one-shot bounded goal.
     continuous_open_ended: bool = True
+    # Parent-only diagnostic populated by the clean launcher.  It is
+    # deliberately excluded from config_payload(): the child does not need to
+    # receive its own launch failure, while WebAPI needs the captured helper
+    # stderr after the integer return code comes back.
+    last_spawn_error: str = field(default="", init=False, repr=False, compare=False)
 
 def config_payload(config: LifeWorkerConfig) -> dict[str, Any]:
     return {

@@ -18,6 +18,7 @@ from typing import Any
 from ._life_worker_boot import _RunForeverState
 from ._life_worker_identity import _effective_runner_backend, _worker_vault_preflight_routes
 from .state import (
+    clear_daemon_control_stop,
     clear_daemon_drain_request,
     compare_and_swap_continuous_config,
     read_continuous_state,
@@ -381,6 +382,12 @@ class LifeWorkerRunMixin:
         finally:
             if self._curator is not None:
                 self._curator.stop()
+            if self._control_started_at_iso:
+                clear_daemon_control_stop(
+                    self.config.life_dir,
+                    pid=os.getpid(),
+                    started_at_iso=self._control_started_at_iso,
+                )
             clear_daemon_drain_request(
                 self.config.life_dir,
                 pid=os.getpid(),

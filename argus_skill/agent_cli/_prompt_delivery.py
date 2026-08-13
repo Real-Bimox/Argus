@@ -249,5 +249,7 @@ class PromptDeliveryMixin:
                     env.pop(key, None)
             env["GIT_CONFIG_GLOBAL"] = os.devnull
             env["GIT_CONFIG_NOSYSTEM"] = "1"
-            env["GH_CONFIG_DIR"] = "/tmp/argus-no-gh-auth"
+            env["GH_CONFIG_DIR"] = str(
+                Path(tempfile.gettempdir()) / "argus-no-gh-auth"
+            )
         return env

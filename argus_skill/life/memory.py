@@ -30,6 +30,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 from collections import deque
@@ -38,13 +39,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
+import portalocker
+
 from ..core.event_catalog import EventType, canonical_event_type
 
-fcntl: Any
-try:  # pragma: no cover - platform-specific import
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+_BACKLOG_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_BACKLOG_THREAD_LOCKS_GUARD = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -1098,27 +1098,17 @@ class Backlog:
     @contextmanager
     def _locked(self) -> Iterator[None]:
         """Serialize backlog read-modify-write operations across processes."""
+        key = os.path.normcase(str(self._lock_path.resolve()))
+        with _BACKLOG_THREAD_LOCKS_GUARD:
+            thread_lock = _BACKLOG_THREAD_LOCKS.setdefault(key, threading.Lock())
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock_path.open("a+b") as fh:
-            if fcntl is not None:  # POSIX
-                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        with thread_lock:
+            with self._lock_path.open("a+b") as fh:
+                portalocker.lock(fh, portalocker.LOCK_EX)
                 try:
                     yield
                 finally:
-                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-            else:  # pragma: no cover - Windows fallback
-                import msvcrt
-
-                lock = getattr(msvcrt, "locking")
-                lk_lock = getattr(msvcrt, "LK_LOCK")
-                lk_unlock = getattr(msvcrt, "LK_UNLCK")
-                fh.seek(0)
-                lock(fh.fileno(), lk_lock, 1)
-                try:
-                    yield
-                finally:
-                    fh.seek(0)
-                    lock(fh.fileno(), lk_unlock, 1)
+                    portalocker.unlock(fh)
 
     # --- write ---
     def add(self, item: BacklogItem) -> BacklogItem:

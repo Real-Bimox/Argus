@@ -13,7 +13,7 @@ from typing import Any
 _VERIFY_FROZEN_RUNTIME = "--verify-frozen-runtime"
 
 
-def _install_windows_signal_zero_guard() -> None:
+def _install_windows_signal_zero_guard(*, platform_name: str | None = None) -> None:
     """Make ``os.kill(pid, 0)`` a non-destructive liveness probe on Windows.
 
     CPython maps non-console signals to ``TerminateProcess`` on Windows, including
@@ -21,7 +21,8 @@ def _install_windows_signal_zero_guard() -> None:
     use signal zero only to ask whether a PID exists; without this guard the frozen
     interpreter can silently terminate a daemon or its owning Web backend.
     """
-    if os.name != "nt" or getattr(os.kill, "__argus_signal_zero_guard__", False):
+    host_platform = os.name if platform_name is None else platform_name
+    if host_platform != "nt" or getattr(os.kill, "__argus_signal_zero_guard__", False):
         return
 
     from argus_skill.core.daemon_lock import is_pid_running

@@ -1,7 +1,7 @@
 """argus.manager._session_ops — session-lock plumbing for the Manager.
 
 Contains every module-level name related to the Manager's persistent codex
-session and its two POSIX advisory file locks:
+session and its two cross-platform advisory file locks:
 
 * ``manager_session_lock`` — serialises concurrent Manager LLM turns.
 * ``manager_pipeline_lock`` — serialises Manager commits with daemon mission
@@ -22,10 +22,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-try:  # POSIX advisory file locking; absent on Windows.
-    import fcntl
-except ImportError:  # pragma: no cover - non-POSIX fallback
-    fcntl = None  # type: ignore[assignment]
+import portalocker
 
 from ..core.run_gateway import run_exec as gateway_run_exec
 from ..core.runner_errors import result_has_unrecoverable_resume_state
@@ -68,9 +65,12 @@ def _acquire_session_lock(fh: Any, *, timeout: float) -> bool:
     deadline = time.monotonic() + max(0.0, timeout)
     while True:
         try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            portalocker.lock(
+                fh,
+                portalocker.LOCK_EX | portalocker.LOCK_NB,
+            )
             return True
-        except OSError:
+        except (OSError, portalocker.exceptions.LockException):
             if time.monotonic() >= deadline:
                 return False
             time.sleep(0.2)
@@ -82,7 +82,7 @@ def manager_pipeline_lock(root: Path | str):
     path = Path(root)
     path.mkdir(parents=True, exist_ok=True)
     with (path / _PIPELINE_LOCK).open("a+b") as handle:
-        if fcntl is not None and not _acquire_session_lock(
+        if not _acquire_session_lock(
             handle,
             timeout=_pipeline_lock_timeout_s(),
         ):
@@ -90,8 +90,7 @@ def manager_pipeline_lock(root: Path | str):
         try:
             yield
         finally:
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            portalocker.unlock(handle)
 
 
 def request_manager_pipeline_yield(root: Path | str) -> str:
@@ -163,7 +162,7 @@ def manager_session_lock(root: Path | str):
     path = Path(root)
     path.mkdir(parents=True, exist_ok=True)
     with (path / _SESSION_LOCK).open("a+b") as handle:
-        if fcntl is not None and not _acquire_session_lock(
+        if not _acquire_session_lock(
             handle,
             timeout=_session_lock_timeout_s(),
         ):
@@ -171,8 +170,7 @@ def manager_session_lock(root: Path | str):
         try:
             yield
         finally:
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            portalocker.unlock(handle)
 
 
 @contextmanager
@@ -201,7 +199,7 @@ def _restore_files_on_error(paths: list[Path]):
 
 
 class _ManagerSession:
-    """A flock-serialized, persistent codex session shared by every Manager LLM
+    """A file-lock-serialized persistent codex session shared by every Manager LLM
     call. The thread_id lives at ``<project_root>/.manager_session.json``; a
     sibling ``.manager_session.lock`` serializes cross-process use so the cockpit
     front-end and the daemon never interleave a turn. Fail-open: any lock/IO
@@ -259,7 +257,7 @@ class _ManagerSession:
         run_label: str,
         resume_thread_id: str | None = None,  # noqa: ARG002 — runner Protocol parity; ignored
     ) -> Any:
-        """Run one turn on the shared persistent session, serialized by flock.
+        """Run one turn on the shared persistent session under an advisory lock.
 
         The session lock is acquired NON-blocking with a bounded wait
         (``ARGUS_SKILL_MANAGER_LOCK_TIMEOUT_S``, default 120s), so a long/hung turn
@@ -289,7 +287,7 @@ class _ManagerSession:
             return _no_session()
 
         try:
-            if fcntl is not None and not _acquire_session_lock(
+            if not _acquire_session_lock(
                 fh, timeout=_session_lock_timeout_s()
             ):
                 # Peer holds a long/hung turn past the budget → don't block forever;
@@ -330,11 +328,10 @@ class _ManagerSession:
                         pass
                 return result
             finally:
-                if fcntl is not None:
-                    try:
-                        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-                    except Exception:  # noqa: BLE001
-                        pass
+                try:
+                    portalocker.unlock(fh)
+                except Exception:  # noqa: BLE001
+                    pass
         except Exception:  # noqa: BLE001 — session-mode failed (lock released) → no-session
             return _no_session()
         finally:

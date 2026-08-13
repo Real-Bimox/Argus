@@ -15,6 +15,26 @@ test('legacy resume flags map onto the Ink project selection model', () => {
   const fresh = parseArgs(['--resume', 's-old', '--new']);
   assert.equal(fresh.project, undefined);
   assert.equal(fresh.resume, false);
+  assert.equal(fresh.forceNew, true);
+});
+
+test('exit policy defaults to detach and validates CLI/env values', () => {
+  const saved = process.env.ARGUS_TUI_EXIT_POLICY;
+  try {
+    delete process.env.ARGUS_TUI_EXIT_POLICY;
+    assert.equal(parseArgs([]).exitPolicy, 'detach');
+    assert.equal(parseArgs(['--exit-policy', 'stop-api']).exitPolicy, 'stop-api');
+    assert.equal(parseArgs(['--exit-policy', 'stop-all']).exitPolicy, 'stop-all');
+    assert.throws(
+      () => parseArgs(['--exit-policy', 'kill']),
+      /must be detach, stop-api, or stop-all/,
+    );
+    process.env.ARGUS_TUI_EXIT_POLICY = 'stop-all';
+    assert.equal(parseArgs([]).exitPolicy, 'stop-all');
+  } finally {
+    if (saved === undefined) delete process.env.ARGUS_TUI_EXIT_POLICY;
+    else process.env.ARGUS_TUI_EXIT_POLICY = saved;
+  }
 });
 
 test('local endpoints get a default owner file and explicit configuration overrides it', () => {

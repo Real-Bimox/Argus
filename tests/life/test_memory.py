@@ -310,14 +310,22 @@ def test_backlog_add_and_claim_are_process_safe(tmp_path: Path) -> None:
     add_ids = [item[3] for item in outcomes if item[0] == "ok" and item[1] == "add"]
     claim_ids = [item[3] for item in outcomes if item[0] == "ok" and item[1] == "claim" and item[3] is not None]
     assert len(add_ids) == 2
-    assert len(claim_ids) == 1
+    # Adds and claims start together; an added item is allowed to become
+    # claimable before the second claimant runs.  The concurrency invariant is
+    # that no item is handed out twice and no update is lost.
+    assert len(claim_ids) == len(set(claim_ids))
+    assert 1 <= len(claim_ids) <= 3
 
     rows = backlog.all()
     assert len(rows) == 3
-    statuses = {row.title: row.status for row in rows}
-    assert statuses["seed"] == "running"
-    assert statuses["add-a"] == "pending"
-    assert statuses["add-b"] == "pending"
+    claimed = set(claim_ids)
+    assert {
+        row.id for row in rows if row.status == "running"
+    } == claimed
+    assert all(
+        row.status == ("running" if row.id in claimed else "pending")
+        for row in rows
+    )
     assert seed.id in {row.id for row in rows}
 
 

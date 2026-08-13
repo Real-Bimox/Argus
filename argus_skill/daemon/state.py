@@ -34,6 +34,7 @@ log = logging.getLogger(__name__)
 _GLOBAL_DAILY_SPEND_IMPL = global_daily_spend
 _TEST_ALLOW_MEMORY_CONTINUOUS_ENV = "ARGUS_SKILL_DAEMON_TEST_ALLOW_MEMORY_CONTINUOUS"
 _DRAIN_REQUEST_FILE = "daemon.drain-request.json"
+_STOP_REQUEST_FILE = "daemon.stop-request.json"
 DAEMON_UPGRADE_REQUEST_FILE = "daemon.upgrade-request.json"
 
 
@@ -74,6 +75,99 @@ def _continuous_config_path(life_dir: Path) -> Path:
 
 def _daemon_drain_request_path(life_dir: Path) -> Path:
     return life_dir / _DRAIN_REQUEST_FILE
+
+
+def _daemon_stop_request_path(life_dir: Path) -> Path:
+    return life_dir / _STOP_REQUEST_FILE
+
+
+@dataclass(frozen=True)
+class DaemonStopRequest:
+    """One exact daemon instance's out-of-band stop request."""
+
+    pid: int
+    started_at_iso: str
+    drain: bool
+    requested_at: float
+
+
+def request_daemon_control_stop(
+    life_dir: Path,
+    *,
+    pid: int,
+    started_at_iso: str,
+    drain: bool,
+) -> None:
+    """Persist a stop request consumable without Windows console signals.
+
+    Both PID and the daemon boot timestamp are required.  A stale request can
+    therefore never stop a later daemon after Windows reuses the numeric PID.
+    """
+    started = str(started_at_iso or "").strip()
+    if int(pid) <= 0 or not started:
+        raise ValueError("daemon control stop requires an exact process identity")
+    life_dir.mkdir(parents=True, exist_ok=True)
+    path = _daemon_stop_request_path(life_dir)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    tmp.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "pid": int(pid),
+                "started_at_iso": started,
+                "drain": bool(drain),
+                "requested_at": time.time(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    os.replace(str(tmp), str(path))
+
+
+def read_daemon_control_stop(
+    life_dir: Path,
+    *,
+    pid: int,
+    started_at_iso: str,
+) -> DaemonStopRequest | None:
+    """Return a request only when it targets this exact daemon boot."""
+    try:
+        payload = json.loads(
+            _daemon_stop_request_path(life_dir).read_text(encoding="utf-8")
+        )
+        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+            return None
+        requested_pid = int(payload.get("pid") or 0)
+        requested_started = str(payload.get("started_at_iso") or "").strip()
+        if requested_pid != int(pid) or requested_started != str(started_at_iso or ""):
+            return None
+        return DaemonStopRequest(
+            pid=requested_pid,
+            started_at_iso=requested_started,
+            drain=bool(payload.get("drain")),
+            requested_at=float(payload.get("requested_at") or 0.0),
+        )
+    except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError, ValueError):
+        return None
+
+
+def clear_daemon_control_stop(
+    life_dir: Path,
+    *,
+    pid: int,
+    started_at_iso: str,
+) -> None:
+    """Remove only the request still owned by this exact daemon boot."""
+    if read_daemon_control_stop(
+        life_dir,
+        pid=pid,
+        started_at_iso=started_at_iso,
+    ) is None:
+        return
+    try:
+        _daemon_stop_request_path(life_dir).unlink()
+    except FileNotFoundError:
+        pass
 
 
 def request_daemon_drain(life_dir: Path, *, pid: int) -> None:
@@ -309,7 +403,7 @@ def _daemon_log_path(
     """Per-boot daemon log path. An explicit ``override`` (``config.log_path``)
     always wins. Otherwise each boot gets its OWN file
     ``<life_dir>/daemons/boot-<id>.log``; the stable ``<life_dir>/daemon.log``
-    symlink (:func:`_point_active_daemon_log`) points at the current boot for
+    alias (:func:`_point_active_daemon_log`) exposes the current boot for
     back-compat readers / ``tail`` / ``--status``. Identity stays per-PROJECT (one
     daemon per life_dir) — this only segments that one daemon's log by boot."""
     if override is not None:
@@ -318,11 +412,23 @@ def _daemon_log_path(
 
 
 def _point_active_daemon_log(life_dir: Path, target: Path) -> None:
-    """(Re)point ``<life_dir>/daemon.log`` at the active boot's log file so every
-    existing reader / ``tail`` / ``--status`` keeps resolving the live log. A
-    pre-existing legacy regular ``daemon.log`` is preserved (renamed aside), not
+    """Expose the active boot through stable ``<life_dir>/daemon.log``.
+
+    POSIX uses a relative symlink. Windows uses a no-privilege NTFS hard link,
+    so existing readers / ``tail`` / ``--status`` still see a normal live file.
+    A pre-existing legacy regular ``daemon.log`` is preserved (renamed aside), not
     clobbered. Best-effort — never breaks daemon startup."""
     link = life_dir / "daemon.log"
+    try:
+        if os.path.normcase(str(link.absolute())) == os.path.normcase(
+            str(target.absolute())
+        ):
+            return
+    except OSError:
+        pass
+    if os.name == "nt":
+        _point_active_daemon_log_windows(life_dir, target, link)
+        return
     try:
         if link.is_symlink():
             link.unlink()
@@ -331,6 +437,64 @@ def _point_active_daemon_log(life_dir: Path, target: Path) -> None:
         os.symlink(os.path.relpath(target, life_dir), link)
     except OSError:
         log.debug("could not point daemon.log -> %s", target, exc_info=True)
+
+
+def _windows_managed_log_alias(life_dir: Path, link: Path) -> bool:
+    """Whether a regular ``daemon.log`` is one of our per-boot hard links."""
+    try:
+        candidates = (life_dir / "daemons").glob("boot-*.log")
+    except OSError:
+        return False
+    for candidate in candidates:
+        try:
+            if candidate.is_file() and link.samefile(candidate):
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def _point_active_daemon_log_windows(
+    life_dir: Path,
+    target: Path,
+    link: Path,
+) -> None:
+    """Install a no-privilege stable hard link to the active Windows boot log."""
+    temporary = life_dir / f".daemon.log.link-{os.getpid()}-{uuid.uuid4().hex}.tmp"
+    try:
+        life_dir.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        # A hard link needs an existing source. The daemon subsequently opens
+        # this same inode in append mode, so daemon.log observes every write.
+        target.touch(exist_ok=True)
+        if link.is_symlink():
+            link.unlink()
+        elif link.exists():
+            try:
+                if link.samefile(target):
+                    return
+            except OSError:
+                pass
+            if not _windows_managed_log_alias(life_dir, link):
+                legacy = life_dir / "daemon.log.pre-segment"
+                if not legacy.exists():
+                    link.rename(legacy)
+                else:
+                    link.rename(
+                        life_dir
+                        / f"daemon.log.pre-segment-{int(time.time())}-{uuid.uuid4().hex[:6]}"
+                    )
+        os.link(target, temporary)
+        os.replace(temporary, link)
+    except OSError:
+        log.debug("could not hard-link daemon.log -> %s", target, exc_info=True)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.debug("could not clean temporary daemon log link %s", temporary)
 
 
 def _redirect_std_to_log(log_path: Path, *, keep_console: bool = False) -> int | None:
@@ -625,6 +789,64 @@ def _process_alive(pid: int) -> bool:
     return is_pid_running(pid)
 
 
+def _windows_process_parent_pairs() -> tuple[tuple[int, int], ...]:
+    """Snapshot ``(pid, parent_pid)`` pairs using the native Toolhelp API."""
+    if os.name != "nt":
+        return ()
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class _ProcessEntry32W(ctypes.Structure):
+            _fields_ = [
+                ("dwSize", wintypes.DWORD),
+                ("cntUsage", wintypes.DWORD),
+                ("th32ProcessID", wintypes.DWORD),
+                ("th32DefaultHeapID", ctypes.c_size_t),
+                ("th32ModuleID", wintypes.DWORD),
+                ("cntThreads", wintypes.DWORD),
+                ("th32ParentProcessID", wintypes.DWORD),
+                ("pcPriClassBase", wintypes.LONG),
+                ("dwFlags", wintypes.DWORD),
+                ("szExeFile", wintypes.WCHAR * 260),
+            ]
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_snapshot = kernel32.CreateToolhelp32Snapshot
+        create_snapshot.argtypes = (wintypes.DWORD, wintypes.DWORD)
+        create_snapshot.restype = wintypes.HANDLE
+        process_first = kernel32.Process32FirstW
+        process_first.argtypes = (wintypes.HANDLE, ctypes.POINTER(_ProcessEntry32W))
+        process_first.restype = wintypes.BOOL
+        process_next = kernel32.Process32NextW
+        process_next.argtypes = (wintypes.HANDLE, ctypes.POINTER(_ProcessEntry32W))
+        process_next.restype = wintypes.BOOL
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+
+        snapshot = create_snapshot(0x00000002, 0)  # TH32CS_SNAPPROCESS
+        invalid_handle = ctypes.c_void_p(-1).value
+        if not snapshot or int(snapshot) == invalid_handle:
+            return ()
+        pairs: list[tuple[int, int]] = []
+        try:
+            entry = _ProcessEntry32W()
+            entry.dwSize = ctypes.sizeof(entry)
+            ok = bool(process_first(snapshot, ctypes.byref(entry)))
+            while ok:
+                pairs.append(
+                    (int(entry.th32ProcessID), int(entry.th32ParentProcessID))
+                )
+                ok = bool(process_next(snapshot, ctypes.byref(entry)))
+        finally:
+            close_handle(snapshot)
+        return tuple(pairs)
+    except (AttributeError, OSError, TypeError, ValueError):
+        log.debug("could not snapshot Windows process tree", exc_info=True)
+        return ()
+
+
 def _descendant_pids(root_pid: int) -> tuple[int, ...]:
     """Return current descendants, deepest first, using the host process table.
 
@@ -634,11 +856,17 @@ def _descendant_pids(root_pid: int) -> tuple[int, ...]:
     every captured PID before killing the daemon itself.
     """
     children: dict[int, list[int]] = {}
-    try:
-        entries = list(Path("/proc").iterdir())
-    except OSError:
-        entries = []
-    if entries:
+    if os.name == "nt":
+        for pid, parent in _windows_process_parent_pairs():
+            if parent > 0:
+                children.setdefault(parent, []).append(pid)
+        entries: list[Path] = []
+    else:
+        try:
+            entries = list(Path("/proc").iterdir())
+        except OSError:
+            entries = []
+    if os.name != "nt" and entries:
         for entry in entries:
             if not entry.name.isdigit():
                 continue
@@ -695,6 +923,118 @@ def _descendant_pids(root_pid: int) -> tuple[int, ...]:
             stack.append((child, depth + 1))
     found.sort(reverse=True)
     return tuple(pid for _depth, pid in found)
+
+
+def _terminate_windows_process_tree(
+    root_pid: int,
+    *,
+    identity_check: Callable[[], bool],
+) -> bool:
+    """Force-stop one verified Windows process and all of its descendants.
+
+    The root handle is opened before identity is revalidated, pinning that
+    process object so its PID cannot be reused under us.  Descendants are
+    captured through Toolhelp, opened, and revalidated against a second tree
+    snapshot before termination.  No console control event is broadcast.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        open_process = kernel32.OpenProcess
+        open_process.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+        open_process.restype = wintypes.HANDLE
+        terminate_process = kernel32.TerminateProcess
+        terminate_process.argtypes = (wintypes.HANDLE, wintypes.UINT)
+        terminate_process.restype = wintypes.BOOL
+        wait_for_single = kernel32.WaitForSingleObject
+        wait_for_single.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        wait_for_single.restype = wintypes.DWORD
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+
+        access = 0x0001 | 0x00100000  # PROCESS_TERMINATE | SYNCHRONIZE
+        root_handle = open_process(access, False, int(root_pid))
+        if not root_handle:
+            return not _process_alive(root_pid)
+        child_handles: dict[int, Any] = {}
+        unowned_descendants: set[int] = set()
+        try:
+            if not identity_check():
+                return False
+
+            captured = _descendant_pids(root_pid)
+            for child_pid in captured:
+                handle = open_process(access, False, int(child_pid))
+                if handle:
+                    child_handles[child_pid] = handle
+                elif _process_alive(child_pid):
+                    unowned_descendants.add(child_pid)
+
+            # An exited child could have its PID reused between the Toolhelp
+            # snapshot and OpenProcess.  Holding the handle pins the new object;
+            # require it to remain in a fresh descendant graph before touching it.
+            current_descendants = set(_descendant_pids(root_pid))
+            for child_pid in tuple(child_handles):
+                if child_pid in current_descendants:
+                    continue
+                close_handle(child_handles.pop(child_pid))
+
+            if not identity_check():
+                return False
+            root_terminated = bool(terminate_process(root_handle, 1))
+
+            for child_pid in captured:
+                handle = child_handles.get(child_pid)
+                if handle:
+                    if not terminate_process(handle, 1):
+                        unowned_descendants.add(child_pid)
+
+            # Close the tiny spawn race between the last snapshot and root
+            # termination. Creator-PID links remain queryable after parent exit.
+            for _attempt in range(3):
+                found_new = False
+                for child_pid in _descendant_pids(root_pid):
+                    if child_pid in child_handles:
+                        continue
+                    handle = open_process(access, False, int(child_pid))
+                    if not handle:
+                        if _process_alive(child_pid):
+                            unowned_descendants.add(child_pid)
+                        continue
+                    child_handles[child_pid] = handle
+                    if not terminate_process(handle, 1):
+                        unowned_descendants.add(child_pid)
+                    found_new = True
+                if not found_new:
+                    break
+                time.sleep(0.02)
+
+            root_stopped = wait_for_single(root_handle, 5_000) == 0
+            children_stopped = all(
+                wait_for_single(handle, 1_000) == 0
+                for handle in child_handles.values()
+            )
+            unowned_stopped = not any(
+                _process_alive(child_pid) for child_pid in unowned_descendants
+            )
+            return (
+                (root_terminated or root_stopped)
+                and root_stopped
+                and children_stopped
+                and unowned_stopped
+            )
+        finally:
+            for handle in child_handles.values():
+                close_handle(handle)
+            close_handle(root_handle)
+    except (AttributeError, OSError, TypeError, ValueError):
+        log.exception("failed to terminate Windows daemon process tree pid=%s", root_pid)
+        return False
 
 
 def _terminate_captured_descendants(pids: Iterable[int]) -> None:
@@ -773,14 +1113,27 @@ def _same_daemon_alive(life_dir: Path, pid: int) -> bool:
     return bool(current.alive and current.pid == pid)
 
 
+def _same_daemon_instance_alive(
+    life_dir: Path,
+    pid: int,
+    started_at_iso: str,
+) -> bool:
+    current = read_daemon_status(life_dir)
+    return bool(
+        current.alive
+        and current.pid == pid
+        and current.started_at_iso == started_at_iso
+    )
+
+
 def request_daemon_stop(life_dir: Path | None = None) -> tuple[bool, int | None]:
     """Request an immediate graceful stop without waiting for daemon exit.
 
     This is the non-blocking control-plane primitive used by conversational
-    pause. The daemon's SIGTERM handler interrupts the active mission and exits;
-    callers separately disable continuous mode first so no later launch can
-    silently resume the campaign. PID identity is revalidated immediately
-    before signalling to avoid targeting a stale/reused pid-file value.
+    pause.  A PID + boot-timestamp-bound request interrupts the active mission.
+    POSIX additionally sends SIGTERM for immediate wake-up; Windows relies on
+    the worker's control watcher because ``os.kill(..., SIGTERM)`` there is a
+    hard TerminateProcess call, not a catchable signal.
     """
     status = read_daemon_status(life_dir)
     resolved_dir = status.life_dir
@@ -791,11 +1144,25 @@ def request_daemon_stop(life_dir: Path | None = None) -> tuple[bool, int | None]
     if not status.alive or status.pid is None:
         return False, None
     pid = status.pid
-    if not _same_daemon_alive(resolved_dir, pid):
+    started_at_iso = str(getattr(status, "started_at_iso", "") or "")
+    identity_alive = (
+        _same_daemon_instance_alive(resolved_dir, pid, started_at_iso)
+        if started_at_iso
+        else os.name != "nt" and _same_daemon_alive(resolved_dir, pid)
+    )
+    if not identity_alive:
         return False, None
     try:
-        os.kill(pid, signal.SIGTERM)
-    except (ProcessLookupError, PermissionError, OSError):
+        if started_at_iso:
+            request_daemon_control_stop(
+                resolved_dir,
+                pid=pid,
+                started_at_iso=started_at_iso,
+                drain=False,
+            )
+        if os.name != "nt":
+            os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError, ValueError):
         return False, pid
     return True, pid
 
@@ -836,8 +1203,16 @@ def stop_daemon(
         sys.stderr.write("argus-skill: no daemon is running for this life-dir.\n")
         return 1
     pid = status.pid
+    started_at_iso = str(status.started_at_iso or "")
+    if not started_at_iso and os.name == "nt":
+        sys.stderr.write(
+            "argus-skill: daemon status has no boot identity; refusing an "
+            "unsafe stop. Restart or use an installation that publishes "
+            "started_at_iso.\n"
+        )
+        return 2
     forced_descendants: set[int] = (
-        set(_descendant_pids(pid)) if force else set()
+        set(_descendant_pids(pid)) if force and os.name != "nt" else set()
     )
 
     if drain:
@@ -865,13 +1240,34 @@ def stop_daemon(
         )
         sys.stdout.flush()
 
-    if not _same_daemon_alive(resolved_dir, pid):
+    def _instance_alive() -> bool:
+        if started_at_iso:
+            return _same_daemon_instance_alive(resolved_dir, pid, started_at_iso)
+        return os.name != "nt" and _same_daemon_alive(resolved_dir, pid)
+
+    def _clear_control_request() -> None:
+        if started_at_iso:
+            clear_daemon_control_stop(
+                resolved_dir,
+                pid=pid,
+                started_at_iso=started_at_iso,
+            )
+
+    if not _instance_alive():
         if drain:
             clear_daemon_drain_request(resolved_dir, pid=pid)
         return 1
     try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
+        if started_at_iso:
+            request_daemon_control_stop(
+                resolved_dir,
+                pid=pid,
+                started_at_iso=started_at_iso,
+                drain=drain,
+            )
+        if os.name != "nt":
+            os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, OSError, ValueError):
         if drain:
             clear_daemon_drain_request(resolved_dir, pid=pid)
         return 1
@@ -880,9 +1276,10 @@ def stop_daemon(
     deadline = time.monotonic() + wait_for
     next_heartbeat = time.monotonic() + 30.0
     while time.monotonic() < deadline:
-        if not _same_daemon_alive(resolved_dir, pid):
+        if not _instance_alive():
             if force:
                 _terminate_captured_descendants(forced_descendants)
+            _clear_control_request()
             if drain:
                 clear_daemon_drain_request(resolved_dir, pid=pid)
             sys.stdout.write(f"argus-skill: daemon (pid {pid}) stopped.\n")
@@ -898,11 +1295,31 @@ def stop_daemon(
         time.sleep(0.2)
 
     if force:
-        if not _same_daemon_alive(resolved_dir, pid):
+        if not _instance_alive():
             _terminate_captured_descendants(forced_descendants)
+            _clear_control_request()
             if drain:
                 clear_daemon_drain_request(resolved_dir, pid=pid)
             sys.stdout.write(f"argus-skill: daemon (pid {pid}) stopped.\n")
+            return 0
+        if os.name == "nt":
+            terminated = _terminate_windows_process_tree(
+                pid,
+                identity_check=_instance_alive,
+            )
+            if not terminated:
+                sys.stderr.write(
+                    f"argus-skill: daemon (pid {pid}) could not be force-stopped "
+                    "because its process identity changed or Windows denied access.\n"
+                )
+                return 2
+            _clear_control_request()
+            if drain:
+                clear_daemon_drain_request(resolved_dir, pid=pid)
+            sys.stderr.write(
+                f"argus-skill: daemon (pid {pid}) did not exit within "
+                f"{wait_for:.0f}s; force-stopped its verified Windows process tree.\n"
+            )
             return 0
         # Capture again at the escalation boundary so children started after
         # the initial SIGTERM cannot escape by being reparented to PID 1.
@@ -911,12 +1328,14 @@ def stop_daemon(
         try:
             os.kill(pid, getattr(signal, "SIGKILL", signal.SIGTERM))
         except ProcessLookupError:
+            _clear_control_request()
             if drain:
                 clear_daemon_drain_request(resolved_dir, pid=pid)
             sys.stdout.write(f"argus-skill: daemon (pid {pid}) stopped.\n")
             return 0
         if drain:
             clear_daemon_drain_request(resolved_dir, pid=pid)
+        _clear_control_request()
         sys.stderr.write(
             f"argus-skill: daemon (pid {pid}) did not exit within {wait_for:.0f}s; "
             "sent SIGKILL (--force).\n"
@@ -938,11 +1357,14 @@ def stop_daemon(
 
 __all__ = [
     "DAEMON_UPGRADE_REQUEST_FILE",
-    "ContinuousConfigState", "DaemonStatus",
+    "ContinuousConfigState", "DaemonStatus", "DaemonStopRequest",
+    "clear_daemon_control_stop",
     "continuous_mode_error", "format_budget_status",
+    "read_daemon_control_stop",
     "read_continuous_config", "read_continuous_state",
     "read_daemon_status", "resolve_effective_budget",
-    "request_daemon_stop", "stop_daemon", "wait_for_daemon_status",
+    "request_daemon_control_stop", "request_daemon_stop",
+    "stop_daemon", "wait_for_daemon_status",
     "write_continuous_config",
     "_daemon_log_path", "_daemon_pid_path", "_daemon_status_path",
     "_daemon_status_payload", "_new_boot_id", "_point_active_daemon_log",

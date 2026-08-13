@@ -16,6 +16,9 @@ ROOT = Path(SPECPATH).resolve().parent
 # product runtime are still analyzed normally; dynamic providers remain exact
 # hidden imports below.
 datas = collect_data_files("argus_skill", include_py_files=True)
+# Windows does not ship an IANA timezone database.  Keep named ZoneInfo keys
+# available to the frozen Python-compatible runtime and extension tools.
+datas += collect_data_files("tzdata")
 web_dist = ROOT / "frontend" / "web" / "dist"
 if web_dist.is_dir():
     datas.append((str(web_dist), "argus_skill/_frontend/web/dist"))
@@ -77,7 +80,8 @@ domain_overlay_modules = collect_provider_modules(
 )
 
 hiddenimports = (
-    collect_submodules("uvicorn")
+    ["tzdata"]
+    + collect_submodules("uvicorn")
     + collect_submodules("fastapi")
     + collect_submodules("websockets")
     + collect_submodules("multipart")

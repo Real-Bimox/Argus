@@ -6,6 +6,27 @@ import pytest
 from argus_skill.apps import tui_launcher
 
 
+class _ReconfigurableStream:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, str]] = []
+
+    def reconfigure(self, **kwargs: str) -> None:
+        self.calls.append(dict(kwargs))
+
+
+def test_windows_console_streams_are_forced_to_utf8(monkeypatch) -> None:
+    stdout = _ReconfigurableStream()
+    stderr = _ReconfigurableStream()
+    monkeypatch.setattr(tui_launcher.sys, "stdout", stdout)
+    monkeypatch.setattr(tui_launcher.sys, "stderr", stderr)
+
+    tui_launcher._configure_windows_console_encoding(platform_name="nt")
+
+    expected = [{"encoding": "utf-8", "errors": "replace"}]
+    assert stdout.calls == expected
+    assert stderr.calls == expected
+
+
 @pytest.fixture(autouse=True)
 def _trusted_special_prompt(monkeypatch) -> None:
     monkeypatch.setattr(
@@ -141,7 +162,12 @@ def test_public_admin_flags_stay_on_python_admin_path(monkeypatch) -> None:
     )
     assert tui_launcher.main(["--setup", "--non-interactive"]) == 7
     assert tui_launcher.main(["--pair-plan"]) == 7
-    assert seen == [["--setup", "--non-interactive"], ["--pair-plan"]]
+    assert tui_launcher.main(["--daemon-stop", "--resume", "s-holder"]) == 7
+    assert seen == [
+        ["--setup", "--non-interactive"],
+        ["--pair-plan"],
+        ["--daemon-stop", "--resume", "s-holder"],
+    ]
 
 
 def test_admin_subcommands_stay_on_python_admin_path(monkeypatch) -> None:

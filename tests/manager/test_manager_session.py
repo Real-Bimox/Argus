@@ -1,10 +1,10 @@
-"""Tests for the Manager's one persistent, flock-serialized codex session.
+"""Tests for the Manager's persistent cross-platform locked codex session.
 
 Covers the four guarantees of ``_ManagerSession``:
 
   * continuation + persistence — incoming turns resume the stored thread_id and
     the new thread_id is written back to ``<root>/.manager_session.json``;
-  * cross-process serialization — flock keeps concurrent turns from interleaving;
+  * cross-process serialization — advisory locking keeps turns from interleaving;
   * fail-open — any session-mode error degrades to a plain no-session call,
     never raising and never blocking the Manager's decision;
   * Manager wiring — the Manager LLM calls (is_conversational / divide) actually
@@ -16,6 +16,7 @@ import json
 import threading
 import time
 
+import portalocker
 import pytest
 
 from argus_skill.manager import Manager
@@ -226,7 +227,7 @@ class _SlowRunner:
 @pytest.mark.integration
 def test_two_sessions_same_root_do_not_interleave(tmp_path):
     # Two independent _ManagerSession objects over the SAME project_root model
-    # the REPL front-end and the daemon: flock on .manager_session.lock must
+    # the REPL front-end and the daemon: .manager_session.lock must
     # serialize them so a turn never overlaps another turn.
     runner = _SlowRunner(hold=0.25)
     s_repl = _ManagerSession(runner, tmp_path)
@@ -247,8 +248,7 @@ def test_two_sessions_same_root_do_not_interleave(tmp_path):
 @pytest.mark.integration
 def test_lock_is_held_during_a_turn(tmp_path):
     # Directly observe that the lock file is non-blockingly un-acquirable while a
-    # turn is in flight (proves the flock is actually held cross-process-style).
-    import fcntl
+    # turn is in flight on both POSIX and Windows.
 
     barrier = threading.Event()
     released = threading.Event()
@@ -270,9 +270,9 @@ def test_lock_is_held_during_a_turn(tmp_path):
     blocked = False
     with open(tmp_path / ".manager_session.lock", "a+b") as fh:
         try:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-        except BlockingIOError:
+            portalocker.lock(fh, portalocker.LOCK_EX | portalocker.LOCK_NB)
+            portalocker.unlock(fh)
+        except portalocker.exceptions.LockException:
             blocked = True
     assert blocked
 

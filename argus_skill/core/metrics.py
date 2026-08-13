@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import json
 import math
 import os
@@ -11,6 +12,8 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
+
+import portalocker
 
 from .cost_control import CostControlLockBusyError, cost_control_snapshot
 from .event_catalog import canonical_event_type, event_spec
@@ -24,11 +27,6 @@ DEFAULT_METRICS_MAX_ARCHIVES = 14
 
 _LOCKS: dict[str, threading.Lock] = {}
 _LOCKS_GUARD = threading.Lock()
-
-try:  # pragma: no cover - production daemons are POSIX
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None  # type: ignore[assignment]
 
 _WEB_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"})
 _PROVIDERS = frozenset(
@@ -125,15 +123,13 @@ def _metrics_lock(root: Path) -> Iterator[None]:
     with thread_lock:
         fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
         try:
-            if fcntl is not None:
-                fcntl.flock(fd, fcntl.LOCK_EX)
+            portalocker.lock(fd, portalocker.LOCK_EX)
             yield
         finally:
-            if fcntl is not None:
-                try:
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-                except OSError:
-                    pass
+            try:
+                portalocker.unlock(fd)
+            except (OSError, portalocker.exceptions.LockException):
+                pass
             os.close(fd)
 
 
@@ -231,9 +227,23 @@ def record_metric(
 
 def _day_start(timestamp: float) -> float:
     local = time.localtime(timestamp)
-    return time.mktime(
-        (local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0, 0, 0, -1)
-    )
+    midnight = (local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0, 0, 0, -1)
+    try:
+        return time.mktime(midnight)
+    except (OverflowError, OSError, ValueError):
+        # Windows' C runtime rejects local midnights before the Unix epoch,
+        # even though ``time.localtime`` can represent the input timestamp.
+        # ``tm_gmtoff`` is available on supported Python/Windows versions and
+        # lets the metrics window remain deterministic for replay/test clocks.
+        offset = getattr(local, "tm_gmtoff", None)
+        if offset is None:
+            offset = -(
+                time.altzone if local.tm_isdst > 0 else time.timezone
+            )
+        utc_midnight = calendar.timegm(
+            (local.tm_year, local.tm_mon, local.tm_mday, 0, 0, 0)
+        )
+        return float(utc_midnight - int(offset))
 
 
 def _records(root: Path, since: float) -> list[dict[str, Any]]:

@@ -16,6 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO
 
+import portalocker
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - POSIX production path
@@ -151,25 +153,34 @@ def _append_usage(root: Path, row: dict[str, Any]) -> None:
 def _lock_state(root: Path) -> BinaryIO:
     root.mkdir(parents=True, exist_ok=True)
     fh = (root / _STATE_LOCK).open("a+b")
-    if fcntl is not None:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+    try:
+        if fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        else:
+            portalocker.lock(fh, portalocker.LOCK_EX)
+    except (OSError, portalocker.exceptions.LockException):
+        fh.close()
+        raise
     return fh
 
 
 def _unlock_state(fh: BinaryIO) -> None:
-    if fcntl is not None:
-        try:
+    try:
+        if fcntl is not None:
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-        except OSError:
-            pass
-    fh.close()
+        else:
+            portalocker.unlock(fh)
+    except (OSError, portalocker.exceptions.LockException):
+        pass
+    finally:
+        fh.close()
 
 
 def _acquire_slot(root: Path) -> tuple[BinaryIO | None, str]:
     limit = _int_setting(
         "ARGUS_SKILL_COPILOT_MAX_CONCURRENCY", _DEFAULT_MAX_CONCURRENCY
     )
-    if limit <= 0 or fcntl is None:
+    if limit <= 0:
         return None, ""
     wait_s = _float_setting(
         "ARGUS_SKILL_COPILOT_SLOT_WAIT_S", _DEFAULT_SLOT_WAIT_SECONDS
@@ -181,8 +192,14 @@ def _acquire_slot(root: Path) -> tuple[BinaryIO | None, str]:
         for index in range(limit):
             fh = (slot_dir / f"slot-{index}.lock").open("a+b")
             try:
-                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except OSError:
+                if fcntl is not None:
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                else:
+                    portalocker.lock(
+                        fh,
+                        portalocker.LOCK_EX | portalocker.LOCK_NB,
+                    )
+            except (OSError, portalocker.exceptions.LockException):
                 fh.close()
                 continue
             return fh, ""
@@ -197,12 +214,15 @@ def _acquire_slot(root: Path) -> tuple[BinaryIO | None, str]:
 def _release_slot(fh: BinaryIO | None) -> None:
     if fh is None:
         return
-    if fcntl is not None:
-        try:
+    try:
+        if fcntl is not None:
             fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-        except OSError:
-            pass
-    fh.close()
+        else:
+            portalocker.unlock(fh)
+    except (OSError, portalocker.exceptions.LockException):
+        pass
+    finally:
+        fh.close()
 
 
 def _denied_permit(

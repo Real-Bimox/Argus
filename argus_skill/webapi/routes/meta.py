@@ -32,16 +32,26 @@ def register_meta_routes(app, ctx: ServerContext, server_mod) -> None:
     ) -> dict[str, Any]:
         response.headers["Cache-Control"] = "no-store"
         expected = "Bearer " + str(token)
-        if not token or authorization == expected:
-            return api_meta
+        authenticated = not token or authorization == expected
+        authentication = {
+            "required": bool(token),
+            "authenticated": authenticated,
+        }
+        if authenticated:
+            return {**api_meta, "authentication": authentication}
         runtime = {
             **api_meta["runtime"],
             "source_root": "<redacted>",
             "configured_source_root": None,
             "source_root_matches_config": None,
             "executable": "<redacted>",
+            "desktop_launch_nonce": None,
         }
-        return {**api_meta, "runtime": runtime}
+        return {
+            **api_meta,
+            "authentication": authentication,
+            "runtime": runtime,
+        }
 
     @app.get("/api/metrics", dependencies=[Depends(ctx.require_auth)])
     def _metrics() -> dict[str, Any]:

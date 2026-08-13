@@ -180,7 +180,9 @@ def test_frontend_dependency_links_are_temporary(tmp_path: Path) -> None:
             Path("frontend/tui/node_modules"),
         ):
             target = worktree / relative
-            assert target.is_symlink()
+            assert target.is_symlink() or (
+                hasattr(target, "is_junction") and target.is_junction()
+            )
             assert (target / "marker").read_text(encoding="utf-8") == "installed\n"
 
     assert not (worktree / "frontend/web/node_modules").exists()
@@ -1414,7 +1416,10 @@ def test_manager_directory_path_does_not_authorize_descendants(
     assert "argus_skill/base.py" in controller._state()["error"]
 
 
-def test_generated_output_symlink_is_rejected_before_build(tmp_path: Path) -> None:
+def test_generated_output_symlink_is_rejected_before_build(
+    tmp_path: Path,
+    require_symlink_support,
+) -> None:
     controller = _controller(tmp_path, _Manager())
     repo, base = _publication_repo(tmp_path)
     (repo / "argus_skill" / "new_feature.py").write_text(

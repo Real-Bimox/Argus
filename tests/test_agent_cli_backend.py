@@ -1361,6 +1361,35 @@ def test_run_exec_normalizes_high_attempt_reconnect_notice(
     assert result.fatal_error is None
 
 
+def test_failed_manager_timeout_preserves_429_as_provider_cooldown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = AgentCliBackend(backend="codex")
+
+    def fake_run_exec(self: Any, **kwargs: Any) -> AgentRunResult:
+        return _make_cli_result(
+            exit_code=-15,
+            fatal_error=(
+                "External interrupt: Manager turn wall-clock limit reached "
+                "after 300s; yield for review/steering"
+            ),
+            stderr_lines=[
+                "Reconnecting... 37/100 (429 Too Many Requests; retry after 60s)"
+            ],
+        )
+
+    monkeypatch.setattr(backend._runner.__class__, "run_exec", fake_run_exec, raising=True)
+
+    result = backend.run_exec(
+        prompt="classify",
+        options=RunnerOptions(),
+        run_label="manager-classify-grounded",
+    )
+
+    assert "wall-clock limit reached" in str(result.fatal_error)
+    assert result.stop_kind == "provider_cooldown"
+
+
 def test_run_exec_handles_file_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     backend = AgentCliBackend(backend="codex")
 
