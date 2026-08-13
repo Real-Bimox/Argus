@@ -67,6 +67,25 @@ describe('renderEvent', () => {
     expect(rendered?.text).toBe('I need the operator to choose the report format.');
   });
 
+  it('shows real command and tool details instead of generic summaries', () => {
+    expect(renderEvent({
+      type: 'engineer.progress',
+      kind: 'command_execution',
+      text: 'npm test -- --runInBand',
+      action_summary: 'running project command',
+      agent_layer: 'engineer',
+    } as EventMsg)?.text).toBe('npm test -- --runInBand');
+    expect(renderEvent({
+      type: 'engineer.progress',
+      kind: 'tool_use',
+      text: 'read: {"path":"src/harness.ts","offset":1,"limit":2000}',
+      action_summary: 'using a tool',
+      agent_layer: 'engineer',
+    } as EventMsg)?.text).toBe(
+      'read: {"path":"src/harness.ts","offset":1,"limit":2000}',
+    );
+  });
+
   it('renders operator and Manager conversation turns in Activity', () => {
     const operator = renderEvent({ type: 'ui.operator', text: '继续实验' } as EventMsg);
     const manager = renderEvent({ type: 'ui.argus', text: '已开始运行' } as EventMsg);

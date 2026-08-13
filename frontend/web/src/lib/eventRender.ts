@@ -111,16 +111,16 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
       return { role: layer, label: roleLabel(layer), glyph: '▌', text: body, tone: 'bright' };
     }
     if (kind === 'command_execution') {
-      const cmd = trunc(S(ev, 'action_summary') || S(ev, 'command') || text, 160);
+      const cmd = S(ev, 'text') || S(ev, 'command') || S(ev, 'action_summary');
       if (!cmd) return null;
       return { role: layer, label: roleLabel(layer), glyph: '▸ $', text: cmd, tone: 'dim' };
     }
     if (kind === 'file_change') {
-      const f = trunc(text, 160);
+      const f = S(ev, 'text') || S(ev, 'action_summary');
       return { role: layer, label: roleLabel(layer), glyph: '✎', text: f || l('(file change)', '（文件变更）'), tone: 'dim' };
     }
     if (kind === 'tool_use') {
-      const tu = trunc(text, 160);
+      const tu = S(ev, 'text') || S(ev, 'action_summary');
       return { role: layer, label: roleLabel(layer), glyph: '⚙', text: tu || l('(tool)', '（工具）'), tone: 'dim' };
     }
     if (!text) return null;

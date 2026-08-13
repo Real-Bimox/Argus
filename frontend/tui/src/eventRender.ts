@@ -101,6 +101,28 @@ export function renderEvent(ev: EventMsg): Rendered | null {
         expand: true,
       } : null;
     }
+    if (kind === 'command_execution') {
+      const body = S(ev, 'text') || S(ev, 'command') || S(ev, 'action_summary');
+      return body ? {
+        role: layer,
+        label,
+        glyph: '▸ $',
+        text: body,
+        tone: S(ev, 'status') === 'failed' ? 'err' : 'dim',
+        expand: true,
+      } : null;
+    }
+    if (kind === 'tool_use' || kind === 'file_change') {
+      const body = S(ev, 'text') || S(ev, 'action_summary');
+      return body ? {
+        role: layer,
+        label,
+        glyph: kind === 'file_change' ? '✎' : '⚙',
+        text: body,
+        tone: S(ev, 'status') === 'failed' ? 'err' : 'dim',
+        expand: true,
+      } : null;
+    }
     return null;
   }
 

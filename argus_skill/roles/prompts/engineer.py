@@ -168,14 +168,14 @@ def build_mission_prompt(
     sections.append(
         "## Handoff\n"
         "CHECKPOINT.md is the only role-maintained cross-round handoff file; do not "
-        "create handoff or evidence packets. End with a concise change summary and "
-        "decisive check. The Host invokes Reviewer only when required; do not spawn "
-        "a Reviewer subagent. End with `MILESTONE_STATUS=done|continue`, "
+        "create handoff or evidence packets. Host invokes Reviewer only when required; "
+        "do not spawn a Reviewer subagent. End with a concise summary, decisive check, "
+        "`MILESTONE_STATUS=done|continue`, "
         "`OPERATOR_QUESTION=<operator-only question|none>`, and "
         "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. "
-        "Agent-author the question and at most five concrete choices in the operator's "
-        "language; each choice must be complete and `stop` means explicit stop. "
-        "A question parks the task; no generic choices."
+        "Agent-author at most five complete choices in the operator's language; `stop` "
+        "explicitly stops and a question parks the task. During long work, briefly report "
+        "meaningful progress to the operator; never narrate every tool or hidden reasoning."
     )
     static_text = "\n\n".join(sections)
     delta_text = "\n\n".join(delta_sections)
@@ -197,7 +197,8 @@ def build_mission_prompt(
         "`MILESTONE_STATUS=done|continue`. End with "
         "`OPERATOR_QUESTION=<operator-only question|none>` and "
         "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. Agent-author "
-        "complete choices in the operator's language. A real question parks the task."
+        "complete choices in the operator's language. A real question parks the task. "
+        "For long work, give brief operator-facing updates at meaningful transitions."
     )
     if shell_contract:
         compact = shell_contract + "\n\n" + compact

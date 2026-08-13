@@ -124,3 +124,26 @@ test('agent speech hides internal handoff fields', () => {
 
   assert.equal(speech?.text, 'Waiting for the operator choice.');
 });
+
+test('commands and tools show their real details instead of generic summaries', () => {
+  const command = renderEvent({
+    type: 'engineer.progress',
+    kind: 'command_execution',
+    agent_layer: 'engineer',
+    text: 'npm test -- --runInBand',
+    action_summary: 'running project command',
+    status: 'running',
+  } as EventMsg);
+  const tool = renderEvent({
+    type: 'engineer.progress',
+    kind: 'tool_use',
+    agent_layer: 'engineer',
+    text: 'read: {"path":"src/harness.ts","offset":1,"limit":2000}',
+    action_summary: 'using a tool',
+  } as EventMsg);
+
+  assert.equal(command?.text, 'npm test -- --runInBand');
+  assert.equal(command?.expand, true);
+  assert.equal(tool?.text, 'read: {"path":"src/harness.ts","offset":1,"limit":2000}');
+  assert.equal(tool?.expand, true);
+});
