@@ -35,6 +35,7 @@ env:
   PORTABLE_TESTS: >-
     tests/life/test_chat_render.py
     tests/life/test_feishu_bot.py
+    tests/life/test_state_machine_guards.py
     tests/life/test_telegram_bot.py
     tests/life/test_telegram_mobile.py
     tests/core/test_release.py

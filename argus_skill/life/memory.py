@@ -30,6 +30,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
 from collections import deque
@@ -41,6 +42,9 @@ from typing import Any, Callable, Iterable, Iterator
 import portalocker
 
 from ..core.event_catalog import EventType, canonical_event_type
+
+_BACKLOG_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_BACKLOG_THREAD_LOCKS_GUARD = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -1094,13 +1098,17 @@ class Backlog:
     @contextmanager
     def _locked(self) -> Iterator[None]:
         """Serialize backlog read-modify-write operations across processes."""
+        key = os.path.normcase(str(self._lock_path.resolve()))
+        with _BACKLOG_THREAD_LOCKS_GUARD:
+            thread_lock = _BACKLOG_THREAD_LOCKS.setdefault(key, threading.Lock())
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock_path.open("a+b") as fh:
-            portalocker.lock(fh, portalocker.LOCK_EX)
-            try:
-                yield
-            finally:
-                portalocker.unlock(fh)
+        with thread_lock:
+            with self._lock_path.open("a+b") as fh:
+                portalocker.lock(fh, portalocker.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    portalocker.unlock(fh)
 
     # --- write ---
     def add(self, item: BacklogItem) -> BacklogItem:

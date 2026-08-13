@@ -6,6 +6,7 @@ Deterministic: every test passes an explicit ``env`` and writes a synthetic
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -71,8 +72,9 @@ def test_backend_display_falls_back_when_codex_binary_is_missing(
     tmp_path,
     monkeypatch,
 ):
-    copilot = tmp_path / "copilot"
-    copilot.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    copilot = tmp_path / ("copilot.cmd" if os.name == "nt" else "copilot")
+    script = "@echo off\r\nexit /b 0\r\n" if os.name == "nt" else "#!/bin/sh\nexit 0\n"
+    copilot.write_text(script, encoding="utf-8")
     copilot.chmod(0o755)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))
