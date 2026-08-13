@@ -9,11 +9,11 @@ claims this particular task is about.
 
 So this projects. Given the backlog item the supervisor just claimed, it finds
 the claim that item is about and renders that claim's *neighbourhood*: the
-statement and its version, the definitions it names, the external results it is
-still taking on faith, the evidence that binds to this exact statement, the
-immediate proof obligations, the routes already retired, and what would have to
-happen for its status to move. Nothing transitive, and nothing about any other
-claim.
+statement and its version, the definitions it is stated against, the external
+results it is still taking on faith, the evidence that binds to this exact
+statement, the immediate proof obligations, the routes already retired, and
+what would have to happen for its status to move. Nothing transitive, and
+nothing about any other claim.
 
 Three properties are load-bearing, and each has a test that fails when it stops
 holding:
@@ -22,7 +22,10 @@ holding:
 A second hop would pull in the obligations' obligations, and in a project with a
 real proof tree that is the whole tree — which is the thing this module exists
 not to send. One hop is also what a single mission can act on: it is the set of
-statements whose status could change as a result of this round.
+statements whose status could change as a result of this round. That rule alone
+is not a bound, though — one claim can carry a hundred cited theorems — so
+every list rendered below is additionally capped by ``_MAX_ROWS`` and says how
+many rows it withheld.
 
 **Deterministic.** The same store and the same mission render byte-identical
 text. No timestamps, no host paths, no reliance on ``dict`` order. The fragment
@@ -31,10 +34,14 @@ diffing prose — and so a reader who sees the same digest twice knows nothing
 moved, rather than assuming it.
 
 **It never raises into a mission.** A missing store means "this project does no
-recorded mathematics" and produces nothing at all; a corrupt one produces a
-short block that says the state could not be read. The difference matters: an
+recorded mathematics" and produces nothing at all; a store that will not load
+produces a block that says so; a defect in *this code* produces a block that
+says that instead, and says the recorded state is intact. The three are kept
+apart because they need opposite responses, and the wrong one is expensive: an
 empty fragment from a broken file would tell the Engineer that a project with a
-hundred recorded proofs believes nothing.
+hundred recorded proofs believes nothing, and a "repair the file" instruction
+aimed at a projector bug points an autonomous agent at a healthy
+``MATH_STATE.json``.
 
 This module is an adapter and lives on the vertical side deliberately.
 ``argus_skill/research_math/`` imports nothing from Argus so it can be lifted
@@ -78,17 +85,26 @@ _STATE_REF = "/".join(STATE_RELPATH)
 
 #: The mission fields consulted for the target claim, most decisive first.
 #:
-#: These are the *only* three the Planner authors that reach a ``BacklogItem``:
-#: ``roles/prompts/planner.py`` gives it ``TASK_TITLE``, ``TASK_OBJECTIVE``,
+#: These are the three model-authored prose fields that exist on *both* intake
+#: paths. The flat Planner path fills ``TASK_TITLE``, ``TASK_OBJECTIVE``,
 #: ``TASK_ACCEPTANCE_CHECK`` and ``TASK_NON_GOALS`` and says outright that the
-#: host owns everything else. ``tags`` are a closed host-authored vocabulary
-#: (``_planning_context._planner_task_tags``) and ``context_refs`` are dropped
-#: unless they name an existing file (``planner.hydrate_task_context_refs``), so
-#: neither can carry a claim id however convenient that would have been.
+#: host owns everything else. The Manager's bounded-DAG path carries more than
+#: that: ``manager/dispatch.py`` builds a ``BacklogItem`` straight from a
+#: model-authored ``BoundedDagNode``, so ``node_key``, ``context_refs`` (which
+#: do survive on that path), ``plan_hypothesis``, ``goal_contribution`` and
+#: ``expected_regressions`` are model-authored there too.
 #:
-#: ``non_goals`` is deliberately absent: a claim named there is the one the
-#: mission was told *not* to work on, and projecting it would aim the whole
-#: fragment at the excluded statement.
+#: This tuple is therefore a choice, not an exhaustive inventory of what a
+#: model can write -- do not extend it on the belief that nothing else could
+#: carry a claim id, and do not assume adding a field to ``BoundedDagNode``
+#: leaves the set complete. ``plan_hypothesis`` is the closest call and is left
+#: out deliberately: it is prose about *why* a step should work, which tends to
+#: name every claim in the neighbourhood, so scanning it would widen the
+#: ambiguity surface (see ``resolve_target``) for very little reach.
+#:
+#: ``non_goals`` is absent for a different reason: a claim named there is the
+#: one the mission was told *not* to work on, and projecting it would aim the
+#: whole fragment at the excluded statement.
 MISSION_TARGET_FIELDS = ("acceptance_check", "title", "objective")
 
 #: Characters that unambiguously continue an identifier. Used as a boundary so
@@ -116,9 +132,11 @@ _MAX_TEXT = 600
 #: fragment.
 _MAX_NEIGHBOUR_TEXT = 220
 
-#: Rows per list. The neighbourhood rule already bounds these; this is the
-#: backstop for one claim with a pathological number of routes or verdicts, and
-#: it reports what it withheld rather than truncating in silence.
+#: Rows per list. Every list rendered below goes through ``_rows``: the
+#: neighbourhood rule bounds most of them by construction, but "bounded by the
+#: claim" is not the same as "bounded", and a single claim carrying 120 cited
+#: theorems is exactly the pathology this is here for. A list that is capped
+#: reports what it withheld rather than truncating in silence.
 _MAX_ROWS = 12
 
 
@@ -135,11 +153,18 @@ class MissionTarget:
         return not self.claim_id and bool(self.candidates)
 
 
-def _mentions(text: str, name: str, *, fold_case: bool = False) -> bool:
+def _mentions(text: str, name: str) -> bool:
+    """Does ``text`` name this identifier, as an identifier rather than a substring?
+
+    Case-sensitive, and there is no option to make it otherwise: the only
+    caller matches claim ids, which are identifiers. This once had a
+    ``fold_case`` switch for matching definition names, which are prose; that
+    caller is gone (see ``_definitions``) and the switch went with it rather
+    than staying as a configurable that nothing configures.
+    """
     if not name.strip():
         return False
-    pattern = rf"{_LEFT}{re.escape(name)}{_RIGHT}"
-    return re.search(pattern, text, re.IGNORECASE if fold_case else 0) is not None
+    return re.search(rf"{_LEFT}{re.escape(name)}{_RIGHT}", text) is not None
 
 
 def resolve_target(mission: Any, claim_ids: tuple[str, ...]) -> MissionTarget:
@@ -198,8 +223,10 @@ def project_mission_context(*, project_root: Path | str, mission: Any) -> str:
         return _render(_payload(state, target))
     except Exception as exc:  # noqa: BLE001 - see the module docstring
         # A defect in this module must not take the mission down with it, and
-        # must not look like "the project believes nothing" either.
-        return _unreadable(exc, project_root)
+        # must not look like "the project believes nothing" either. It also
+        # must not look like a broken file: everything reachable from here has
+        # already parsed, so the fault is in this code.
+        return _defective(exc, project_root)
 
 
 # -- degraded readings -------------------------------------------------------
@@ -216,6 +243,11 @@ def _scrub(text: str, project_root: Path | str) -> str:
 
 
 def _unreadable(exc: BaseException, project_root: Path | str) -> str:
+    """The file is there and the kernel would not load it.
+
+    This is the only branch entitled to send anyone at the file, and it is the
+    branch where the file really is the problem.
+    """
     return (
         "## Mathematical state unavailable\n"
         f"- `{_STATE_REF}` exists but could not be read: "
@@ -226,8 +258,35 @@ def _unreadable(exc: BaseException, project_root: Path | str) -> str:
     )
 
 
+def _defective(exc: BaseException, project_root: Path | str) -> str:
+    """The file loaded and *this module* failed while projecting it.
+
+    Kept distinct from ``_unreadable`` because the two need opposite advice and
+    only one of them is about the file. Reporting a projector bug as an
+    unreadable state would dispatch an autonomous Engineer to "repair" a
+    perfectly healthy ``MATH_STATE.json`` -- the one file in the project whose
+    corruption the other branch correctly calls unrecoverable, and which no
+    amount of editing here could improve. So this one says what is actually
+    true: the state is intact, the code that summarises it is not, and the
+    remedy is a bug report rather than a file edit.
+    """
+    return (
+        "## Mathematical state not projected\n"
+        f"- `{_STATE_REF}` was read successfully, but building this summary of "
+        f"it failed inside the projector ({type(exc).__name__}: "
+        f"{_scrub(exc, project_root) or 'no message'}).\n"
+        "- The recorded state itself is intact and is NOT the fault. Do not "
+        "repair, rewrite, or re-record it on the strength of this message. "
+        "Read it directly if this mission needs it, and report the failure "
+        "above as a defect in the math vertical."
+    )
+
+
 def _ambiguous(target: MissionTarget) -> str:
-    listed = ", ".join(f"`{claim_id}`" for claim_id in target.candidates[:_MAX_ROWS])
+    shown, further = _rows(list(target.candidates))
+    listed = ", ".join(f"`{claim_id}`" for claim_id in shown)
+    if further:
+        listed += f", and {further} more"
     return (
         "## Mathematical state not projected\n"
         f"- This mission's {target.field} names several recorded claims: {listed}.\n"
@@ -255,36 +314,46 @@ def _tiers(names: frozenset) -> str:
     return " or ".join(sorted(tier.value for tier in names))
 
 
-def _named_definitions(
-    context: ContextVersion | None, claim: ClaimVersion
-) -> tuple[list[list[str]], list[str], int]:
-    """Only the definitions the claim actually names, plus what was withheld.
+def _definitions(context: ContextVersion | None) -> tuple[list[list[str]], int]:
+    """Every definition of the claim's own context version, capped.
 
-    ``ContextVersion`` was written with this in mind — its docstring says the
-    mapping exists "so that a later context projection can ship a claim only the
-    definitions it names" — and it is what keeps this section's size a property
-    of the claim rather than of the problem statement. Matched case-insensitively
-    because a definition name is prose ("unit distance") and appears capitalized
-    at the start of a sentence; claim ids, which are identifiers, are not.
+    This used to filter: ship only the definitions whose names appear in the
+    claim's statement, and list the rest as "defined here, not named by the
+    claim". ``ContextVersion``'s own docstring motivates that -- the mapping
+    exists "so that a later context projection can ship a claim only the
+    definitions it names" -- so the reason it is *not* done at this call site
+    needs to be written down rather than left as a silent contradiction.
 
-    The match is still exact, so a definition the claim names in an inflected
-    form ("unit distances") is withheld. That is why the withheld ones are
-    *named* rather than counted: the reader can see that the definition exists
-    and go read it, instead of being told the context is smaller than it is.
-    Naming them is still bounded, by ``_MAX_ROWS``.
+    The filter was a lexical ``re.search`` standing in for a semantic question,
+    and it got the answer wrong on the very first claim it was pointed at: a
+    claim reading "the number of unit distances among n planar points" does not
+    literally contain "unit distance", so the definition was withheld and the
+    fragment asserted, in the same voice it uses for facts the Engineer must
+    act on, that the claim did not name it. Inflection, plural, possessive and
+    any paraphrase all break it the same way.
+
+    What made that worth abandoning rather than repairing is the asymmetry.
+    A withheld definition is a term the Engineer then interprets on its own
+    understanding -- which is the exact thing the "context not recorded" branch
+    below forbids in bold -- and can produce a confidently wrong proof. A
+    shipped unneeded definition costs about forty tokens. Nor did the filter
+    buy boundedness: these definitions come from *this claim's* context
+    version, so they are already claim-scoped, and the growth this module
+    exists to prevent is growth with the project. ``_rows`` is what bounds the
+    section, and it says how many it withheld.
+
+    Listing the withheld names was the fallback, and it is not actionable: it
+    means "open MATH_STATE.json and find the key", which nothing in the mission
+    path makes convenient.
     """
     if context is None:
-        return [], [], 0
-    statement = f"{claim.natural_statement}\n{claim.formal_statement}"
-    named: list[list[str]] = []
-    withheld: list[str] = []
-    for name, body in sorted(context.definitions.items()):
-        if _mentions(statement, name, fold_case=True):
-            named.append([name, _clip(body, _MAX_NEIGHBOUR_TEXT)])
-        else:
-            withheld.append(name)
-    shown, more = _rows(withheld)
-    return named, shown, more
+        return [], 0
+    return _rows(
+        [
+            [name, _clip(body, _MAX_NEIGHBOUR_TEXT)]
+            for name, body in sorted(context.definitions.items())
+        ]
+    )
 
 
 def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
@@ -295,34 +364,48 @@ def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
     and ``content_digest`` sorts keys, so it cannot depend on insertion order.
     """
     claim_id = target.claim_id
+    # No ``assert claim is not None`` here. It would be inert three times over:
+    # the id came from ``current_claims()``, ``AssertionError`` is caught by
+    # the handler in ``project_mission_context`` like anything else, and under
+    # ``-O`` the assert vanishes and the next line raises ``AttributeError``
+    # into the same handler. It would read as a guarantee while guaranteeing
+    # nothing.
     claim = state.latest_claim(claim_id)
-    assert claim is not None  # target ids come from ``current_claims``
     assessment = state.assess(claim_id)
-    everything = state.assess_all()
     current = claim.ref()
+
+    routes = [route for route in state.routes if route.goal.subject_id == claim_id]
+    # ``assess_all`` is O(claims x evidence) over the entire store -- the one
+    # genuinely expensive call in this module, and the only project-wide one.
+    # A claim with no recorded route needs none of it, and that is the common
+    # case in a young project, so it is computed only when a route is going to
+    # be appraised against it.
+    everything: dict[Any, Any] = state.assess_all() if routes else {}
 
     context = next(
         (item for item in state.contexts if item.ref() == claim.context), None
     )
     latest_context = state.latest_context(claim.context.subject_id)
-    definitions, withheld, further_withheld = _named_definitions(context, claim)
+    definitions, further_definitions = _definitions(context)
 
     open_ids = set(assessment.undischarged)
     standing = state.effective_assumptions(claim_id)
-    open_assumptions = [
-        {
-            "assumption_id": item.assumption_id,
-            "statement": _clip(item.statement, _MAX_NEIGHBOUR_TEXT),
-            "source": _clip(item.source, _MAX_NEIGHBOUR_TEXT),
-        }
-        for item in standing
-        if item.assumption_id in open_ids
-    ]
+    open_assumptions, further_open = _rows(
+        [
+            {
+                "assumption_id": item.assumption_id,
+                "statement": _clip(item.statement, _MAX_NEIGHBOUR_TEXT),
+                "source": _clip(item.source, _MAX_NEIGHBOUR_TEXT),
+            }
+            for item in standing
+            if item.assumption_id in open_ids
+        ]
+    )
     # Discharged assumptions are named but not restated: they are settled, and
     # what the mission needs from them is that they exist and are covered.
-    discharged = [
-        item.assumption_id for item in standing if item.assumption_id not in open_ids
-    ]
+    discharged, further_discharged = _rows(
+        [item.assumption_id for item in standing if item.assumption_id not in open_ids]
+    )
 
     bound_evidence = [
         {
@@ -338,9 +421,7 @@ def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
 
     live_routes: list[dict[str, Any]] = []
     retired_routes: list[dict[str, Any]] = []
-    for route in sorted(state.routes, key=lambda item: item.route_id):
-        if route.goal.subject_id != claim_id:
-            continue
+    for route in sorted(routes, key=lambda item: item.route_id):
         appraisal = assess_route(route, everything)
         if route.retired_because.strip():
             retired_routes.append(
@@ -363,8 +444,6 @@ def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
                 "aims_at_current_statement": route.goal == current,
                 "obligations": obligations,
                 "further_obligations": more_obligations,
-                "outstanding": list(appraisal.outstanding),
-                "stale_obligations": list(appraisal.stale_obligations),
                 "issues": list(appraisal.issues),
             }
         )
@@ -372,6 +451,12 @@ def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
     live_rows, more_routes = _rows(live_routes)
     retired_rows, more_retired = _rows(retired_routes)
     evidence_rows, more_evidence = _rows(bound_evidence)
+    stale_rows, more_stale = _rows(list(assessment.stale_evidence))
+    issue_rows, more_issues = _rows(list(assessment.issues))
+    # Every list below is a ``_rows`` pair. Nothing may be written into this
+    # mapping that the renderer does not read: an unrendered key still feeds
+    # ``content_digest``, so it could move the digest without changing a byte
+    # of the text, and the digest's whole job is to mean "this fragment".
     return {
         "claim_id": claim_id,
         "version": claim.version,
@@ -388,20 +473,23 @@ def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
             ),
             "statement": _clip(context.statement) if context is not None else "",
             "definitions": definitions,
-            "withheld_definitions": withheld,
-            "further_withheld_definitions": further_withheld,
+            "further_definitions": further_definitions,
         },
         "open_assumptions": open_assumptions,
+        "further_open_assumptions": further_open,
         "discharged_assumptions": discharged,
+        "further_discharged_assumptions": further_discharged,
         "evidence": evidence_rows,
         "further_evidence": more_evidence,
-        "stale_evidence": list(assessment.stale_evidence),
-        "issues": list(assessment.issues),
+        "stale_evidence": stale_rows,
+        "further_stale_evidence": more_stale,
+        "issues": issue_rows,
+        "further_issues": more_issues,
         "routes": live_rows,
         "further_routes": more_routes,
         "retired_routes": retired_rows,
         "further_retired_routes": more_retired,
-        "transitions": _transitions(assessment.status, bool(open_assumptions), claim),
+        "transitions": _transitions(assessment.status, claim),
     }
 
 
@@ -432,15 +520,18 @@ def _obligation_row(
     }
 
 
-def _transitions(
-    status: ClaimStatus, has_open_assumptions: bool, claim: ClaimVersion
-) -> list[str]:
+def _transitions(status: ClaimStatus, claim: ClaimVersion) -> list[str]:
     """What could move this claim, phrased from the kernel's own gate sets.
 
     The tier names are read out of ``KERNEL_TIERS`` / ``DISCHARGING_TIERS`` /
     ``REFUTING_TIERS`` rather than written out here, so this text cannot drift
     away from the rule the assessment actually applies. If those sets ever
     widen, the sentence widens with them.
+
+    Takes the derived status rather than a separate "has open assumptions"
+    flag: the status already encodes that distinction (``conditional_kernel``
+    versus ``closed_kernel`` is exactly it), and a second parameter saying the
+    same thing is a second thing that can disagree with the first.
     """
     lines: list[str] = []
     if status is ClaimStatus.REFUTED:
@@ -498,11 +589,11 @@ def _render(payload: dict[str, Any]) -> str:
         f"v{payload['version']} ({payload['status']})",
         "",
         f"Projected from `{_STATE_REF}`; fragment digest `{digest[:16]}`. This is "
-        "one claim's neighbourhood, not the project: the definitions it names, "
-        "what it still takes on faith, the verdicts recorded against this exact "
-        "statement, and its immediate obligations. Other claims and retired "
-        "branches are deliberately absent — do not infer from their absence that "
-        "they do not exist.",
+        "one claim's neighbourhood, not the project: the definitions it is "
+        "stated against, what it still takes on faith, the verdicts recorded "
+        "against this exact statement, and its immediate obligations. Other "
+        "claims and retired branches are deliberately absent — do not infer "
+        "from their absence that they do not exist.",
         "",
         f"- targeted by this mission's {payload['targeted_by']}",
         f"- statement: {payload['natural_statement'] or '(none recorded)'}",
@@ -513,6 +604,8 @@ def _render(payload: dict[str, Any]) -> str:
         lines.append("- formalized as: (nothing recorded)")
     for issue in payload["issues"]:
         lines.append(f"- ISSUE: {issue}")
+    if payload["further_issues"]:
+        lines.append(f"- and {payload['further_issues']} further ISSUE(s), not listed.")
 
     lines.append("")
     if not context["recorded"]:
@@ -537,18 +630,13 @@ def _render(payload: dict[str, Any]) -> str:
         lines.append(f"- problem: {context['statement'] or '(none recorded)'}")
         for name, body in context["definitions"]:
             lines.append(f"- `{name}`: {body}")
-        if context["withheld_definitions"]:
-            withheld = ", ".join(
-                f"`{name}`" for name in context["withheld_definitions"]
-            )
-            tail = (
-                f" and {context['further_withheld_definitions']} more"
-                if context["further_withheld_definitions"]
-                else ""
-            )
+        if context["further_definitions"]:
+            # Not "withheld because the claim does not need them" -- nobody
+            # here knows that. Only "there were too many to send".
             lines.append(
-                f"- also defined here, not named by the claim, withheld: "
-                f"{withheld}{tail}."
+                f"- and {context['further_definitions']} further definition(s) "
+                f"in this context, not listed here. Read `{_STATE_REF}` rather "
+                "than guessing at a term that is defined and not shown."
             )
 
     lines.append("")
@@ -561,12 +649,24 @@ def _render(payload: dict[str, Any]) -> str:
                 f"- `{item['assumption_id']}`: {item['statement']} "
                 f"[source: {item['source']}]"
             )
+        if payload["further_open_assumptions"]:
+            lines.append(
+                f"- and {payload['further_open_assumptions']} more open "
+                "assumption(s), not listed here. Every one of them has to be "
+                "discharged before this claim can be a closed kernel."
+            )
     else:
         lines.append("### Taken on faith: nothing open")
     if payload["discharged_assumptions"]:
+        tail = (
+            f", and {payload['further_discharged_assumptions']} more"
+            if payload["further_discharged_assumptions"]
+            else ""
+        )
         lines.append(
             "- discharged (still listed, still covered): "
             + ", ".join(f"`{item}`" for item in payload["discharged_assumptions"])
+            + tail
         )
 
     lines.append("")
@@ -583,10 +683,16 @@ def _render(payload: dict[str, Any]) -> str:
     if payload["further_evidence"]:
         lines.append(f"- and {payload['further_evidence']} more, not listed here.")
     if payload["stale_evidence"]:
+        tail = (
+            f", and {payload['further_stale_evidence']} more"
+            if payload["further_stale_evidence"]
+            else ""
+        )
         lines.append(
             "- recorded against an EARLIER version of this claim, and therefore "
             "not evidence for it: "
             + ", ".join(f"`{item}`" for item in payload["stale_evidence"])
+            + tail
         )
 
     lines.append("")

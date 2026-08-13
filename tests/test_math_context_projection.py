@@ -33,7 +33,10 @@ evidence left over from a previous version of the statement.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
+
+import pytest
 
 from argus_skill.life.memory import BacklogItem
 from argus_skill.research_math import (
@@ -50,6 +53,7 @@ from argus_skill.research_math import (
     state_path,
 )
 from argus_skill.verticals._base import load_vertical_contract
+from argus_skill.verticals.math import context_projection
 from argus_skill.verticals.math.context_projection import (
     MISSION_TARGET_FIELDS,
     project_mission_context,
@@ -218,6 +222,11 @@ def _project(tmp_path: Path, **fields: object) -> str:
     return project_mission_context(project_root=tmp_path, mission=_mission(**fields))
 
 
+def _digest_of(fragment: str) -> str:
+    match = re.search(r"fragment digest `([0-9a-f]+)`", fragment)
+    return match.group(1) if match else ""
+
+
 # -- targeting --------------------------------------------------------------
 
 def test_two_missions_about_different_claims_get_different_context(
@@ -371,7 +380,12 @@ def test_the_fragment_states_the_claim_its_faith_its_evidence_and_its_next_steps
 
     assert "claim `udist-main` v1" in fragment
     assert "unit distances" in fragment          # the statement itself
-    assert "`unit distance`" in fragment         # the definition it names
+    # The definition *body*, not just its name. An earlier version of this
+    # assertion looked for "`unit distance`" alone, which was also satisfied by
+    # a line listing the term as withheld -- so it passed while the fragment
+    # shipped no definitions at all and asserted the claim did not name this
+    # one. Pin the text an Engineer would actually have to work from.
+    assert "a pair of points at Euclidean distance exactly 1" in fragment
     assert "szemeredi-trotter" in fragment       # still taken on faith
     assert "`ev-lean-main`" in fragment          # what checked this statement
     assert "`via-crossing`" in fragment          # the live route
@@ -379,6 +393,38 @@ def test_the_fragment_states_the_claim_its_faith_its_evidence_and_its_next_steps
     assert "`via-incidence`" in fragment         # already retired
     assert "the incidence bound it needs is the theorem itself" in fragment
     assert "closed_kernel" in fragment           # what would move it
+
+
+def test_every_definition_of_the_claims_context_is_shipped(tmp_path: Path) -> None:
+    """No lexical filter decides which definitions the mission may see.
+
+    This module used to ship only definitions whose names appeared in the
+    claim's statement. It got the very first case wrong -- the claim says "unit
+    distances", the definition is named "unit distance" -- and then asserted,
+    in the fragment, that the claim did not name it. The filter is a regex
+    standing in for a semantic question, and it fails on plurals, possessives
+    and every paraphrase.
+
+    The asymmetry is what settles it: a withheld definition is a term the
+    Engineer then interprets on its own understanding, which is exactly what
+    the "context not recorded" branch forbids in bold, and can end in a
+    confidently wrong proof. A shipped unneeded one costs about forty tokens.
+    These definitions belong to *this claim's own* context version, so nothing
+    about project growth is at stake here; ``_MAX_ROWS`` is what bounds the
+    section, and the test below pins that.
+
+    Written as a claim about `incidence` specifically -- a definition the
+    target claim never mentions in any form -- so that reinstating any filter,
+    however cleverly matched, turns this red.
+    """
+    _seed(tmp_path)
+
+    fragment = _project(tmp_path, acceptance_check="Record a verdict for udist-main.")
+
+    assert "`incidence`: a point lying on a line" in fragment
+    assert "`unit distance`: a pair of points at Euclidean distance exactly 1" in fragment
+    # And it must not editorialise about which ones the claim needed.
+    assert "not named by the claim" not in fragment
 
 
 def test_only_the_first_hop_of_the_proof_tree_is_shown(tmp_path: Path) -> None:
@@ -429,13 +475,17 @@ def test_evidence_for_an_earlier_version_is_shown_as_not_evidence(
 # -- boundedness ------------------------------------------------------------
 
 def test_the_fragment_does_not_grow_with_the_project(tmp_path: Path) -> None:
-    """Size is a property of the claim, not of how long the project has run.
+    """Adding claims elsewhere in the store changes nothing here.
 
-    This is the property that decides whether the hook is usable in month six.
-    Anything that scales with the store -- a project summary, an index of open
-    claims, a "recent activity" list -- eventually costs more context than the
-    mission itself and gets skimmed, at which point the parts that matter are
-    skimmed too.
+    This is one of the two size properties and it is the narrower one: it is
+    about the *store*, not about the claim. Anything that scaled with the store
+    -- a project summary, an index of open claims, a "recent activity" list --
+    would eventually cost more context than the mission itself and get skimmed,
+    at which point the parts that matter get skimmed too.
+
+    It says nothing about how large one claim's own neighbourhood may get; that
+    is a separate property with its own test below, because for a while it went
+    undefended and was not actually true.
     """
     state = _seed(tmp_path)
     before = _project(tmp_path, acceptance_check="Record a verdict for udist-main.")
@@ -464,6 +514,87 @@ def test_the_fragment_does_not_grow_with_the_project(tmp_path: Path) -> None:
 
     assert after == before
     assert "filler-" not in after
+
+
+def test_one_overloaded_claim_cannot_flood_the_prelude(tmp_path: Path) -> None:
+    """The size property the store-growth test above does not cover.
+
+    "Bounded by the claim" is not the same as "bounded". A single claim can
+    carry sixty definitions and a hundred and twenty cited theorems -- that is
+    an ordinary shape for a survey-grade result, not a pathological one -- and
+    every one of those rows is legitimately part of *this* claim's
+    neighbourhood, so the depth-1 rule admits all of them.
+
+    Before ``_MAX_ROWS`` was applied to these four lists, this exact fixture
+    rendered a 59,575-character fragment: roughly fifteen thousand tokens of
+    prelude in front of a mission, from one claim, with no other claim in the
+    project. Open assumptions were the worst of it at two 220-character clips
+    apiece and no cap at all.
+
+    The cap is asserted through the rendered size rather than through
+    ``_MAX_ROWS`` directly, because what matters is the property, not the
+    constant -- and a future list added to the payload without a cap makes this
+    red without anyone having to remember to update it.
+    """
+    state = MathState()
+    context = state.add_context(
+        ContextVersion(
+            context_id="ctx-big",
+            version=1,
+            statement="A problem with a long vocabulary.",
+            definitions={
+                f"term-{index:03d}": f"The meaning of term {index}. " * 12
+                for index in range(60)
+            },
+        )
+    )
+    _claim(
+        state,
+        "survey-main",
+        context,
+        "The main estimate holds.",
+        formal="theorem survey_main : ...",
+        assumptions=tuple(
+            ExternalAssumption(
+                assumption_id=f"cited-{index:03d}",
+                statement=f"Cited theorem {index} says something at length. " * 8,
+                source=f"Author {index}, Journal of Long Citations, 19{index:02d}. " * 4,
+            )
+            for index in range(120)
+        ),
+    )
+    save_state(tmp_path, state)
+
+    fragment = _project(tmp_path, acceptance_check="Record a verdict for survey-main.")
+
+    assert "claim `survey-main`" in fragment
+    assert len(fragment) < 12_000, len(fragment)
+    # Truncation must announce itself. A capped list that said nothing would
+    # tell the Engineer this claim rests on twelve cited theorems when it rests
+    # on a hundred and twenty -- which is worse than the flood it replaced.
+    assert "more open assumption(s), not listed here" in fragment
+    assert "further definition(s) in this context, not listed here" in fragment
+
+
+def test_the_digest_is_computed_from_the_fragments_own_content(
+    tmp_path: Path,
+) -> None:
+    """The digest is advertised as load-bearing, so it needs its own test.
+
+    The module docstring tells the reader that seeing the same digest twice
+    means nothing moved. That promise is only worth something if the digest is
+    a function of the content -- a constant, or a hash of something adjacent,
+    would read exactly the same in a prompt and be silently meaningless. The
+    byte-identity tests elsewhere pass happily against a constant digest.
+    """
+    _seed(tmp_path)
+
+    unit = _digest_of(_project(tmp_path, acceptance_check="Prove udist-main."))
+    sums = _digest_of(_project(tmp_path, acceptance_check="Prove erdos-sum."))
+
+    assert unit and sums
+    assert unit != sums
+    assert unit == _digest_of(_project(tmp_path, acceptance_check="Prove udist-main."))
 
 
 def test_work_on_an_unrelated_claim_leaves_this_mission_byte_identical(
@@ -614,6 +745,66 @@ def test_a_state_file_with_the_wrong_shape_is_unreadable_not_empty(
 
     assert fragment.startswith("## Mathematical state unavailable")
     assert str(tmp_path) not in fragment
+
+
+def test_a_bug_in_the_projector_does_not_send_anyone_to_repair_the_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A defect here is reported as a defect here, not as a broken file.
+
+    The never-raise guarantee means every failure inside this module lands in
+    one handler, and it is tempting to give them all the same text. It must not
+    be the unreadable-file text. That text says "repair or report the file",
+    and everything reachable from this handler has already parsed -- so the
+    instruction would dispatch an autonomous Engineer to edit a perfectly
+    healthy ``MATH_STATE.json``, the one file whose corruption the other branch
+    correctly calls unrecoverable, on the strength of a bug in the code that
+    summarises it.
+
+    Still no exception escapes: the mission runs, with a fragment that says
+    what actually happened.
+    """
+    _seed(tmp_path)
+
+    def _explode(*_args: object, **_kwargs: object) -> dict[str, object]:
+        raise ZeroDivisionError("projector arithmetic went wrong")
+
+    monkeypatch.setattr(context_projection, "_payload", _explode)
+
+    fragment = _project(tmp_path, acceptance_check="Record a verdict for udist-main.")
+
+    assert fragment.startswith("## Mathematical state not projected")
+    assert "read successfully" in fragment
+    assert "ZeroDivisionError" in fragment
+    assert "is intact and is NOT the fault" in fragment
+    # The instruction that belongs to the other branch, and only to it.
+    assert "Repair or report the file" not in fragment
+    assert str(tmp_path) not in fragment
+
+
+def test_an_ambiguous_target_does_not_silently_drop_candidates(
+    tmp_path: Path,
+) -> None:
+    """The refusal block is a list like any other, and gets the same cap.
+
+    Naming twelve of fifteen candidates and stopping would misreport the very
+    thing the block exists to report -- how ambiguous the mission's own text
+    is. A reader who counts twelve has no way to know there were more.
+    """
+    state = MathState()
+    context = _context(state, "ctx", "Many small lemmas.")
+    for index in range(15):
+        _claim(state, f"lemma-{index:02d}", context, f"Lemma {index}.")
+    save_state(tmp_path, state)
+
+    fragment = _project(
+        tmp_path,
+        acceptance_check=" ".join(f"lemma-{index:02d}" for index in range(15)),
+    )
+
+    assert fragment.startswith("## Mathematical state not projected")
+    assert "and 3 more" in fragment
 
 
 # -- wiring -----------------------------------------------------------------
