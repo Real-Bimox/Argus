@@ -1,4 +1,4 @@
-"""Cross-process safety guard for GitHub Copilot-backed Argus calls.
+"""Cross-process integration guard for GitHub Copilot-backed Argus calls.
 
 USD mission budgets are not sufficient for Copilot: the provider enforces
 premium-request and policy/rate limits, while many Argus control-plane calls

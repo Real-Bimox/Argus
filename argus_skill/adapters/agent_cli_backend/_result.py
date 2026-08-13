@@ -21,7 +21,7 @@ from ...core.stop_kinds import (
     stop_kind_from_external_interrupt,
 )
 from ...core.token_usage import TokenUsage, extract_token_usage, sum_token_counts
-from ...providers.copilot_usage import CopilotCallUsage
+from ...provider_integrations.copilot_usage import CopilotCallUsage
 
 log = logging.getLogger(__name__)
 

@@ -35,7 +35,10 @@ from argus_skill.adapters.agent_cli_backend import (
 )
 from argus_skill.core.models import RunnerOptions
 from argus_skill.core.token_usage import extract_token_usage
-from argus_skill.providers.copilot_usage import CopilotCallUsage, CopilotModelUsage
+from argus_skill.provider_integrations.copilot_usage import (
+    CopilotCallUsage,
+    CopilotModelUsage,
+)
 
 
 @dataclass
@@ -1288,7 +1291,7 @@ def test_copilot_policy_denial_with_exit_zero_sets_auth_failure(
 
     assert result.fatal_error == "Error: Access denied by policy settings"
     assert backend._auth_failure_detected is True
-    from argus_skill.providers.copilot_guard import copilot_guard_snapshot
+    from argus_skill.provider_integrations.copilot_guard import copilot_guard_snapshot
 
     assert copilot_guard_snapshot()["blocked_until"] > 0
 

@@ -16,7 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Literal
 
-from ..providers.copilot_usage import NANO_AIU_PER_USD, find_copilot_usage_near
+from ..provider_integrations.copilot_usage import NANO_AIU_PER_USD, find_copilot_usage_near
 from .event_catalog import CALL_SCOPED_EVENT_TYPES, EventType, canonical_event_type
 from .pricing import PricingStatus, quote_copilot_usage, quote_token_usage
 from .runner_errors import is_pre_provider_refusal_error

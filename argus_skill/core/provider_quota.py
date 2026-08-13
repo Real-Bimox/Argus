@@ -247,7 +247,7 @@ def codex_quota_snapshot(*, root: Path | None = None) -> dict[str, Any]:
 
 
 def provider_usage_snapshot(*, root: Path | None = None) -> dict[str, Any]:
-    from ..providers.copilot_guard import copilot_guard_snapshot
+    from ..provider_integrations.copilot_guard import copilot_guard_snapshot
 
     resolved_root = root or global_root()
     copilot = copilot_guard_snapshot(root=resolved_root)

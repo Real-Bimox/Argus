@@ -1,4 +1,4 @@
-"""Exact per-call token usage from Copilot CLI's local session store."""
+"""Copilot-specific per-call usage from the CLI's local session store."""
 from __future__ import annotations
 
 import os

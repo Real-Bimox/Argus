@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from argus_skill.providers.copilot_usage import (
+from argus_skill.provider_integrations.copilot_usage import (
     NANO_AIU_PER_USD,
     capture_copilot_usage_cursor,
     find_copilot_usage_near,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from argus_skill.providers import copilot_guard
-from argus_skill.providers.copilot_guard import (
+from argus_skill.provider_integrations import copilot_guard
+from argus_skill.provider_integrations.copilot_guard import (
     acquire_copilot_permit,
     copilot_guard_snapshot,
     release_denied_permit,
@@ -105,7 +105,7 @@ def test_guard_accounting_failure_is_fail_soft(monkeypatch, tmp_path) -> None:
     permit = acquire_copilot_permit("engineer")
     assert permit.allowed
     monkeypatch.setattr(
-        "argus_skill.providers.copilot_guard._write_state",
+        "argus_skill.provider_integrations.copilot_guard._write_state",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
     )
 
