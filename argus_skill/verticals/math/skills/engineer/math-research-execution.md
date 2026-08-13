@@ -33,24 +33,76 @@ Lean is optional; a committed `.lean` file is not. Once one exists, completing a
 stage requires it to show a fresh real compiler run with no proof holes, so run
 
     python -m argus_skill.verticals.math.lean_evidence verify Main.lean \
-        --statement-fidelity statement_fidelity.md
+        --statement-fidelity statement_fidelity.md --claim C1
 
-which compiles the source and records the answer beside it, stamped with the
-source hash. Editing the source invalidates that record; re-run it. If the host
-has Mathlib installed it is used automatically, so `import Mathlib` needs no
-extra flag.
+which compiles the source, records the answer beside it stamped with the source
+hash, and — because of `--claim` — writes the outcome into the claim ledger as
+mechanical evidence. Editing the source invalidates that record; re-run it. If
+the host has Mathlib installed it is used automatically, so `import Mathlib`
+needs no extra flag. `--claim` is the only way mechanical evidence is ever
+written: there is no flag that lets you record a compiler verdict you did not
+get, and asking for one is a bug report rather than a request.
 
 Compilation checks the theorem you encoded, not the one you meant, so the
 separate `statement_fidelity.md` states which objects, quantifiers, hypotheses,
 and conclusion the formal statement carries and names the declarations it
 describes. A compiling proof of a mistranslated statement is the most expensive
-wrong answer available here.
+wrong answer available here. The document is hashed into the compiler result, so
+rewriting it afterwards invalidates the run rather than quietly re-labelling it.
+Nothing checks that the document is *true* — that half of the argument is yours,
+and it is why a proved claim still reports what nobody verified.
 
 If the toolchain or a library such as Mathlib is missing, the run is recorded as
 unverified and still blocks: that is an environment fact rather than a
 mathematical verdict, but an unverified formalization is not evidence. Argue in
 prose instead of committing a `.lean` file you cannot check.
 
+## Recording what the project believes
+
+`research/MATH_STATE.json` is the ledger of claims and what supports each one.
+Status is derived, never written: `closed_kernel` is what a compiler earned, and
+there is no argument you can type that produces it. Keep it current with
+
+    S="python -m argus_skill.verticals.math.math_state"
+
+    # the problem statement every claim is stated against, once per project
+    $S context --id ctx --statement "..." --define "term=meaning"
+
+    # one mathematical assertion; --formal-file points at the Lean source
+    $S claim --id C1 --context ctx --statement "..." --formal-file research/lean/Main.lean
+
+    # a result taken from elsewhere: holds C1 at conditional_kernel until retired
+    $S assume --claim C1 --id RH --statement "..." --source "Riemann 1859, Thm 1.1"
+
+    # one decomposition of a goal into obligations; records a plan, confers nothing
+    $S route --id R1 --goal C1 --obligation L1 --obligation L2
+
+    # your own or a reviewer's opinion, recorded as an opinion
+    $S judge --claim C1 --verdict supports --by "reviewer:alice"
+
+    # the next version, when the definitions or the theorem change
+    $S revise-context --id ctx --define "term=corrected meaning"
+    $S revise-claim --id C1 --formal-file research/lean/Main.lean
+    $S revise-claim --id C1 --retire "RH=Lemma 2 gives the bound unconditionally"
+
+    # what it all adds up to, and structural defects
+    $S show --claim C1
+    $S check --project-root .
+
+Record a context and a claim before formalizing, so `verify --claim` has
+something to attach to. Record an assumption the moment the proof starts leaning
+on an unproved result — an undischarged assumption is the difference between
+`conditional_kernel` and `closed_kernel`, and it is invisible unless written
+down. Record a route when a goal splits into steps, so a retired decomposition
+is not retried. Record a judgement when you or a reviewer have read a proof that
+no checker can check.
+
+Two things this ledger deliberately will not let you do. Restating a claim mints
+a new version and the evidence bound to the previous statement stops counting —
+that is the cost of retranslating, not a bug to work around. And you cannot stop
+standing on an assumption without writing why: `revise-claim --retire ID=reason`
+takes the reason because deleting a dependency asserts the proof does not need
+it, which is itself a mathematical claim.
 Before investing heavily in a new conjecture, a small counterexample search may
 be useful. For a construction, check that the object satisfies every condition.
 Use literature only when a known result matters or when claiming novelty. These

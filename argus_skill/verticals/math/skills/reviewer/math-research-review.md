@@ -49,6 +49,16 @@ When Lean is used, inspect the source and a fresh real compiler run, and check
 that the encoded theorem means what the original problem says. Do not require
 particular filenames.
 
+Where `research/MATH_STATE.json` exists, `python -m
+argus_skill.verticals.math.math_state show` reports each claim's derived status
+and, on any claim a compiler established, the caveat that nothing checked
+whether the formal statement says what the natural statement says. That is your
+job, not the compiler's, and it is the review a `closed_kernel` most needs.
+Record the outcome with `math_state judge --claim ID --verdict ... --by you`,
+including the `inconclusive` verdicts — a step you could not settle is a result.
+Judgement is the only tier you can write, and it promotes nothing; a claim's
+status will not move because you agreed with it.
+
 Say plainly whether the outcome is proved, disproved, computational evidence,
 partial progress, a conjecture, or unresolved. Check relevant primary sources
 only when novelty is claimed or required by the requested ambition; otherwise
