@@ -85,6 +85,9 @@ there is no argument you can type that produces it. Keep it current with
     $S revise-claim --id C1 --formal-file research/lean/Main.lean
     $S revise-claim --id C1 --retire "RH=Lemma 2 gives the bound unconditionally"
 
+    # after revising a context: every claim stated against it, one at a time
+    $S revise-claim --id C1 --use-current-context
+
     # what it all adds up to, and structural defects
     $S show --claim C1
     $S check --project-root .
@@ -96,6 +99,14 @@ on an unproved result — an undischarged assumption is the difference between
 down. Record a route when a goal splits into steps, so a retired decomposition
 is not retried. Record a judgement when you or a reviewer have read a proof that
 no checker can check.
+
+Revising a context supersedes it for every claim stated against it, and `check`
+reports each one as `claim_context_outdated` until you say what happened to it.
+That is the point: a corrected definition can turn a proved theorem into a
+statement about something else, so the claims do not follow the context along
+silently. Re-state each one with `revise-claim --id ID --use-current-context`
+once you have read it against the new definitions and it still says what you
+mean — and if it no longer does, restate the theorem instead.
 
 Two things this ledger deliberately will not let you do. Restating a claim mints
 a new version and the evidence bound to the previous statement stops counting —
