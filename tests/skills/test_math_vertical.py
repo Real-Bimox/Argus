@@ -118,9 +118,19 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
     # a `sorry`, a stale pass, or a formalization of the wrong statement cannot
     # be presented as evidence. They measure; they do not add stages, roles, or
     # required paperwork, and a project with no `.lean` file never sees them.
+    #
+    # `context_projection` is the sixth and is a different kind of thing: an
+    # adapter, not a measure. It reads the `research_math` state kernel and the
+    # claimed backlog item and renders what *this* mission needs to know about
+    # the one claim it is about. It lives here rather than in `research_math`
+    # because it is the only part that touches an Argus type (`BacklogItem`),
+    # and that package's whole point is that it imports nothing from Argus.
+    # It adds no stage and no required file: a project with no
+    # `research/MATH_STATE.json` never loads it.
     assert files == {
         "__init__.py",
         "stages.py",
+        "context_projection.py",
         "lean_evidence.py",
         "objective_mode.py",
         "proof_graph.py",

@@ -142,11 +142,14 @@ def vertical_prepare_mission(
     stage: str,
     project_root: Path,
     state_root: Path,
+    mission: object,
 ) -> str:
+    """``mission`` is the claimed backlog item; see ``VerticalContract``."""
     return _contract(mod).prepare_mission(
         stage=stage,
         project_root=project_root,
         state_root=state_root,
+        mission=mission,
     )
 
 

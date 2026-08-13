@@ -383,44 +383,137 @@ def test_an_unreadable_gate_demands_the_strongest_evidence() -> None:
 # 4. The per-mission prelude hook
 # ---------------------------------------------------------------------------
 
-def test_the_prelude_hook_receives_stage_then_project_root_then_state_root() -> None:
-    """The provider side of this hook is positional, so the order is the contract.
+def _mission(**attrs: object) -> BacklogItem:
+    """A claimed backlog item, as the supervisor hands one to the hook."""
+    return BacklogItem.new(
+        title=str(attrs.pop("title", "Bound the unit-distance count")),
+        objective=str(attrs.pop("objective", "Push the exponent below 4/3")),
+        **attrs,  # type: ignore[arg-type]
+    )
 
-    ``VerticalContract.prepare_mission`` takes keywords and forwards them
-    positionally to whatever the vertical named ``prepare_mission``. A vertical
-    written against a different order gets the runtime's state root where it
-    expected the mission workdir and writes its scratch state into the wrong
-    tree -- silently, because both arguments are existing directories.
+
+def test_the_prelude_hook_receives_every_argument_by_keyword_and_by_name() -> None:
+    """The provider side of this hook is keyword, so the *names* are the contract.
+
+    This test used to pin the opposite -- positional forwarding, where the
+    argument *order* was the contract. The protection is the same and the
+    reason it exists is the same; only the mechanism moved, because the hook
+    grew a fourth argument. Positional forwarding makes adding one silent: the
+    mission slides into whatever slot happens to be fourth in a stale
+    out-of-tree provider, and every earlier argument is a plausible-looking
+    path or stage string, so nothing raises and the vertical writes its scratch
+    state into the wrong tree. By keyword, the same stale provider fails with
+    ``TypeError: ... unexpected keyword argument 'mission'``, which names the
+    problem.
+
+    The probe below declares its parameters in a deliberately scrambled order.
+    If anything in the chain reverts to positional forwarding, it gets the
+    state root where it asked for the stage and this test goes red.
     """
-    seen: list[tuple[str, Path, Path]] = []
-    contract = vertical_contract("probe", _provider(
-        prepare_mission=lambda stage, project_root, state_root: (
-            seen.append((stage, project_root, state_root)) or "PRELUDE"
-        ),
-    ))
+    seen: list[dict[str, object]] = []
+    item = _mission()
+
+    def probe(*, state_root: Path, mission: object, stage: str, project_root: Path) -> str:
+        seen.append({
+            "stage": stage,
+            "project_root": project_root,
+            "state_root": state_root,
+            "mission": mission,
+        })
+        return "PRELUDE"
+
+    contract = vertical_contract("probe", _provider(prepare_mission=probe))
 
     block = contract.prepare_mission(
         stage="solve",
         project_root=Path("/tmp/mission"),
         state_root=Path("/tmp/state"),
+        mission=item,
     )
 
     assert block == "PRELUDE"
-    assert seen == [("solve", Path("/tmp/mission"), Path("/tmp/state"))]
+    assert seen == [{
+        "stage": "solve",
+        "project_root": Path("/tmp/mission"),
+        "state_root": Path("/tmp/state"),
+        "mission": item,
+    }]
+    # Identity, not equality: the vertical must be able to read the real
+    # item's fields. A copy, a dict, or a reconstructed summary would silently
+    # lose whichever field the projection targets on.
+    assert seen[0]["mission"] is item
+
+
+def test_a_prelude_written_before_the_mission_argument_fails_by_name() -> None:
+    """A stale out-of-tree provider must break loudly, not be quietly demoted.
+
+    The tempting alternative is to inspect the provider's signature and only
+    pass ``mission`` when it is accepted. That would keep old providers
+    loading, at the price of leaving a vertical permanently and invisibly
+    mission-blind: it would return the same block for every task in a stage and
+    nobody would ever see an error saying why. The error below is the whole
+    point -- it names the argument that has to be added.
+
+    Both providers are exercised through the same call, because "it raised
+    ``TypeError``" on its own proves nothing: a runtime that had never heard of
+    ``mission`` would raise that too, at the framework end, for every provider
+    alike. What is pinned is the *difference* -- current provider served, stale
+    provider refused by name.
+    """
+    call = {
+        "stage": "solve",
+        "project_root": Path("/tmp/a"),
+        "state_root": Path("/tmp/b"),
+        "mission": _mission(),
+    }
+    current = vertical_contract("probe", _provider(
+        prepare_mission=lambda *, stage, project_root, state_root, mission: "PRELUDE",
+    ))
+    stale = vertical_contract("probe", _provider(
+        prepare_mission=lambda stage, project_root, state_root: "PRELUDE",
+    ))
+
+    assert current.prepare_mission(**call) == "PRELUDE"
+
+    with pytest.raises(TypeError, match="mission"):
+        stale.prepare_mission(**call)
+
+
+def test_a_prelude_may_ignore_the_mission_and_stay_correct() -> None:
+    """Per-mission is an *option*, not an obligation.
+
+    ``kernel_engineering`` accepts the item and never reads it, on purpose: its
+    baseline workspace is one shared tree per stage, so varying it per claimed
+    item would hand two concurrent missions two baselines. A vertical with
+    nothing item-specific to say must not be forced to invent something.
+    """
+    contract = vertical_contract("probe", _provider(
+        prepare_mission=lambda **_kwargs: "STAGE BLOCK",
+    ))
+
+    assert contract.prepare_mission(
+        stage="solve",
+        project_root=Path("/tmp/a"),
+        state_root=Path("/tmp/b"),
+        mission=_mission(),
+    ) == "STAGE BLOCK"
 
 
 def test_a_vertical_without_a_prelude_is_indistinguishable_from_an_empty_one() -> None:
     """The hook is optional, and optional has to mean "contributes nothing".
 
-    Exactly one in-tree vertical implements it. If an absent hook raised, or
-    returned ``None``, every call site would need its own guard and every
-    vertical would be pushed into implementing a no-op just to stay loadable.
+    Two in-tree verticals implement it. If an absent hook raised, or returned
+    ``None``, every call site would need its own guard and every vertical would
+    be pushed into implementing a no-op just to stay loadable.
     """
     contract = vertical_contract("probe", _provider())
 
     assert contract.mission_prelude is None
     assert contract.prepare_mission(
-        stage="solve", project_root=Path("/tmp/a"), state_root=Path("/tmp/b")
+        stage="solve",
+        project_root=Path("/tmp/a"),
+        state_root=Path("/tmp/b"),
+        mission=_mission(),
     ) == ""
 
 
@@ -433,23 +526,27 @@ def test_a_non_text_prelude_never_reaches_the_mission_prompt() -> None:
     mission instruction.
     """
     contract = vertical_contract("probe", _provider(
-        prepare_mission=lambda stage, project_root, state_root: {"prelude": "hi"},
+        prepare_mission=lambda **_kwargs: {"prelude": "hi"},
     ))
 
     assert contract.prepare_mission(
-        stage="solve", project_root=Path("/tmp/a"), state_root=Path("/tmp/b")
+        stage="solve",
+        project_root=Path("/tmp/a"),
+        state_root=Path("/tmp/b"),
+        mission=_mission(),
     ) == ""
 
 
-def test_every_prelude_call_site_passes_all_three_roots_by_keyword() -> None:
+def test_every_prelude_call_site_passes_the_roots_and_the_mission_by_keyword() -> None:
     """This enumerates the blast radius of changing the hook's signature.
 
     ``prepare_mission`` is called from more than one layer, and the signature
     is expected to grow. Keyword-only calls mean a new parameter is a clean
     ``TypeError`` at every stale call site instead of an argument sliding into
-    the wrong slot; requiring *all three* here means a call site that quietly
-    stopped passing one of the roots -- so the vertical starts guessing --
-    fails in this file rather than in a mission.
+    the wrong slot; requiring the full set here means a call site that quietly
+    stopped passing one of them -- so the vertical starts guessing, or goes
+    back to answering per stage instead of per mission -- fails in this file
+    rather than in a mission.
     """
     call_sites: list[tuple[str, list[str], list[str]]] = []
     for path in sorted(ARGUS.rglob("*.py")):
@@ -467,9 +564,44 @@ def test_every_prelude_call_site_passes_all_three_roots_by_keyword() -> None:
     assert call_sites, "the prelude hook has no callers; it is dead, not protected"
     assert all(positional == [] for _, positional, _ in call_sites), call_sites
     assert all(
-        keywords == ["project_root", "stage", "state_root"]
+        keywords == ["mission", "project_root", "stage", "state_root"]
         for _, _, keywords in call_sites
     ), call_sites
+
+
+def test_every_in_tree_prelude_provider_declares_the_four_names_keyword_only() -> None:
+    """The other half of the same invariant: definitions, not just call sites.
+
+    Forwarding by keyword makes the provider's parameter *names* contractual.
+    The call-site sweep above cannot see that -- it pins what the framework
+    sends, and every one of those calls stays valid while a vertical quietly
+    renames ``project_root`` to ``root``. Nothing else pins it either: a
+    provider is duck-typed, so a rename type-checks, imports, loads, passes
+    contract validation, and fails for the first time at mission setup, on the
+    path that ends the run (see ``VerticalContract.prepare_mission``).
+
+    So the names are asserted where they are written. Keyword-only as well as
+    correctly named, because a positional-or-keyword parameter accepts the call
+    today and lets the next reader reorder the signature harmlessly-looking
+    tomorrow.
+    """
+    providers: list[tuple[str, list[str], list[str]]] = []
+    for path in sorted((ARGUS / "verticals").rglob("*.py")):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if not isinstance(node, ast.FunctionDef) or node.name != "prepare_mission":
+                continue
+            providers.append((
+                f"{path.relative_to(ARGUS).as_posix()}:{node.lineno}",
+                [arg.arg for arg in node.args.kwonlyargs],
+                [arg.arg for arg in (*node.args.posonlyargs, *node.args.args)],
+            ))
+
+    assert providers, "no vertical implements the hook; it is dead, not protected"
+    assert all(not positional for _, _, positional in providers), providers
+    assert all(
+        sorted(kwonly) == ["mission", "project_root", "stage", "state_root"]
+        for _, kwonly, _ in providers
+    ), providers
 
 
 # ---------------------------------------------------------------------------

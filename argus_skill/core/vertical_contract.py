@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 VERTICAL_CONTRACT_VERSION = 1
 _COMPLETION_GATES = frozenset({"none", "metric", "certified"})
@@ -18,6 +18,32 @@ _MISSION_KINDS = frozenset({"custom", "optimize", "research", "software"})
 
 class VerticalContractError(ValueError):
     """A vertical is present but does not implement the framework contract."""
+
+
+class MissionPrelude(Protocol):
+    """What a vertical's ``prepare_mission`` has to accept.
+
+    Written as a Protocol rather than a ``Callable[...]`` alias because the
+    argument *names* are the contract now: this hook is forwarded by keyword
+    (see ``VerticalContract.prepare_mission``), so a provider that renames a
+    parameter is a broken provider, and a bare ``Callable[..., str]`` would say
+    nothing about which names it must use.
+
+    ``mission`` is the backlog item this prelude is being built for --
+    ``life.memory.BacklogItem``, annotated loosely because ``core`` is the layer
+    underneath ``life`` and must not acquire an upward import for a value it
+    only forwards. Verticals sit above both and are free to import the real
+    type; ``verticals/math/context_projection.py`` does.
+    """
+
+    def __call__(
+        self,
+        *,
+        stage: str,
+        project_root: Path,
+        state_root: Path,
+        mission: Any,
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -52,7 +78,7 @@ class VerticalContract:
     checklist_optional_stages: frozenset[str] = frozenset()
     stage_aliases: dict[str, str] | None = None
     search_altitude: Callable[[object], str] | None = None
-    mission_prelude: Callable[[str, Path, Path], str] | None = None
+    mission_prelude: MissionPrelude | None = None
     library_preparer: Callable[[VerticalLibraryContext], None] | None = None
     stage_completion_validator: Callable[[str, Path], object] | None = None
     planner_task_validator: Callable[[str, Path, Any], object] | None = None
@@ -140,10 +166,57 @@ class VerticalContract:
         stage: str,
         project_root: Path,
         state_root: Path,
+        mission: Any,
     ) -> str:
+        """Text a vertical wants prepended to *this* mission's instruction.
+
+        ``mission`` is the claimed backlog item. Without it every mission in a
+        stage receives a byte-identical block, so a vertical can only say
+        things about the stage -- which is the same as saying them once in a
+        role banner. It is what lets a vertical answer "what does this
+        particular task need to know".
+
+        Forwarded by keyword, not positionally, which makes the parameter
+        *names* part of the contract. The alternative -- appending ``mission``
+        positionally, so a three-argument provider fails on arity instead --
+        was considered and rejected: positional forwarding lets a provider that
+        merely *reorders* its parameters take ``stage`` where it meant
+        ``project_root``, silently, both being plausible strings, and that is a
+        wrong answer rather than a failure. Keyword forwarding closes it.
+
+        Be clear about what the price of that is, because it is steeper than
+        "an error message". This hook is called unguarded from
+        ``life/supervisor/_mission_execution_runtime.py``; a ``TypeError``
+        here propagates through ``_run_one`` and ``tick`` to ``run``, which
+        fails the item, emits ``life.supervisor.error``, sets ``stopped_by =
+        "supervisor_error"`` and **breaks the run loop**. So a stale
+        out-of-tree provider does not degrade a project, it halts it, on every
+        restart, from the first mission. That is still the better trade than
+        the alternatives -- the failure is immediate, deterministic, and its
+        message names the argument to add, whereas a vertical quietly demoted
+        to stage-blind emits nothing at all and stays wrong for the life of the
+        project -- but a reader weighing a change here should weigh the real
+        cost, not a rhetorical one.
+
+        This is deliberately *not* softened by inspecting the provider's
+        signature and only passing ``mission`` when it is accepted. That would
+        keep stale providers running at the price of making them permanently
+        and invisibly stage-blind, which is the failure mode with no error
+        message and no end.
+
+        One inconsistency to know about, pre-existing and left alone: a
+        provider that returns a non-``str`` is dropped silently by the last
+        line here, while one that raises takes the run down. Two malformed
+        providers, two opposite blast radii.
+        """
         if self.mission_prelude is None:
             return ""
-        value = self.mission_prelude(stage, project_root, state_root)
+        value = self.mission_prelude(
+            stage=stage,
+            project_root=project_root,
+            state_root=state_root,
+            mission=mission,
+        )
         return value if isinstance(value, str) else ""
 
 
@@ -388,6 +461,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
 
 __all__ = [
     "VERTICAL_CONTRACT_VERSION",
+    "MissionPrelude",
     "VerticalContract",
     "VerticalContractError",
     "VerticalLibraryContext",
