@@ -1420,7 +1420,12 @@ class Backlog:
                 title=blocked.title,
                 objective=objective,
                 priority=blocked.priority,
-                tags=[*blocked.tags, "operator-reply", "manager-approved"],
+                tags=list(dict.fromkeys([
+                    *blocked.tags,
+                    "operator-reply",
+                    "manager-approved",
+                    "review:required",
+                ])),
                 notes=f"Continues blocked item {blocked.id}.",
                 iterate=blocked.iterate,
                 iteration_max_cycles=blocked.iteration_max_cycles,
