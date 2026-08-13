@@ -574,6 +574,13 @@ def test_one_overloaded_claim_cannot_flood_the_prelude(tmp_path: Path) -> None:
     # on a hundred and twenty -- which is worse than the flood it replaced.
     assert "more open assumption(s), not listed here" in fragment
     assert "further definition(s) in this context, not listed here" in fragment
+    # The same sentence, applied to the one line that states a number. The
+    # heading counted the rows that survived the cap, so this fixture rendered
+    # "### Taken on faith (12 open)" twelve rows above "and 108 more" -- the
+    # fragment told the truth and contradicted it, with the false version
+    # first and in the position a skimming reader anchors on. A count in a
+    # heading is a claim about the claim, not about the rendering.
+    assert "### Taken on faith (120 open)" in fragment
 
 
 def test_the_digest_is_computed_from_the_fragments_own_content(

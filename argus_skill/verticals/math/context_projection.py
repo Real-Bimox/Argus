@@ -561,8 +561,9 @@ def _transitions(status: ClaimStatus, claim: ClaimVersion) -> list[str]:
             "supports this exact statement, with an artifact that can be re-run."
         )
         lines.append(
-            "to closed_kernel: the same, with every external assumption below "
-            f"discharged by {_tiers(DISCHARGING_TIERS)} evidence."
+            "to closed_kernel: the same, with every external assumption in "
+            f"\"taken on faith\" discharged by {_tiers(DISCHARGING_TIERS)} "
+            "evidence."
         )
     if status is ClaimStatus.CONDITIONAL_KERNEL:
         lines.append(
@@ -641,9 +642,14 @@ def _render(payload: dict[str, Any]) -> str:
 
     lines.append("")
     if payload["open_assumptions"]:
-        lines.append(
-            f"### Taken on faith ({len(payload['open_assumptions'])} open)"
+        # The total, not the number of rows that survived the cap. Counting
+        # the survivors would put a false number in the one place a reader
+        # trusts without reading on: "12 open" when 120 are open is the
+        # difference between a kernel nearly closed and one nowhere near it.
+        open_total = (
+            len(payload["open_assumptions"]) + payload["further_open_assumptions"]
         )
+        lines.append(f"### Taken on faith ({open_total} open)")
         for item in payload["open_assumptions"]:
             lines.append(
                 f"- `{item['assumption_id']}`: {item['statement']} "
