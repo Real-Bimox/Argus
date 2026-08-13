@@ -41,7 +41,11 @@ mechanical evidence. Editing the source invalidates that record; re-run it. If
 the host has Mathlib installed it is used automatically, so `import Mathlib`
 needs no extra flag. `--claim` is the only way mechanical evidence is ever
 written: there is no flag that lets you record a compiler verdict you did not
-get, and asking for one is a bug report rather than a request.
+get, and asking for one is a bug report rather than a request. Formalizing
+several claims in one directory is fine and needs no filename scheme of your
+own: each run archives its own certificate under `research/lean/certificates/`
+and the claim cites that, so reusing the names above does not cost the previous
+claim its evidence.
 
 Compilation checks the theorem you encoded, not the one you meant, so the
 separate `statement_fidelity.md` states which objects, quantifiers, hypotheses,

@@ -546,8 +546,15 @@ def test_a_compiled_proof_records_mechanical_evidence_naming_kernel_and_artifact
     assert record.tier is EvidenceTier.MECHANICAL
     assert record.verdict is Verdict.SUPPORTS
     assert record.produced_by == "lean_evidence/lean 4.34.0-rc1"
-    assert record.artifact == "research/lean/lean_check.json"
-    assert (tmp_path / record.artifact).is_file()
+    assert record.artifact.startswith("research/lean/certificates/C1-")
+    assert record.artifact.endswith(".json")
+    archived = json.loads((tmp_path / record.artifact).read_text(encoding="utf-8"))
+    assert archived["evidence_id"] == record.evidence_id
+    assert archived["lean_check"] == json.loads(
+        (_lean_dir(tmp_path) / "lean_check.json").read_text(encoding="utf-8")
+    )
+    assert archived["lean_source"]["text"] == THEOREM
+    assert archived["statement_fidelity"]["text"] == FIDELITY
 
     _, payload = _run(tmp_path, "show", "--claim", "C1")
     assert payload["claim"]["status"] == ClaimStatus.CLOSED_KERNEL.value
@@ -784,6 +791,220 @@ def test_a_source_outside_the_project_records_nothing(tmp_path: Path) -> None:
     assert any("outside the project root" in text for text in recording.refusals)
 
 
+# -- the citation, after the record is written ------------------------------
+
+ALPHA = "theorem alpha_thm : 2 + 2 = 4 := rfl\n"
+ALPHA_FIDELITY = (
+    "# Statement fidelity\n\n"
+    "`alpha_thm` formalizes: two plus two equals four over the naturals.\n"
+    "Objects: natural number literals. Quantifiers: none. Hypotheses: none.\n"
+    "Conclusion: 2 + 2 reduces to 4.\n"
+)
+BETA = "theorem beta_thm : 1 + 1 = 2 := rfl\n"
+BETA_FIDELITY = (
+    "# Statement fidelity\n\n"
+    "`beta_thm` formalizes: one plus one equals two over the naturals.\n"
+    "Objects: natural number literals. Quantifiers: none. Hypotheses: none.\n"
+    "Conclusion: 1 + 1 reduces to 2.\n"
+)
+
+
+def _verify_into_canonical_names(
+    root: Path, claim_id: str, theorem: str, fidelity: str, statement: str
+):
+    """One claim taken through exactly the layout the Engineer doc teaches.
+
+    ``research/lean/Main.lean`` and ``research/lean/statement_fidelity.md`` are
+    the documented names, so the second claim reuses both — which is the whole
+    point: nothing here is unusual, it is what an agent following the skill is
+    told to do.
+    """
+    _source(root, theorem)
+    _fidelity(root, fidelity)
+    _result(root)
+    _run(
+        root, "claim", "--id", claim_id, "--context", "ctx",
+        "--statement", statement,
+        "--formal-file", str(_lean_dir(root) / "Main.lean"),
+    )
+    return record_lean_evidence(
+        root, claim_id=claim_id, source=_lean_dir(root) / "Main.lean"
+    )
+
+
+def test_a_second_claim_does_not_overwrite_the_first_claims_certificate(
+    tmp_path: Path,
+) -> None:
+    """Two proofs in one directory are two certificates, not one slot.
+
+    ``verify`` publishes to fixed names, so recording the canonical
+    ``lean_check.json`` made every claim in a directory cite the same file and
+    the last one to compile own it. Nothing reported that: the first claim's
+    status was still honestly earned, and its citation had quietly become a
+    pointer to somebody else's theorem.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    first = _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    assert first.record is not None
+    second = _verify_into_canonical_names(
+        tmp_path, "B", BETA, BETA_FIDELITY, "one plus one is two"
+    )
+    assert second.record is not None
+
+    assert first.record.artifact != second.record.artifact
+    archived = json.loads(
+        (tmp_path / first.record.artifact).read_text(encoding="utf-8")
+    )
+    assert archived["lean_source"]["text"] == ALPHA
+    assert archived["statement_fidelity"]["text"] == ALPHA_FIDELITY
+    assert archived["subject"]["subject_id"] == "A"
+    assert archived["lean_check"]["source_sha256"] == hashlib.sha256(
+        ALPHA.encode("utf-8")
+    ).hexdigest()
+
+    # The canonical name is B's now, exactly as before; what changed is that
+    # nothing cites it.
+    canonical = json.loads(
+        (_lean_dir(tmp_path) / "lean_check.json").read_text(encoding="utf-8")
+    )
+    assert canonical["source_sha256"] == hashlib.sha256(
+        BETA.encode("utf-8")
+    ).hexdigest()
+    state = load_state(tmp_path)
+    assert not any(
+        item.artifact == "research/lean/lean_check.json" for item in state.evidence
+    )
+
+    # And the archives are not themselves Lean sources: `lean_evidence check`
+    # discovers by extension, so a `.lean` copy would demand its own compile.
+    report = validate_lean_evidence(tmp_path)
+    assert [issue.as_dict() for issue in report.issues] == []
+    assert len(report.sources) == 1
+
+
+def test_show_names_the_certificate_so_a_reviewer_can_reach_it(
+    tmp_path: Path,
+) -> None:
+    """Storing the certificate is half of it; being reachable is the other.
+
+    The reviewer skill sends its reader to ``math_state show`` and then asks
+    them to judge whether the formal statement says what the natural statement
+    says — which cannot be done from a status, only from the compiled source
+    and its fidelity note. Until this key the payload named neither, so the
+    only paths a reviewer could find were the canonical ones, and in exactly
+    the two-claim layout above those describe whichever claim compiled last.
+    An archive nobody is told the path of leaves the reviewer reading the wrong
+    theorem, which is the harm the archive was built to stop.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    first = _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    _verify_into_canonical_names(
+        tmp_path, "B", BETA, BETA_FIDELITY, "one plus one is two"
+    )
+    assert first.record is not None
+
+    _, payload = _run(tmp_path, "show", "--claim", "A")
+
+    assert payload["claim"]["certificates"] == [
+        {
+            "tier": EvidenceTier.MECHANICAL.value,
+            "produced_by": "lean_evidence/lean 4.34.0-rc1",
+            "verdict": Verdict.SUPPORTS.value,
+            "artifact": first.record.artifact,
+        }
+    ]
+    # Following it is what has to land on A's proof, not merely resolve.
+    archived = json.loads(
+        (tmp_path / payload["claim"]["certificates"][0]["artifact"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert archived["lean_source"]["text"] == ALPHA
+
+
+def test_show_stops_naming_a_certificate_once_the_claim_is_restated(
+    tmp_path: Path,
+) -> None:
+    """A path beside a superseded statement is worse than no path.
+
+    Restating a claim mints a new ``content_hash``, so the old record stops
+    binding and is already reported under ``stale_evidence``. Printing its
+    artifact here would send a reviewer to a certificate about a statement this
+    claim no longer carries — a citation that resolves, reads as current, and
+    describes something else.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    recording = _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    assert recording.record is not None
+    _, before = _run(tmp_path, "show", "--claim", "A")
+    assert before["claim"]["certificates"]
+
+    _run(tmp_path, "revise-claim", "--id", "A", "--statement", "restated")
+    _, after = _run(tmp_path, "show", "--claim", "A")
+
+    assert after["claim"]["stale_evidence"] == [recording.record.evidence_id]
+    assert "certificates" not in after["claim"]
+
+
+def test_recording_the_same_proof_twice_leaves_one_archive_at_one_path(
+    tmp_path: Path,
+) -> None:
+    """Retrying is how an autonomous loop recovers, so it must not accumulate.
+
+    The archive name is derived from the record it belongs to, not from the
+    transcript, so a second run of the same proof lands on the same path rather
+    than minting a per-run copy nothing points at.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    first = _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    assert first.record is not None and first.changed
+
+    source = _lean_dir(tmp_path) / "Main.lean"
+    # A second run of the same compile: same source, same note, fresh timings.
+    _result(tmp_path, duration_ms=4321)
+    second = record_lean_evidence(tmp_path, claim_id="A", source=source)
+
+    assert second.record is not None
+    assert second.changed is False
+    assert second.record.artifact == first.record.artifact
+    assert second.record.evidence_id == first.record.evidence_id
+    archives = sorted((_lean_dir(tmp_path) / "certificates").iterdir())
+    assert [path.name for path in archives] == [Path(first.record.artifact).name]
+    assert len(load_state(tmp_path).evidence) == 1
+
+
+def test_a_certificate_that_cannot_be_archived_records_nothing(
+    tmp_path: Path,
+) -> None:
+    """Fail closed: an unarchived record is the dangling citation, silently.
+
+    Recording anyway would leave a record whose only possible artifact is the
+    canonical path the next ``verify`` rewrites — precisely the defect the
+    archive exists to remove — with nothing saying the archive step was skipped.
+    """
+    source = _proved_project(tmp_path)
+    # The directory the archive needs is occupied by a file.
+    (_lean_dir(tmp_path) / "certificates").write_text("not a directory", encoding="utf-8")
+
+    recording = record_lean_evidence(tmp_path, claim_id="C1", source=source)
+
+    assert recording.record is None
+    assert recording.changed is False
+    assert any("could not be archived" in text for text in recording.refusals)
+    assert any("nothing was recorded" in text for text in recording.refusals)
+    assert list(load_state(tmp_path).evidence) == []
+    _, payload = _run(tmp_path, "show", "--claim", "C1")
+    assert payload["claim"]["status"] == ClaimStatus.PROPOSED.value
+
+
 # -- what a proof costs when the theorem moves ------------------------------
 
 def test_restating_a_claim_costs_the_proof_bound_to_the_previous_statement(
@@ -980,3 +1201,55 @@ def test_a_real_compile_failure_leaves_the_claim_unproved_and_says_so(
     _, payload = _run(tmp_path, "show", "--claim", "C1")
     assert payload["claim"]["status"] == ClaimStatus.PROPOSED.value
     assert payload["claim"]["support"] == {}
+
+
+@requires_lean
+def test_two_real_compiles_in_the_documented_directory_keep_both_certificates(
+    tmp_path: Path,
+) -> None:
+    """The reported scenario, end to end, with nothing synthesized.
+
+    Both claims are formalized exactly as the Engineer skill teaches — one
+    ``research/lean/Main.lean``, one ``research/lean/statement_fidelity.md``,
+    rewritten for the second theorem — and both compile for real. Before the
+    archive, step five held: ``lean_check.json`` described only ``beta_thm``,
+    both records named it, and neither ``math_state show`` nor ``lean_evidence
+    check`` said a word about it.
+    """
+    from argus_skill.verticals.math.lean_evidence import main as lean_main
+
+    def verify(claim_id: str, theorem: str, note: str, statement: str) -> None:
+        source = _source(tmp_path, theorem)
+        fidelity = _fidelity(tmp_path, note)
+        _run(tmp_path, "claim", "--id", claim_id, "--context", "ctx",
+             "--statement", statement, "--formal-file", str(source))
+        assert lean_main([
+            "verify", str(source),
+            "--statement-fidelity", str(fidelity),
+            "--claim", claim_id,
+            "--project-root", str(tmp_path),
+            "--timeout", "300",
+        ]) == 0
+
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    verify("A", ALPHA, ALPHA_FIDELITY, "two plus two is four")
+    verify("B", BETA, BETA_FIDELITY, "one plus one is two")
+
+    _, shown = _run(tmp_path, "show", "--claim", "A")
+    assert shown["claim"]["status"] == ClaimStatus.CLOSED_KERNEL.value
+    assert shown["claim"]["stale_evidence"] == []
+    assert shown["claim"]["issues"] == []
+    assert lean_main(["check", "--project-root", str(tmp_path)]) == 0
+
+    records = {item.subject.subject_id: item for item in load_state(tmp_path).evidence}
+    assert records["A"].artifact != records["B"].artifact
+    cited = json.loads(
+        (tmp_path / records["A"].artifact).read_text(encoding="utf-8")
+    )
+    assert cited["lean_source"]["text"] == ALPHA
+    assert cited["lean_check"]["status"] == "success"
+    assert "alpha_thm" in cited["statement_fidelity"]["text"]
+    # The canonical file is B's, which is exactly why A must not cite it.
+    assert "beta_thm" in (_lean_dir(tmp_path) / "Main.lean").read_text(
+        encoding="utf-8"
+    )

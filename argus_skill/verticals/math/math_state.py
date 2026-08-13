@@ -144,6 +144,23 @@ _INADMISSIBLE_LEAN_CODES = frozenset({
 #: not answer.
 _VERSION = re.compile(r"version\s+([^\s,)]+)")
 
+#: Where a recorded certificate is copied to, relative to the directory the
+#: compiler artifacts were published in. A subdirectory rather than a sibling so
+#: the archive travels with the proof it certifies, and so the canonical names
+#: ``verify`` rewrites on every run stay exactly where the Engineer doc says
+#: they are.
+_CERTIFICATE_DIRNAME = "certificates"
+
+#: The shape of one archived certificate. Nothing in this repository reads it;
+#: the reviewer the record points at does, and a payload that cannot say which
+#: shape it is is a payload that cannot be changed later.
+_CERTIFICATE_SCHEMA = 1
+
+#: A claim id is free text and part of a filename here, so anything outside this
+#: set is folded away. Uniqueness comes from the digest beside it, never from
+#: the name, which is why folding is safe and traversal is not possible.
+_UNSAFE_IN_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
+
 #: Said on every kernel-status claim that carries Lean evidence. Not a defect,
 #: so it is not an issue; not derivable from the records, so it cannot be a
 #: kernel note. It is the standing caveat of the whole formal channel.
@@ -345,6 +362,21 @@ def record_lean_evidence(
     artifact lock is released once ``verify_lean_source`` returns, and between
     then and here another process could publish a different answer to the same
     path.
+
+    *And the citation has to keep naming this run.* ``expect_result`` closes the
+    window before the record is written; nothing closed the one after it.
+    ``verify`` publishes to fixed names — ``Main.lean``, ``lean_check.json``,
+    ``statement_fidelity.md`` — so the next claim formalized in the same
+    directory, which is what the Engineer doc teaches, overwrites the previous
+    claim's certificate in place. The status stayed honest, because the record
+    binds to the claim's own ``content_hash`` and a real compile of that text
+    did happen; the *pointer* did not, because ``EvidenceRecord.artifact`` is a
+    bare path with no digest, and a reviewer sent to it now reads a different
+    theorem with nothing anywhere saying so. So the certificate is archived to a
+    path derived from the record it belongs to before the record is written, and
+    that archive is what ``artifact`` names. Failing to archive records nothing:
+    an unarchived record is exactly the dangling citation this exists to
+    prevent, and a silent one is worse than a refusal.
     """
     from .lean_evidence import source_evidence  # noqa: PLC0415 — avoids a cycle
 
@@ -421,23 +453,59 @@ def record_lean_evidence(
             if evidence.verified
             else Verdict.INCONCLUSIVE
         )
-        artifact = _project_relative(
-            evidence.result_path
-            if evidence.result_path is not None
-            else source_path.parent / "lean_check.json",
-            root,
-        )
         produced_by = _lean_producer(result)
+        subject = claim.ref()
+        artifact_dir = source_path.parent
+        name = _certificate_name(
+            subject, EvidenceTier.MECHANICAL, verdict, produced_by
+        )
+        artifact = _project_relative(
+            artifact_dir / _CERTIFICATE_DIRNAME / name, root
+        )
+        evidence_id = _evidence_id(
+            "lean",
+            subject,
+            EvidenceTier.MECHANICAL,
+            verdict,
+            produced_by,
+            artifact,
+        )
+        try:
+            _archive_certificate(
+                artifact_dir,
+                name,
+                {
+                    "schema_version": _CERTIFICATE_SCHEMA,
+                    "evidence_id": evidence_id,
+                    "subject": subject.as_dict(),
+                    "tier": EvidenceTier.MECHANICAL.value,
+                    "verdict": verdict.value,
+                    "produced_by": produced_by,
+                    "lean_check": result,
+                    "lean_source": {
+                        "path": _project_relative(source_path, root),
+                        "text": source_text,
+                    },
+                    "statement_fidelity": {
+                        "path": fidelity,
+                        "text": _fidelity_text(evidence.fidelity),
+                    },
+                },
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            return LeanRecording(
+                refusals=(
+                    f"the compiler result could not be archived to {artifact}, "
+                    "so the only path this record could cite is the one "
+                    "`verify` overwrites on its next run — the next claim "
+                    "formalized here would silently replace this proof's "
+                    f"certificate; nothing was recorded: {exc}",
+                ),
+                statement_fidelity=fidelity,
+            )
         record = EvidenceRecord(
-            evidence_id=_evidence_id(
-                "lean",
-                claim.ref(),
-                EvidenceTier.MECHANICAL,
-                verdict,
-                produced_by,
-                artifact,
-            ),
-            subject=claim.ref(),
+            evidence_id=evidence_id,
+            subject=subject,
             tier=EvidenceTier.MECHANICAL,
             verdict=verdict,
             produced_by=produced_by,
@@ -448,6 +516,116 @@ def record_lean_evidence(
     return LeanRecording(
         record=stored, changed=changed, statement_fidelity=fidelity
     )
+
+
+def _certificate_name(
+    subject: SubjectRef,
+    tier: EvidenceTier,
+    verdict: Verdict,
+    produced_by: str,
+) -> str:
+    """The archive's filename, derived from the record that will cite it.
+
+    ``_evidence_id`` hashes (kind, subject, tier, verdict, produced_by,
+    artifact), and the artifact is about to be this path, which reads as a
+    circle. It is not one, because this digest is taken over *the same
+    arguments minus the artifact*::
+
+        artifact    = g(subject, tier, verdict, produced_by)
+        evidence_id = f(subject, tier, verdict, produced_by, g(...))
+
+    Both are functions of the same four free variables, evaluated in that
+    order, so nothing waits on itself. What that buys is the property the
+    archive exists for: two records with different ids differ in at least one of
+    those four, since the artifact cannot be the tie-breaker when it is derived
+    from them — so ``g`` is injective over records, two of them can never
+    overwrite each other, and one record recorded twice lands on the same path.
+    That last part is what makes re-verifying idempotent rather than littering
+    the directory with a copy per run.
+
+    ``.json``, and deliberately never ``.lean``: ``discover_lean_sources`` finds
+    project sources by extension, so an archived copy of the compiled source
+    saved under its own name would become a *new* unverified Lean source,
+    demanding its own fidelity document and its own compile, and
+    ``lean_evidence check`` would start blocking on the evidence it was given.
+    The source text is carried inside this file as a string instead, where no
+    sweep can mistake it for work in progress.
+
+    ``subject_id`` is free text, so it is folded to one safe path component
+    before it becomes a filename; the digest, never the name, is what makes the
+    path unique, so folding two ids together costs readability and nothing else.
+
+    **What this key deliberately leaves open.** The fidelity note is not in it,
+    so rewriting only that document and re-verifying the same proof lands on
+    this same path and replaces the archived note in place — and because the
+    record itself is unchanged, the command reports ``changed: false`` while
+    the note it points at is now a different one. A reviewer who judged the
+    fidelity of the old wording has their verdict silently re-pointed at the
+    new. This is not what the archive was built to stop: it is one claim's own
+    re-run, not another claim overwriting it, and it behaved identically before
+    the archive existed, when the canonical ``lean_check.json`` was rewritten
+    the same way. Adding ``statement_fidelity_sha256`` to the key would split
+    the two into separate records and close it, at the price of deciding that
+    re-reading a theorem mints a fresh certificate — a statement about what a
+    certificate *means*, which is not a decision to make in passing while
+    fixing a pointer. Left open, named here, so it is chosen rather than
+    inherited.
+    """
+    digest = content_digest(
+        {
+            "subject": subject.as_dict(),
+            "tier": tier.value,
+            "verdict": verdict.value,
+            "produced_by": normalize_text(produced_by),
+        }
+    )
+    stem = _UNSAFE_IN_FILENAME.sub("_", subject.subject_id).strip("._-")
+    return f"{stem[:48] or 'claim'}-{digest[:16]}.json"
+
+
+def _fidelity_text(fidelity: Path | None) -> str:
+    """The document that was in force, read the way its digest was taken.
+
+    ``verify_lean_source`` hashes the fidelity note through ``read_text``, and
+    ``_fidelity_issues`` has already refused this record if what is on disk no
+    longer matches that digest — so the text read here is the text the compile
+    was paired with, and a reviewer can check it against
+    ``statement_fidelity_sha256`` without trusting the archive. ``None`` cannot
+    reach here (a missing note is inadmissible), but a read that fails between
+    the check and now must refuse rather than archive a blank.
+    """
+    if fidelity is None:
+        raise ValueError("no statement fidelity document to archive")
+    return fidelity.read_text(encoding="utf-8")
+
+
+def _archive_certificate(
+    artifact_dir: Path, name: str, payload: dict[str, Any]
+) -> Path:
+    """Publish one certificate under the same lock and write that made it.
+
+    Reuses ``lean_check``'s directory lock and atomic write rather than
+    repeating either: the lock is the one ``verify_lean_source`` holds while it
+    republishes the canonical names, so archiving is serialized against exactly
+    the operation that would otherwise be racing it, and ``os.replace`` means a
+    reader sees a whole certificate or none.
+
+    Taken while the state lock is held, which is safe because no path takes the
+    two in the other order — ``verify_lean_source`` releases the artifact lock
+    before ``record_lean_evidence`` ever asks for the state.
+    """
+    from ...tools.lean_check import (  # noqa: PLC0415 — optional, heavy import
+        _artifact_directory_lock,
+        _atomic_artifact_write,
+    )
+
+    target = artifact_dir / _CERTIFICATE_DIRNAME / name
+    rendered = (
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    )
+    with _artifact_directory_lock(artifact_dir):
+        _atomic_artifact_write(target, rendered.encode("utf-8"))
+    return target
 
 
 def _lean_producer(result: dict[str, Any]) -> str:
@@ -488,9 +666,46 @@ def _claim_payload(state: MathState, claim: ClaimVersion) -> dict[str, Any]:
     payload["standing_on"] = [
         item.as_dict() for item in state.effective_assumptions(claim.claim_id)
     ]
+    certificates = _certificates(state, claim)
+    if certificates:
+        payload["certificates"] = certificates
     if assessment.is_kernel:
         payload["caveats"] = [_FIDELITY_CAVEAT]
     return payload
+
+
+def _certificates(state: MathState, claim: ClaimVersion) -> list[dict[str, str]]:
+    """Where to read what each checker actually produced about this claim.
+
+    ``ClaimAssessment`` reports which tiers answered and which producers
+    answered in them, which is what a *status* is made of, and deliberately not
+    where the answers are kept. But the reviewer skill sends its reader here
+    and then asks them to judge whether the formal statement says what the
+    natural statement says — a question no status can answer and only the
+    compiled source and its fidelity note can. Without this key the only paths
+    they could find are the canonical ``Main.lean`` and ``lean_check.json``,
+    which describe whichever claim was formalized in that directory *last*. The
+    archive stopped one claim's certificate from destroying another's; a
+    certificate nobody is told the path of is one the reviewer still cannot
+    reach.
+
+    Only evidence bound to the statement this claim carries *now* is listed.
+    Records left behind by an earlier version are already reported under
+    ``stale_evidence``, and printing a path beside them would invite reading a
+    certificate about a statement that has since been restated — the exact
+    confusion this whole seam exists to prevent.
+    """
+    subject = claim.ref()
+    return [
+        {
+            "tier": record.tier.value,
+            "produced_by": record.produced_by,
+            "verdict": record.verdict.value,
+            "artifact": record.artifact,
+        }
+        for record in state.evidence
+        if record.subject == subject and record.artifact
+    ]
 
 
 def _show(project_root: Path, claim_id: str) -> dict[str, Any]:
