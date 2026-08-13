@@ -315,6 +315,11 @@ GitHub Copilot, Pi, Codex, Claude Code, OpenCode, Grok Build, OpenClaw, or Herme
 - **Native Argus backends:** GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, Grok Build
 - **External agent operators:** OpenClaw, Hermes, or any agent that can use a shell or HTTP API
 
+For durable missions, install or adapt the portable
+[`argus-runtime-orchestration` Agent Skill](integrations/agent-skills/argus-runtime-orchestration/SKILL.md).
+It defines the two-party operator model, the active `Needs you` intervention loop,
+host-specific adapters, evidence boundaries, and closeout checks.
+
 Useful entry points:
 
 ```bash

@@ -310,6 +310,11 @@ Vertical 可以为你的领域提供专属阶段、Skill、数据集、工具、
 - **Argus 原生 Backend：** GitHub Copilot CLI、Pi、Codex CLI、Claude Code、OpenCode、Grok Build
 - **外层 Agent：** OpenClaw、Hermes，或任何能够使用 Shell / HTTP API 的 Agent
 
+如需运行持久任务，可安装或适配可移植的
+[`argus-runtime-orchestration` Agent Skill](integrations/agent-skills/argus-runtime-orchestration/SKILL.md)。
+该 Skill 明确定义了双方操作模型、主动检查 `Needs you` 的干预闭环、
+各宿主适配器、证据边界与收尾检查。
+
 常用入口：
 
 ```bash
