@@ -478,13 +478,26 @@ class MathState:
                 # problem as it stood. It is a decision nobody has made yet —
                 # does this survive the new definitions? — and it has to be
                 # visible or the silence answers "yes".
+                #
+                # The message names the one remedy that exists. An earlier
+                # version also offered "or record why it still holds", which
+                # nothing implements: there is no way to mark a claim as
+                # unaffected by a revision. That was harmless while this issue
+                # was advisory and stopped being harmless when a completion
+                # gate began blocking on it, because a blocked agent will try
+                # what the message says.
                 issues.append(
                     StateIssue(
                         "claim_context_outdated",
                         f"{path}.context",
                         f"claim {claim.claim_id!r} is stated against a superseded "
-                        "context version; restate it against the current one or "
-                        "record why it still holds",
+                        "context version; read it under the new definitions and "
+                        "restate it with `revise_claim(context=...)`, which mints "
+                        "a new digest — so evidence recorded about the old "
+                        "statement stops binding and whatever verifier certified "
+                        "it has to run again. A revision that does not touch this "
+                        "claim still costs it that re-check; nothing here can "
+                        "record it as unaffected",
                     )
                 )
             if _claim_key(claim) in current_claims:

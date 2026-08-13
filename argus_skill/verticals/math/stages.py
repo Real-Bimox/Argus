@@ -71,6 +71,7 @@ def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
     # however good the excuse. The escape hatch is not committing the source.
     # This never runs a compiler; it reads what one already recorded.
     issues = list(lean_evidence_issues(project_root))
+    issues.extend(_math_state_issues(project_root))
     if not graph_required_for(policy.profile, objective.mode):
         return tuple(issues)
     graph = load_graph(project_root)
@@ -86,6 +87,44 @@ def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
             "proof graph goal does not match the Manager-owned math_goal"
         )
     return tuple(issues)
+
+
+def _math_state_issues(project_root: Path) -> tuple[str, ...]:
+    """Structural defects in the claim ledger, when the project keeps one.
+
+    The same rule as the Lean sources above, for the same reason. A project with
+    no ``research/MATH_STATE.json`` pays nothing: ``load_state`` reads a missing
+    file as an empty state, and an empty state has no defects, so absence needs
+    no special case here. A project that does keep a ledger has to keep one that
+    holds together — a claim stated against a superseded context, or evidence
+    bound to a statement the claim no longer carries, is exactly the kind of
+    drift that makes a status mean less than it reads.
+
+    Until this call the ledger was advisory: ``research_math`` derived
+    ``closed_kernel`` and ``conditional_kernel`` and nothing consulted the
+    answer, so a project could finish a stage with a ledger contradicting
+    itself. ``StateIssue.rendered()`` was written for this — it produces the
+    same ``path: message`` shape ``lean_evidence`` and ``literature_ledger``
+    already emit, so all three render alike here.
+
+    What this deliberately does *not* do is let a claim's derived status decide
+    whether the mission is complete. That question belongs with the objective
+    mode and the requested bar below, it is a policy judgement rather than a
+    structural one, and conflating the two would make "the ledger is consistent"
+    and "the mathematics is finished" the same check when they are not.
+
+    An unreadable ledger is reported as a defect rather than raised. Letting
+    ``MathStateError`` escape would take down the completion gate for every
+    other check with it, and a gate that reports nothing is indistinguishable
+    from a gate that found nothing wrong.
+    """
+    from ...research_math import MathStateError, load_state, state_path
+
+    try:
+        state = load_state(project_root)
+    except MathStateError as exc:
+        return (f"{state_path(project_root).name}: {exc}",)
+    return tuple(item.rendered() for item in state.validate())
 
 def prepare_mission(  # noqa: ARG001 - see the docstring on stage/state_root
     *,
