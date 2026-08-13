@@ -30,7 +30,7 @@ SETUP_EXIT_NOT_READY = 3
 SETUP_EXIT_PERSISTENCE = 4
 
 _SUPPORTED_BACKENDS = frozenset(
-    {"codex", "copilot", "claude", "opencode", "pi", "grok", "qoder"}
+    {"codex", "copilot", "claude", "opencode", "pi", "grok", "qoder", "dsh"}
 )
 _VERSION_RE = re.compile(
     r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?:[-+]([0-9A-Za-z.-]+))?"
@@ -42,6 +42,9 @@ _AUTH_COMMANDS: dict[str, tuple[str, ...]] = {
     # qodercli exits non-zero from --list-models when unauthenticated, so it
     # doubles as a read-only auth probe.
     "qoder": ("--list-models",),
+    # dsh exposes no read-only auth-status command that does not cost a model
+    # call; the probe below short-circuits on DEEPSEEK_API_KEY instead.
+    "dsh": (),
 }
 _INSTALL_COMMANDS = {
     "codex": "npm install -g @openai/codex@latest",
@@ -51,6 +54,7 @@ _INSTALL_COMMANDS = {
     "pi": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
     "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
     "qoder": "npm install -g @qoder-ai/qodercli",
+    "dsh": "npm install -g @deepseek-ai/dsh",
 }
 _LOGIN_COMMANDS = {
     "codex": "codex login",
@@ -60,6 +64,7 @@ _LOGIN_COMMANDS = {
     "pi": "pi, then /login",
     "grok": "grok login",
     "qoder": "qodercli login",
+    "dsh": "export DEEPSEEK_API_KEY=<key> in the launching environment (or set it on the dsh web Models page)",
 }
 
 
@@ -418,6 +423,32 @@ def _probe_cli_auth(
         # `qodercli --list-models` probe below, which reports login state.
         if str(os.environ.get("QODER_PERSONAL_ACCESS_TOKEN") or "").strip():
             return True, ""
+    if backend == "dsh":
+        # dsh has no read-only auth probe: the headless profile rejects an
+        # unauthenticated boot with MISSING_CREDENTIAL. Treat an exported
+        # key as ready and otherwise report the remediation directly. dsh's
+        # layered env loader (process > cwd .env > $DSH_HOME/.env) also
+        # admits DEEPSEEK_API_KEY from $DSH_HOME/.env, so scan that file too
+        # rather than misreporting a working deployment as unauthenticated.
+        if str(os.environ.get("DEEPSEEK_API_KEY") or "").strip():
+            return True, ""
+        dsh_home = Path(
+            str(os.environ.get("DSH_HOME") or Path.home() / ".dsh")
+        ).expanduser()
+        env_file = dsh_home / ".env"
+        try:
+            if env_file.is_file():
+                for line in env_file.read_text(encoding="utf-8").splitlines():
+                    name, sep, raw = line.strip().partition("=")
+                    if sep and name.strip() == "DEEPSEEK_API_KEY" and raw.strip():
+                        return True, ""
+        except OSError:
+            pass
+        return False, (
+            "no DEEPSEEK_API_KEY was found in the environment or "
+            f"{env_file}; export it or set it through the dsh credentials "
+            "service (the web Models page)"
+        )
     suffix = _AUTH_COMMANDS.get(backend)
     if suffix is None:
         return False, f"no read-only authentication probe is defined for {backend}"
@@ -519,7 +550,7 @@ def check_backend_readiness(
             ReadinessProblem(
                 "backend",
                 f"unsupported backend {profile.backend!r}",
-                "choose one of: codex, copilot, claude, opencode, pi",
+                "choose one of: codex, copilot, claude, opencode, pi, grok, qoder, dsh",
             )
         )
         return report

@@ -30,7 +30,7 @@ _LOCKS_GUARD = threading.Lock()
 
 _WEB_METHODS = frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"})
 _PROVIDERS = frozenset(
-    {"codex", "copilot", "claude", "opencode", "pi", "grok", "qoder", "memory"}
+    {"codex", "copilot", "claude", "opencode", "pi", "grok", "qoder", "dsh", "memory"}
 )
 _CALL_STATUSES = frozenset({"completed", "error", "denied"})
 _PRICING_STATUSES = frozenset({"priced", "partial", "unpriced", "not_billed", "unknown"})

@@ -154,8 +154,8 @@ Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
 
 ### Backend 说明
 
-`--backend` 可使用 `copilot`、`pi`、`codex`、`claude`、`opencode`、`grok`
-或 `qoder`。
+`--backend` 可使用 `copilot`、`pi`、`codex`、`claude`、`opencode`、`grok`、
+`qoder` 或 `dsh`。
 未显式配置 model 时，Argus 使用所选 CLI 的原生默认模型，不会把 OpenAI 模型 id
 传给 Claude Code、Pi、OpenCode 或 Grok。
 如果已有 OpenAI-compatible URL，setup 会在需要时自动安装 Pi 并完成配置：

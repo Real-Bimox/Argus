@@ -18,6 +18,7 @@ from .runner_backend import (
     BACKEND_CLAUDE,
     BACKEND_CODEX,
     BACKEND_COPILOT,
+    BACKEND_DSH,
     BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
@@ -256,6 +257,10 @@ class CommandBuilderMixin:
             return self._build_grok_command(
                 resume_thread_id=resume_thread_id, options=options
             )
+        if self.backend == BACKEND_DSH:
+            return self._build_dsh_command(
+                resume_thread_id=resume_thread_id, options=options
+            )
         return self._build_codex_command(resume_thread_id=resume_thread_id, options=options)
 
     def _apply_sandbox_policy(self, options):
@@ -281,6 +286,7 @@ class CommandBuilderMixin:
             BACKEND_OPENCODE,
             BACKEND_PI,
             BACKEND_QODER,
+            BACKEND_DSH,
         ):
             return options
         if options.sandbox_mode is not None:
@@ -657,3 +663,52 @@ class CommandBuilderMixin:
             command.extend(["--resume", resume_thread_id])
         # PromptDeliveryMixin appends --prompt-file with a private temporary file.
         return command
+
+
+    def _build_dsh_command(
+        self,
+        *,
+        resume_thread_id: str | None,
+        options,
+    ) -> list[str]:
+        """Build a DeepSeek Harness one-shot turn.
+
+        dsh has no stream-json surface, no session resume, and no model flag:
+        its headless profile runs one full agent turn and prints only the
+        final assistant text (exit 0 on completion; see
+        ``_finalize_turn_result`` in ``_run_exec.py``). The per-role model
+        rides in through the env-driven overlay attached via ``--patch``
+        (``ARGUS_DSH_PROVIDER`` / ``ARGUS_DSH_MODEL``) and the role's access
+        policy through ``DSH_PERMISSION_MODE`` (see ``_apply_dsh_env`` in
+        ``_prompt_delivery.py``). ``resume_thread_id`` is intentionally
+        ignored: the headless runner creates a fresh session per boot, and
+        round context travels in the prompt instead. The task positional is
+        appended by ``_prepare_prompt_delivery``.
+        """
+        command = [
+            self.agent_bin,
+            "--profile",
+            "headless",
+            "--patch",
+            _dsh_overlay_patch_path(),
+        ]
+        merged_extra_args = [*self.default_extra_args]
+        if options.extra_args:
+            merged_extra_args.extend(options.extra_args)
+        if options.sandbox_mode == "read-only":
+            merged_extra_args = _read_only_extra_args(
+                merged_extra_args,
+                backend=BACKEND_DSH,
+            )
+        if merged_extra_args:
+            command.extend(merged_extra_args)
+        return command
+
+def _dsh_overlay_patch_path() -> str:
+    """Path of the env-driven overlay attached to every dsh headless boot.
+
+    The overlay re-targets the deployment default model from
+    ``ARGUS_DSH_PROVIDER`` / ``ARGUS_DSH_MODEL`` and pins the approval
+    policy; see the file itself for the evaluated rows.
+    """
+    return str(Path(__file__).parent / "_dsh_overlay.patch.yml")

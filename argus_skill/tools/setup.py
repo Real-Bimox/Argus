@@ -92,6 +92,7 @@ _SUPPORTED_AGENT_BACKENDS = (
     "pi",
     "grok",
     "qoder",
+    "dsh",
 )
 _BACKEND_LOGIN_COMMANDS = {
     "copilot": "copilot login",
@@ -101,6 +102,7 @@ _BACKEND_LOGIN_COMMANDS = {
     "pi": "run `pi` and complete `/login`",
     "grok": "grok login",
     "qoder": "qodercli login",
+    "dsh": "configure DEEPSEEK_API_KEY for dsh",
 }
 
 
@@ -198,7 +200,7 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
         str(requested).strip().lower()
         if requested is not None
         else _prompt(
-            "Backend (copilot/codex/claude/opencode/pi/grok/qoder)", default
+            "Backend (copilot/codex/claude/opencode/pi/grok/qoder/dsh)", default
         ).lower()
     )
     if selected not in _SUPPORTED_AGENT_BACKENDS:
@@ -206,7 +208,7 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
         print(
             _dim(
                 "    Choose one of: copilot, codex, claude, opencode, pi, grok, "
-                "qoder"
+                "qoder, dsh"
             )
         )
         print()
@@ -229,6 +231,9 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
         elif selected == "qoder":
             print(_dim("    Then authenticate with: qodercli login"))
             print(_dim("    Or set QODER_PERSONAL_ACCESS_TOKEN for headless use."))
+        elif selected == "dsh":
+            print(_dim("    Then export DEEPSEEK_API_KEY=<key> in the launching environment,"))
+            print(_dim("    or set it through the dsh web Models page."))
         print()
         return None
 

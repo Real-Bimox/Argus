@@ -19,6 +19,7 @@ _LIFE_BACKENDS = (
     "pi",
     "grok",
     "qoder",
+    "dsh",
     "memory",
 )
 

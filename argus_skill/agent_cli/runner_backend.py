@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Literal
 
-RunnerBackend = Literal["codex", "claude", "copilot", "opencode", "pi", "grok", "qoder"]
+RunnerBackend = Literal["codex", "claude", "copilot", "opencode", "pi", "grok", "qoder", "dsh"]
 
 BACKEND_CODEX: RunnerBackend = "codex"
 BACKEND_CLAUDE: RunnerBackend = "claude"
@@ -13,6 +13,7 @@ BACKEND_OPENCODE: RunnerBackend = "opencode"
 BACKEND_PI: RunnerBackend = "pi"
 BACKEND_GROK: RunnerBackend = "grok"
 BACKEND_QODER: RunnerBackend = "qoder"
+BACKEND_DSH: RunnerBackend = "dsh"
 DEFAULT_RUNNER_BACKEND: RunnerBackend = BACKEND_CODEX
 
 # Qoder's official CLI (``qodercli``) is a Claude Code fork: it accepts the same
@@ -38,6 +39,8 @@ def normalize_runner_backend(raw: str | None) -> RunnerBackend:
         return BACKEND_GROK
     if value == BACKEND_QODER:
         return BACKEND_QODER
+    if value == BACKEND_DSH:
+        return BACKEND_DSH
     return BACKEND_CODEX
 
 
@@ -54,6 +57,8 @@ def default_runner_bin(backend: RunnerBackend) -> str:
         return "grok"
     if backend == BACKEND_QODER:
         return "qodercli"
+    if backend == BACKEND_DSH:
+        return "dsh"
     return "codex"
 
 
@@ -81,6 +86,17 @@ def resolve_runner_bin(
         resolved = _resolve_explicit_candidate(opencode_home)
         if resolved:
             return resolved
+    if chosen == BACKEND_DSH:
+        # dsh is installed through the nvm-managed Node toolchain, whose bin
+        # directory is absent from non-interactive PATHs (the daemon may be
+        # started from one). Probe the per-version nvm bins newest-first.
+        nvm_versions = Path.home() / ".nvm" / "versions" / "node"
+        if nvm_versions.is_dir():
+            for version_dir in sorted(nvm_versions.iterdir(), reverse=True):
+                candidate = version_dir / "bin" / expanded
+                resolved = _resolve_explicit_candidate(candidate)
+                if resolved:
+                    return resolved
     user_local = Path.home() / ".local" / "bin" / expanded
     resolved = _resolve_explicit_candidate(user_local)
     if resolved:
