@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import uuid
+import weakref
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,7 +34,9 @@ COST_CONTROL_AUDIT_FILE = "cost-control.jsonl"
 
 _STATE_VERSION = 1
 _CALL_STATE_LOCK_TIMEOUT_SECONDS = 0.25
-_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_THREAD_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
+    weakref.WeakValueDictionary()
+)
 _THREAD_LOCKS_GUARD = threading.Lock()
 class CostControlStateError(RuntimeError):
     pass

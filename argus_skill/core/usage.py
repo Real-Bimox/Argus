@@ -11,6 +11,7 @@ import os
 import tempfile
 import threading
 import time
+import weakref
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -37,10 +38,14 @@ _COPILOT_RECONCILE_VERSION = 3
 UsageSource = Literal["run_exec", "legacy.events"]
 CallStatus = Literal["completed", "error", "denied"]
 
-_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_THREAD_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
+    weakref.WeakValueDictionary()
+)
 _THREAD_LOCKS_GUARD = threading.Lock()
 _CALL_ID_CACHE: dict[str, tuple[tuple[int, int, int] | None, set[str]]] = {}
 _CALL_ID_CACHE_LOCK = threading.Lock()
+_CALL_ID_CACHE_MAX_PROJECTS = 64
+_CALL_ID_CACHE_MAX_IDS = 50_000
 
 
 @dataclass(frozen=True)
@@ -716,14 +721,27 @@ class UsageLedger:
                     continue
                 if isinstance(row, dict) and row.get("call_id"):
                     ids.add(str(row["call_id"]))
-        with _CALL_ID_CACHE_LOCK:
-            _CALL_ID_CACHE[key] = (signature, set(ids))
+        self._store_call_id_cache(key, signature, ids)
         return ids
 
     def _cache_call_ids(self, ids: set[str]) -> None:
         key = str(self.path.resolve())
+        self._store_call_id_cache(key, _path_signature(self.path), ids)
+
+    @staticmethod
+    def _store_call_id_cache(
+        key: str,
+        signature: tuple[int, int, int] | None,
+        ids: set[str],
+    ) -> None:
         with _CALL_ID_CACHE_LOCK:
-            _CALL_ID_CACHE[key] = (_path_signature(self.path), set(ids))
+            if len(ids) > _CALL_ID_CACHE_MAX_IDS:
+                _CALL_ID_CACHE.pop(key, None)
+                return
+            _CALL_ID_CACHE.pop(key, None)
+            _CALL_ID_CACHE[key] = (signature, set(ids))
+            while len(_CALL_ID_CACHE) > _CALL_ID_CACHE_MAX_PROJECTS:
+                del _CALL_ID_CACHE[next(iter(_CALL_ID_CACHE))]
 
 
 def summarize_usage(records: Iterable[UsageRecord]) -> UsageSummary:

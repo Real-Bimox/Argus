@@ -60,6 +60,7 @@ _JOURNAL_TAIL_CACHE: dict[
 ] = {}
 _JOURNAL_TAIL_CACHE_LOCK = threading.Lock()
 _JOURNAL_TAIL_CACHE_TTL_S = 2.0
+_JOURNAL_TAIL_CACHE_MAX_ENTRIES = 256
 
 
 def _enqueue_task_unlocked(
@@ -250,7 +251,10 @@ def get_journal(
     except Exception:  # noqa: BLE001
         rows = []
     with _JOURNAL_TAIL_CACHE_LOCK:
+        _JOURNAL_TAIL_CACHE.pop(key, None)
         _JOURNAL_TAIL_CACHE[key] = (signature, time.monotonic(), rows)
+        while len(_JOURNAL_TAIL_CACHE) > _JOURNAL_TAIL_CACHE_MAX_ENTRIES:
+            del _JOURNAL_TAIL_CACHE[next(iter(_JOURNAL_TAIL_CACHE))]
     return rows
 
 

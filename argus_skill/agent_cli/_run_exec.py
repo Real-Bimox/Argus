@@ -340,11 +340,13 @@ class RunExecMixin:
         stdout_thread = threading.Thread(
             target=consume_pipe,
             args=("stdout", process.stdout),
+            name=f"argus-provider-pipe-{process.pid}-stdout",
             daemon=True,
         )
         stderr_thread = threading.Thread(
             target=consume_pipe,
             args=("stderr", process.stderr),
+            name=f"argus-provider-pipe-{process.pid}-stderr",
             daemon=True,
         )
         stdout_thread.start()
@@ -572,8 +574,23 @@ class RunExecMixin:
         if process.poll() is None:
             process.wait(timeout=10.0)
 
-        stdout_thread.join(timeout=2.0 if stdout_closed else 0.05)
-        stderr_thread.join(timeout=2.0 if stderr_closed else 0.05)
+        pipe_readers = (
+            (process.stdout, stdout_thread),
+            (process.stderr, stderr_thread),
+        )
+        for pipe, reader in pipe_readers:
+            if reader.is_alive() and pipe is not None:
+                try:
+                    os.close(pipe.fileno())
+                except (AttributeError, OSError, ValueError):
+                    pass
+        for pipe, reader in pipe_readers:
+            reader.join(timeout=2.0)
+            if not reader.is_alive() and pipe is not None:
+                try:
+                    pipe.close()
+                except OSError:
+                    pass
         return state
 
     def _finalize_turn_result(

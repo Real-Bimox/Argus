@@ -106,6 +106,7 @@ def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
     monkeypatch,
 ) -> None:
     manager_state._STATES.clear()
+    manager_state._CONTROL_GENERATIONS.clear()
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_WARM_CONTEXT_LIMIT", "2")
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_WARM_CONTEXT_IDLE_SECONDS", "99999")
     closed: list[str] = []
@@ -135,12 +136,24 @@ def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
             "last_access_monotonic": now - 1,
         },
     })
+    manager_state.interrupt_manager_turns("s-old")
 
     manager_state._chat_state_for("s-third")
 
     assert "s-old" not in manager_state._STATES
+    assert "s-old" not in manager_state._CONTROL_GENERATIONS
     assert {"s-new", "s-third"} <= set(manager_state._STATES)
     assert closed == ["s-old"]
+
+
+def test_manager_shutdown_clears_control_generations() -> None:
+    manager_state._STATES.clear()
+    manager_state._CONTROL_GENERATIONS.clear()
+    manager_state.interrupt_manager_turns("s-old")
+
+    manager_state.shutdown_manager_bridge()
+
+    assert manager_state._CONTROL_GENERATIONS == {}
 
 
 def test_manager_session_rotates_with_structured_handoff(tmp_path: Path, monkeypatch) -> None:

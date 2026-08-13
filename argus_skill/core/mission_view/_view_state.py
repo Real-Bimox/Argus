@@ -10,6 +10,7 @@ import json
 import os
 import tempfile
 import threading
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -26,7 +27,9 @@ MISSION_SKILL_CONTENT_MAX_BYTES = 128 * 1024
 
 _ROLE_NAMES = ("manager", "planner", "engineer", "reviewer")
 _PIPELINE_ROLE_NAMES = frozenset({"planner", "engineer", "reviewer"})
-_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_THREAD_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
+    weakref.WeakValueDictionary()
+)
 _THREAD_LOCKS_GUARD = threading.Lock()
 
 try:  # pragma: no cover - production daemons are POSIX
