@@ -105,8 +105,8 @@ VERTICAL_PURPOSES: dict[str, str] = {
     "learning": "ingest operator material and create, update, or archive skill/wiki knowledge",
     "ale_last_exam": "Agents' Last Exam long-horizon professional workflow in a real "
     "sandbox with hidden-reference, artifact-first GUI+CLI delivery",
-    "fiction_writing": "write or continue original fiction while preserving characters, "
-    "world, and timeline; not a literature review or research task",
+    "fiction_writing": "write or continue original fiction narrative prose while preserving "
+    "characters, world, and timeline; not a literature review or research task",
     "classical_poetry": "compose or check classical Chinese 近体诗/古体/词 with reproducible "
     "押韵/平仄 prosody and literary review",
     "modern_poetry": "compose or revise modern free verse/prose poems without classical "
