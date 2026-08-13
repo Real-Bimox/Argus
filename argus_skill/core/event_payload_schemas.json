@@ -476,6 +476,11 @@
         "vertical": {"type": "string"},
         "kind": {"type": "string"},
         "stages": {"type": "array", "items": {"type": "string"}},
+        "route": {"type": "string"},
+        "workflow_mode": {"type": "string"},
+        "lifetime": {"type": "string"},
+        "continuous": {"type": "boolean"},
+        "open_ended": {"type": "boolean"},
         "reason": {"type": "string"}
       }
     },

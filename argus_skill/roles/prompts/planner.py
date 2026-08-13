@@ -66,6 +66,7 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   `TASK_OBJECTIVE=...`. Add `TASK_ACCEPTANCE_CHECK=...` or
   `TASK_NON_GOALS=item|item` only when useful. The Host owns workdir, scope,
   dependencies, review, stage transitions, context discovery, and Skill learning.
+- Write TASK_TITLE and TASK_OBJECTIVE in the operator objective's language.
 - End with named lines, not JSON. Use `WAITING=true` only for a real external
   blocker. If an explicit final-certification instruction is present, additionally
   use `TASK_SCOPE=final_submission`; ordinary tasks omit it.
@@ -179,7 +180,8 @@ def build_bounded_dag_prompt(objective: str) -> str:
         "`TASK_DEPS=...` (same-batch keys only), leaving it empty when none; "
         "`TASK_TITLE=...`, and `TASK_OBJECTIVE=...`. Add "
         "`TASK_ACCEPTANCE_CHECK=...` and `TASK_NON_GOALS=item|item` when useful. "
-        "Keys must be unique and the graph must be acyclic.\n\n"
+        "Use the operator objective's language for titles and objectives. Keys must "
+        "be unique and the graph must be acyclic.\n\n"
         "Manager execution handoff:\n" + objective.strip()
     )
 

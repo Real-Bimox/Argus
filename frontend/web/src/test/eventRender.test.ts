@@ -86,6 +86,20 @@ describe('renderEvent', () => {
     );
   });
 
+  it('shows all Manager routing axes', () => {
+    expect(renderEvent({
+      type: 'life.manager.intent.completed',
+      route: 'team',
+      vertical: 'software',
+      workflow_mode: 'staged',
+      lifetime: 'bounded',
+      continuous: true,
+      open_ended: false,
+    } as EventMsg)?.text).toBe(
+      '→ TEAM · software · STAGED · BOUNDED · FINITE CONTINUOUS',
+    );
+  });
+
   it('renders operator and Manager conversation turns in Activity', () => {
     const operator = renderEvent({ type: 'ui.operator', text: '继续实验' } as EventMsg);
     const manager = renderEvent({ type: 'ui.argus', text: '已开始运行' } as EventMsg);

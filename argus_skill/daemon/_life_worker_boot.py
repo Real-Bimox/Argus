@@ -438,6 +438,17 @@ class LifeWorkerBootMixin:
                         "objective": source_objective,
                         "execution_task": execution_task,
                         "vertical": getattr(division, "vertical", ""),
+                        "route": "team",
+                        "workflow_mode": getattr(division, "workflow_mode", ""),
+                        "lifetime": (
+                            "standing"
+                            if target_enabled and rf_state.cfg.continuous_open_ended
+                            else "bounded"
+                        ),
+                        "continuous": target_enabled,
+                        "open_ended": (
+                            target_enabled and rf_state.cfg.continuous_open_ended
+                        ),
                         "domain": getattr(division, "domain", ""),
                         "kind": getattr(division, "kind", ""),
                         "learned_vertical_status": getattr(

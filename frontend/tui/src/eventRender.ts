@@ -6,6 +6,7 @@ import {
   mergeFragment,
   visibleAgentText,
 } from '../../core/src/events.js';
+import { formatMissionRouting } from '../../core/src/missionView.js';
 import { missionOutcomePresentation } from '../../core/src/missionOutcome.js';
 
 export { isReasoning, mergeFragment };
@@ -142,7 +143,17 @@ export function renderEvent(ev: EventMsg): Rendered | null {
   }
 
   if (t === 'life.manager.intent.started') return { role: 'manager', label: 'Manager', glyph: '🧭', text: '判断任务归属…', tone: 'info' };
-  if (t === 'life.manager.intent.completed') return { role: 'manager', label: 'Manager', glyph: '🧭', text: `→ ${S(ev, 'vertical') || S(ev, 'kind') || 'resolved'}`, tone: 'info' };
+  if (t === 'life.manager.intent.completed') {
+    const routing = formatMissionRouting({
+      route: S(ev, 'route') || 'team',
+      vertical: S(ev, 'vertical'),
+      workflow_mode: S(ev, 'workflow_mode'),
+      lifetime: S(ev, 'lifetime'),
+      continuous: (ev as Record<string, unknown>).continuous === true,
+      open_ended: (ev as Record<string, unknown>).open_ended === true,
+    });
+    return { role: 'manager', label: 'Manager', glyph: '🧭', text: `→ ${routing || S(ev, 'kind') || 'resolved'}`, tone: 'info' };
+  }
   if (t === 'life.manager.intent.failed') return { role: 'manager', label: 'Manager', glyph: '⚠', text: `分流失败 ${trunc(S(ev, 'error'), 160)}`, tone: 'err' };
   if (t === 'life.manager.stage_decision') {
     const target = S(ev, 'target_stage') || S(ev, 'stage') || S(ev, 'current_stage');

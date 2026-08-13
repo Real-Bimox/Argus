@@ -1,6 +1,7 @@
 import type { EventMsg } from '../api';
 import { theme } from './theme';
 import { missionOutcomePresentation } from '../../../core/src';
+import { formatMissionRouting } from '../../../core/src/missionView';
 import {
   eventKey as sharedEventKey,
   isReasoning,
@@ -130,8 +131,17 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
   // ── Manager triage
   if (t === 'life.manager.intent.started')
     return { role: 'manager', label: 'Manager', glyph: '🧭', text: l('classifying request…', '判断任务归属…'), tone: 'info' };
-  if (t === 'life.manager.intent.completed')
-    return { role: 'manager', label: 'Manager', glyph: '🧭', text: `→ ${S(ev, 'vertical') || S(ev, 'kind') || l('resolved', '已确定')}`, tone: 'info' };
+  if (t === 'life.manager.intent.completed') {
+    const routing = formatMissionRouting({
+      route: S(ev, 'route') || 'team',
+      vertical: S(ev, 'vertical'),
+      workflow_mode: S(ev, 'workflow_mode'),
+      lifetime: S(ev, 'lifetime'),
+      continuous: (ev as Record<string, unknown>).continuous === true,
+      open_ended: (ev as Record<string, unknown>).open_ended === true,
+    });
+    return { role: 'manager', label: 'Manager', glyph: '🧭', text: `→ ${routing || S(ev, 'kind') || l('resolved', '已确定')}`, tone: 'info' };
+  }
   if (t === 'life.manager.intent.failed')
     return { role: 'manager', label: 'Manager', glyph: '⚠', text: `${l('routing failed', '分流失败')} ${trunc(S(ev, 'error'), 140)}`, tone: 'err' };
   if (t === 'life.manager.stage_decision') {

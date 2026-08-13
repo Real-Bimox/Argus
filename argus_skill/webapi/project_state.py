@@ -614,12 +614,13 @@ def build_snapshot(
         continuous_state = read_continuous_state(life_dir)
         continuous_payload = {
             "enabled": continuous_state.enabled,
+            "open_ended": continuous_state.open_ended,
             "objective": continuous_state.objective,
             "done_reason": continuous_state.done_reason,
             "done_at": continuous_state.done_at,
         }
     except Exception as exc:  # noqa: BLE001
-        continuous_payload = {"enabled": False, "objective": ""}
+        continuous_payload = {"enabled": False, "open_ended": False, "objective": ""}
         diagnostics.append(diagnostic("continuous", exc))
 
     try:

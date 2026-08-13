@@ -62,10 +62,22 @@ def test_manager_grounding_lifecycle_is_visible(tmp_path: Path) -> None:
         execution_task="Repair parser behavior\n\nManager grounding",
         vertical="software",
         workflow_mode="staged",
+        route="team",
+        lifetime="bounded",
+        continuous=True,
+        open_ended=False,
         reason="grounded",
     )
     roles = {role["role"]: role for role in view["roles"]}
     assert view["mission"]["status"] == "framed"
+    assert view["routing"] == {
+        "route": "team",
+        "vertical": "software",
+        "workflow_mode": "staged",
+        "lifetime": "bounded",
+        "continuous": True,
+        "open_ended": False,
+    }
     assert roles["manager"]["status"] == "done"
 
 
@@ -142,10 +154,34 @@ def test_v3_snapshot_rebuilds_to_include_completion_summary(tmp_path: Path) -> N
         backlog=[],
     )
 
-    assert view["schema_version"] == 4
+    assert view["schema_version"] == 5
     assert view["mission"]["summary"] == (
         "Created RESULT.txt and verified its exact contents."
     )
+
+
+def test_v4_snapshot_migrates_without_discarding_projected_state(tmp_path: Path) -> None:
+    (tmp_path / "mission-view.json").write_text(
+        json.dumps({
+            "schema_version": 4,
+            "bootstrapped": True,
+            "mission": {"id": "kept", "title": "Keep this mission", "status": "working"},
+            "stage": {"id": "delivery", "label": "Delivery"},
+        }),
+        encoding="utf-8",
+    )
+
+    view = snapshot_mission_view(
+        tmp_path,
+        session={},
+        daemon={},
+        roles=[],
+        backlog=[],
+    )
+
+    assert view["schema_version"] == 5
+    assert view["mission"]["id"] == "kept"
+    assert view["routing"]["route"] == ""
 
 
 def test_venue_and_idea_research_are_visible_as_engineer_work(tmp_path: Path) -> None:

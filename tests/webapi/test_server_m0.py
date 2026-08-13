@@ -614,7 +614,7 @@ def test_build_snapshot_shape_and_failsoft(
     assert snap["cost_control"]["unresolved_calls"] == 0
     assert snap["daemon_commands"]["revision"] == 0
     assert snap["observability"]["slo"]["status"] == "healthy"
-    assert snap["mission_view"]["schema_version"] == 4
+    assert snap["mission_view"]["schema_version"] == 5
     assert len(snap["roles"]) == 4  # manager/planner/engineer/reviewer
     assert {r["role"] for r in snap["roles"]} == {"manager", "planner", "engineer", "reviewer"}
     assert len(snap["recent_events"]) == 2
@@ -966,6 +966,7 @@ def test_get_compact_snapshot_omits_heavy_objective_and_adds_ui_state(client: Te
     assert body["backlog"][0]["objective"] == ""
     assert body["continuous"] == {
         "enabled": False,
+        "open_ended": True,
         "objective": "",
         "done_reason": "",
         "done_at": "",

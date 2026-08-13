@@ -47,6 +47,17 @@ def merge_mission_view_snapshot(
     current_stage: str = "",
 ) -> dict[str, Any]:
     mission = view.setdefault("mission", {})
+    if continuous and continuous.get("enabled"):
+        routing = view.setdefault("routing", {})
+        if not routing.get("route"):
+            routing["route"] = "team"
+        routing["continuous"] = True
+        routing["open_ended"] = continuous.get("open_ended") is True
+        routing["lifetime"] = (
+            "standing"
+            if routing["open_ended"]
+            else str(routing.get("lifetime") or "bounded")
+        )
     active = next((item for item in backlog if str(item.get("status")) in {"running", "in_progress", "claimed"}), None)
     queued = next((item for item in backlog if str(item.get("status")) == "pending"), None)
     owner_id = str(mission.get("id") or "")

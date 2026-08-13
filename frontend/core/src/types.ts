@@ -93,6 +93,7 @@ export interface MissionOutcomeDimensions {
 
 export interface ContinuousState {
   enabled: boolean;
+  open_ended?: boolean;
   objective: string;
   done_reason?: string;
   done_at?: string;
@@ -288,7 +289,7 @@ export interface MissionStorageView {
 }
 
 export interface MissionView {
-  schema_version: 4;
+  schema_version: 5;
   bootstrapped?: boolean;
   mission: {
     id: string;
@@ -303,6 +304,14 @@ export interface MissionView {
     campaign_elapsed_seconds: number;
   };
   stage: { id: string; label: string };
+  routing: {
+    route: string;
+    vertical: string;
+    workflow_mode: string;
+    lifetime: string;
+    continuous: boolean;
+    open_ended: boolean;
+  };
   round: { current: number; max: number };
   active_role: string;
   roles: MissionRoleView[];

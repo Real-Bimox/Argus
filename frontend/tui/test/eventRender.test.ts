@@ -147,3 +147,17 @@ test('commands and tools show their real details instead of generic summaries', 
   assert.equal(tool?.text, 'read: {"path":"src/harness.ts","offset":1,"limit":2000}');
   assert.equal(tool?.expand, true);
 });
+
+test('manager routing shows topology, vertical, workflow, and lifetime', () => {
+  const routed = renderEvent({
+    type: 'life.manager.intent.completed',
+    route: 'team',
+    vertical: 'software',
+    workflow_mode: 'staged',
+    lifetime: 'standing',
+    continuous: true,
+    open_ended: true,
+  } as EventMsg);
+
+  assert.equal(routed?.text, '→ TEAM · software · STAGED · STANDING · OPEN-ENDED');
+});

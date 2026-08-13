@@ -332,6 +332,11 @@ export interface LifeManagerIntentCompletedEvent extends EventMsg {
   "vertical": string;
   "kind": string;
   "stages": Array<string>;
+  "route"?: string;
+  "workflow_mode"?: string;
+  "lifetime"?: string;
+  "continuous"?: boolean;
+  "open_ended"?: boolean;
   "reason"?: string;
 }
 

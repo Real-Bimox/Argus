@@ -167,6 +167,14 @@ test('mission cockpit keeps mission, team, and timeline readable at 60 columns',
   const view = emptyMissionView();
   view.mission.objective = 'Optimize FlashAttention on B200 beyond 65% SOL';
   view.mission.summary = 'Improved the kernel and verified the measured result.';
+  view.routing = {
+    route: 'team',
+    vertical: 'kernel_engineering',
+    workflow_mode: 'staged',
+    lifetime: 'bounded',
+    continuous: true,
+    open_ended: false,
+  };
   view.mission.elapsed_seconds = 8040;
   view.stage = { id: 'optimize', label: 'Optimize' };
   view.round = { current: 7, max: 24 };
@@ -182,6 +190,8 @@ test('mission cockpit keeps mission, team, and timeline readable at 60 columns',
   assert.match(output, /LIVE RESEARCH TIMELINE/);
   assert.match(output, /Comparing 3 branches/);
   assert.match(output, /MISSION SUMMARY/);
+  assert.match(output, /MODE TEAM · kernel_engineering · STAGED · BOUNDED · FINITE/);
+  assert.match(output, /CONTINUOUS/);
   assert.match(output, /Improved the kernel/);
   assert.match(output, /● Comparing 3 branches/);
   assert.doesNotMatch(output, /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
