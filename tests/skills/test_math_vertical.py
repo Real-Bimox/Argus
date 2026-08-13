@@ -110,18 +110,26 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
         if path.is_file() and "__pycache__" not in path.parts
     }
 
-    # Math stays light on machinery compared with kernel_engineering. The four
+    # Math stays light on machinery compared with kernel_engineering. The five
     # modules below are the exception, and the reason is narrow: without a way
     # to measure the distance to the goal, "how hard was this step" silently
     # replaces "how much closer did this get us". `lean_evidence` is the same
     # kind of exception for formal proof — it reads what a compiler recorded so
     # a `sorry`, a stale pass, or a formalization of the wrong statement cannot
-    # be presented as evidence. They measure; they do not add stages, roles, or
-    # required paperwork, and a project with no `.lean` file never sees them.
+    # be presented as evidence. `math_state` is the write path into the
+    # research-math kernel, and it lives here rather than inside that package
+    # for two reasons: it holds the repository's file lock, which the kernel may
+    # not import without losing the property that lets it travel, and the rule
+    # it enforces — that no agent-typed argument selects an evidence tier which
+    # confers kernel status — is policy about this host's agents, which the
+    # kernel is deliberately free of. They measure; they do not add stages,
+    # roles, or required paperwork, and a project with no `.lean` file and no
+    # recorded claim never sees them.
     assert files == {
         "__init__.py",
         "stages.py",
         "lean_evidence.py",
+        "math_state.py",
         "objective_mode.py",
         "proof_graph.py",
         "proof_graph_check.py",
