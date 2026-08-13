@@ -410,6 +410,20 @@ vertical 用自己的词汇去实例化**（不是 core 规定的枚举）。
    加文件时必须同步改这个断言，并在 commit 里说明理由。
 9. **`_with_protected_floor` 会与 vertical 自己的种子求交**（`skills/checklist_store.py:206-265`）。
    所以换 gate 不会让 math 长出幽灵 paper 条目——反过来说，也别指望共享底线会自动帮你加严。
+10. **改动 `argus_skill/` 下任何 shipped source 都会让 release manifest 陈旧。**
+   `compute_source_digest` 覆盖全树，所以**新增一个文件**和**改一行**是等价的，
+   都会让 `tests/core/test_release.py::test_release_manifest_matches_current_shipped_source`
+   与 `tests/deployment/test_multi_process_contract.py::test_real_webapi_process_...` 变红。
+   这两条**不是**环境性既存失败——干净 main 上 `tests/core/test_release.py` 是 8 passed。
+   刷新只能跑完整的 `python -m argus_skill.release_tools.build_release`：
+   `generate_manifest.py` 会显式拒绝「只重算 manifest 不重建前端」
+   （隐藏 flag `--prepare-build` 单独跑只会写下一个与实际 bundle 不匹配的 digest，
+   反而把护栏骗过去）。本机可行，需先 `npm ci --prefix frontend/web` 和 `frontend/tui`
+   （`node_modules` 未入库）；在干净 main 上跑一次 `build_release` 是 exit 0 且零 diff，
+   确定性成立。**长命分支上不要每个 PR 各刷一次**——digest 覆盖全树，
+   多分支各自刷新必然互相冲突，应在合回 main 前统一跑一次。
+   仓库惯例可核实：近 15 个改 `argus_skill/*.py` 的 commit 里 13 个同时刷新了 manifest，
+   两个例外都被后续 commit「治愈」。
 
 ---
 

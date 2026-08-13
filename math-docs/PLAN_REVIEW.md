@@ -259,7 +259,9 @@ goal 文档自己的研究问题是「显式 obligations + evidence-triggered ve
 
 - **obligation discovery rate** —— 是否主动发现真实证明缺口（对照人工标注 gap 清单）
 - **false-certification rate** —— 是否认证了后来被 Lean 或反例推翻的 claim
-- **conditional_kernel → closed_kernel 转化率** —— 外部假设是否真被消解
+- **external assumption 记录率** —— 有多少外部依赖被显式登记为带真实出处的 `ExternalAssumption`
+
+  > **订正（PR1 实现期）**：此处原写的是「conditional_kernel → closed_kernel 转化率」，该指标出生即死，应弃用。因为 discharge 只接受 mechanical 证据（放宽会重演 §6.1 警告的假共识），关闭一个内核需要形式化**每一条**被引定理，这个比率在真实研究项目上会常年读 0——消融两臂都是 0，不具区分度。记录率则由 `open_assumptions()` 直接可答，且正是「背答案」的 run 伪造不了的量：它的特征签名恰恰是零 obligation、零 conditional_kernel、直接给出最终 statement。
 - **recovery latency** —— 从 Lean failure 到 replan 到新路线的轮数
 - **citation attribution accuracy** —— 见 6.1
 
