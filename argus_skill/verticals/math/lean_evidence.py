@@ -547,6 +547,60 @@ _VERIFY_HINT = (
     "<source> --statement-fidelity <doc>`"
 )
 
+def _fallback_workspace() -> Path:
+    """Where the search lands when nothing nearer applies.
+
+    Imported from ``lean_check`` rather than restated: a remedy naming a path
+    the search does not actually use is worse than no remedy. A function, not a
+    constant, because ``Path.home()`` read at import time freezes an answer the
+    search itself re-reads on every call.
+    """
+    from ...tools.lean_check import (  # noqa: PLC0415 — optional, heavy import
+        default_mathlib_workspace,
+    )
+
+    return default_mathlib_workspace()
+
+
+def resolved_mathlib_workspace(source: Path | str | None = None) -> Path | None:
+    """The Lake workspace this host would compile ``source`` in, if any."""
+    from ...tools.lean_check import (  # noqa: PLC0415 — optional, heavy import
+        _resolve_lake_workspace,
+    )
+
+    probe = Path(str(source)) if source is not None else Path.cwd() / "Main.lean"
+    return _resolve_lake_workspace(probe)
+
+
+def _library_remedy(source: Path) -> str:
+    """Say where the library was looked for, not merely that it is absent.
+
+    "Provide the library" was the whole of this sentence for as long as the
+    message existed, and it is advice only to someone who already knows the
+    three places the search looks. The reader who most needs it is the one who
+    installed Mathlib somewhere else and cannot see why it is invisible — for
+    them the old wording pointed at the wrong problem entirely.
+
+    The path is resolved at read time rather than quoted from the recorded run,
+    because a result produced on a build box is often read somewhere else, and
+    the question being answered is "what would fix this here".
+    """
+    workspace = resolved_mathlib_workspace(source)
+    if workspace is not None:
+        # The library is installed and reachable, so this run was told not to
+        # use it. Naming the flag is the whole remedy.
+        return (
+            f"a Lake workspace does exist at {workspace}, so this run was told "
+            "not to use it — drop `--no-lake` and re-run, or remove the source"
+        )
+    return (
+        f"no Lake workspace applies to this source: install Mathlib at "
+        f"{_fallback_workspace()}, or point "
+        "ARGUS_SKILL_MATHLIB_WORKSPACE at an existing one, or put a "
+        "lakefile.toml above the source. Then re-run verify, or remove the "
+        "source"
+    )
+
 
 def _validate_source(source: Path, project_root: Path) -> LeanSourceEvidence:
     from ...tools.lean_check import find_proof_holes
@@ -734,7 +788,7 @@ def _result_issues(
                 "the search path, so compilation stopped before reaching the "
                 "mathematics. This is an environment gap, not a mathematical "
                 "defect — but an unverified formalization is not evidence. "
-                "Provide the library, or remove the source",
+                + _library_remedy(source),
             )
         ]
     if environment_failure == "audit_unavailable":
@@ -990,7 +1044,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "audit":
         from ...tools.lean_check import audit_lean_tools
 
-        print(json.dumps(audit_lean_tools(), ensure_ascii=False, indent=2))
+        # `audit_lean_tools` reports executables; the question an Engineer
+        # actually arrives with is "will `import Mathlib` resolve", and three
+        # working binaries do not answer it. Reported alongside rather than
+        # folded in, so the shared primitive keeps its shape.
+        workspace = resolved_mathlib_workspace()
+        payload: dict[str, Any] = dict(audit_lean_tools())
+        payload["mathlib_workspace"] = {
+            "resolved": str(workspace) if workspace else "",
+            "searched": [
+                "a lakefile.toml/lakefile.lean above the source",
+                "$ARGUS_SKILL_MATHLIB_WORKSPACE",
+                str(_fallback_workspace()),
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
 
     if args.command == "verify":

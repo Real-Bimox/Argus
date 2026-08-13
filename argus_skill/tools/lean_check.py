@@ -442,6 +442,17 @@ def _resolve_executable(name: str, override: str | None = None) -> str | None:
     return None
 
 
+def default_mathlib_workspace() -> Path:
+    """Where the workspace search lands when nothing nearer applies.
+
+    A function rather than a module constant because ``Path.home()`` read at
+    import time freezes an answer that the search itself re-reads on every
+    call; anything quoting this to a user would then be able to name a
+    directory the code does not look in.
+    """
+    return Path.home() / ".local" / "share" / "argus-skill" / "mathlib"
+
+
 def _resolve_lake_workspace(source: Path) -> Path | None:
     for directory in (source.parent, *source.parent.parents):
         if _is_lake_workspace(directory):
@@ -451,9 +462,7 @@ def _resolve_lake_workspace(source: Path) -> Path | None:
     candidates = []
     if configured:
         candidates.append(Path(configured).expanduser())
-    candidates.append(
-        Path.home() / ".local" / "share" / "argus-skill" / "mathlib"
-    )
+    candidates.append(default_mathlib_workspace())
     for candidate in candidates:
         resolved = candidate.resolve()
         if _is_lake_workspace(resolved):

@@ -157,6 +157,17 @@ def _codes(root: Path) -> set[str]:
     return {issue.code for issue in validate_lean_evidence(root).issues}
 
 
+def _message(root: Path, code: str) -> str:
+    """The rendered text of one blocking issue — what a reader actually acts on."""
+    matches = [
+        issue.message
+        for issue in validate_lean_evidence(root).issues
+        if issue.code == code
+    ]
+    assert matches, f"{code} not raised; got {_codes(root)}"
+    return matches[0]
+
+
 def _sound(root: Path) -> Path:
     """A project carrying one Lean proof that genuinely passes every check."""
     source = _write_source(root)
@@ -940,7 +951,12 @@ def test_check_fails_and_names_the_defect(tmp_path: Path, capsys) -> None:
 
 def test_audit_prints_the_hosts_toolchain(capsys) -> None:
     assert main(["audit"]) == 0
-    assert set(json.loads(capsys.readouterr().out)) == {"lean", "lake", "elan"}
+    assert set(json.loads(capsys.readouterr().out)) == {
+        "lean",
+        "lake",
+        "elan",
+        "mathlib_workspace",
+    }
 
 
 def test_verify_refuses_to_let_fidelity_be_the_source_itself(
@@ -1193,3 +1209,85 @@ def test_verify_cli_defaults_to_lake_and_takes_no_lake_back(
     forced = json.loads(capsys.readouterr().out)
     assert forced["tool"] == "lean"
     assert forced["lake_workspace"] == ""
+
+
+def test_a_missing_library_message_says_where_it_was_looked_for(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """"Provide the library" is advice only to someone who knows the three places."""
+    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    root = _project(tmp_path)
+    _write_source(root, MATHLIB_THEOREM)
+    _write_fidelity(
+        root,
+        "# Statement fidelity\n\n`argus_dvd_add` formalizes: a divides b and a "
+        "divides c implies a divides b + c over the integers. No added "
+        "assumptions.\n",
+    )
+    _write_result(
+        root,
+        status="type_error",
+        exit_code=1,
+        stderr="error: unknown module prefix 'Mathlib'\n",
+        audit_exit_code=None,
+    )
+
+    message = _message(root, "lean_unverified_missing_dependency")
+
+    assert str(tmp_path / "no-home" / ".local" / "share" / "argus-skill" / "mathlib") in message
+    assert "ARGUS_SKILL_MATHLIB_WORKSPACE" in message
+    assert "lakefile.toml" in message
+
+
+def test_a_present_but_unused_library_is_named_as_the_flags_doing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The same failure with Mathlib installed is a different problem entirely."""
+    home = tmp_path / "home"
+    workspace = _mathlib_workspace(home)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    root = _project(tmp_path)
+    _write_source(root, MATHLIB_THEOREM)
+    _write_fidelity(
+        root,
+        "# Statement fidelity\n\n`argus_dvd_add` formalizes: a divides b and a "
+        "divides c implies a divides b + c over the integers. No added "
+        "assumptions.\n",
+    )
+    _write_result(
+        root,
+        status="type_error",
+        exit_code=1,
+        stderr="error: unknown module prefix 'Mathlib'\n",
+        audit_exit_code=None,
+    )
+
+    message = _message(root, "lean_unverified_missing_dependency")
+
+    assert str(workspace) in message
+    assert "--no-lake" in message
+    # Telling this reader to install Mathlib is what the old wording did.
+    assert "install Mathlib" not in message
+
+
+def test_audit_answers_whether_import_mathlib_would_resolve(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    home = tmp_path / "home"
+    workspace = _mathlib_workspace(home)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["audit"]) == 0
+    reported = json.loads(capsys.readouterr().out)["mathlib_workspace"]
+
+    assert reported["resolved"] == str(workspace)
+    # An empty answer has to come with where it looked, or it is unactionable.
+    assert any("ARGUS_SKILL_MATHLIB_WORKSPACE" in place for place in reported["searched"])
