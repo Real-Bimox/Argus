@@ -135,16 +135,28 @@ From the Argus checkout, run:
 
 ```bash
 .venv/bin/argus --setup --non-interactive \
-  --backend <copilot|codex|claude|pi|opencode|grok> \
-  --accept-house-rules
+  --backend <copilot|codex|claude|pi|opencode|grok>
 ```
 
 Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\argus.exe --setup --non-interactive `
-  --backend <copilot|codex|claude|pi|opencode> `
-  --accept-house-rules
+  --backend <copilot|codex|claude|pi|opencode>
+```
+
+For an OpenAI-compatible endpoint, no backend flag is needed. Setup installs Pi
+when it is missing:
+
+```bash
+ARGUS_SETUP_API_KEY=... .venv/bin/argus --setup --non-interactive \
+  --api-url https://api.example.com/v1 --api-model model-id
+```
+
+```powershell
+$env:ARGUS_SETUP_API_KEY = "..."
+.\.venv\Scripts\argus.exe --setup --non-interactive `
+  --api-url https://api.example.com/v1 --api-model model-id
 ```
 
 Use the backend selected in steps 1-2. Do not silently switch to another

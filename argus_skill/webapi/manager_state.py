@@ -80,6 +80,8 @@ def manager_context_lock(sid: str) -> Iterator[None]:
 
 def _release_manager_state(sid: str) -> None:
     state = _STATES.pop(sid, None)
+    with _REGISTRY_LOCK:
+        _CONTROL_GENERATIONS.pop(sid, None)
     runner = state.get("manager_runner") if state else None
     if runner is not None:
         try:
@@ -331,6 +333,7 @@ def shutdown_manager_bridge() -> None:
         states = list(_STATES.values())
         _STATES.clear()
         _LOCKS.clear()
+        _CONTROL_GENERATIONS.clear()
     for state in states:
         runner = state.get("manager_runner")
         if runner is not None and hasattr(runner, "reset_chat_session"):

@@ -31,6 +31,36 @@ _SELF_RETRYABLE_ACP_ERRORS = (
 )
 _SELF_LEARNING_REVIEW_INTERVAL = 5
 
+
+def _self_skill_snapshot(root: Path) -> dict[str, bytes]:
+    """Capture exact SELF Skill contents without exposing them in events."""
+    snapshot: dict[str, bytes] = {}
+    try:
+        paths = sorted(root.rglob("*.md"))
+    except OSError:
+        return snapshot
+    for path in paths:
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
+        except (OSError, ValueError):
+            continue
+    return snapshot
+
+
+def _self_skill_changes(
+    before: dict[str, bytes],
+    after: dict[str, bytes],
+) -> tuple[list[str], list[str], list[str]]:
+    created = sorted(after.keys() - before.keys())
+    removed = sorted(before.keys() - after.keys())
+    updated = sorted(
+        path for path in before.keys() & after.keys() if before[path] != after[path]
+    )
+    return created, updated, removed
+
+
 def _last_self_learning_review_count(session_root: Path | str) -> int:
     path = Path(session_root) / "events.jsonl"
     try:
@@ -913,6 +943,7 @@ class SelfReplyMixin:
             from ..life.event_log import JsonlEventSink
 
             event_sink = JsonlEventSink(None, life_dir=Path(session_root))
+            before = _self_skill_snapshot(skill_dir)
             event_sink.append({
                 "type": "self.learning.review.started",
                 "agent_layer": "self",
@@ -942,6 +973,10 @@ class SelfReplyMixin:
                     "error": f"{type(exc).__name__}: {exc}",
                 })
                 return
+            created, updated, removed = _self_skill_changes(
+                before,
+                _self_skill_snapshot(skill_dir),
+            )
             failed = int(getattr(result, "exit_code", 0) or 0) != 0 or bool(
                 getattr(result, "fatal_error", None)
             )
@@ -954,6 +989,12 @@ class SelfReplyMixin:
                 "agent_layer": "self",
                 "operator_turn_count": operator_turns,
                 "error": str(getattr(result, "fatal_error", "") or ""),
+                "learning_applied": bool(
+                    not failed and (created or updated or removed)
+                ),
+                "created": created,
+                "updated": updated,
+                "removed": removed,
             })
 
         thread = threading.Thread(

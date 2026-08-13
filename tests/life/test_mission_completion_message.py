@@ -41,7 +41,7 @@ def test_continuous_mission_completion_publishes_once(tmp_path) -> None:
 
     transcript = [
         json.loads(line)
-        for line in (tmp_path / "transcript.jsonl").read_text().splitlines()
+        for line in (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert len(transcript) == 1
     assert transcript[0]["role"] == "argus"
@@ -53,7 +53,7 @@ def test_continuous_mission_completion_publishes_once(tmp_path) -> None:
     assert "Planner is selecting the next task" in transcript[0]["text"]
     ui_events = [
         event
-        for line in (tmp_path / "events.jsonl").read_text().splitlines()
+        for line in (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
         if (event := json.loads(line)).get("type") == "ui.argus"
     ]
     assert len(ui_events) == 1
@@ -84,7 +84,7 @@ def test_bounded_completion_says_the_task_is_finished(tmp_path) -> None:
     })
 
     text = json.loads(
-        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+        (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert text == "Task completed · One bounded fix\nThis task is finished."
 
@@ -110,7 +110,7 @@ def test_completion_summary_uses_the_operator_language(tmp_path) -> None:
     })
 
     text = json.loads(
-        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+        (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert "本次完成: 修复了解析器并通过回归测试。" in text
     assert "Mission summary" not in text
@@ -138,7 +138,7 @@ def test_bounded_increment_does_not_claim_project_or_stage_completion(tmp_path) 
     })
 
     text = json.loads(
-        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+        (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert text == (
         "Task completed · Write the paper draft · review=done\n"
@@ -167,7 +167,7 @@ def test_failed_mission_explains_reason_and_next_action(tmp_path) -> None:
     })
 
     text = json.loads(
-        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+        (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert text.startswith("Cannot continue yet: Run the external validator.")
     assert "Reason: Continuing requires an access credential from you." in text
@@ -197,7 +197,7 @@ def test_technical_blocker_does_not_pretend_a_human_decision_is_needed(tmp_path)
     })
 
     text = json.loads(
-        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+        (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert "does not prove the idea is wrong" in text
     assert "Next: Run the isolated one-row diagnostic." in text
@@ -230,7 +230,7 @@ def test_operator_blocker_surfaces_the_exact_question_without_templates(tmp_path
     })
 
     text = json.loads(
-        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+        (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert text == (
         "Verify macOS computer use\n"
@@ -265,7 +265,7 @@ def test_final_submission_completion_is_explicitly_certified(tmp_path) -> None:
     })
 
     text = json.loads(
-        (tmp_path / "transcript.jsonl").read_text().splitlines()[-1]
+        (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert text == (
         "Submission certified · Prepare final ICLR submission · review=done\n"

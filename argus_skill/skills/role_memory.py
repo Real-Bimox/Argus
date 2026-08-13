@@ -56,7 +56,10 @@ def role_skill_edit_rules(role: str, skill_dir: Path | str) -> str:
         "Inspect existing Markdown first. Each Skill has exactly `name` and "
         "`description` frontmatter followed by Markdown. Use an explicit semantic "
         "path, update a related Skill instead of duplicating it, and never write "
-        "shared/global layers."
+        "shared/global layers. Keep only reusable procedures and checklists here; "
+        "when a shared project Wiki is listed in the prompt, route durable project "
+        "facts, contracts, support limits, environment constraints, and scoped "
+        "measurements to that Wiki instead."
     )
 
 

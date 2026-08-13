@@ -116,6 +116,33 @@ def test_planner_prompt_requires_read_only_delegation_and_plain_key_values() -> 
     assert "official implementations" in _PLANNER_CORE_CONTRACT
 
 
+def test_finite_planner_accepts_explicit_no_go_while_standing_keeps_exploring(
+    tmp_path,
+) -> None:
+    finite = Planner._build_planner_prompt(
+        continuous_objective=(
+            "Promote the route if it wins; otherwise reject it with decisive evidence."
+        ),
+        journal_tail="The route was measured and rejected.",
+        planning_cycle=2,
+        project_root=tmp_path,
+        state_root=tmp_path,
+        open_ended=False,
+    )
+    standing = Planner._build_planner_prompt(
+        continuous_objective="Keep exploring new optimization mechanisms.",
+        journal_tail="The current route was measured and rejected.",
+        planning_cycle=2,
+        project_root=tmp_path,
+        state_root=tmp_path,
+        open_ended=True,
+    )
+
+    assert "same holds for an accepted" in finite.lower()
+    assert "This campaign remains active until the operator stops it" not in finite
+    assert "This campaign remains active until the operator stops it" in standing
+
+
 def test_parse_task_scope_accepts_final_certification_annotation() -> None:
     assert parse_task_scope("bounded — one coherent mission") == "bounded"
     assert parse_task_scope("final_submission (certification)") == "final_submission"

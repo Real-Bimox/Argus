@@ -505,6 +505,31 @@ class LifeWorkerRunMixin:
 
         maintenance = getattr(self, "_self_maintenance", None)
         if maintenance is not None:
+            publish_canary = getattr(maintenance, "publish_after_canary", None)
+            if callable(publish_canary):
+                canary_result = publish_canary(
+                    summary={
+                        "stopped_by": "",
+                        "planning_cycles": 0,
+                        "results": [outcome],
+                    }
+                )
+                if canary_result.startswith("rollback:"):
+                    rollback_root = Path(canary_result.removeprefix("rollback:"))
+                    if rollback_root.is_dir() and _spawn_handoff_candidate(
+                        self.config,
+                        reason=(
+                            "self-maintenance canary failed after a mission; "
+                            "restore prior runtime"
+                        ),
+                        candidate_source_root=rollback_root,
+                    ):
+                        self._stop.set()
+                        return "daemon_handoff"
+                    maintenance.mark_handoff_failed(
+                        "mission-level canary rollback did not reach standby"
+                    )
+                    return ""
             candidate_root = maintenance.prepare_reviewed_change(outcome)
             if candidate_root is not None:
                 from ..core.runtime_identity import source_root

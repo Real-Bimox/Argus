@@ -33,6 +33,7 @@ import tempfile
 import threading
 import time
 import uuid
+import weakref
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
@@ -43,7 +44,9 @@ import portalocker
 
 from ..core.event_catalog import EventType, canonical_event_type
 
-_BACKLOG_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_BACKLOG_THREAD_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
+    weakref.WeakValueDictionary()
+)
 _BACKLOG_THREAD_LOCKS_GUARD = threading.Lock()
 
 # ---------------------------------------------------------------------------
@@ -446,6 +449,7 @@ class EventJournal:
         r'"(?:type|canonical_type)"\s*:\s*"(?:user\.note|'
         r'mission\.(?:started|completed)|life\.(?:mission|planner|budget|lifecycle)\.[^"]+)"'
     )
+    _TOTAL_COST_CACHE_MAX_ENTRIES = 32
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -613,7 +617,10 @@ class EventJournal:
                             total += cost
             except OSError:
                 continue
+        self._total_cost_cache.pop(ts, None)
         self._total_cost_cache[ts] = (signature, total)
+        while len(self._total_cost_cache) > self._TOTAL_COST_CACHE_MAX_ENTRIES:
+            del self._total_cost_cache[next(iter(self._total_cost_cache))]
         return total
 
 
