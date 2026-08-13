@@ -176,14 +176,38 @@ class VerticalContract:
         role banner. It is what lets a vertical answer "what does this
         particular task need to know".
 
-        Forwarded by keyword, not positionally. A provider written before this
-        argument existed then fails with ``TypeError: ... unexpected keyword
-        argument 'mission'``, which names the problem; positional forwarding
-        would instead slide the item into whatever slot happened to be fourth,
-        and the earlier arguments are all plausible-looking paths and strings.
-        Nothing here inspects the provider's signature to find out what it
-        accepts: degrading silently to the old shape would leave a vertical
-        permanently, invisibly stage-blind.
+        Forwarded by keyword, not positionally, which makes the parameter
+        *names* part of the contract. The alternative -- appending ``mission``
+        positionally, so a three-argument provider fails on arity instead --
+        was considered and rejected: positional forwarding lets a provider that
+        merely *reorders* its parameters take ``stage`` where it meant
+        ``project_root``, silently, both being plausible strings, and that is a
+        wrong answer rather than a failure. Keyword forwarding closes it.
+
+        Be clear about what the price of that is, because it is steeper than
+        "an error message". This hook is called unguarded from
+        ``life/supervisor/_mission_execution_runtime.py``; a ``TypeError``
+        here propagates through ``_run_one`` and ``tick`` to ``run``, which
+        fails the item, emits ``life.supervisor.error``, sets ``stopped_by =
+        "supervisor_error"`` and **breaks the run loop**. So a stale
+        out-of-tree provider does not degrade a project, it halts it, on every
+        restart, from the first mission. That is still the better trade than
+        the alternatives -- the failure is immediate, deterministic, and its
+        message names the argument to add, whereas a vertical quietly demoted
+        to stage-blind emits nothing at all and stays wrong for the life of the
+        project -- but a reader weighing a change here should weigh the real
+        cost, not a rhetorical one.
+
+        This is deliberately *not* softened by inspecting the provider's
+        signature and only passing ``mission`` when it is accepted. That would
+        keep stale providers running at the price of making them permanently
+        and invisibly stage-blind, which is the failure mode with no error
+        message and no end.
+
+        One inconsistency to know about, pre-existing and left alone: a
+        provider that returns a non-``str`` is dropped silently by the last
+        line here, while one that raises takes the run down. Two malformed
+        providers, two opposite blast radii.
         """
         if self.mission_prelude is None:
             return ""

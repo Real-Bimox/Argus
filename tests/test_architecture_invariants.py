@@ -569,6 +569,41 @@ def test_every_prelude_call_site_passes_the_roots_and_the_mission_by_keyword() -
     ), call_sites
 
 
+def test_every_in_tree_prelude_provider_declares_the_four_names_keyword_only() -> None:
+    """The other half of the same invariant: definitions, not just call sites.
+
+    Forwarding by keyword makes the provider's parameter *names* contractual.
+    The call-site sweep above cannot see that -- it pins what the framework
+    sends, and every one of those calls stays valid while a vertical quietly
+    renames ``project_root`` to ``root``. Nothing else pins it either: a
+    provider is duck-typed, so a rename type-checks, imports, loads, passes
+    contract validation, and fails for the first time at mission setup, on the
+    path that ends the run (see ``VerticalContract.prepare_mission``).
+
+    So the names are asserted where they are written. Keyword-only as well as
+    correctly named, because a positional-or-keyword parameter accepts the call
+    today and lets the next reader reorder the signature harmlessly-looking
+    tomorrow.
+    """
+    providers: list[tuple[str, list[str], list[str]]] = []
+    for path in sorted((ARGUS / "verticals").rglob("*.py")):
+        for node in ast.parse(path.read_text(encoding="utf-8")).body:
+            if not isinstance(node, ast.FunctionDef) or node.name != "prepare_mission":
+                continue
+            providers.append((
+                f"{path.relative_to(ARGUS).as_posix()}:{node.lineno}",
+                [arg.arg for arg in node.args.kwonlyargs],
+                [arg.arg for arg in (*node.args.posonlyargs, *node.args.args)],
+            ))
+
+    assert providers, "no vertical implements the hook; it is dead, not protected"
+    assert all(not positional for _, _, positional in providers), providers
+    assert all(
+        sorted(kwonly) == ["mission", "project_root", "stage", "state_root"]
+        for _, kwonly, _ in providers
+    ), providers
+
+
 # ---------------------------------------------------------------------------
 # 5. The Reviewer's structured payload channel
 # ---------------------------------------------------------------------------
