@@ -85,7 +85,7 @@ def test_noninteractive_setup_validates_then_persists_without_global_mutation(
     monkeypatch.setattr(
         setup,
         "persist_validated_profile",
-        lambda _report: calls.append("persist") or True,
+        lambda _report, **_kwargs: calls.append("persist") or True,
     )
     monkeypatch.setattr(
         "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
@@ -201,7 +201,9 @@ def test_noninteractive_api_url_configures_pi_without_backend_flag(
     monkeypatch.setattr(setup, "_configure_runner_backend", lambda backend: backend)
     monkeypatch.setattr(setup, "check_backend_readiness", lambda *_a, **_k: report)
     monkeypatch.setattr(setup, "_verify_setup_smoke", lambda *_a, **_k: True)
-    monkeypatch.setattr(setup, "persist_validated_profile", lambda _report: True)
+    monkeypatch.setattr(
+        setup, "persist_validated_profile", lambda _report, **_kwargs: True
+    )
     monkeypatch.setattr(
         setup,
         "_persist_pi_profile",

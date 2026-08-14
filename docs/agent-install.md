@@ -171,6 +171,15 @@ cd "$HOME/Argus"
 Linux keeps the explicit venv because server Python/CUDA dependencies and
 long-running process ownership must remain reproducible.
 
+## Confirm the backend model selector
+
+Setup validates the model it will send before reporting success. Also run
+`argus --config-help` and inspect each role's effective value and source.
+Backend catalog commands include `pi --list-models`, `opencode auth list`, and
+`qodercli --list-models`. If the selected id is not in that account's catalog,
+set `ARGUS_SKILL_MODEL` or a role-specific model knob before rerunning setup.
+Do not silently switch providers after a failed readiness check.
+
 ## OpenAI-compatible endpoint
 
 Setup can configure Pi directly:
