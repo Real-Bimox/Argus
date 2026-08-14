@@ -59,6 +59,18 @@ own: each run archives its own certificate under `research/lean/certificates/`
 and the claim cites that, so reusing the names above does not cost the previous
 claim its evidence.
 
+When the compile is long enough that waiting it out is the expensive part — a
+Mathlib import is minutes — `submit` takes exactly the arguments `verify` takes,
+prints a handle, and returns; `reclaim <handle>` later writes the same records on
+the same terms, or says the compile is still running and writes nothing. It
+compiles a copy taken at submit, so unlike `verify` you may keep editing while it
+runs — but the answer is only publishable if `Main.lean` and
+`statement_fidelity.md` still match what was compiled, so an edit you keep means
+submitting again. A run whose process was killed is reported as lost, never as a
+failing proof. `status` lists what this host still owes you. Use `verify` for a
+compile you would have waited out anyway; a handle you forget to reclaim is a
+compile nobody paid for.
+
 Compilation checks the theorem you encoded, not the one you meant, so the
 separate `statement_fidelity.md` states which objects, quantifiers, hypotheses,
 and conclusion the formal statement carries and names the declarations it
@@ -177,9 +189,15 @@ both.
 Whoever picks up a route is the one thinking about it. Give them the goal, the
 route's obligations, and what is already known not to work; do not hand over a
 decomposition into steps, because that decomposition is the mathematics you were
-asking somebody else to do. What comes back is a result or a reason the route is
-dead, and the reason goes into `$S retire-route --id R1 --because "..."` in your
-words, since you are the one holding the OR and the next planner reads it there.
+asking somebody else to do. Put the goal claim's id in the task's
+`acceptance_check` and name that one claim there and no other — that field is
+what hands the worker everything already recorded about the claim, including
+which of its citations somebody has been to the source for, and a field naming
+two ids resolves to none. A route objective naturally says "reduce C1 to L2",
+which names two, so the terser field is the one that has to carry it. What comes
+back is a result or a reason the route is dead, and the reason goes into
+`$S retire-route --id R1 --because "..."` in your words, since you are the one
+holding the OR and the next planner reads it there.
 It is written once: a route you come to believe in again is a new plan with a
 new id, not a rewritten reason on the old one.
 
@@ -189,8 +207,12 @@ write takes an exclusive lock before it reads, and each worker records its own
 claims, assumptions, and evidence, so concurrent recording is what the ledger
 was built for. What must not be shared is a working file — a proof draft, a Lean
 source, a `statement_fidelity.md` — where two workers overwrite each other with
-no lock and no merge. Give each route its own directory and let the ledger be
-the only thing they meet in.
+no lock and no merge. Give each route its own directory *inside* the project
+tree, name it in the task's `owns_paths`, and leave the task's `cwd` at the
+project root. `$S` writes to `research/MATH_STATE.json` under whatever directory
+it runs in, so a route dispatched into its own `cwd` quietly gets a private
+ledger nobody reads — every claim it records, every citation it checks, and the
+OR you are holding all stop meeting anywhere.
 
 ## Checking what you cited
 

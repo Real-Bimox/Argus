@@ -46,7 +46,9 @@ the optional step: do not commit a ``.lean`` file you cannot verify.
 The gate never compiles. It reads recorded evidence, so a completion decision
 costs a few file reads even when the project carries a proof that takes minutes
 to build. Producing that evidence is the Engineer's step, through ``verify``
-below.
+below — or, when the compile is long enough that waiting it out is the expensive
+part, through the ``submit``/``reclaim`` pair in ``lean_async``, which records
+the same thing on the same terms.
 """
 from __future__ import annotations
 
@@ -1188,10 +1190,42 @@ def _build_parser() -> argparse.ArgumentParser:
     check.add_argument("--project-root", type=Path, default=Path("."))
 
     verify = sub.add_parser("verify", help="compile one source and record it")
-    verify.add_argument("source", type=Path)
-    verify.add_argument("--statement-fidelity", type=Path, required=True)
-    verify.add_argument("--artifact-dir", type=Path)
-    verify.add_argument(
+    _add_compile_arguments(verify)
+
+    # `submit` takes exactly what `verify` takes, because it is the same step
+    # with the waiting removed. A verb that quietly accepted a different set
+    # would make the two answer differently, which is the one thing an
+    # asynchronous path must never do.
+    submit = sub.add_parser(
+        "submit",
+        help="start the same compile in the background and print a handle",
+    )
+    _add_compile_arguments(submit)
+
+    reclaim = sub.add_parser(
+        "reclaim",
+        help="record the answer from a submitted compile, once it has one",
+    )
+    reclaim.add_argument(
+        "handle",
+        help=(
+            "the handle `submit` printed. Everything else about the run — the "
+            "source, the fidelity document, the claim — was settled at submit "
+            "and is not re-stated here"
+        ),
+    )
+
+    sub.add_parser("status", help="background compiles this host still holds")
+
+    sub.add_parser("audit", help="report the Lean toolchain this host has")
+    return parser
+
+
+def _add_compile_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("source", type=Path)
+    parser.add_argument("--statement-fidelity", type=Path, required=True)
+    parser.add_argument("--artifact-dir", type=Path)
+    parser.add_argument(
         "--claim",
         help=(
             "record the outcome as mechanical evidence about this claim in "
@@ -1200,16 +1234,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "read the compiler's answer, never passed in"
         ),
     )
-    verify.add_argument(
+    parser.add_argument(
         "--project-root",
         type=Path,
         default=Path("."),
         help="the project whose state --claim writes to, and the root artifact paths are recorded against",
     )
-    verify.add_argument("--timeout", type=float, default=30.0)
-    verify.add_argument("--lean-bin")
-    verify.add_argument("--lake-bin")
-    verify.add_argument(
+    parser.add_argument("--timeout", type=float, default=30.0)
+    parser.add_argument("--lean-bin")
+    parser.add_argument("--lake-bin")
+    parser.add_argument(
         "--lake",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -1220,9 +1254,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "workspace exists"
         ),
     )
-
-    sub.add_parser("audit", help="report the Lean toolchain this host has")
-    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1286,6 +1317,53 @@ def main(argv: list[str] | None = None) -> int:
         # completion gate read "proved" off an exit code while the state file
         # holds nothing.
         return 1 if args.claim and payload["kernel"]["recorded"] is None else 0
+
+    if args.command == "submit":
+        from .lean_async import submit_lean_run  # noqa: PLC0415 — optional path
+
+        try:
+            started = submit_lean_run(
+                args.source,
+                statement_fidelity=args.statement_fidelity,
+                artifact_dir=args.artifact_dir,
+                project_root=args.project_root,
+                claim=args.claim or "",
+                timeout_seconds=args.timeout,
+                lean_bin=args.lean_bin,
+                lake_bin=args.lake_bin,
+                use_lake=args.lake,
+            )
+        except (OSError, UnicodeError, ValueError) as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+            return 2
+        print(json.dumps(started, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "reclaim":
+        from .lean_async import reclaim_lean_run  # noqa: PLC0415 — optional path
+
+        try:
+            payload = reclaim_lean_run(args.handle)
+        except (OSError, UnicodeError, ValueError) as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+            return 2
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        # A run that has not finished is not a verdict of any kind, so it gets
+        # an exit code of its own: 0 would read as a pass and 1 as a failing
+        # proof, and the compiler has said neither.
+        if payload.get("state") == "running":
+            return 3
+        if payload.get("status") != "success":
+            return 1
+        return 1 if "kernel" in payload and payload["kernel"]["recorded"] is None else 0
+
+    if args.command == "status":
+        from .lean_async import outstanding_runs  # noqa: PLC0415 — optional path
+
+        print(
+            json.dumps({"runs": outstanding_runs()}, ensure_ascii=False, indent=2)
+        )
+        return 0
 
     report = validate_lean_evidence(args.project_root.expanduser().resolve())
     payload = report.as_dict()

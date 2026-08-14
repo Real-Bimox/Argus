@@ -141,11 +141,27 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
     # and a fabricated reference is not a citation defect, it is a proof that
     # does not exist. It adds no stage and no required file — it derives its own
     # work list from the ledger — and blocks only at `review`.
+    # `lean_async` is the one module here that is machinery rather than a
+    # measure, and it is worth being uncomfortable about: starting a process and
+    # asking later is a generic capability, and generic capabilities belong in
+    # core. It is here because everything that makes it more than `Popen` is
+    # policy that only this vertical holds — that a compiler answer is bound to
+    # the digest of the source *and* of the statement fidelity document, that a
+    # run whose text moved publishes nothing rather than something, and that a
+    # worker which died is an environment failure and not a broken proof. Those
+    # rules live in `lean_evidence`, and this is `verify` with the waiting taken
+    # out, so a caller reaches it through the same CLI and gets the same records.
+    # It is a separate module rather than more of `lean_evidence` for one
+    # concrete reason: `lean_evidence` is imported by `stages.py` on every
+    # completion check, and the completion gate has no business importing a
+    # process launcher. It adds no stage and no required file, and nothing loads
+    # it unless someone types `submit`.
     assert files == {
         "__init__.py",
         "stages.py",
         "citation_check.py",
         "context_projection.py",
+        "lean_async.py",
         "lean_evidence.py",
         "math_state.py",
         "objective_mode.py",
