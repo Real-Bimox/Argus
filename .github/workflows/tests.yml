@@ -60,7 +60,10 @@ env:
     tests/daemon/test_spawn_helper.py
     tests/daemon/test_windows_daemon_control.py
     tests/daemon/test_windows_terminal_process.py
+    tests/maintenance/test_repair_pipeline.py
     tests/test_agent_cli_backend.py
+    tests/test_bootstrap_doctor.py
+    tests/test_doctor.py
     tests/webapi/test_commands_m1.py
     tests/webapi/test_server_m0.py
     tests/webapi/test_workspace_v2.py

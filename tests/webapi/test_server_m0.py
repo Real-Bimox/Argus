@@ -942,6 +942,27 @@ def test_get_meta_is_public_versioned_and_uncached(
     )
 
 
+def test_system_doctor_requires_auth_and_returns_typed_read_only_report(
+    tmp_path: Path,
+) -> None:
+    app = server.create_app(global_root=tmp_path, auth_token="secret")
+    with TestClient(app) as doctor_client:
+        rejected = doctor_client.get("/api/system/doctor")
+        response = doctor_client.get(
+            "/api/system/doctor",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert rejected.status_code == 401
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["schema_version"] == 1
+    assert payload["target_fingerprint"]
+    assert {item["scope"] for item in payload["findings"]} >= {
+        "host", "install", "cli", "web", "desktop", "daemon",
+    }
+
+
 def test_metrics_endpoints_expose_json_slo_and_prometheus(client: TestClient) -> None:
     payload = client.get("/api/metrics")
     assert payload.status_code == 200

@@ -72,6 +72,10 @@ _PYTHON_PRE_ACTION_BOOL_OPTIONS = frozenset(
     {
         "--drain",
         "--force",
+        "--fix-safe",
+        "--json",
+        "--deep",
+        "--verify",
         "--gc-dry-run",
         "--no-daemon",
         "--new",

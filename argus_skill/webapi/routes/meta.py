@@ -92,6 +92,34 @@ def register_meta_routes(app, ctx: ServerContext, server_mod) -> None:
             server_mod.get_doctor(sid, global_root=ctx.project_root_or_404(sid)), sid
         )
 
+    @app.get("/api/system/doctor", dependencies=[Depends(ctx.require_auth)])
+    def _system_doctor() -> dict[str, Any]:
+        """Read-only typed host/runtime inventory for Web and Desktop support."""
+        import sys
+        from pathlib import Path
+
+        from ...core.runtime_identity import source_root
+        from ...maintenance.doctor import DoctorContext, run_full_doctor
+
+        root = server_mod._global_root(ctx.global_root)
+        source = source_root()
+        checkout = source if (source / "pyproject.toml").is_file() else None
+        report = run_full_doctor(
+            DoctorContext(
+                global_root=root,
+                project_root=root,
+                checkout=checkout,
+                python_executable=Path(sys.executable),
+                install_mode=(
+                    "frozen" if getattr(sys, "frozen", False)
+                    else "source" if checkout is not None
+                    else "wheel"
+                ),
+            ),
+            include_backend=True,
+        )
+        return report.to_jsonable()
+
     @app.post("/api/projects/{sid}/config/set", dependencies=[Depends(ctx.require_auth)])
     def _config_set(sid: str, body: ConfigSetIn) -> dict[str, Any]:
         project_state_dir = ctx.resolve_or_404(sid)

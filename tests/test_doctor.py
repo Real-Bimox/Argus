@@ -12,6 +12,8 @@ import json
 import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 from argus_skill.webapi.diagnostics import Check, render_report, run_diagnostics
@@ -73,48 +75,36 @@ def test_doctor_json_uses_stable_codes() -> None:
     assert payload["checks"][0]["code"] == "ARGUS-STATE-001"
 
 
-def test_safe_repair_does_not_mutate_stale_daemon_pid_without_a_safe_protocol(
+def test_safe_repair_removes_only_a_verified_stale_daemon_pid(
     tmp_path,
     monkeypatch,
     capsys,
 ) -> None:
     from argus_skill.apps.cli import _core
+    from argus_skill.maintenance.doctor import DoctorContext
 
     pid_path = tmp_path / "daemon.pid"
     pid_path.write_text("2000000000\n", encoding="ascii")
-    bundle = SimpleNamespace(project=SimpleNamespace(root=tmp_path))
-    checks = [Check("lock sanity", False, "stale", "remove")]
-    monkeypatch.setattr(_core, "_doctor_checks", lambda _args: (bundle, checks))
+    context = DoctorContext(
+        global_root=tmp_path / "state",
+        project_root=tmp_path,
+        checkout=Path(__file__).resolve().parents[1],
+        python_executable=Path(sys.executable),
+    )
+    monkeypatch.setattr(_core, "_maintenance_context", lambda _args: context)
 
     rc = _core._cmd_repair(
         SimpleNamespace(safe=True, plan=False, json=True)
     )
     payload = json.loads(capsys.readouterr().out)
 
-    assert rc == 3  # mocked verification still reports the pre-repair failure
-    assert pid_path.exists()
-    assert payload["actions"] == []
-
-
-def test_repair_plan_reports_stale_lock_as_manual(tmp_path, monkeypatch, capsys) -> None:
-    from argus_skill.apps.cli import _core
-
-    pid_path = tmp_path / "daemon.pid"
-    pid_path.write_text("2000000000\n", encoding="ascii")
-    bundle = SimpleNamespace(project=SimpleNamespace(root=tmp_path))
-    checks = [Check("lock sanity", False, "stale", "remove")]
-    monkeypatch.setattr(_core, "_doctor_checks", lambda _args: (bundle, checks))
-    _core._cmd_repair(SimpleNamespace(safe=False, plan=True, json=True))
-    payload = json.loads(capsys.readouterr().out)
-
-    assert pid_path.exists()
-    assert payload["actions"] == [{
-        "id": "manual_required",
-        "risk": "manual",
-        "target": "lock sanity",
-        "status": "planned",
-        "detail": "remove",
-    }]
+    assert rc in {0, 3}  # consent/manual findings may remain after SAFE actions
+    assert not pid_path.exists()
+    stale = next(
+        item for item in payload["actions"]
+        if item["id"] == "remove_verified_stale_daemon_pid"
+    )
+    assert stale["status"] == "applied"
 
 
 def test_render_report_with_theme_is_failsoft():

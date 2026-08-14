@@ -298,6 +298,26 @@ def build_parser() -> argparse.ArgumentParser:
         help=argparse.SUPPRESS,
     )
     capability_grp.add_argument(
+        "--fix-safe",
+        action="store_true",
+        help="with --doctor/-doctor: apply registered SAFE repairs and verify",
+    )
+    capability_grp.add_argument(
+        "--json",
+        action="store_true",
+        help="with --doctor/-doctor: print stable machine-readable findings",
+    )
+    capability_grp.add_argument(
+        "--deep",
+        action="store_true",
+        help="with --doctor/-doctor: include bounded backend authentication probes",
+    )
+    capability_grp.add_argument(
+        "--verify",
+        action="store_true",
+        help="with --doctor/-doctor: label the run as post-repair verification",
+    )
+    capability_grp.add_argument(
         "--backend",
         choices=("copilot", "codex", "claude", "opencode", "pi", "grok", "qoder", "dsh"),
         default=None,
@@ -471,6 +491,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="label this run as post-repair verification",
     )
+    doctor_parser.add_argument(
+        "--fix-safe",
+        action="store_true",
+        help="apply registered SAFE repairs, then rerun Doctor",
+    )
     repair_parser = subparsers.add_parser(
         "repair",
         help="Plan or apply registered Argus recovery actions",
@@ -484,7 +509,27 @@ def build_parser() -> argparse.ArgumentParser:
     repair_mode.add_argument(
         "--safe",
         action="store_true",
-        help="apply only registered SAFE actions, then verify",
+        help="plan and apply only registered SAFE actions, then verify",
+    )
+    repair_mode.add_argument(
+        "--apply",
+        metavar="PLAN_ID",
+        help="apply one persisted plan (CONSENT actions also require --yes)",
+    )
+    repair_mode.add_argument(
+        "--prepare-pr",
+        metavar="PLAN_ID",
+        help="write a sanitized upstream repair report without publishing it",
+    )
+    repair_mode.add_argument(
+        "--submit-pr",
+        metavar="PLAN_ID",
+        help="submit an explicitly authorized prepared repository repair",
+    )
+    repair_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="confirm CONSENT actions or external PR publication",
     )
     repair_parser.add_argument(
         "--json",

@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import shutil
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -54,8 +55,13 @@ def _venv_python(root):
 
 def _command_version(executable, flag="--version"):
     try:
+        command = (
+            [str(executable), "-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"]
+            if Path(str(executable)).stem.casefold() == "powershell"
+            else [str(executable), flag]
+        )
         result = subprocess.run(
-            [str(executable), flag],
+            command,
             check=False,
             capture_output=True,
             text=True,
@@ -94,48 +100,48 @@ def run_bootstrap_doctor(root=None):
         "pass --root <Argus checkout>, or restore the checkout before running full Doctor",
     ))
 
-    venv_runtime = _venv_python(checkout)
-    runtime = venv_runtime or (Path(sys.executable) if checkout is not None else None)
+    checkout_runtime = _venv_python(checkout)
+    runtime = checkout_runtime or Path(sys.executable)
+    try:
+        result = subprocess.run(
+            [str(runtime), "-c", "import argus_skill; print(argus_skill.__version__)"],
+            cwd=str(checkout) if checkout is not None else None,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=15,
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+        import_ok = result.returncode == 0
+        detail = (result.stdout or result.stderr).strip() or f"exit {result.returncode}"
+    except (OSError, subprocess.SubprocessError) as exc:
+        import_ok = False
+        detail = f"{type(exc).__name__}: {exc}"
     findings.append(_finding(
         "ARGUS-PYTHON-002",
-        "Argus Python runtime",
-        runtime is not None,
+        "Argus Python environment",
+        checkout_runtime is not None or import_ok,
         (
-            str(runtime)
-            if venv_runtime is not None
-            else f"{runtime} (bootstrap fallback; checkout .venv is absent)"
-            if runtime is not None
-            else "no usable Python runtime found"
+            str(checkout_runtime) if checkout_runtime is not None
+            else f"current interpreter is usable without checkout .venv (bootstrap fallback): {runtime}"
+            if import_ok else "checkout .venv is missing and current interpreter cannot import Argus"
         ),
-        "install Python 3.11+ or recreate .venv and reinstall the checkout",
+        "recreate .venv with Python 3.11+ and reinstall the checkout",
     ))
-    if runtime is not None:
-        try:
-            result = subprocess.run(
-                [str(runtime), "-c", "import argus_skill; print(argus_skill.__version__)"],
-                cwd=str(checkout),
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=15,
-                env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
-            )
-            import_ok = result.returncode == 0
-            detail = (result.stdout or result.stderr).strip() or f"exit {result.returncode}"
-        except (OSError, subprocess.SubprocessError) as exc:
-            import_ok = False
-            detail = f"{type(exc).__name__}: {exc}"
-        findings.append(_finding(
-            "ARGUS-PYTHON-003",
-            "Argus Core import",
-            import_ok,
-            detail,
-            "run the checkout's Python with `-m pip install -e .` after reviewing the environment",
-        ))
+    findings.append(_finding(
+        "ARGUS-PYTHON-003",
+        "Argus Core import",
+        import_ok,
+        detail,
+        "run the selected Python with `-m pip install -e .` after reviewing the environment",
+    ))
 
-    for code, name in (("ARGUS-GIT-001", "git"), ("ARGUS-NODE-001", "node")):
+    commands = [("ARGUS-GIT-001", "git"), ("ARGUS-NODE-001", "node")]
+    if os.name == "nt":
+        commands.append(("ARGUS-POWERSHELL-001", "powershell"))
+    for code, name in commands:
         executable = shutil.which(name)
         ok, detail = _command_version(executable) if executable else (False, f"{name} not found on PATH")
         findings.append(_finding(
@@ -159,6 +165,45 @@ def run_bootstrap_doctor(root=None):
             "Web and TUI assets present" if not missing else f"missing: {', '.join(missing)}",
             "restore a complete release checkout or rebuild the declared frontend assets",
         ))
+        desktop = checkout / "desktop"
+        if (desktop / "package.json").is_file():
+            electron = desktop / "node_modules" / "electron"
+            electron_installed = electron.is_dir()
+            electron_ready = (
+                (electron / "path.txt").is_file()
+                and (
+                    os.name != "nt"
+                    or (electron / "dist" / "electron.exe").is_file()
+                )
+            ) if electron_installed else True
+            findings.append(_finding(
+                "ARGUS-DESKTOP-001",
+                "Desktop runtime",
+                electron_ready,
+                (
+                    "Electron runtime present" if electron_installed and electron_ready
+                    else "Desktop dependencies not installed (optional for CLI/Web)" if not electron_installed
+                    else "Electron runtime binary missing"
+                ),
+                "run `npm --prefix desktop ci`; Desktop postinstall downloads the declared Electron runtime",
+            ))
+
+    web_host = os.environ.get("ARGUS_SKILL_WEB_HOST", "127.0.0.1")
+    try:
+        web_port = int(os.environ.get("ARGUS_SKILL_WEB_PORT", "8799"))
+    except ValueError:
+        web_port = 8799
+    try:
+        with socket.create_connection((web_host, web_port), timeout=0.4):
+            web_status = "listener reachable"
+    except OSError:
+        web_status = "no listener (normal when Argus is stopped)"
+    findings.append(_finding(
+        "ARGUS-PORT-001",
+        "Web endpoint",
+        True,
+        f"{web_host}:{web_port} — {web_status}",
+    ))
 
     return {
         "schema_version": 1,
@@ -169,12 +214,94 @@ def run_bootstrap_doctor(root=None):
     }
 
 
+def _run_repair_command(command, *, cwd, timeout):
+    try:
+        completed = subprocess.run(
+            [str(item) for item in command],
+            cwd=str(cwd),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"status": "failed", "detail": f"{type(exc).__name__}: {exc}"}
+    return {
+        "status": "applied" if completed.returncode == 0 else "failed",
+        "returncode": completed.returncode,
+        "detail": (completed.stderr or completed.stdout or "").strip()[-4000:],
+    }
+
+
+def run_bootstrap_repair(root, *, install=False, desktop=False):
+    """Execute only explicit bootstrap actions from this closed registry."""
+    checkout = _find_checkout(root)
+    if checkout is None:
+        return [{
+            "id": "restore_checkout",
+            "risk": "manual",
+            "status": "manual_required",
+            "detail": "a complete checkout is required before bootstrap repair",
+        }]
+    actions = []
+    runtime = _venv_python(checkout)
+    if install:
+        if runtime is None:
+            created = _run_repair_command(
+                [sys.executable, "-m", "venv", str(checkout / ".venv")],
+                cwd=checkout,
+                timeout=180,
+            )
+            actions.append({"id": "create_venv", "risk": "consent", **created})
+            runtime = _venv_python(checkout)
+        if runtime is None:
+            actions.append({
+                "id": "install_editable",
+                "risk": "consent",
+                "status": "failed",
+                "detail": "virtual-environment interpreter is unavailable",
+            })
+        else:
+            installed = _run_repair_command(
+                [runtime, "-m", "pip", "install", "-e", str(checkout)],
+                cwd=checkout,
+                timeout=600,
+            )
+            actions.append({"id": "install_editable", "risk": "consent", **installed})
+    if desktop:
+        npm = shutil.which("npm.cmd" if os.name == "nt" else "npm")
+        package = checkout / "desktop" / "package.json"
+        if not npm or not package.is_file():
+            actions.append({
+                "id": "install_desktop",
+                "risk": "consent",
+                "status": "failed",
+                "detail": "npm or desktop/package.json is unavailable",
+            })
+        else:
+            installed = _run_repair_command(
+                [npm, "ci"], cwd=package.parent, timeout=900,
+            )
+            actions.append({"id": "install_desktop", "risk": "consent", **installed})
+    return actions
+
+
 def _render(report):
     lines = ["argus-doctor — bootstrap diagnostics", ""]
     for item in report["findings"]:
         lines.append(f"{'✓' if item['ok'] else '✗'} {item['code']} {item['name']}: {item['detail']}")
         if item["fix"]:
             lines.append(f"    fix: {item['fix']}")
+    if report.get("repairs"):
+        lines.extend(["", "repairs:"])
+        for action in report["repairs"]:
+            lines.append(
+                f"  {action.get('status', 'unknown')}: "
+                f"{action.get('id', 'unknown')} ({action.get('risk', 'manual')})"
+            )
     lines.append("")
     lines.append("all bootstrap checks passed" if report["ok"] else "bootstrap issues found")
     return "\n".join(lines)
@@ -189,8 +316,31 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="argus-doctor")
     parser.add_argument("--root", help="Argus source checkout to inspect")
     parser.add_argument("--json", action="store_true", help="print machine-readable findings")
+    parser.add_argument(
+        "--repair-install",
+        action="store_true",
+        help="recreate the checkout venv when missing and reinstall editable Argus",
+    )
+    parser.add_argument(
+        "--repair-desktop",
+        action="store_true",
+        help="run the locked Desktop npm install, including Electron postinstall",
+    )
+    parser.add_argument("--yes", action="store_true", help="authorize bootstrap mutations")
     args = parser.parse_args(argv)
+    if (args.repair_install or args.repair_desktop) and not args.yes:
+        sys.stderr.write("argus-doctor: bootstrap repair requires --yes\n")
+        return 3
+    repairs = run_bootstrap_repair(
+        args.root,
+        install=args.repair_install,
+        desktop=args.repair_desktop,
+    ) if (args.repair_install or args.repair_desktop) else []
     report = run_bootstrap_doctor(args.root)
+    if repairs:
+        report["repairs"] = repairs
+        report["repair_ok"] = all(item.get("status") == "applied" for item in repairs)
+        report["ok"] = bool(report["ok"] and report["repair_ok"])
     output = (
         json.dumps(report, ensure_ascii=False, indent=2)
         if args.json
