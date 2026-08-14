@@ -17,6 +17,7 @@ from .state import (
     _daemon_pid_path,
     _daemon_status_path,
     _daemon_status_payload,
+    _descendant_pids,
     _new_boot_id,
     _point_active_daemon_log,
     _redirect_std_to_log,
@@ -92,6 +93,24 @@ def _windows_daemon_command(config: Any) -> list[str]:
     return command
 
 
+def _windows_runtime_belongs_to_launcher(
+    launcher_pid: int,
+    runtime_pid: int,
+) -> bool:
+    """Prove that a published worker PID belongs to the process we spawned.
+
+    A Windows virtual-environment ``python.exe`` is a launcher stub. Its PID is
+    the one returned by :class:`subprocess.Popen`, while the base interpreter
+    child acquires ``daemon.pid`` and publishes ``daemon.status.json``. Requiring
+    PID equality therefore rejects a healthy source-checkout worker. Keep the
+    foreign-status protection by accepting only the launcher itself or one of
+    its current descendants.
+    """
+    if runtime_pid == launcher_pid:
+        return True
+    return runtime_pid in _descendant_pids(launcher_pid)
+
+
 def _reap_failed_windows_spawn(process: subprocess.Popen[Any]) -> None:
     """Reclaim the exact worker tree after a failed publication handshake."""
     pid = int(process.pid)
@@ -153,18 +172,25 @@ def _spawn_windows_background_process(
         deadline = time.monotonic() + _WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS
         exit_rc: int | None = None
         stable_since: float | None = None
+        stable_pid: int | None = None
         while time.monotonic() < deadline:
             if pid_path.exists() and status_path.exists():
                 status = read_daemon_status(config.life_dir)
+                runtime_pid = int(status.pid or 0)
                 if (
                     status.alive
-                    and status.pid == process.pid
+                    and runtime_pid > 0
+                    and _windows_runtime_belongs_to_launcher(
+                        int(process.pid),
+                        runtime_pid,
+                    )
                     and not status.status_read_error
                     and process.poll() is None
                 ):
                     now = time.monotonic()
-                    if stable_since is None:
+                    if stable_since is None or stable_pid != runtime_pid:
                         stable_since = now
+                        stable_pid = runtime_pid
                     elif now - stable_since >= _DAEMON_STABILITY_SECONDS:
                         if not quiet:
                             sys.stdout.write(
@@ -174,6 +200,7 @@ def _spawn_windows_background_process(
                         return 0
                 else:
                     stable_since = None
+                    stable_pid = None
             if process.poll() is not None:
                 exit_rc = process.returncode
                 break
@@ -192,7 +219,11 @@ def _spawn_windows_background_process(
                     f"{_WINDOWS_DAEMON_PUBLISH_TIMEOUT_SECONDS:g}s. "
                     f"Check {log_path} for errors.\n"
                 )
-        return int(exit_rc) if exit_rc is not None else 2
+        # A zero exit before the PID/status handshake is still a failed worker:
+        # no process remains to execute queued work. Preserve actionable
+        # non-zero child codes, but never turn an unverified clean exit into a
+        # successful executor start.
+        return int(exit_rc) if exit_rc not in {None, 0} else 2
     finally:
         release_spawn_lock(spawn_lock_fd)
 

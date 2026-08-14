@@ -195,7 +195,31 @@ def test_web_launch_uses_tui_unless_raw_backend_options_are_requested(
     assert tui_launcher.main(["--web", "--no-open"]) == 0
     assert seen["argv"] == ["/usr/bin/node", str(bundle), "--web", "--no-open"]
     assert tui_launcher.main(["--web", "--web-port", "8800"]) == 7
-    assert admin == [["--web", "--web-port", "8800"]]
+    assert tui_launcher.main(["--web", "--host", "127.0.0.1", "--port", "8801"]) == 7
+    assert admin == [
+        ["--web", "--web-port", "8800"],
+        ["--web", "--host", "127.0.0.1", "--port", "8801"],
+    ]
+
+
+def test_documented_web_aliases_before_action_stay_on_python_admin_path(
+    monkeypatch,
+) -> None:
+    seen = []
+    monkeypatch.setattr(
+        tui_launcher,
+        "_run_python_admin",
+        lambda argv: seen.append(argv) or 7,
+    )
+    monkeypatch.setattr(
+        tui_launcher,
+        "_bundle_path",
+        lambda: (_ for _ in ()).throw(AssertionError("TUI must not launch")),
+    )
+    argv = ["--host", "127.0.0.1", "--port", "8801", "--web"]
+
+    assert tui_launcher.main(argv) == 7
+    assert seen == [argv]
 
 
 def test_admin_subcommands_stay_on_python_admin_path(monkeypatch) -> None:

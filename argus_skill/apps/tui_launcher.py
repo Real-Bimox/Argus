@@ -53,7 +53,9 @@ _PYTHON_PRE_ACTION_VALUE_OPTIONS = frozenset(
         "--gc-days",
         "--objective",
         "--web-host",
+        "--host",
         "--web-port",
+        "--port",
         "--notify-stage",
         "--backend",
         "--auth-mode",
@@ -144,7 +146,7 @@ def _uses_python_admin(argv: list[str]) -> bool:
     if "--web" in argv and any(
         arg == option or arg.startswith(f"{option}=")
         for arg in argv
-        for option in ("--web-host", "--web-port")
+        for option in ("--web-host", "--host", "--web-port", "--port")
     ):
         return True
     i = 0

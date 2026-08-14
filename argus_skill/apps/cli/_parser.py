@@ -245,6 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cockpit_grp.add_argument(
         "--web-host",
+        "--host",
         default="127.0.0.1",
         help="bind host for --web (default 127.0.0.1; use 0.0.0.0 to reach it "
              "from a phone on the same network). A non-loopback bind always "
@@ -290,7 +291,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     capability_grp.add_argument(
         "--backend",
-        choices=("copilot", "codex", "claude", "opencode", "pi", "grok"),
+        choices=("copilot", "codex", "claude", "opencode", "pi", "grok", "qoder", "dsh"),
         default=None,
         help="backend selected by --setup, --doctor, or this daemon launch",
     )

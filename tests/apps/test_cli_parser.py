@@ -120,6 +120,11 @@ def test_parser_accepts_grok_backend() -> None:
     assert args.backend == "grok"
 
 
+def test_parser_accepts_qoder_backend() -> None:
+    args = build_parser().parse_args(["--doctor", "--backend", "qoder"])
+    assert args.backend == "qoder"
+
+
 def test_parser_exposes_cli_doctor() -> None:
     args = build_parser().parse_args(["--doctor", "--backend", "copilot"])
 
@@ -272,8 +277,15 @@ def test_parser_no_daemon_default_false():
     assert args.no_daemon is False
 
 
-def test_parser_accepts_documented_web_port_alias():
-    args = build_parser().parse_args(["--web", "--port", "8800"])
+def test_parser_accepts_documented_web_host_and_port_aliases():
+    args = build_parser().parse_args([
+        "--web",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8800",
+    ])
+    assert args.web_host == "0.0.0.0"
     assert args.web_port == 8800
 
 
@@ -292,11 +304,14 @@ def test_web_uses_documented_flags_and_explicit_life_dir(
     assert main([
         "--web",
         "--no-open",
+        "--host",
+        "127.0.0.1",
         "--port",
         "8800",
         "--life-dir",
         str(tmp_path),
     ]) == 0
+    assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 8800
     assert captured["global_root"] == tmp_path
 
