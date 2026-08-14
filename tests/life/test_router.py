@@ -110,6 +110,9 @@ def test_build_quick_reply_prompt_names_the_worker_and_guards_identity() -> None
     assert "You are Argus Manager" in out
     assert f"{runner_backend_label()} worker" in out
     assert _IDENTITY_GUARD in out
+    assert "identify only as Argus Manager" in out
+    assert "do not narrate Skill matching" in out
+    assert "Argus's durable runner" in out
     assert out.endswith("Message:\n你好")
 
 
@@ -139,6 +142,9 @@ def test_build_simple_prompt_is_minimal() -> None:
 
     assert f"{runner_backend_label()} worker" in out
     assert "Answer and act as Argus Manager" in out
+    assert "identify only as Argus Manager" in out
+    assert "do not narrate Skill matching" in out
+    assert "direct mode for ordinary commands" in out
     assert "do not invent a vertical" in out
     assert "additional artifact" in out
     assert "stop and wait for the operator's reply" in out
