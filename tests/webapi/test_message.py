@@ -844,6 +844,8 @@ def test_frontdoor_classifier_failure_never_dispatches_unclassified_message(
 
     assert result["kind"] == "chat"
     assert result["reply"].startswith("[not dispatched]")
+    assert "Manager backend" in result["reply"]
+    assert "argus doctor --deep" in result["reply"]
     assert LifeMemory.open(life).backlog.all() == []
 
 

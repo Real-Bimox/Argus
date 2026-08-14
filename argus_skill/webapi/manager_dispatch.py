@@ -973,8 +973,9 @@ def _run_triage_and_fallbacks(
         return emitter.respond(reply, {"kind": "chat"})
     if frontdoor_failure:
         reply = (
-            "[not dispatched] Manager could not classify this message. "
-            "No task was queued; please retry."
+            "[not dispatched] The configured Manager backend is unavailable or "
+            "failed during classification. No task was queued. Run "
+            "`argus doctor --deep` to check backend readiness, then retry."
         )
         return emitter.respond(reply, {"kind": "chat"})
     return None
