@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
+import sys
 import time
 import types
 from collections.abc import Callable
@@ -1173,6 +1175,14 @@ def test_cmd_submit_override_records_and_proceeds(monkeypatch, tmp_path, capsys)
     rc = _sub.cmd_submit(_submit_args(task_id="new", override_discussion="I checked, proceed"))
     out = json.loads(capsys.readouterr().out)
     assert rc == 0 and out["state"] == "submitted"
+    assert shlex.split(out["check_with"]) == [
+        sys.executable,
+        "-m",
+        "argus_skill.tools.subagent",
+        "status",
+        "--task-id",
+        "new",
+    ]
     ledger = (tmp_path / _sub.EXPERIMENT_HISTORY_REL).read_text()
     assert "DISCUSSION-OVERRIDE" in ledger
     assert "I checked, proceed" in ledger
@@ -1345,7 +1355,16 @@ def test_cmd_status_surfaces_open_discussion(monkeypatch, tmp_path, capsys) -> N
     assert rc == 0
     assert "ACTION_REQUIRED" in out
     assert "DISCUSSION.md" in out["discussion_file"]
-    assert "reply --task-id d" in out["reply_with"]
+    assert shlex.split(out["reply_with"]) == [
+        sys.executable,
+        "-m",
+        "argus_skill.tools.subagent",
+        "reply",
+        "--task-id",
+        "d",
+        "--message",
+        "<your rationale>",
+    ]
 
 
 def test_supervisor_check_prompt_demands_parameter_level_concern(monkeypatch, tmp_path) -> None:
