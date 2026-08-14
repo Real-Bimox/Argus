@@ -12,6 +12,14 @@ required, useful failures and computations do not make the mission complete.
 Keep a short note about a failed route in the existing `CHECKPOINT.md` when it
 will help the next attempt, then change the mathematical approach.
 
+In `scope`, settle what is already known before the mathematics starts: the
+results this work will lean on go into the ledger as assumptions with their
+citations, and so does an approach already known to fail. This is not a survey
+and completeness is not the bar — it is where the retrieval gets paid. Workers
+on the same goal cannot see each other's searches, so a lookup done here costs
+once and the same lookup done in `solve` costs once per worker. Finding nothing
+relevant is a result; so is being unable to obtain a source. Record either.
+
 Use ordinary working files suited to the task. Do not create process-only
 planning, audit, status, or evidence-packet files merely to satisfy the
 workflow. The theorem, proof, counterexample, code, or formal source is the
@@ -37,9 +45,13 @@ stage requires it to show a fresh real compiler run with no proof holes, so run
 
 which compiles the source, records the answer beside it stamped with the source
 hash, and — because of `--claim` — writes the outcome into the claim ledger as
-mechanical evidence. Editing the source invalidates that record; re-run it. If
-the host has Mathlib installed it is used automatically, so `import Mathlib`
-needs no extra flag. `--claim` is the only way mechanical evidence is ever
+mechanical evidence. Editing the source after a run invalidates that record;
+re-run it. Editing it *during* one is different: the run is refused outright and
+nothing is written at all, because the compiler's answer would then be about text
+the project no longer carries. Neither `Main.lean` nor `statement_fidelity.md` is
+yours to touch while `verify` is running — do other work, or wait. If the host
+has Mathlib installed it is used automatically, so `import Mathlib` needs no
+extra flag. `--claim` is the only way mechanical evidence is ever
 written: there is no flag that lets you record a compiler verdict you did not
 get, and asking for one is a bug report rather than a request. Formalizing
 several claims in one directory is fine and needs no filename scheme of your
@@ -52,7 +64,9 @@ separate `statement_fidelity.md` states which objects, quantifiers, hypotheses,
 and conclusion the formal statement carries and names the declarations it
 describes. A compiling proof of a mistranslated statement is the most expensive
 wrong answer available here. The document is hashed into the compiler result, so
-rewriting it afterwards invalidates the run rather than quietly re-labelling it.
+rewriting it afterwards invalidates the run rather than quietly re-labelling it,
+and rewriting it while the compiler is running refuses the run the same way the
+source does.
 Nothing checks that the document is *true* — that half of the argument is yours,
 and it is why a proved claim still reports what nobody verified.
 
