@@ -31,6 +31,7 @@ log = logging.getLogger(__name__)
 # via ``--agent``).
 _OPENCODE_READ_ONLY_AGENT = "argus-read-only"
 _OPENCODE_FULL_ACCESS_AGENT = "argus-full-access"
+_OPENCODE_NO_TOOLS_AGENT = "argus-no-tools"
 
 
 def _pi_session_dir() -> str:
@@ -258,7 +259,7 @@ class CommandBuilderMixin:
         """Apply the operator's single global access policy."""
         import dataclasses
 
-        safe_mode = (
+        safe_mode = options.force_safe_mode or (
             os.environ.get("ARGUS_SKILL_SAFE_MODE", "0").strip().lower()
             in {"1", "true", "yes", "on"}
         )
@@ -395,7 +396,9 @@ class CommandBuilderMixin:
                 else options.reasoning_effort
             )
             command.extend(["--effort", effort])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--tools", ""])
+        elif options.sandbox_mode == "read-only":
             command.extend(["--tools", "Read,Glob,Grep"])
         elif options.dangerous_yolo:
             command.extend(["--permission-mode", "bypassPermissions"])
@@ -457,7 +460,9 @@ class CommandBuilderMixin:
                 "--no-custom-instructions",
                 "--disable-builtin-mcps",
             ])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--available-tools=", "--deny-tool=*"])
+        elif options.sandbox_mode == "read-only":
             command.extend([
                 "--available-tools", "view,rg,glob",
                 "--allow-tool", "view,rg,glob",
@@ -514,7 +519,9 @@ class CommandBuilderMixin:
             command.extend(["--variant", options.reasoning_effort])
         if options.working_dir:
             command.extend(["--dir", options.working_dir])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--agent", _OPENCODE_NO_TOOLS_AGENT])
+        elif options.sandbox_mode == "read-only":
             command.extend(["--agent", _OPENCODE_READ_ONLY_AGENT])
         elif options.dangerous_yolo or options.full_auto:
             command.extend(["--agent", _OPENCODE_FULL_ACCESS_AGENT])
@@ -570,7 +577,9 @@ class CommandBuilderMixin:
             command.extend(["--model", _pi_model(options.model)])
         if options.reasoning_effort:
             command.extend(["--thinking", options.reasoning_effort])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.append("--no-tools")
+        elif options.sandbox_mode == "read-only":
             command.extend(["--tools", "read,grep,find,ls"])
         merged_extra_args = [*self.default_extra_args]
         if options.extra_args:
@@ -613,7 +622,9 @@ class CommandBuilderMixin:
             command.extend(["--model", options.model])
         if options.reasoning_effort:
             command.extend(["--reasoning-effort", options.reasoning_effort])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--tools", ""])
+        elif options.sandbox_mode == "read-only":
             command.extend(["--tools", "read_file,grep,list_dir"])
         elif options.dangerous_yolo or options.full_auto:
             command.append("--yolo")

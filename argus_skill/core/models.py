@@ -65,6 +65,12 @@ class RunnerOptions:
     # inspect project state without granting write access; None preserves each
     # backend's existing default behavior.
     sandbox_mode: str | None = None
+    # Preserve the requested sandbox mode for this call even when the process
+    # default keeps legacy full-access behavior for normal runtime roles.
+    force_safe_mode: bool = False
+    # Remove all model-visible tools for prompts that contain untrusted
+    # diagnostic text. Unsupported backends must fail closed before spawning.
+    disable_tools: bool = False
     # Strong process-level confinement used by daemon self-maintenance. Unlike
     # backend-native sandbox flags, this applies to every CLI backend and fails
     # closed when the host cannot provide isolation.

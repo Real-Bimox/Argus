@@ -57,91 +57,102 @@ Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。
 
 ## 快速安装
 
-### 环境要求
+请只使用当前操作系统对应的一组命令，不要混用。
 
-- Python 3.11+
-- Node.js 22+
-- 至少一个已按官方方式安装并完成登录鉴权的 Agent CLI
+所有平台都需要：
 
-创建虚拟环境前先检查实际解释器版本：
+- 已按官方方式安装的 Agent CLI；
+- 该 CLI 已完成官方登录鉴权；
+- Node.js 22+（终端 cockpit 需要）。
+
+正式 PyPI 首发前，公共 Preview 直接从 GitHub archive 安装。
+
+### Windows 10/11：直接 pip 安装，不创建虚拟环境
+
+从 [python.org](https://www.python.org/downloads/windows/) 安装 Python 3.11+
+并勾选 **Add Python to PATH**。重新打开 PowerShell 后执行：
+
+```powershell
+py -m pip install --upgrade pip
+py -m pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+$Scripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+$env:Path = "$Scripts;$env:Path"
+argus --setup
+argus doctor --deep --advisor auto
+argus
+```
+
+`argus --setup` 不会只检查到 CLI 就宣称完成：它会检查 backend/鉴权，并实际执行
+一次禁止工具调用的 Agent turn。上面的 `$Scripts` 命令会让当前 PowerShell 立即找到
+`argus`；如果新窗口仍找不到，再确认 Python 安装器的 Scripts 目录已加入 PATH。
+
+正式 PyPI 版本发布前，用下面的命令刷新持续更新的 GitHub Preview：
+
+```powershell
+py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+```
+
+Windows 当前支持安装、Manager 对话、配对、Web/TUI 和终端作用域 daemon 控制。
+detached subagent 仍属于 POSIX/WSL2 能力；native Windows 会明确失败，不会伪报任务
+已启动。图形安装见 **[Windows Desktop](docs/windows-desktop.md)**。
+
+### macOS：uv tool 管理安装，不手工创建虚拟环境
+
+安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后执行：
 
 ```bash
-python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version'
+uv tool install --python 3.12 \
+  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+argus --setup
+argus doctor --deep --advisor auto
+argus
 ```
 
-macOS 的 `/usr/bin/python3` 可能仍是 Python 3.9。检查失败时，安装
-[uv](https://docs.astral.sh/uv/getting-started/installation/)，由它安装并选择
-隔离的 Python 3.12：
+以后更新：
 
 ```bash
-uv python install 3.12
-uv venv --python 3.12 --seed .venv
+uv tool install --force --python 3.12 \
+  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
 ```
 
-### 🚀 Agent 一键接入（推荐）
+### Linux：保留隔离源码 venv
 
-> [!TIP]
-> **无需手动逐条安装。** 将下面整段提示词发送给 Codex CLI、Claude Code、
-> GitHub Copilot CLI、Pi、OpenCode 或 Grok Build。Agent 会检查环境、安装 Argus、连接当前
-> backend，并运行 `argus --doctor` 验收。
-
-```text
-请阅读 https://github.com/lbx154/Argus/blob/main/docs/agent-install.md，
-按照文档在我的机器上安装并配置 Argus。优先复用当前 Agent CLI 作为 Argus
-backend。请实际执行环境检查、安装、配置和 argus --doctor 验证；遇到需要登录
-账号、sudo、修改全局配置或其他人工授权的步骤时，先向我说明原因并等待确认。
-不要要求我在对话中粘贴密码、访问令牌或 API Key。
-```
-
-Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
-
-### 安装
-
-macOS / Linux：
+Linux 服务器继续显式使用 venv，保证 Python、CUDA 工具链和长任务进程环境可复现：
 
 ```bash
 git clone https://github.com/lbx154/Argus.git
 cd Argus
-
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
+.venv/bin/argus --setup
+.venv/bin/argus doctor --deep --advisor auto
+.venv/bin/argus
 ```
 
-Windows PowerShell（portable preview）：
+私有 Preview 协作者在 Linux clone 命令中改用
+`https://github.com/lbx154/argus-skill.git`。Windows/macOS 应安装私有 wheel
+或经过认证的私有 archive，不要把 GitHub token 写进 shell history。
 
-```powershell
-git clone https://github.com/lbx154/Argus.git
-Set-Location Argus
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e .
+### Agent 一键接入
+
+把下面整段发送给已安装的 Code Agent：
+
+```text
+请阅读 https://github.com/lbx154/Argus/blob/main/docs/agent-install.md，
+使用当前操作系统对应的方式安装 Argus。优先复用当前 Agent CLI 作为 backend。
+Windows 和 macOS 不创建手工 venv；Linux 保留文档中的 venv。必须让 setup 完成真实
+Agent turn 验收，再运行 argus doctor --deep --advisor auto。需要登录、sudo 或修改
+全局配置时先说明原因并等待确认。不要要求我在对话中粘贴密码、token 或 API Key。
 ```
 
-Windows 当前覆盖安装、Manager 对话、配对和终端作用域 daemon；POSIX 专属的
-subagent 后台脱离与文件锁路径尚未完全对齐。Windows CI 有意只运行 portable
-surface，不能据此宣称所有长期任务都已完整支持。
+Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
 
-源码安装后可用一条命令更新：
-
-```bash
-argus update
-```
-
-该命令只会更新干净且已配置 upstream 的分支，使用 fast-forward 拉取，并在版本
-变化时刷新 editable 安装。更新后再次运行 `argus`，即可安全接管旧 WebAPI 和 daemon。
-
-私有 Preview 协作者可以改用
-`https://github.com/lbx154/argus-skill.git`。两个仓库的 revision 可能不同，
-请按准备测试的版本选择 URL。
-
-### 连接后端
-
-```bash
-argus --setup
-```
+### Backend 说明
 
 `--backend` 可使用 `copilot`、`pi`、`codex`、`claude`、`opencode` 或 `grok`。
+未显式配置 model 时，Argus 使用所选 CLI 的原生默认模型，不会把 OpenAI 模型 id
+传给 Claude Code、Pi、OpenCode 或 Grok。
 如果已有 OpenAI-compatible URL，setup 会在需要时自动安装 Pi 并完成配置：
 
 ```bash
@@ -160,8 +171,7 @@ argus --setup --non-interactive --backend grok
 
 无界面环境也可以使用 `XAI_API_KEY`。Argus 通过 Grok 原生 headless JSON
 流运行、按 Session ID 续接，并避免把角色 prompt 放进进程参数。
-PowerShell 使用 `.\.venv\Scripts\argus.exe` 运行相同参数，多行续行符为反引号，
-不是 `\`。
+PowerShell 多行续行符为反引号，不是 `\`。
 
 #### 为多 provider 的 CLI 指定 provider
 
@@ -339,14 +349,26 @@ argus --web
 
 ## 更新
 
-```bash
-cd Argus
-git pull --ff-only
-.venv/bin/python -m pip install -e .
-.venv/bin/argus
+Windows：
+
+```powershell
+pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
 ```
 
-Argus 会识别过期的本地 WebAPI 与 daemon，并在受控任务边界完成替换。
+macOS：
+
+```bash
+uv tool upgrade argus-skill
+```
+
+Linux 源码 checkout：
+
+```bash
+argus update
+```
+
+Linux 源码更新会拒绝 dirty/detached checkout，只做 fast-forward 并刷新 editable
+安装。更新后 Argus 会识别过期的本地 WebAPI 与 daemon，并在受控任务边界完成替换。
 
 ## 微信群
 

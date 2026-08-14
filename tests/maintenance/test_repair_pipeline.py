@@ -96,6 +96,7 @@ def test_doctor_classifies_missing_desktop_runtime_as_repairable(tmp_path: Path)
     finding = next(item for item in report.findings if item.code == "ARGUS-DESKTOP-001")
 
     assert finding.status == "electron_binary_missing"
+    assert finding.severity == "warning"
     assert finding.repair_action_ids == ("install_electron_binary",)
 
 

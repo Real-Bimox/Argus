@@ -224,7 +224,9 @@ def propagate_after_mission(
                 mission_result=mission_result,
             ),
             options=RunnerOptions(
-                model=resolve_manager_classify_model(),
+                model=resolve_manager_classify_model(
+                    backend=getattr(backend, "backend", None),
+                ),
                 reasoning_effort="low",
                 dangerous_yolo=True,
                 skip_git_repo_check=True,

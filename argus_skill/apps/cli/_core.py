@@ -576,8 +576,11 @@ def _build_worker_config(args: argparse.Namespace):
     from ...daemon.life_worker import LifeWorkerConfig
     bundle = _resolve_project_bundle(args)
     from ...core.knobs import resolve_role_backend
+    from .._runtime_construction import _resolve_role_runner_backend_name
 
     backend = getattr(args, "backend", None) or resolve_role_backend("")
+    engineer_backend = _resolve_role_runner_backend_name("engineer", backend)
+    reviewer_backend = _resolve_role_runner_backend_name("reviewer", backend)
     from ...core.knobs import (
         resolve_budget_caps,
         resolve_role_model,
@@ -599,10 +602,12 @@ def _build_worker_config(args: argparse.Namespace):
         engineer_model=resolve_role_model(
             "engineer",
             role_env="ARGUS_SKILL_ENGINEER_MODEL",
+            backend=engineer_backend,
         ),
         reviewer_model=resolve_role_model(
             "reviewer",
             role_env="ARGUS_SKILL_REVIEWER_MODEL",
+            backend=reviewer_backend,
         ),
         engineer_reasoning_effort=resolve_role_reasoning_effort(
             "ARGUS_SKILL_ENGINEER_REASONING_EFFORT"
@@ -783,10 +788,32 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
     payload["verification"] = bool(getattr(args, "verify", False))
     if repair_payload is not None:
         payload["repair"] = repair_payload
+    from ...maintenance.advisor import run_doctor_advisor
+
+    advisor = run_doctor_advisor(
+        report,
+        requested=str(getattr(args, "advisor", "auto") or "auto"),
+    )
+    payload["advisor"] = advisor
     if bool(getattr(args, "json", False)):
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     else:
         sys.stdout.write(render_full_report(report) + "\n")
+        if advisor["status"] == "completed":
+            sys.stdout.write(
+                f"\nCode Agent analysis ({advisor['backend']}):\n"
+                f"{advisor['analysis'].strip()}\n"
+            )
+        elif advisor["status"] == "failed":
+            sys.stdout.write(
+                f"\nCode Agent analysis failed ({advisor['backend']}): "
+                f"{advisor['error']}\n"
+            )
+        elif advisor["status"] == "unavailable":
+            sys.stdout.write(
+                "\nCode Agent analysis unavailable: no supported Agent CLI was "
+                "found on PATH. Deterministic findings above are still valid.\n"
+            )
         if repair_payload is not None:
             sys.stdout.write(
                 f"safe repair plan {repair_payload['plan_id']}: "

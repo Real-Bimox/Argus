@@ -71,10 +71,16 @@ def test_noninteractive_setup_validates_then_persists_without_global_mutation(
         "10-house-rules.md",
         "Keep operator-authored policy unchanged.\n",
     )
+    def check(*_args, **kwargs):
+        assert kwargs["runner_bin"] == "/usr/bin/copilot"
+        calls.append("check")
+        return report
+
+    monkeypatch.setattr(setup, "check_backend_readiness", check)
     monkeypatch.setattr(
         setup,
-        "check_backend_readiness",
-        lambda *_args, **_kwargs: calls.append("check") or report,
+        "_verify_setup_smoke",
+        lambda backend, **_kwargs: calls.append(f"smoke:{backend}") or True,
     )
     monkeypatch.setattr(
         setup,
@@ -83,7 +89,7 @@ def test_noninteractive_setup_validates_then_persists_without_global_mutation(
     )
     monkeypatch.setattr(
         "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
-        lambda name: "/usr/bin/copilot" if name == "copilot" else None,
+        lambda name, _configured=None: "/usr/bin/copilot" if name == "copilot" else None,
     )
     monkeypatch.setattr(
         setup,
@@ -107,7 +113,7 @@ def test_noninteractive_setup_validates_then_persists_without_global_mutation(
     )
 
     assert rc == 0
-    assert calls == ["check", "persist"]
+    assert calls == ["check", "smoke:copilot", "persist"]
     assert existing_house_rules.read_text(encoding="utf-8") == (
         "Keep operator-authored policy unchanged.\n"
     )
@@ -117,7 +123,7 @@ def test_noninteractive_setup_validates_then_persists_without_global_mutation(
 def test_missing_pi_is_installed_automatically(monkeypatch) -> None:
     installed = False
 
-    def resolve(name: str):
+    def resolve(name: str, _configured: str | None = None):
         return "/usr/bin/pi" if name == "pi" and installed else None
 
     def install() -> bool:
@@ -132,6 +138,46 @@ def test_missing_pi_is_installed_automatically(monkeypatch) -> None:
     monkeypatch.setattr(setup, "_install_pi_cli", install)
 
     assert setup._configure_runner_backend("pi") == "pi"
+
+
+def test_setup_uses_explicit_custom_runner_path(monkeypatch) -> None:
+    custom = "/opt/agents/claude-custom"
+    monkeypatch.setenv("ARGUS_SKILL_RUNNER_BIN", custom)
+    monkeypatch.setattr(
+        "argus_skill.core.knob_store.read_persisted_knobs",
+        lambda: {
+            "ARGUS_SKILL_RUNNER_BACKEND": "codex",
+            "ARGUS_SKILL_RUNNER_BIN": "/opt/agents/codex-old",
+        },
+    )
+    calls: list[tuple[str, str | None]] = []
+
+    def resolve(name: str, configured: str | None = None):
+        calls.append((name, configured))
+        return configured
+
+    monkeypatch.setattr(
+        "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
+        resolve,
+    )
+
+    assert setup._resolve_setup_runner_bin(
+        "claude",
+        explicit_selection=True,
+    ) == custom
+    assert calls == [("claude", custom)]
+
+
+def test_windows_backend_install_hints_are_powershell_safe() -> None:
+    assert setup._backend_install_hint(
+        "copilot",
+        platform_name="nt",
+    ) == "npm.cmd install -g @github/copilot"
+    assert "curl" not in setup._backend_install_hint("opencode", platform_name="nt")
+    assert "https://opencode.ai/docs/#windows" in setup._backend_install_hint(
+        "opencode",
+        platform_name="nt",
+    )
 
 
 def test_noninteractive_api_url_configures_pi_without_backend_flag(
@@ -154,6 +200,7 @@ def test_noninteractive_api_url_configures_pi_without_backend_flag(
     monkeypatch.setattr(setup, "_pi_models_path", lambda: models_path)
     monkeypatch.setattr(setup, "_configure_runner_backend", lambda backend: backend)
     monkeypatch.setattr(setup, "check_backend_readiness", lambda *_a, **_k: report)
+    monkeypatch.setattr(setup, "_verify_setup_smoke", lambda *_a, **_k: True)
     monkeypatch.setattr(setup, "persist_validated_profile", lambda _report: True)
     monkeypatch.setattr(
         setup,
@@ -181,6 +228,64 @@ def test_noninteractive_api_url_configures_pi_without_backend_flag(
         "models": [{"id": "model-x"}],
     }
     assert persisted == ["model-x"]
+
+
+def test_setup_smoke_uses_real_agent_turn(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
+        lambda backend, _configured=None: (
+            "/usr/bin/claude" if backend == "claude" else None
+        ),
+    )
+    captured: dict[str, object] = {}
+
+    def probe(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(ok=True, output="ARGUS_SETUP_OK", error="")
+
+    monkeypatch.setattr(
+        "argus_skill.core.agent_probe.run_read_only_agent_prompt",
+        probe,
+    )
+
+    assert setup._verify_setup_smoke("claude") is True
+    assert captured["backend"] == "claude"
+    assert captured["model"] == ""
+    assert captured["run_label"] == "setup-smoke"
+    assert "Real Agent turn completed" in capsys.readouterr().out
+
+
+def test_setup_smoke_uses_effective_backend_model(monkeypatch) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_MODEL", "claude-sonnet-current")
+
+    assert setup._setup_smoke_model("claude", None) == "claude-sonnet-current"
+    assert setup._setup_smoke_model(
+        "pi",
+        ("api-model", Path("/tmp/models.json")),
+    ) == "api-model"
+
+
+def test_setup_smoke_failure_is_actionable(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
+        lambda backend, _configured=None: (
+            "/usr/bin/claude" if backend == "claude" else None
+        ),
+    )
+    monkeypatch.setattr(
+        "argus_skill.core.agent_probe.run_read_only_agent_prompt",
+        lambda **_kwargs: SimpleNamespace(
+            ok=False,
+            output="",
+            error="not authenticated",
+        ),
+    )
+
+    assert setup._verify_setup_smoke("claude") is False
+    output = capsys.readouterr().out
+    assert "Step 2" in output
+    assert "not authenticated" in output
+    assert "argus doctor --deep --advisor auto" in output
 
 
 def test_pi_provider_rejects_non_http_url(tmp_path: Path, monkeypatch) -> None:

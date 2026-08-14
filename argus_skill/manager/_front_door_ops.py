@@ -64,7 +64,9 @@ class _FrontDoorMixin:
                     _backend,
                     prompt=prompt,
                     options=RunnerOptions(
-                        model=resolve_manager_classify_model(),
+                        model=resolve_manager_classify_model(
+                            backend=getattr(_backend, "backend", None),
+                        ),
                         reasoning_effort=_effort,
                         skip_git_repo_check=True,
                     ),

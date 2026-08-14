@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from argus_skill.core.knobs import resolve_cheap_route_model
+from argus_skill.core.knobs import resolve_cheap_route_model, resolve_role_model
 
 
 @pytest.fixture(autouse=True)
@@ -30,6 +30,85 @@ def _no_persisted_knobs(monkeypatch, tmp_path) -> None:
 
 def _env(backend: str, **extra: str) -> dict[str, str]:
     return {"ARGUS_SKILL_LIFE_BACKEND": backend, **extra}
+
+
+@pytest.mark.parametrize("backend", ["pi", "claude", "opencode", "grok"])
+def test_provider_backend_without_model_uses_its_native_default(backend: str) -> None:
+    assert (
+        resolve_role_model(
+            "manager",
+            role_env="ARGUS_SKILL_MANAGER_MODEL",
+            env=_env(backend),
+        )
+        == ""
+    )
+
+
+@pytest.mark.parametrize("backend", ["codex", "copilot"])
+def test_openai_backend_without_model_keeps_argus_default(backend: str) -> None:
+    assert (
+        resolve_role_model(
+            "manager",
+            role_env="ARGUS_SKILL_MANAGER_MODEL",
+            env=_env(backend),
+        )
+        == "gpt-5.5"
+    )
+
+
+def test_auto_model_override_uses_backend_default() -> None:
+    assert (
+        resolve_role_model(
+            "manager",
+            role_env="ARGUS_SKILL_MANAGER_MODEL",
+            env=_env("claude", ARGUS_SKILL_MANAGER_MODEL="auto"),
+        )
+        == ""
+    )
+
+
+def test_role_model_can_use_the_actual_fallback_backend() -> None:
+    assert (
+        resolve_role_model(
+            "manager",
+            role_env="ARGUS_SKILL_MANAGER_MODEL",
+            backend="claude",
+            env=_env("codex"),
+        )
+        == ""
+    )
+
+
+def test_manager_routes_use_the_actual_runtime_backend() -> None:
+    from argus_skill.core.knobs import (
+        resolve_manager_classify_model,
+        resolve_manager_reply_model,
+    )
+
+    env = _env("codex")
+    assert resolve_manager_classify_model(backend="claude", env=env) == ""
+    assert resolve_manager_reply_model(backend="claude", env=env) == ""
+
+
+def test_claude_command_omits_openai_model_when_unconfigured() -> None:
+    from argus_skill.agent_cli.agent_cli_runner import AgentCliRunner, RunnerOptions
+    from argus_skill.agent_cli.runner_backend import BACKEND_CLAUDE
+
+    model = resolve_role_model(
+        "manager",
+        role_env="ARGUS_SKILL_MANAGER_MODEL",
+        env=_env("claude"),
+    )
+    command = AgentCliRunner(
+        "claude",
+        backend=BACKEND_CLAUDE,
+    )._build_command(
+        resume_thread_id=None,
+        options=RunnerOptions(model=model),
+    )
+
+    assert "--model" not in command
+    assert "gpt-5.5" not in command
 
 
 @pytest.mark.parametrize("backend", ["codex", "copilot"])

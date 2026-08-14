@@ -735,8 +735,11 @@ class SelfReplyMixin:
             except Exception:  # noqa: BLE001 - UI sinks never own the turn
                 pass
 
+        effective_backend = getattr(self._args, "backend", None)
         reply_model = (
-            resolve_manager_classify_model() if lean else resolve_manager_reply_model()
+            resolve_manager_classify_model(backend=effective_backend)
+            if lean
+            else resolve_manager_reply_model(backend=effective_backend)
         )
         reply_effort = (
             "low"
@@ -954,7 +957,9 @@ class SelfReplyMixin:
                     self._backend,
                     prompt=prompt,
                     options=RunnerOptions(
-                        model=resolve_manager_classify_model(),
+                        model=resolve_manager_classify_model(
+                            backend=getattr(self._args, "backend", None),
+                        ),
                         reasoning_effort="low",
                         dangerous_yolo=True,
                         skip_git_repo_check=True,

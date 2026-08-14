@@ -20,6 +20,7 @@ from ..core.backend_readiness import (
     SETUP_EXIT_NOT_READY,
     SETUP_EXIT_PERSISTENCE,
     SETUP_EXIT_USAGE,
+    backend_install_command,
     check_backend_readiness,
     format_backend_readiness,
     persist_validated_profile,
@@ -91,14 +92,22 @@ _SUPPORTED_AGENT_BACKENDS = (
     "pi",
     "grok",
 )
-_BACKEND_INSTALL_COMMANDS = {
-    "copilot": "npm install -g @github/copilot",
-    "codex": "npm install -g @openai/codex@latest",
-    "claude": "npm install -g @anthropic-ai/claude-code",
-    "opencode": "curl -fsSL https://opencode.ai/install | bash",
-    "pi": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
-    "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
+_BACKEND_LOGIN_COMMANDS = {
+    "copilot": "copilot login",
+    "codex": "codex login",
+    "claude": "run `claude` and complete `/login`",
+    "opencode": "opencode auth login",
+    "pi": "run `pi` and complete `/login`",
+    "grok": "grok login",
 }
+
+
+def _backend_install_hint(
+    backend: str,
+    *,
+    platform_name: str | None = None,
+) -> str:
+    return backend_install_command(backend, platform_name=platform_name)
 
 
 def _install_pi_cli() -> bool:
@@ -146,12 +155,28 @@ def _configured_runner_backend() -> str:
     return ""
 
 
+def _resolve_setup_runner_bin(
+    backend: str,
+    *,
+    explicit_selection: bool = False,
+) -> str | None:
+    from ..agent_cli.runner_backend import resolve_runner_bin
+    from ..core.knobs import resolve_runner_bin_setting
+
+    configured_backend = _configured_runner_backend()
+    configured_bin = resolve_runner_bin_setting()
+    explicit_bin = str(os.environ.get("ARGUS_SKILL_RUNNER_BIN") or "").strip()
+    if explicit_selection and explicit_bin:
+        return resolve_runner_bin(backend, explicit_bin)
+    if backend == configured_backend and configured_bin:
+        return resolve_runner_bin(backend, configured_bin)
+    return resolve_runner_bin(backend)
+
+
 def _configure_runner_backend(requested: str | None = None) -> str | None:
     """Select the agent CLI used by every role without mutating global config."""
-    from ..agent_cli.runner_backend import resolve_runner_bin
-
     available = [
-        name for name in _SUPPORTED_AGENT_BACKENDS if resolve_runner_bin(name)
+        name for name in _SUPPORTED_AGENT_BACKENDS if _resolve_setup_runner_bin(name)
     ]
     configured = _configured_runner_backend()
     if configured and configured in available:
@@ -178,12 +203,12 @@ def _configure_runner_backend(requested: str | None = None) -> str | None:
         print()
         return None
 
-    executable = resolve_runner_bin(selected)
+    executable = _resolve_setup_runner_bin(selected, explicit_selection=True)
     if executable is None and selected == "pi" and _install_pi_cli():
-        executable = resolve_runner_bin(selected)
+        executable = _resolve_setup_runner_bin(selected, explicit_selection=True)
     if executable is None:
         print(_yellow(f"  `{selected}` CLI is not installed."))
-        print(_dim(f"    Install it with: {_BACKEND_INSTALL_COMMANDS[selected]}"))
+        print(_dim(f"    Install it with: {_backend_install_hint(selected)}"))
         if selected == "copilot":
             print(_dim("    Then authenticate with: copilot login"))
         elif selected == "opencode":
@@ -236,6 +261,68 @@ def _configure_auth_mode(backend: str, requested: str | None = None) -> str | No
     print(f"  {_green('✓')} Authentication mode selected → {normalized}")
     print()
     return normalized
+
+
+def _verify_setup_smoke(
+    backend: str,
+    *,
+    model: str = "",
+) -> bool:
+    """Prove that Argus can complete one real turn on the selected backend."""
+    from ..core.agent_probe import run_read_only_agent_prompt
+
+    executable = _resolve_setup_runner_bin(backend, explicit_selection=True)
+    if executable is None:
+        print(_yellow("  Setup failed at the end-to-end smoke test."))
+        print(f"    Backend: {backend}")
+        print("    Reason: the selected Agent CLI disappeared from PATH")
+        return False
+
+    print(_bold("  Step 2: End-to-end smoke test"))
+    print(_dim("  Argus requires one read-only reply with no tool activity."))
+    probe = run_read_only_agent_prompt(
+        backend=backend,
+        executable=executable,
+        model=model,
+        run_label="setup-smoke",
+        prompt=(
+            "This is an Argus setup smoke test. Do not use tools. "
+            "Reply with exactly: ARGUS_SETUP_OK"
+        ),
+    )
+    if probe.ok and probe.output.strip().rstrip(".") == "ARGUS_SETUP_OK":
+        print(f"  {_green('✓')} Real Agent turn completed")
+        print()
+        return True
+
+    print(_yellow("  Setup failed at Step 2: real Agent turn"))
+    print(f"    Backend: {backend}")
+    print(f"    Executable: {executable}")
+    if probe.error:
+        print(f"    Error: {probe.error}")
+    elif probe.output:
+        print(f"    Unexpected reply: {probe.output[:240]}")
+    print("    Next:")
+    print(f"      1. Authenticate with: {_BACKEND_LOGIN_COMMANDS[backend]}")
+    print("      2. Run: argus doctor --deep --advisor auto")
+    print("      3. Re-run: argus --setup")
+    print()
+    return False
+
+
+def _setup_smoke_model(
+    backend: str,
+    pi_config: tuple[str, Path] | None,
+) -> str:
+    if pi_config is not None:
+        return pi_config[0]
+    from ..core.knobs import resolve_role_model
+
+    return resolve_role_model(
+        "manager",
+        role_env="ARGUS_SKILL_MANAGER_MODEL",
+        backend=backend,
+    )
 
 
 def _pi_models_path() -> Path:
@@ -350,6 +437,7 @@ def _run_noninteractive_setup(
     report = check_backend_readiness(
         selected,
         mode,
+        runner_bin=_resolve_setup_runner_bin(selected, explicit_selection=True),
         probe_auth=mode == AUTH_MODE_SUBSCRIPTION,
         probe_vault=mode == AUTH_MODE_MODEL_API,
         allow_prerelease=allow_prerelease,
@@ -358,6 +446,9 @@ def _run_noninteractive_setup(
     stream = sys.stdout if report.ok else sys.stderr
     stream.write(rendered + "\n")
     if not report.ok:
+        return SETUP_EXIT_NOT_READY
+    smoke_model = _setup_smoke_model(selected, pi_config)
+    if not _verify_setup_smoke(selected, model=smoke_model):
         return SETUP_EXIT_NOT_READY
     if not persist_validated_profile(report):
         sys.stderr.write("argus: readiness passed but profile persistence failed\n")
@@ -1254,7 +1345,6 @@ def run_setup(
             api_model=api_model,
         )
     _banner()
-    _banner()
     selected_backend = _configure_runner_backend(backend or ("pi" if api_url else None))
     if selected_backend is None:
         return SETUP_EXIT_USAGE
@@ -1293,6 +1383,10 @@ def run_setup(
     report = check_backend_readiness(
         selected_backend,
         selected_auth_mode,
+        runner_bin=_resolve_setup_runner_bin(
+            selected_backend,
+            explicit_selection=True,
+        ),
         probe_auth=selected_auth_mode == AUTH_MODE_SUBSCRIPTION,
         probe_vault=selected_auth_mode == AUTH_MODE_MODEL_API,
         allow_prerelease=allow_prerelease,
@@ -1301,6 +1395,10 @@ def run_setup(
     print(format_backend_readiness(report))
     if not report.ok:
         print(_yellow("  Setup is not ready; the backend profile was not persisted."))
+        return SETUP_EXIT_NOT_READY
+    smoke_model = _setup_smoke_model(selected_backend, pi_config)
+    if not _verify_setup_smoke(selected_backend, model=smoke_model):
+        print(_yellow("  Backend checks passed, but Argus could not complete a real turn."))
         return SETUP_EXIT_NOT_READY
     if not persist_validated_profile(report):
         print(_yellow("  Readiness passed but backend profile persistence failed."))
