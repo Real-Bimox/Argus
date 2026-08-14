@@ -68,6 +68,20 @@ SZEMEREDI = ExternalAssumption(
     source="Szemeredi-Trotter 1983",
 )
 
+#: The same shape with a locator attached, which is what makes it checkable:
+#: ``source`` says where a human would look, ``source_id``/``locator`` name a
+#: proposition a checker can be sent to. Kept apart from ``SZEMEREDI`` so the
+#: uncited case above stays exercised by every test that uses the main fixture.
+RH_ERROR = ExternalAssumption(
+    assumption_id="rh-error-term",
+    statement=(
+        "Under RH the prime number theorem error term is O(x^(1/2+eps))."
+    ),
+    source="Iwaniec-Kowalski, Analytic Number Theory",
+    source_id="doi:10.1090/coll/053",
+    locator="Theorem 5.15",
+)
+
 
 def _context(state: MathState, context_id: str, statement: str, **definitions: str):
     return state.add_context(
@@ -115,6 +129,57 @@ def _lean(
         produced_by="lean_check 4.9.0",
         artifact="research/lean/lean_check.json",
     )
+
+
+def _literature(
+    assumption: ExternalAssumption,
+    evidence_id: str,
+    *,
+    verdict: Verdict = Verdict.SUPPORTS,
+    produced_by: str = "citation_check reader",
+    artifact: str = "research/literature/rh-error-term.json",
+) -> EvidenceRecord:
+    """One reader's answer about one citation.
+
+    Addressed to ``assumption.ref()``, which is the whole reason this layer is
+    invisible to the evidence section: a literature record never binds to the
+    claim, and must not, because "the paper says it" is not "the theorem holds
+    here".
+    """
+    return EvidenceRecord(
+        evidence_id=evidence_id,
+        subject=assumption.ref(),
+        tier=EvidenceTier.LITERATURE,
+        verdict=verdict,
+        produced_by=produced_by,
+        artifact=artifact,
+    )
+
+
+def _cited(tmp_path: Path) -> MathState:
+    """One claim standing on one *checkable* import, which is the subject here.
+
+    Deliberately not ``_seed``: that store's assumption names its source in
+    prose alone, so it is permanently ``uncited`` and could never show a
+    checker's answer changing anything.
+    """
+    state = MathState()
+    context = _context(
+        state,
+        "ctx-primes",
+        "Error terms in the prime number theorem.",
+        **{"error term": "the difference pi(x) - li(x)"},
+    )
+    _claim(
+        state,
+        "pnt-error",
+        context,
+        "The prime number theorem error term is O(x^(1/2+eps)).",
+        formal="theorem pnt_error : ...",
+        assumptions=(RH_ERROR,),
+    )
+    save_state(tmp_path, state)
+    return state
 
 
 def _seed(tmp_path: Path) -> MathState:
@@ -470,6 +535,146 @@ def test_evidence_for_an_earlier_version_is_shown_as_not_evidence(
     assert "not evidence for it" in fragment
     assert "`ev-lean-main`" in fragment
     assert "none. Nothing has checked this statement as it now stands." in fragment
+
+
+# -- the literature layer ---------------------------------------------------
+
+def test_a_checked_citation_changes_what_the_mission_is_handed(
+    tmp_path: Path,
+) -> None:
+    """The regression this section exists for: it used to change nothing.
+
+    A reader opened the source, quoted the proposition, archived the excerpt
+    and recorded ``confirmed`` -- and the fragment came out byte-identical,
+    digest included. So every worker sent at this claim re-retrieved the same
+    paper to learn what one of them had already written down, and the fragment
+    said the same "taken on faith" line each time, which is true and is not the
+    whole truth.
+
+    The artifact path is the load-bearing part of the assertion. "Someone
+    checked it" is a status word a worker has to trust; a path is a thing they
+    can open, and only the second one makes "do not retrieve this again" a safe
+    instruction rather than a request for faith in a faith-tracking system.
+    """
+    state = _cited(tmp_path)
+    before = _project(tmp_path, acceptance_check="Record a verdict for pnt-error.")
+
+    state.add_evidence(_literature(RH_ERROR, "ev-lit-rh"))
+    save_state(tmp_path, state)
+
+    after = _project(tmp_path, acceptance_check="Record a verdict for pnt-error.")
+
+    assert after != before
+    assert "citation confirmed" in after
+    assert "research/literature/rh-error-term.json" in after
+    assert "citation_check reader" in after
+    assert "doi:10.1090/coll/053 Theorem 5.15" in after
+    # The digest is what a reader consults to decide whether anything moved.
+    # If it were stable across this change it would say "nothing moved" about
+    # the round in which the literature actually got read.
+    assert _digest_of(after) != _digest_of(before)
+    # And it arrives as citation state, not as support for the theorem. A
+    # literature record binds to the assumption, so the claim is still unchecked
+    # as a statement -- the section that says so must keep saying so, or a
+    # lookup has been laundered into a proof.
+    assert "none. Nothing has checked this statement as it now stands." in after
+    assert "(proposed)" in after
+
+
+def test_an_unchecked_citation_says_nobody_has_been(tmp_path: Path) -> None:
+    """The default state has to be legible, or the confirmed one means nothing.
+
+    A row that showed the locator and stayed silent about whether anyone had
+    used it reads, to a worker deciding what to spend a retrieval on, exactly
+    like a row that was checked. "Nobody has opened the source yet" is the
+    sentence that turns the citation into an assignable piece of work.
+    """
+    _cited(tmp_path)
+
+    fragment = _project(tmp_path, acceptance_check="Record a verdict for pnt-error.")
+
+    assert "citation unchecked" in fragment
+    assert "Nobody has opened the source yet." in fragment
+    assert "doi:10.1090/coll/053 Theorem 5.15" in fragment
+    # Nothing to re-open, so nothing may be offered as if there were.
+    assert "read at" not in fragment
+
+
+def test_an_inconclusive_citation_is_not_reported_as_a_confirmation(
+    tmp_path: Path,
+) -> None:
+    """Reached the document, did not settle the proposition -- a third state.
+
+    This is the one a reader is most likely to round to "checked": a DOI that
+    resolves feels like an answer. It says the paper exists, which nobody
+    doubted, and says nothing about whether Theorem 5.15 is in it or says this.
+    The row keeps the artifact, because the next checker should start from what
+    the last one saw rather than from the search bar.
+    """
+    state = _cited(tmp_path)
+    state.add_evidence(_literature(RH_ERROR, "ev-lit-rh", verdict=Verdict.INCONCLUSIVE))
+    save_state(tmp_path, state)
+
+    fragment = _project(tmp_path, acceptance_check="Record a verdict for pnt-error.")
+
+    assert "citation inconclusive" in fragment
+    assert "citation confirmed" not in fragment
+    assert "still unverified" in fragment
+    assert "research/literature/rh-error-term.json" in fragment
+
+
+def test_an_assumption_with_no_locator_is_not_reported_as_unchecked(
+    tmp_path: Path,
+) -> None:
+    """An import nobody can be sent to look up is not an open task.
+
+    ``szemeredi-trotter`` names its source in prose and names no proposition
+    inside it -- an ordinary shape for a classical result, an unpublished note
+    or a private communication. Rendering that as ``unchecked`` would put a
+    permanent, unclosable retrieval into every mission about this claim.
+    """
+    _seed(tmp_path)
+
+    fragment = _project(tmp_path, acceptance_check="Record a verdict for udist-main.")
+
+    assert "citation uncited" in fragment
+    assert "nothing to retrieve" in fragment
+    assert "citation unchecked" not in fragment
+
+
+def test_a_much_checked_citation_cannot_flood_its_row(tmp_path: Path) -> None:
+    """The new row is a list like every other one here, and gets the same cap.
+
+    Checkers and excerpts accumulate: a contested citation collects a reading
+    per worker who doubted it, and every one of them is legitimately part of
+    this claim's neighbourhood, so the depth-1 rule admits all of them. An
+    uncapped row would reintroduce, inside a bullet, exactly the unbounded
+    growth ``_MAX_ROWS`` exists to stop.
+
+    Asserted without naming the cap: whatever the row withheld, it has to say
+    how much. A test that pinned the constant would go green on a change that
+    silently truncated.
+    """
+    state = _cited(tmp_path)
+    artifacts = [f"research/literature/check-{index:02d}.json" for index in range(20)]
+    for index, artifact in enumerate(artifacts):
+        state.add_evidence(
+            _literature(
+                RH_ERROR,
+                f"ev-lit-{index:02d}",
+                produced_by=f"reader-{index:02d}",
+                artifact=artifact,
+            )
+        )
+    save_state(tmp_path, state)
+
+    fragment = _project(tmp_path, acceptance_check="Record a verdict for pnt-error.")
+
+    assert "citation confirmed" in fragment
+    assert artifacts[0] in fragment
+    withheld = [artifact for artifact in artifacts if artifact not in fragment]
+    assert withheld, "the row shipped every excerpt it had, so it is uncapped"
+    assert f"and {len(withheld)} more" in fragment
 
 
 # -- boundedness ------------------------------------------------------------

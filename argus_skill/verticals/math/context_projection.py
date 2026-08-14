@@ -10,10 +10,11 @@ claims this particular task is about.
 So this projects. Given the backlog item the supervisor just claimed, it finds
 the claim that item is about and renders that claim's *neighbourhood*: the
 statement and its version, the definitions it is stated against, the external
-results it is still taking on faith, the evidence that binds to this exact
-statement, the immediate proof obligations, the routes already retired, and
-what would have to happen for its status to move. Nothing transitive, and
-nothing about any other claim.
+results it is still taking on faith and whether anyone has yet been to the
+sources they cite, the evidence that binds to this exact statement, the
+immediate proof obligations, the routes already retired, and what would have to
+happen for its status to move. Nothing transitive, and nothing about any other
+claim.
 
 Three properties are load-bearing, and each has a test that fails when it stops
 holding:
@@ -60,6 +61,8 @@ from ...research_math import (
     KERNEL_TIERS,
     REFUTING_TIERS,
     STATE_RELPATH,
+    CitationAssessment,
+    CitationStatus,
     ClaimStatus,
     ClaimVersion,
     ContextVersion,
@@ -356,6 +359,55 @@ def _definitions(context: ContextVersion | None) -> tuple[list[list[str]], int]:
     )
 
 
+def _citation(citation: CitationAssessment | None) -> dict[str, Any]:
+    """Whether anyone has already been to the source, and where what they read is.
+
+    This is derived from ``state.citations`` rather than from the evidence list
+    below, and the separation is the point. A literature check is addressed to
+    ``assumption.ref()``, so it does not bind to the claim's reference and must
+    not be made to: evidence that a paper contains a theorem is evidence about
+    the import, never about the statement importing it, and admitting it to
+    "evidence bound to this exact statement" would launder a lookup into
+    support for the theorem.
+
+    Kept apart, it is still the missing half of what a worker needs. Before
+    this, a citation somebody had opened, read, quoted and archived changed
+    this fragment by zero bytes, so every worker on the claim paid the same
+    retrieval to learn what one of them already knew. ``artifacts`` is the
+    operative field: "someone checked this" is only actionable when what they
+    saw can be re-opened, and it is what makes not re-retrieving the paper a
+    safe instruction rather than a request to trust a status word.
+
+    ``checked_by`` names producers rather than counting them, for the reason
+    ``CitationAssessment`` does: three answers from one reader are one check.
+    Both lists go through ``_rows``, because a much-cited assumption is exactly
+    where a per-row list stops being small.
+    """
+    if citation is None:
+        # Cannot happen from the one call site -- ``citations`` is derived from
+        # the same ``effective_assumptions`` the rows are -- and is answered
+        # with silence rather than a status, because inventing "unchecked" here
+        # would assert nobody has looked on the strength of a lookup failure.
+        return {
+            "status": "",
+            "proposition": "",
+            "checked_by": [],
+            "further_checked_by": 0,
+            "artifacts": [],
+            "further_artifacts": 0,
+        }
+    checkers, further_checkers = _rows(list(citation.checked_by))
+    artifacts, further_artifacts = _rows(list(citation.artifacts))
+    return {
+        "status": citation.status.value,
+        "proposition": _clip(citation.cited_proposition, _MAX_NEIGHBOUR_TEXT),
+        "checked_by": [_clip(name, _MAX_NEIGHBOUR_TEXT) for name in checkers],
+        "further_checked_by": further_checkers,
+        "artifacts": [_clip(path, _MAX_NEIGHBOUR_TEXT) for path in artifacts],
+        "further_artifacts": further_artifacts,
+    }
+
+
 def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
     """Everything the fragment says, as plain data, so the digest covers it all.
 
@@ -390,19 +442,26 @@ def _payload(state: MathState, target: MissionTarget) -> dict[str, Any]:
 
     open_ids = set(assessment.undischarged)
     standing = state.effective_assumptions(claim_id)
+    # Only the open ones are given their citation state: those are the imports
+    # this mission may actually act on, and the retrieval it might repeat.
+    citations = {item.assumption_id: item for item in state.citations(claim_id)}
     open_assumptions, further_open = _rows(
         [
             {
                 "assumption_id": item.assumption_id,
                 "statement": _clip(item.statement, _MAX_NEIGHBOUR_TEXT),
                 "source": _clip(item.source, _MAX_NEIGHBOUR_TEXT),
+                "citation": _citation(citations.get(item.assumption_id)),
             }
             for item in standing
             if item.assumption_id in open_ids
         ]
     )
     # Discharged assumptions are named but not restated: they are settled, and
-    # what the mission needs from them is that they exist and are covered.
+    # what the mission needs from them is that they exist and are covered. That
+    # is also why they carry no citation state -- a discharged assumption has
+    # been established here, so where its source was looked up is history
+    # rather than work anyone is about to repeat.
     discharged, further_discharged = _rows(
         [item.assumption_id for item in standing if item.assumption_id not in open_ids]
     )
@@ -582,6 +641,59 @@ def _transitions(status: ClaimStatus, claim: ClaimVersion) -> list[str]:
 
 # -- rendering ---------------------------------------------------------------
 
+#: What each citation state means for the next thing a worker does, keyed by
+#: the enum's own values so a renamed state loses its sentence loudly instead
+#: of rendering an out-of-date one. The distinctions are the ones
+#: ``CitationStatus`` insists on: a source nobody has opened, a source that was
+#: opened, and a source that was reached without settling what is inside it.
+_CITATION_ADVICE = {
+    CitationStatus.CONFIRMED.value: (
+        "The source has been opened and contains it; re-read the artifact "
+        "instead of retrieving it again."
+    ),
+    CitationStatus.UNCHECKED.value: "Nobody has opened the source yet.",
+    CitationStatus.INCONCLUSIVE.value: (
+        "The document was reached and the proposition in it is still "
+        "unverified: a locator that resolves proves a paper exists, not that "
+        "the theorem is in it."
+    ),
+    CitationStatus.DISPUTED.value: (
+        "A checker looked and reports the source does not say this. Checking "
+        "again answers nothing; fix the citation or the proof."
+    ),
+    CitationStatus.UNCITED.value: (
+        "No source_id and locator recorded, so there is nothing to retrieve."
+    ),
+}
+
+
+def _citation_line(citation: dict[str, Any]) -> str:
+    """One line per open import: the state, who settled it, and where to re-read.
+
+    Rendered under the assumption rather than in a section of its own so that
+    the status sits against the statement it is about; a separate list would
+    have to name every assumption twice to say the same thing.
+    """
+    status = citation["status"]
+    if not status:
+        return ""
+    parts = [f"citation {status}"]
+    if citation["proposition"]:
+        parts.append(f" of {citation['proposition']}")
+    if citation["checked_by"]:
+        names = ", ".join(f"`{name}`" for name in citation["checked_by"])
+        if citation["further_checked_by"]:
+            names += f", and {citation['further_checked_by']} more"
+        parts.append(f", checked by {names}")
+    if citation["artifacts"]:
+        paths = ", ".join(citation["artifacts"])
+        if citation["further_artifacts"]:
+            paths += f", and {citation['further_artifacts']} more"
+        parts.append(f", read at {paths}")
+    advice = _CITATION_ADVICE.get(status, "")
+    return f"{''.join(parts)}. {advice}".rstrip()
+
+
 def _render(payload: dict[str, Any]) -> str:
     digest = content_digest(payload)
     context = payload["context"]
@@ -655,6 +767,9 @@ def _render(payload: dict[str, Any]) -> str:
                 f"- `{item['assumption_id']}`: {item['statement']} "
                 f"[source: {item['source']}]"
             )
+            citation = _citation_line(item["citation"])
+            if citation:
+                lines.append(f"  - {citation}")
         if payload["further_open_assumptions"]:
             lines.append(
                 f"- and {payload['further_open_assumptions']} more open "
