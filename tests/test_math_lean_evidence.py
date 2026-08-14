@@ -35,9 +35,11 @@ from pathlib import Path
 
 import pytest
 
+from argus_skill.tools import lean_check
 from argus_skill.tools.lean_check import audit_lean_tools
 from argus_skill.verticals.math.lean_evidence import (
     MAX_DISCOVERED_SOURCES,
+    CompiledArtifactChangedError,
     classify_environment_failure,
     discover_lean_sources,
     lean_evidence_issues,
@@ -1291,3 +1293,285 @@ def test_audit_answers_whether_import_mathlib_would_resolve(
     assert reported["resolved"] == str(workspace)
     # An empty answer has to come with where it looked, or it is unactionable.
     assert any("ARGUS_SKILL_MATHLIB_WORKSPACE" in place for place in reported["searched"])
+
+
+# -- the window the compiler is reading in -----------------------------------
+#
+# A certificate exists to bind one compiler verdict to the exact bytes that
+# were compiled. For as long as this module existed it hashed the source
+# *after* `run_lean_check` returned, so an edit landing inside the compile
+# window produced a record carrying the new text's digest and the old text's
+# verdict — and `lean_evidence check` then confirmed the record was current,
+# because the recorded digest and the file on disk agreed perfectly. The window
+# is not hypothetical: `prepare_canonical_lean_artifacts` snapshots the source
+# only when it is not already `Main.lean`, and the documented invocation
+# compiles `research/lean/Main.lean` in place.
+#
+# The race is stubbed rather than timed. A test that depends on beating a real
+# compiler is a test that passes on a slow host and says nothing on a fast one.
+
+SWAPPED_THEOREM = (
+    "theorem argus_add_comm (n : Nat) : n = n + 1 := Nat.add_comm n 1\n"
+)
+SWAPPED_FIDELITY = (
+    "# Statement fidelity\n\n"
+    "`argus_add_comm` formalizes: every natural number equals its own successor.\n"
+    "Objects: natural numbers. Quantifiers: universal over n.\n"
+    "Hypotheses: none. Conclusion: n = n + 1. Added assumptions: none.\n"
+)
+
+
+def _compiler_that_edits(path: Path, text: str):
+    """A compile that answers about what it read, then finds the file rewritten.
+
+    Deliberately the true ordering of the bug: the real checker runs against
+    the bytes that were there, and only then does the editor's write land. So
+    the returned verdict genuinely describes the old text, which is what makes
+    publishing it against the new text's digest a lie rather than a mismatch.
+    """
+    real = lean_check.run_lean_check
+
+    def compile_then_edit(source, **kwargs):
+        result = real(source, **kwargs)
+        path.write_text(text, encoding="utf-8")
+        return result
+
+    return compile_then_edit
+
+
+def _bare_lean(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """A compiler that succeeds on any host, with no Mathlib in reach."""
+    monkeypatch.setenv("HOME", str(tmp_path / "no-home"))
+    monkeypatch.delenv("ARGUS_SKILL_MATHLIB_WORKSPACE", raising=False)
+    return _fake_lake(tmp_path)
+
+
+def test_verify_records_the_digests_of_the_bytes_that_were_compiled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ordinary path: both digests name the files as the compiler saw them."""
+    lean_bin = _bare_lean(tmp_path, monkeypatch)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+
+    result = verify_lean_source(
+        source, statement_fidelity=fidelity, lean_bin=lean_bin
+    )
+
+    assert result["source_sha256"] == hashlib.sha256(
+        source.read_bytes()
+    ).hexdigest()
+    assert result["statement_fidelity_sha256"] == hashlib.sha256(
+        fidelity.read_text(encoding="utf-8").encode("utf-8")
+    ).hexdigest()
+    recorded = json.loads(
+        (_lean_dir(root) / "lean_check.json").read_text(encoding="utf-8")
+    )
+    assert recorded["source_sha256"] == result["source_sha256"]
+    assert recorded["statement_fidelity_sha256"] == result["statement_fidelity_sha256"]
+    assert not {"lean_result_stale", "lean_fidelity_changed"} & _codes(root)
+
+
+def test_a_source_edited_under_the_compiler_publishes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The certificate this run would have written is the forgery, so there is none."""
+    lean_bin = _bare_lean(tmp_path, monkeypatch)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+    monkeypatch.setattr(
+        lean_check,
+        "run_lean_check",
+        _compiler_that_edits(source, SWAPPED_THEOREM),
+    )
+
+    with pytest.raises(CompiledArtifactChangedError) as raised:
+        verify_lean_source(source, statement_fidelity=fidelity, lean_bin=lean_bin)
+
+    message = str(raised.value)
+    assert "the Lean source" in message
+    assert str(source) in message
+    assert "run verify again" in message
+    # Not a weakened certificate, not an unverified one: none at all.
+    assert not (_lean_dir(root) / "lean_check.json").exists()
+    assert not (_lean_dir(root) / "compile.log").exists()
+    # And the edit itself is not blessed by the absence of a record.
+    assert "lean_result_missing" in _codes(root)
+
+
+def test_a_fidelity_note_rewritten_under_the_compiler_publishes_nothing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The unchecked half of the argument has the same binding, so the same rule.
+
+    A note rewritten after the compiler answered re-labels a proof of one thing
+    as a proof of another, and nothing downstream can tell: the recorded digest
+    would match the new note exactly, so `lean_fidelity_changed` never fires.
+    """
+    lean_bin = _bare_lean(tmp_path, monkeypatch)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+    monkeypatch.setattr(
+        lean_check,
+        "run_lean_check",
+        _compiler_that_edits(fidelity, SWAPPED_FIDELITY),
+    )
+
+    with pytest.raises(CompiledArtifactChangedError) as raised:
+        verify_lean_source(source, statement_fidelity=fidelity, lean_bin=lean_bin)
+
+    message = str(raised.value)
+    assert "statement_fidelity.md" in message
+    # The proof held still; saying otherwise would send the reader to the wrong file.
+    assert "the Lean source" not in message
+    assert not (_lean_dir(root) / "lean_check.json").exists()
+    assert not (_lean_dir(root) / "compile.log").exists()
+
+
+def test_a_raced_re_verification_leaves_the_previous_certificate_untouched(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Refusing must not half-write over what an earlier honest run recorded.
+
+    The earlier record stays exactly as it was, which is also what makes the
+    outcome fail closed: it describes the text that used to be there, the edit
+    left different text, and the gate reports the pair as stale rather than
+    reporting nothing.
+    """
+    lean_bin = _bare_lean(tmp_path, monkeypatch)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+    verify_lean_source(source, statement_fidelity=fidelity, lean_bin=lean_bin)
+    before = (_lean_dir(root) / "lean_check.json").read_bytes()
+    log_before = (_lean_dir(root) / "compile.log").read_bytes()
+    monkeypatch.setattr(
+        lean_check,
+        "run_lean_check",
+        _compiler_that_edits(source, SWAPPED_THEOREM),
+    )
+
+    with pytest.raises(CompiledArtifactChangedError):
+        verify_lean_source(source, statement_fidelity=fidelity, lean_bin=lean_bin)
+
+    assert (_lean_dir(root) / "lean_check.json").read_bytes() == before
+    assert (_lean_dir(root) / "compile.log").read_bytes() == log_before
+    assert "lean_result_stale" in _codes(root)
+    assert stage_completion_issues("solve", root) != ()
+
+
+def test_a_file_deleted_under_the_compiler_is_the_same_refusal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gone is a kind of changed; a digest that cannot be re-taken is not a match."""
+    lean_bin = _bare_lean(tmp_path, monkeypatch)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+    real = lean_check.run_lean_check
+
+    def compile_then_delete(target, **kwargs):
+        result = real(target, **kwargs)
+        fidelity.unlink()
+        return result
+
+    monkeypatch.setattr(lean_check, "run_lean_check", compile_then_delete)
+
+    with pytest.raises(CompiledArtifactChangedError, match="could no longer be read"):
+        verify_lean_source(source, statement_fidelity=fidelity, lean_bin=lean_bin)
+
+    assert not (_lean_dir(root) / "lean_check.json").exists()
+
+
+def test_the_cli_refuses_a_raced_run_rather_than_reporting_it_unverified(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
+) -> None:
+    """`unverified` means the environment could not answer. It answered."""
+    lean_bin = _bare_lean(tmp_path, monkeypatch)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+    monkeypatch.setattr(
+        lean_check,
+        "run_lean_check",
+        _compiler_that_edits(source, SWAPPED_THEOREM),
+    )
+
+    assert main([
+        "verify",
+        str(source),
+        "--statement-fidelity",
+        str(fidelity),
+        "--lean-bin",
+        lean_bin,
+    ]) == 2
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert "changed while the compiler was running" in payload["error"]
+    assert "status" not in payload
+    assert not (_lean_dir(root) / "lean_check.json").exists()
+
+
+def test_a_raced_run_records_nothing_in_the_claim_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The refusal has to reach the ledger, not only the artifact directory.
+
+    ``verify --claim`` publishes in three places: the result beside the source,
+    the certificate archived under `research/lean/certificates/`, and the
+    evidence record that is the only way a claim reaches `closed_kernel`. A
+    source edited while the compiler was reading it must produce none of the
+    three — a record citing a compile that describes different text is exactly
+    the citation the archive exists to make trustworthy.
+    """
+    from argus_skill.research_math import load_state
+    from argus_skill.verticals.math.math_state import main as state_main
+
+    lean_bin = _bare_lean(tmp_path, monkeypatch)
+    root = _project(tmp_path)
+    source = _write_source(root)
+    fidelity = _write_fidelity(root)
+    state_main([
+        "context", "--project-root", str(root),
+        "--id", "ctx", "--statement", "Natural numbers.",
+    ])
+    state_main([
+        "claim", "--project-root", str(root),
+        "--id", "C1", "--context", "ctx",
+        "--statement", "addition of naturals is commutative",
+        "--formal-file", str(source),
+    ])
+    monkeypatch.setattr(
+        lean_check,
+        "run_lean_check",
+        _compiler_that_edits(source, SWAPPED_THEOREM),
+    )
+
+    assert main([
+        "verify",
+        str(source),
+        "--statement-fidelity",
+        str(fidelity),
+        "--claim",
+        "C1",
+        "--project-root",
+        str(root),
+        "--lean-bin",
+        lean_bin,
+    ]) == 2
+
+    assert not (_lean_dir(root) / "lean_check.json").exists()
+    assert not (_lean_dir(root) / "certificates").exists()
+    assert not load_state(root).evidence

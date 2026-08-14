@@ -62,6 +62,7 @@ from typing import Any
 __all__ = [
     "LEAN_DIR_RELPATH",
     "MAX_DISCOVERED_SOURCES",
+    "CompiledArtifactChangedError",
     "LeanEvidenceReport",
     "LeanIssue",
     "LeanSourceEvidence",
@@ -451,6 +452,20 @@ def _digest_file(path: Path) -> str | None:
     try:
         return _sha256(path.read_bytes())
     except OSError:
+        return None
+
+
+def _digest_fidelity(path: Path) -> str | None:
+    """The fidelity document's digest, taken the way every reader takes it.
+
+    Through ``read_text`` rather than over raw bytes, because that is how
+    ``verify_lean_source`` records it and how ``_fidelity_issues`` compares
+    against it. Hashing the same document two ways would make an untouched note
+    read as an edited one.
+    """
+    try:
+        return _sha256(path.read_text(encoding="utf-8").encode("utf-8"))
+    except (OSError, UnicodeError):
         return None
 
 
@@ -976,6 +991,75 @@ def source_evidence(source: Path | str, project_root: Path | str) -> LeanSourceE
 
 # -- producing the evidence --------------------------------------------------
 
+class CompiledArtifactChangedError(ValueError):
+    """An artifact moved under the compiler, so no certificate may be written.
+
+    Deliberately not a status. ``unverified`` means "the environment could not
+    answer", and this is a different fact: the environment answered, about text
+    that no longer exists. There is nothing to record and nothing to downgrade —
+    a certificate that cannot be trusted must not be published at all.
+
+    A ``ValueError`` because that is what this module's other refusals already
+    are, so the ``verify`` CLI arm and every caller with an ``except ValueError``
+    treats it as a refusal rather than a crash; a distinct type because "the run
+    was raced" and "the arguments were malformed" call for different repairs.
+    """
+
+
+def _drift(label: str, path: Path, before: str, after: str | None) -> str | None:
+    if after == before:
+        return None
+    if after is None:
+        return f"{label} ({path}) could no longer be read after the compile"
+    return f"{label} ({path}) changed while the compiler was running"
+
+
+def _refuse_if_moved_under_the_compiler(
+    source: Path,
+    source_digest: str,
+    fidelity: Path,
+    fidelity_digest: str,
+) -> None:
+    """Refuse to certify a compile whose inputs did not hold still.
+
+    The digests were taken before ``run_lean_check`` was called; these are the
+    same files afterwards. If either moved, the compiler's answer and the bytes
+    on disk are about different text, and there is no honest record to write:
+    stamping the run with the digests taken beforehand publishes a verdict about
+    a file the project no longer has, and stamping it with the digests taken
+    afterwards — which is what this module did — hands the *new* text the *old*
+    text's verdict, with ``lean_evidence check`` then finding everything current
+    and consistent. Both are worse than no certificate.
+
+    The window is real rather than theoretical. ``prepare_canonical_lean_artifacts``
+    snapshots the source only when it is not already the canonical
+    ``Main.lean``, and the documented Engineer invocation compiles
+    ``research/lean/Main.lean`` in place, so what the compiler reads is the live
+    file in the working tree for as long as the compile takes.
+    """
+    reasons = [
+        reason
+        for reason in (
+            _drift("the Lean source", source, source_digest, _digest_file(source)),
+            _drift(
+                f"the {_STATEMENT_FIDELITY_NAME}",
+                fidelity,
+                fidelity_digest,
+                _digest_fidelity(fidelity),
+            ),
+        )
+        if reason
+    ]
+    if not reasons:
+        return
+    raise CompiledArtifactChangedError(
+        "; ".join(reasons)
+        + ". The compiler's answer is therefore about text this project no "
+        "longer carries, so nothing was recorded — no result, no compile log, "
+        "no claim evidence. Leave the file alone and run verify again."
+    )
+
+
 def verify_lean_source(
     source: Path | str,
     *,
@@ -1000,6 +1084,15 @@ def verify_lean_source(
     still passing, because they only ask whether *some* substantive note names
     the declaration. Nothing here establishes that the note is *true*; no tool
     in this repository does, and no field claims otherwise.
+
+    Both digests are taken *before* the compiler is started and re-taken after
+    it returns, and a run whose source or note moved in between publishes
+    nothing at all — see ``_refuse_if_moved_under_the_compiler``. Hashing after
+    the compile, which is what this did, meant an edit landing inside the
+    compile window produced a certificate carrying the new text's digest and the
+    old text's verdict; every later check then agreed the record was current,
+    because the recorded digest and the file on disk matched perfectly. There is
+    no ordering of one read that fixes this, only two reads and a refusal.
 
     ``use_lake`` defaults to ``None``, meaning *decide from the host*: compile
     through ``lake env lean`` when a Lake workspace applies to this source, and
@@ -1044,6 +1137,16 @@ def verify_lean_source(
         )
         workspace = _resolve_lake_workspace(canonical_source)
         through_lake = workspace is not None if use_lake is None else use_lake
+        # Read once, here, and record *these* digests. What the certificate has
+        # to bind is the verdict to the bytes the verdict is about, and bytes
+        # read after `run_lean_check` returns are not necessarily those bytes.
+        compiled_bytes = canonical_source.read_bytes()
+        compiled_fidelity = canonical_fidelity.read_text(encoding="utf-8")
+        source_digest = _sha256(compiled_bytes)
+        # Hashed through `read_text` rather than from the raw bytes because the
+        # check that later compares against it reads the document the same way;
+        # a digest over bytes would report a BOM as a changed meaning.
+        fidelity_digest = _sha256(compiled_fidelity.encode("utf-8"))
         result = run_lean_check(
             canonical_source,
             timeout_seconds=timeout_seconds,
@@ -1051,14 +1154,17 @@ def verify_lean_source(
             lake_bin=lake_bin,
             use_lake=through_lake,
         )
-        result["source_sha256"] = _sha256(canonical_source.read_bytes())
-        result["statement_fidelity"] = str(canonical_fidelity)
-        # Hashed through `read_text` rather than from the raw bytes because the
-        # check that later compares against it reads the document the same way;
-        # a digest over bytes would report a BOM as a changed meaning.
-        result["statement_fidelity_sha256"] = _sha256(
-            canonical_fidelity.read_text(encoding="utf-8").encode("utf-8")
+        # Before anything is published, and before the caller can act on the
+        # returned dict: a raced run has no certificate, not a weakened one.
+        _refuse_if_moved_under_the_compiler(
+            canonical_source,
+            source_digest,
+            canonical_fidelity,
+            fidelity_digest,
         )
+        result["source_sha256"] = source_digest
+        result["statement_fidelity"] = str(canonical_fidelity)
+        result["statement_fidelity_sha256"] = fidelity_digest
         result["lake_workspace"] = str(workspace) if through_lake and workspace else ""
         result["environment_failure"] = classify_environment_failure(result)
         _atomic_artifact_write(
