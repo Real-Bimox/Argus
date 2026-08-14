@@ -23,8 +23,8 @@ Stay solo for small, sequential, tightly coupled, or same-file work. `owns_paths
 Use `python -m argus_skill.tools.team`.
 
 1. Write one JSON object per line in `tasks.jsonl`:
-   `{task_id, title, objective, owns_paths, deps?, priority?, target?, lower_is_better?, cwd?}`.
-   Lower `priority` runs first. Prefix task IDs with the team ID. A task-specific `cwd` wins; otherwise the campaign `--cwd` is used.
+   `{task_id, title, objective, acceptance_check, owns_paths, deps?, priority?, target?, lower_is_better?, cwd?}`.
+   Lower `priority` runs first. Prefix task IDs with the team ID. A task-specific `cwd` wins; otherwise the campaign `--cwd` is used. Set `cwd` only for a task that is its own project tree — a task working inside the campaign tree keeps the campaign `cwd` and takes its private directory through `owns_paths`, or it is cut off from the project state the campaign shares.
 2. Run:
    `form --root <team_root> --team-id <tid> --cwd <workspace> --mission "<objective>" --tasks tasks.jsonl`.
 3. Set deliberate capacity with:
@@ -36,9 +36,9 @@ Use `python -m argus_skill.tools.team`.
 The lead never manually spawns, claims, waits for, reassigns, or kills teammates. Those are Curator responsibilities.
 
 ## Task-objective contract
-Every task objective must state:
+Every task must state:
 
-- the bounded objective and separately checkable done condition;
+- the bounded objective, and the separately checkable done condition as the task's `acceptance_check`, naming exactly once the single subject the task must move (the claim, kernel, or artifact id): a vertical's per-mission context block is resolved from the first task field that names exactly one, and a field naming two resolves to none;
 - the only paths it may modify;
 - the required artifact/result-shard handoff;
 - the real measurement or verification command;

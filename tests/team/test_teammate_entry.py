@@ -301,7 +301,7 @@ def test_no_verify_key_is_backward_compatible(tmp_path: Path, monkeypatch) -> No
 # supply nothing, so "contributes exactly nothing" is the property under most of
 # the load here, not the happy path.
 
-def _math_project(tmp_path: Path, claim_id: str = "udist-main") -> Path:
+def _math_project(tmp_path: Path, *claim_ids: str) -> Path:
     """A project root the math vertical will actually project from."""
     from argus_skill.research_math import (
         ClaimVersion,
@@ -318,9 +318,10 @@ def _math_project(tmp_path: Path, claim_id: str = "udist-main") -> Path:
     context = state.add_context(ContextVersion(
         context_id="c1", version=1,
         statement="Fix a finite abelian group G.", definitions={}))
-    state.add_claim(ClaimVersion(
-        claim_id=claim_id, version=1, context=context.ref(),
-        natural_statement="Every G carries a uniform distribution."))
+    for claim_id in claim_ids or ("udist-main",):
+        state.add_claim(ClaimVersion(
+            claim_id=claim_id, version=1, context=context.ref(),
+            natural_statement="Every G carries a uniform distribution."))
     save_state(cwd, state)
     return cwd
 
@@ -392,7 +393,9 @@ def test_teammate_prelude_is_empty_when_the_task_names_no_claim(
     # claim, and the projection is claim-scoped by design: guessing which claim a
     # route meant would produce a fragment about the wrong theorem that reads as
     # if it were right. Empty is the correct answer here — the fix belongs in what
-    # the Engineer writes into the task, not in loosening the projection.
+    # the Engineer writes into the task, not in loosening the projection. There is
+    # now somewhere to write it (``acceptance_check``, below); this task still
+    # does not, so it still gets nothing, which is the point.
     cwd = _math_project(tmp_path)
     seen = _dispatch(tmp_path, monkeypatch, cwd,
                      title="Fourier-analytic route",
@@ -412,3 +415,100 @@ def test_teammate_and_supervisor_share_one_prelude_seam() -> None:
     assert "vertical_mission_prelude" in inspect.getsource(_mission_execution_runtime)
     assert "vertical_mission_prelude" in inspect.getsource(te)
     assert "prepare_mission(" not in inspect.getsource(te)
+
+
+# ── a route task carries its own done condition, and that is what aims it ─────
+# The case the whole path was built for: an Engineer dispatching one team task
+# per proof route. A route objective names two claims the way a mathematician
+# writes one down, so the vaguer fields are exactly where the projection refuses
+# to guess. The board now carries ``acceptance_check``, which is the field the
+# projection consults FIRST — and the only one a lead can make say one thing.
+
+
+def test_a_route_task_reaches_its_goal_claim_through_the_acceptance_check(
+    tmp_path, monkeypatch
+) -> None:
+    cwd = _math_project(tmp_path, "udist-main", "udist-lemma")
+    seen = _dispatch(
+        tmp_path, monkeypatch, cwd,
+        title="Fourier-analytic route",
+        objective="Reduce udist-main to udist-lemma by Fourier inversion.",
+        acceptance_check="udist-lemma is recorded as a conditional kernel.",
+    )
+
+    # Briefed on the claim this route has to move, by name and by version.
+    assert "claim `udist-lemma` v1" in seen["prelude"]
+    assert "targeted by this mission's acceptance_check" in seen["prelude"]
+    assert "MATH_STATE.json" in seen["prelude"]
+    # ...and on no other claim. The other id in the objective is the route's
+    # source, not its goal, and a fragment about it would be wrong in a way the
+    # teammate could not detect.
+    assert "udist-main" not in seen["prelude"]
+    # Still prelude, never the objective: the runner reuses the objective as the
+    # Reviewer's task.
+    assert seen["objective"] == "Reduce udist-main to udist-lemma by Fourier inversion."
+
+
+def test_an_ambiguous_route_objective_alone_still_refuses_to_guess(
+    tmp_path, monkeypatch
+) -> None:
+    # The same task without its done condition, which is what (b) alone leaves
+    # you with: title and objective are prose about a reduction, they name two
+    # recorded claims, and the projection declines to pick one rather than aiming
+    # a plausible fragment at the wrong theorem. Carrying the field did not loosen
+    # that, and this pins that it did not.
+    cwd = _math_project(tmp_path, "udist-main", "udist-lemma")
+    seen = _dispatch(
+        tmp_path, monkeypatch, cwd,
+        title="Fourier-analytic route",
+        objective="Reduce udist-main to udist-lemma by Fourier inversion.",
+    )
+
+    assert "Mathematical state not projected" in seen["prelude"]
+    assert "claim `udist-lemma` v1" not in seen["prelude"]
+
+
+def test_the_acceptance_check_changes_nothing_for_a_non_math_team(
+    tmp_path, monkeypatch
+) -> None:
+    # The board learned a field, not a domain. A team whose project has no
+    # vertical, and a kernel-engineering team whose vertical reads no mission
+    # field at all, must be byte-identical with the field set and unset — the one
+    # test that would fail if any of this had leaked into the team layer.
+    kernel = tmp_path / "kproj"
+    (kernel / "research").mkdir(parents=True)
+    (kernel / "research" / "PIPELINE_STATE.json").write_text(
+        json.dumps({"vertical": "kernel_engineering", "current_stage": "optimize"}),
+        encoding="utf-8")
+
+    for i, cwd in enumerate((tmp_path / "no_vertical", kernel)):
+        cwd.mkdir(exist_ok=True)
+        bare = _dispatch(tmp_path / f"bare{i}", monkeypatch, cwd,
+                         objective="optimize kA", target="kA")
+        with_check = _dispatch(tmp_path / f"check{i}", monkeypatch, cwd,
+                               objective="optimize kA", target="kA",
+                               acceptance_check="kA is 1.5x faster and still correct.")
+
+        assert with_check["prelude"] == bare["prelude"] == ""
+        assert with_check["objective"] == bare["objective"] == "optimize kA"
+
+
+def test_a_per_task_cwd_below_the_project_tree_gets_no_vertical_at_all(
+    tmp_path, monkeypatch
+) -> None:
+    # Documented because it is a live trap, not a property worth having. Both
+    # roots the teammate passes to the vertical come from the task's ``cwd``, and
+    # neither ``resolve_vertical`` nor the math store walks upward. So a task
+    # pointed at a private subdirectory of the project reads a tree with no
+    # PIPELINE_STATE.json, resolves the default vertical on a log line nobody is
+    # watching, and is briefed on nothing — however well its acceptance check
+    # names its claim. A task that shares the campaign's project state must keep
+    # the campaign cwd and take its private directory through ``owns_paths``.
+    cwd = _math_project(tmp_path, "udist-main")
+    (cwd / "routes" / "R1").mkdir(parents=True)
+
+    seen = _dispatch(tmp_path, monkeypatch, cwd / "routes" / "R1",
+                     objective="Close udist-main by the Fourier route.",
+                     acceptance_check="udist-main is a conditional kernel.")
+
+    assert seen["prelude"] == ""
