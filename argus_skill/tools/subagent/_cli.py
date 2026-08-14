@@ -118,10 +118,16 @@ def cmd_submit(args: argparse.Namespace) -> int:
             "blocking_task": b.get("task_id"),
             "supervisor_concern": b.get("concern") or b.get("last_supervisor_concern", ""),
             "discussion_file": (str(Path(rd) / "DISCUSSION.md") if rd else b.get("discussion_path")),
-            "reply_with": (
-                "python -m argus_skill.tools.subagent reply --task-id "
-                f"{b.get('task_id')} --message \"<your rationale>\""
-            ),
+            "reply_with": shlex.join([
+                sys.executable,
+                "-m",
+                "argus_skill.tools.subagent",
+                "reply",
+                "--task-id",
+                str(b.get("task_id") or ""),
+                "--message",
+                "<your rationale>",
+            ]),
             "hint": (
                 "Read the discussion and reply first. Only if you have a deliberate "
                 "reason to proceed anyway, re-run submit with "
@@ -352,9 +358,16 @@ def cmd_status(args: argparse.Namespace) -> int:
         )
         task["discussion_file"] = (
             str(Path(rd) / "DISCUSSION.md") if rd else task.get("discussion_path"))
-        task["reply_with"] = (
-            "python -m argus_skill.tools.subagent reply --task-id "
-            f"{args.task_id} --message \"<your rationale>\"")
+        task["reply_with"] = shlex.join([
+            sys.executable,
+            "-m",
+            "argus_skill.tools.subagent",
+            "reply",
+            "--task-id",
+            args.task_id,
+            "--message",
+            "<your rationale>",
+        ])
 
     print(json.dumps(task, indent=2))
     state = task.get("state")

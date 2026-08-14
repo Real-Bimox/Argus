@@ -24,7 +24,9 @@ _POSIX_LONG_EXPERIMENT_RULE = (
     "`task(mode=\"background\")` tool or a session-owned background shell for "
     "durable work. Before handoff, require a JSON receipt with `state=submitted`, "
     "`task_id`, `run_id`, and `check_with`; record those in CHECKPOINT.md only "
-    "when another round must observe the run. Then yield or do independent work; "
+    "when another round must observe the run. For supervised runs, if status "
+    "returns `state=discussing`, read the concern and answer through its exact "
+    "`reply_with` command before relaunching. Then yield or do independent work; "
     "do not poll in the foreground."
 )
 

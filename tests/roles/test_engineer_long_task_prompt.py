@@ -19,6 +19,8 @@ def test_long_task_rule_requires_argus_durable_receipt(include_static: bool) -> 
     assert "--mode supervised" in prompt
     assert 'task(mode="background")' in prompt
     assert all(field in prompt for field in ("state=submitted", "task_id", "run_id", "check_with"))
+    assert "state=discussing" in prompt
+    assert "reply_with" in prompt
     assert "launch a supervised subagent" not in prompt
 
 
