@@ -72,6 +72,13 @@ def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
     # This never runs a compiler; it reads what one already recorded.
     issues = list(lean_evidence_issues(project_root))
     issues.extend(_math_state_issues(project_root))
+    # Only at the last stage. Citation checking runs out of band and lands when
+    # it lands; blocking `solve` on it would stop the reasoning to wait for a
+    # registry, which is the one thing the asynchronous design exists to avoid.
+    # `review` is where the work is handed over, and nothing is handed over
+    # standing on a source nobody went and read.
+    if stage_name == "review":
+        issues.extend(_citation_delivery_issues(project_root))
     if not graph_required_for(policy.profile, objective.mode):
         return tuple(issues)
     graph = load_graph(project_root)
@@ -136,6 +143,60 @@ def _math_state_issues(project_root: Path) -> tuple[str, ...]:
         item.rendered()
         for item in (*state.validate(), *certificate_issues(state))
     )
+
+
+def _citation_delivery_issues(project_root: Path) -> tuple[str, ...]:
+    """Every imported result has to have been looked up before anything ships.
+
+    The half of research mathematics no proof checker touches. Lean can verify
+    that a theorem follows from its hypotheses and say nothing about whether the
+    hypothesis imported as "Theorem 3.2 of [K]" is in [K] at all — and a
+    fabricated or misquoted citation is not a formatting defect, it is a proof
+    that does not exist, wearing a reference. So this is asked once, here, and it
+    is the only citation gate: ``scope`` and ``solve`` complete with citations in
+    any state, because a checker that interrupted the mathematics to wait on a
+    registry would simply be turned off.
+
+    ``confirmed`` and ``uncited`` are the two states that pass, and the second is
+    not a loophole. An assumption that records prose and no locator has said
+    plainly that it leans on something unciteable — a private communication, an
+    unpublished note — which a reader can weigh. What must not pass is the
+    citation that *looks* checkable and was never checked, and its neighbour: a
+    ``disputed`` one, where somebody did go and found the proposition missing.
+    That is settled work and it still must not ship, which is why this asks a
+    narrower question than ``CitationAssessment.is_settled``.
+
+    Both remedies work with no network, because a gate whose only remedy needs
+    one is a gate that traps an offline run: a reader who has the paper records
+    what it says with ``citation_check attribute``, and a source that genuinely
+    cannot be obtained is restated in prose, which drops the claim to ``uncited``
+    and says so in the open rather than leaving a lookup nobody can perform.
+    """
+    from ...research_math import MathStateError, load_state, state_path
+    from .citation_check import DELIVERABLE_STATUSES
+
+    try:
+        state = load_state(project_root)
+    except MathStateError as exc:
+        return (f"{state_path(project_root).name}: {exc}",)
+    where = "/".join(state_path(project_root).parts[-2:])
+    issues: list[str] = []
+    for claim in state.current_claims():
+        for citation in state.citations(claim.claim_id):
+            if citation.status in DELIVERABLE_STATUSES:
+                continue
+            issues.append(
+                f"{where}: claim {claim.claim_id} stands on "
+                f"{citation.assumption_id} ({citation.cited_proposition}), "
+                f"whose citation is {citation.status.value}. Record what a "
+                "reader found at that proposition with `python -m "
+                "argus_skill.verticals.math.citation_check attribute --claim "
+                f"{claim.claim_id} --assumption {citation.assumption_id} "
+                "--excerpt-file <what you read> --verdict ... --by you`, or, if "
+                "the source cannot be obtained, restate the assumption without "
+                "--source-id/--locator so it reads as the prose citation it is"
+            )
+    return tuple(issues)
 
 
 def prepare_mission(  # noqa: ARG001 - see the docstring on stage/state_root

@@ -351,16 +351,28 @@ def test_no_agent_command_reaches_add_evidence_except_through_the_funnel() -> No
         and isinstance(node.func, ast.Name)
         and node.func.id == "_append_evidence"
     }
-    assert appenders == {"_agent_evidence", "record_lean_evidence"}
+    # Three, and each one is a producer: the agent funnel (judgement only), the
+    # compiler reader, and the citation checker — which archives the retrieved
+    # passage before it records anything about it. A fourth name appearing here
+    # is a new claim about who is allowed to establish something, and it should
+    # cost an edit to this line.
+    assert appenders == {
+        "_agent_evidence",
+        "record_citation_evidence",
+        "record_lean_evidence",
+    }
 
 
 def test_a_kernel_tier_is_named_only_where_a_checker_was_run() -> None:
-    """``EvidenceTier.MECHANICAL`` appears in one function, and it compiles first.
+    """Each non-agent tier appears in one function, and that function checked.
 
     A sweep rather than an assertion about behaviour, because the failure being
     guarded is a future edit: a helper that writes ``MECHANICAL`` from anywhere
     that did not read a compiler's answer is the whole vulnerability, whatever
-    it is called.
+    it is called. ``LITERATURE`` is held to the same rule now that it has a
+    producer — it may be named where the retrieval is archived, and nowhere
+    else, so a convenience wrapper that records a citation verdict without a
+    passage attached fails here rather than in review.
     """
     tree = ast.parse(MODULE.read_text(encoding="utf-8"))
     named: dict[str, set[str]] = {}
@@ -372,10 +384,13 @@ def test_a_kernel_tier_is_named_only_where_a_checker_was_run() -> None:
                 isinstance(node, ast.Attribute)
                 and isinstance(node.value, ast.Name)
                 and node.value.id == "EvidenceTier"
-                and node.attr in {"MECHANICAL", "COMPUTATIONAL"}
+                and node.attr in {"MECHANICAL", "COMPUTATIONAL", "LITERATURE"}
             ):
                 named.setdefault(function.name, set()).add(node.attr)
-    assert named == {"record_lean_evidence": {"MECHANICAL"}}
+    assert named == {
+        "record_lean_evidence": {"MECHANICAL"},
+        "record_citation_evidence": {"LITERATURE"},
+    }
 
 
 def test_the_agent_command_surface_offers_no_option_that_selects_a_tier() -> None:

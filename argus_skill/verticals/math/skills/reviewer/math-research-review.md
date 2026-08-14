@@ -64,9 +64,8 @@ statement was restated afterwards and the old certificate no longer describes
 it.
 Record the outcome with `math_state judge --claim ID --verdict ... --by you
 --artifact <the certificate you read>`, including the `inconclusive` verdicts —
-a step you could not settle is a result. Judgement is the only tier you can
-write, and it promotes nothing; a claim's status will not move because you
-agreed with it.
+a step you could not settle is a result. Judgement promotes nothing; a claim's
+status will not move because you agreed with it.
 
 Name the certificate. A fidelity verdict is about a particular reading of the
 theorem, not about the claim forever: if the fidelity note is later rewritten
@@ -77,6 +76,32 @@ verdict that cites nothing is not reported — not because it is safer, but
 because it never said which document it was reached from, so it silently carries
 over to a reading nobody reviewed. That is the one approval that must not be
 inherited, so cite what you read.
+
+## The sources the proof leans on
+
+`python -m argus_skill.verticals.math.citation_check status` lists every result
+the project imported and whether anyone has been to look it up. Nothing is
+delivered while one is outstanding, and you are the right party to close them:
+the worker who wrote "Theorem 3.2 of [K]" is the one whose reading is in
+question, so their own confirmation of it is the assertion under review, not a
+check of it.
+
+    citation_check attribute --claim C1 --assumption RH \
+        --excerpt-file read.txt --verdict supports --by "reviewer:you"
+
+The excerpt is what makes this the one tier besides judgement you can write. It
+is the passage you actually read at that locator, archived before your verdict
+is recorded against it, so the next reader can open it and disagree — which is
+the whole difference between a literature check and an opinion. Quote the
+statement with its hypotheses. A source that has the theorem under conditions
+that do not hold in this setting is the failure worth catching here, and it
+survives every summary of itself.
+
+Check the proposition, not the paper. A resolving DOI settles nothing, which is
+why a successful lookup is recorded as `inconclusive` and leaves the citation
+open. And a confirmed citation discharges no assumption: the source really says
+it, the claim still stands on it, and whether its hypotheses apply here is a
+third question that belongs in your proof review.
 
 Say plainly whether the outcome is proved, disproved, computational evidence,
 partial progress, a conjecture, or unresolved. Check relevant primary sources

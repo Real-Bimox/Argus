@@ -140,6 +140,46 @@ that is the cost of retranslating, not a bug to work around. And you cannot stop
 standing on an assumption without writing why: `revise-claim --retire ID=reason`
 takes the reason because deleting a dependency asserts the proof does not need
 it, which is itself a mathematical claim.
+
+## Checking what you cited
+
+Every cited proposition has to be looked up before anything is delivered, and
+nothing about that waits on you mid-proof. Run
+
+    C="python -m argus_skill.verticals.math.citation_check"
+
+    $C status                                     # what still owes a lookup
+    $C resolve --claim C1 --assumption RH         # does the document exist
+    $C attribute --claim C1 --assumption RH \
+        --excerpt-file read.txt --verdict supports --by "reader:you"
+
+whenever it suits — between routes, while a compile runs, or as a task handed to
+another worker. The work list is derived from the ledger rather than stored, so
+several people can check at once without coordinating and a repeat costs
+nothing. `scope` and `solve` complete with citations outstanding. `review` does
+not: it is the delivery point, and a proof leaning on a theorem nobody opened
+the source for is a proof with a hole in it that no compiler will ever find.
+
+`resolve` asks the registry whether the identifier exists. It is the cheap catch
+for the fabricated reference and it settles nothing by itself — a DOI that
+resolves proves a paper is there, and your citation was about a theorem inside
+it, so a successful lookup is recorded as `inconclusive` and the citation stays
+open. Only `attribute` closes one, because only a reader can answer the question
+that was asked.
+
+So `--excerpt-file` holds the passage you actually read at that locator, and it
+is archived under `research/literature/` before your verdict is recorded against
+it. That is the whole reason this is `literature` evidence rather than your
+opinion: a later reader can open what you read and disagree. Quote the statement
+including its hypotheses — a paper that has the theorem under conditions that do
+not hold here is the failure this is for, and it is invisible in a summary. A
+`refutes` needs an excerpt too: quote what is actually at that number.
+
+If the source cannot be obtained at all, say so instead of leaving the lookup
+open — restate the assumption with `--source` alone and no `--source-id`, which
+reports it as `uncited` and puts the situation in front of the reviewer rather
+than behind a queue nobody can clear.
+
 Before investing heavily in a new conjecture, a small counterexample search may
 be useful. For a construction, check that the object satisfies every condition.
 Use literature only when a known result matters or when claiming novelty. These

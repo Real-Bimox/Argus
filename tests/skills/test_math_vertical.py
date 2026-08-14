@@ -110,7 +110,7 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
         if path.is_file() and "__pycache__" not in path.parts
     }
 
-    # Math stays light on machinery compared with kernel_engineering. The seven
+    # Math stays light on machinery compared with kernel_engineering. The
     # modules below are the exception, and the reason is narrow: without a way
     # to measure the distance to the goal, "how hard was this step" silently
     # replaces "how much closer did this get us". `lean_evidence` is the same
@@ -132,9 +132,19 @@ def test_math_vertical_contains_only_contract_skills_and_metadata() -> None:
     # (`BacklogItem`), which that package's whole point is to do without.
     # Neither adds a stage or a required file: a project with no recorded claim
     # never loads either.
+    #
+    # `citation_check` is the third of that kind and the one that earns its
+    # place least obviously, since a project can cite nothing and never load it.
+    # It is here because the risk it addresses has no other checker: Lean can
+    # certify that a theorem follows from its hypotheses and can say nothing
+    # about whether the hypothesis imported as "Theorem 3.2 of [K]" is in [K],
+    # and a fabricated reference is not a citation defect, it is a proof that
+    # does not exist. It adds no stage and no required file — it derives its own
+    # work list from the ledger — and blocks only at `review`.
     assert files == {
         "__init__.py",
         "stages.py",
+        "citation_check.py",
         "context_projection.py",
         "lean_evidence.py",
         "math_state.py",

@@ -17,28 +17,37 @@ them like this:
 an agent-facing command writes. ``mechanical`` is written by
 ``record_lean_evidence`` below, which is reachable only from a command path that
 compiles the source first — the tier is chosen by the code that read the
-compiler's answer, never by an argument. ``computational`` and ``literature``
-have no producer in this tree yet, so no command writes them; when a verifier
-for either exists, it becomes the producer, exactly as ``lean_evidence`` is the
-producer here.
+compiler's answer, never by an argument. ``literature`` is written by
+``record_citation_evidence`` below, reachable only from ``citation_check``,
+which retrieves and archives before it records. ``computational`` still has no
+producer in this tree, so no command writes it; when a verifier for it exists,
+it becomes the producer, exactly as the other two are here.
 
-Withholding ``literature`` is the choice that needs defending, because unlike
+``literature`` is the tier whose producer needed the most care, because unlike
 the other two it confers nothing: it is in none of ``KERNEL_TIERS``,
-``DISCHARGING_TIERS``, or ``REFUTING_TIERS``, so an agent-written literature
-record could not promote or refute anything. Banning it buys no status
-protection. What it protects is the tier's meaning. The entire content of
-``literature`` is the claim that a channel *independent of the model's
-reasoning* answered — and when an agent types it, the party asserting the
-independence is the party whose independence is in question. That is precisely
-the failure the principles document reports as surviving every retrieval
-harness: the paper exists, and the theorem it is said to contain is not in it,
-or its hypotheses were quoted wrong. Recorded as ``judgement``, that same
-finding is honest and loses nothing, since neither tier confers status; recorded
-as ``literature``, it is an opinion wearing the label of the one channel that is
-not one. And there is no way back: ``EvidenceRecord`` has no timestamp and
-``produced_by`` is free text, so a citation verifier arriving later could not
-tell its own records from the ones typed before it existed. Cheap to withhold,
-unfalsifiable to un-mix.
+``DISCHARGING_TIERS``, or ``REFUTING_TIERS``, so a literature record cannot
+promote or refute a claim however it was obtained. Withholding it bought no
+status protection, and admitting it costs none. What is at stake is the tier's
+meaning. The entire content of ``literature`` is the claim that a channel
+*independent of the model's reasoning* answered — and when an agent simply types
+it, the party asserting the independence is the party whose independence is in
+question. That is precisely the failure the principles document reports as
+surviving every retrieval harness: the paper exists, and the theorem it is said
+to contain is not in it, or its hypotheses were quoted wrong.
+
+So the producer is not "a command that accepts ``--tier literature``". It is a
+command that retrieves, and then hands the retrieved material itself to
+``record_citation_evidence``, which archives it under a path derived from its
+own content and stamps the cited proposition into it before writing the record
+that points there. There is no argument by which a checker can name an artifact
+it did not supply the text of, and no window in which the archived text and the
+recorded verdict can come apart. The verdict is still a reader's word — no
+program in this tree can open a paper and see whether Theorem 3.2 says what the
+proof needs. What the archive changes is that the word is now attached to the
+text it was reached from, so a wrong one is *findable* by the next reader rather
+than merely unfalsifiable. That is the whole difference between this and
+``judgement``, and it is why the excerpt, not the tier flag, is the thing the
+program insists on.
 
 **Where this lives, and why not in the kernel.** ``argparse`` is standard
 library, so this CLI could have lived inside ``research_math/`` and travelled
@@ -94,6 +103,7 @@ from ...research_math import (
     StateIssue,
     SubjectRef,
     Verdict,
+    assess_citation,
     content_digest,
     load_state,
     normalize_text,
@@ -103,10 +113,13 @@ from ...research_math import (
 
 __all__ = [
     "AGENT_WRITABLE_TIERS",
+    "LITERATURE_RELPATH",
+    "CitationRecording",
     "LeanRecording",
     "certificate_issues",
     "locked_state",
     "main",
+    "record_citation_evidence",
     "record_lean_evidence",
 ]
 
@@ -162,6 +175,17 @@ _CERTIFICATE_SCHEMA = 1
 #: set is folded away. Uniqueness comes from the digest beside it, never from
 #: the name, which is why folding is safe and traversal is not possible.
 _UNSAFE_IN_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+#: Where retrieved literature is kept, relative to the project root. Flat and
+#: content-addressed: a directory whose filenames carry no meaning is a
+#: directory two processes cannot disagree about.
+LITERATURE_RELPATH = ("research", "literature")
+
+#: The shape of one archived retrieval. Same reasoning as
+#: ``_CERTIFICATE_SCHEMA``: nothing here reads it, the reader the record points
+#: at does. It is stamped in rather than hashed into the name by the caller, so
+#: every archive says which shape it is even though the digest ignores nothing.
+_RETRIEVAL_SCHEMA = 1
 
 #: Said on every kernel-status claim that carries Lean evidence. Not a defect,
 #: so it is not an issue; not derivable from the records, so it cannot be a
@@ -690,6 +714,217 @@ def _project_relative(path: Path, project_root: Path) -> str:
         return path.resolve().relative_to(project_root.resolve()).as_posix()
     except (ValueError, OSError):
         return str(path)
+
+
+# -- literature, the producer that has to show its excerpt --------------------
+
+@dataclass(frozen=True)
+class CitationRecording:
+    """What one citation check did, in the shape ``LeanRecording`` reports."""
+
+    record: EvidenceRecord | None = None
+    changed: bool = False
+    archive: str = ""
+    status: str = ""
+    refusals: tuple[str, ...] = ()
+    retired: tuple[str, ...] = ()
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "recorded": self.record.as_dict() if self.record else None,
+            "changed": self.changed,
+            "archive": self.archive,
+            "status": self.status,
+            "refusals": list(self.refusals),
+            "retired": list(self.retired),
+        }
+
+
+def record_citation_evidence(
+    project_root: Path | str,
+    *,
+    claim_id: str,
+    assumption_id: str,
+    verdict: Verdict,
+    produced_by: str,
+    retrieval: dict[str, Any],
+) -> CitationRecording:
+    """Archive what a checker retrieved, then record the verdict it reached.
+
+    The second privileged writer, and the only one that takes a verdict from its
+    caller. ``record_lean_evidence`` does not need to: it reads an answer a
+    compiler produced. Nothing in this tree can open a paper and see whether
+    Theorem 3.2 is there, so a citation check ends in somebody's word, and the
+    question this function answers is what has to be true before that word is
+    allowed to wear the ``literature`` label.
+
+    The answer is: the text it was reached from has to exist here. ``retrieval``
+    is the retrieved material — a registry's response, or the passage a reader
+    read — and it is archived under ``research/literature/`` *before* the record
+    that cites it, at a path derived from its own content. The verdict can still
+    be wrong. It can no longer be unexaminable, which is the property
+    ``ARTIFACT_REQUIRED_TIERS`` asks of this tier and the one an agent typing
+    ``--tier literature`` could never supply.
+
+    **The citation is stamped in, not passed in.** ``source_id`` and ``locator``
+    are overwritten from the assumption this record is being filed against, so
+    an archived excerpt cannot name one proposition while the record binds to
+    another. Since they are part of the archived content and the path is derived
+    from the content, an excerpt retrieved for ``Theorem 3.1`` and an excerpt
+    retrieved for ``Theorem 3.2`` cannot collide, and correcting a locator later
+    mints a new assumption whose ``ref()`` no old check binds to.
+
+    **Why no lock.** The archive path is a function of the archived bytes, so
+    any two writers racing on the same path are writing identical content and
+    the loser of the race loses nothing. That is deliberate and it is the answer
+    to the "several workers adding literature at once" problem: there is no
+    shared mutable ledger of retrieved material to serialize on, only
+    content-addressed files that concurrent writers agree about by construction.
+    The state write below still takes ``locked_state``, because the state file
+    is genuinely shared and mutable.
+
+    Refusals record nothing. An unarchived retrieval is the dangling citation
+    this whole seam exists to prevent, and a half-written check is worse than an
+    unchecked one.
+    """
+    root = Path(str(project_root)).expanduser().resolve()
+    produced_by = normalize_text(produced_by)
+    refusals: list[str] = []
+    if not produced_by:
+        refusals.append(
+            "a citation check has to name who performed it; `produced_by` is "
+            "the independence key the assessment groups on, and an unnamed "
+            "checker cannot be a second one"
+        )
+    if not isinstance(retrieval, dict) or not normalize_text(
+        str(retrieval.get("kind") or "")
+    ):
+        refusals.append(
+            "the retrieval has no `kind`, so the archive would not say what "
+            "kind of material it holds"
+        )
+    if refusals:
+        return CitationRecording(refusals=tuple(refusals))
+
+    with locked_state(root) as state:
+        claim = state.latest_claim(claim_id)
+        if claim is None:
+            return CitationRecording(
+                refusals=(
+                    f"no claim {claim_id!r} in {_STATE_REF}; a citation is "
+                    "checked against the claim that stands on it",
+                )
+            )
+        assumption = next(
+            (
+                item
+                for item in state.effective_assumptions(claim_id)
+                if item.assumption_id == assumption_id
+            ),
+            None,
+        )
+        if assumption is None:
+            return CitationRecording(
+                refusals=(
+                    f"claim {claim_id!r} does not stand on an assumption "
+                    f"{assumption_id!r}",
+                )
+            )
+        if not assumption.cited_proposition:
+            half = bool(
+                normalize_text(assumption.source_id)
+                or normalize_text(assumption.locator)
+            )
+            return CitationRecording(
+                refusals=(
+                    f"assumption {assumption_id!r} names no proposition to "
+                    + (
+                        "look up: it gives half a citation, and a document "
+                        "without a locator or a locator without a document is "
+                        "not something a checker can be sent to. `check` "
+                        "reports it as citation_incomplete; record both"
+                        if half
+                        else "look up — it cites prose, so it is `uncited` "
+                        "rather than unchecked and there is nothing for a "
+                        "check to be about. Record `--source-id` and "
+                        "`--locator` on it first if it does have a citable "
+                        "source"
+                    ),
+                )
+            )
+
+        envelope = dict(retrieval)
+        envelope["schema_version"] = _RETRIEVAL_SCHEMA
+        envelope["source_id"] = normalize_text(assumption.source_id)
+        envelope["locator"] = normalize_text(assumption.locator)
+        name = _retrieval_name(envelope)
+        target = root.joinpath(*LITERATURE_RELPATH, name)
+        artifact = _project_relative(target, root)
+        try:
+            _archive_retrieval(target, envelope)
+        except (OSError, UnicodeError, ValueError, TypeError) as exc:
+            return CitationRecording(
+                refusals=(
+                    f"the retrieved material could not be archived to "
+                    f"{artifact}, so this check would cite a document nobody "
+                    f"can re-read; nothing was recorded: {exc}",
+                )
+            )
+
+        subject = assumption.ref()
+        record = EvidenceRecord(
+            evidence_id=_evidence_id(
+                "citation",
+                subject,
+                EvidenceTier.LITERATURE,
+                verdict,
+                produced_by,
+                artifact,
+            ),
+            subject=subject,
+            tier=EvidenceTier.LITERATURE,
+            verdict=verdict,
+            produced_by=produced_by,
+            artifact=artifact,
+        )
+        # One checker has one current answer about one citation. A reader who
+        # goes back with a fuller excerpt and changes their mind must replace
+        # their earlier answer, not sit beside it — two rows from one checker
+        # saying `supports` and `refutes` would read as a dispute between
+        # checkers and would never resolve.
+        retired = state.retire_superseded_evidence(record)
+        stored, changed = _append_evidence(state, record)
+        status = assess_citation(assumption, state.evidence).status.value
+
+    return CitationRecording(
+        record=stored,
+        changed=changed,
+        archive=artifact,
+        status=status,
+        retired=tuple(item.artifact for item in retired),
+    )
+
+
+def _retrieval_name(envelope: dict[str, Any]) -> str:
+    """The archive's filename, derived from everything the archive holds.
+
+    Content-addressed rather than named after the citation, so that two workers
+    who retrieve the same passage produce one file and two who retrieve
+    different passages never produce one. The citation is inside the content, so
+    a path collision implies the same proposition *and* the same text.
+    """
+    return f"{content_digest(envelope)[:32]}.json"
+
+
+def _archive_retrieval(target: Path, envelope: dict[str, Any]) -> None:
+    from ...tools.lean_check import (  # noqa: PLC0415 — optional, heavy import
+        _atomic_artifact_write,
+    )
+
+    rendered = (
+        json.dumps(envelope, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    )
+    _atomic_artifact_write(target, rendered.encode("utf-8"))
 
 
 # -- reading -----------------------------------------------------------------
