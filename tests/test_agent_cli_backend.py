@@ -49,6 +49,8 @@ class FakeCliRunnerOptions:
     full_auto: bool = False
     skip_git_repo_check: bool = False
     sandbox_mode: str | None = None
+    force_safe_mode: bool = False
+    disable_tools: bool = False
     extra_args: list[str] | None = None
     working_dir: str | None = None
     external_interrupt_reason_provider: Any | None = None
@@ -223,6 +225,8 @@ def test_run_exec_translates_options_and_result(
         extra_args=["-c", "config_profile=tb"],
         full_auto=True,
         sandbox_mode="read-only",
+        force_safe_mode=True,
+        disable_tools=True,
         skip_git_repo_check=True,
         dangerous_yolo=False,
     )
@@ -241,6 +245,8 @@ def test_run_exec_translates_options_and_result(
     assert forwarded.extra_args == ["-c", "config_profile=tb"]
     assert forwarded.full_auto is True
     assert forwarded.sandbox_mode == "read-only"
+    assert forwarded.force_safe_mode is True
+    assert forwarded.disable_tools is True
     assert forwarded.skip_git_repo_check is True
     assert forwarded.dangerous_yolo is False
     assert captured["resume_thread_id"] == "thr-prev"

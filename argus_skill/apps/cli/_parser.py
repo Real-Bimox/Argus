@@ -496,6 +496,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="apply registered SAFE repairs, then rerun Doctor",
     )
+    doctor_parser.add_argument(
+        "--advisor",
+        choices=("auto", "none", "copilot", "codex", "claude", "opencode", "pi", "grok"),
+        default="auto",
+        help="ask an installed Code Agent to interpret sanitized findings (default: auto)",
+    )
     repair_parser = subparsers.add_parser(
         "repair",
         help="Plan or apply registered Argus recovery actions",

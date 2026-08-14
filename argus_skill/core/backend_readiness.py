@@ -58,6 +58,26 @@ _LOGIN_COMMANDS = {
 }
 
 
+def backend_install_command(
+    backend: str,
+    *,
+    platform_name: str | None = None,
+) -> str:
+    """Return one platform-appropriate official installation hint."""
+    platform_name = os.name if platform_name is None else platform_name
+    if platform_name != "nt":
+        return _INSTALL_COMMANDS[backend]
+    windows = {
+        "copilot": "npm.cmd install -g @github/copilot",
+        "codex": "npm.cmd install -g @openai/codex@latest",
+        "claude": "npm.cmd install -g @anthropic-ai/claude-code",
+        "pi": "npm.cmd install -g --ignore-scripts @earendil-works/pi-coding-agent",
+        "opencode": "choose a Windows installer at https://opencode.ai/docs/#windows",
+        "grok": "use the official Windows instructions at https://x.ai/cli",
+    }
+    return windows[backend]
+
+
 @dataclass(frozen=True)
 class BackendProfile:
     backend: str
@@ -514,7 +534,7 @@ def check_backend_readiness(
                 "backend executable",
                 f"`{profile.backend}` was not found on PATH",
                 (
-                    f"{_INSTALL_COMMANDS[profile.backend]}, or set "
+                    f"{backend_install_command(profile.backend)}, or set "
                     "ARGUS_SKILL_RUNNER_BIN"
                 ),
             )
@@ -539,7 +559,7 @@ def check_backend_readiness(
             ReadinessProblem(
                 "backend version",
                 f"version check failed: {type(exc).__name__}: {exc}",
-                f"reinstall with `{_INSTALL_COMMANDS[profile.backend]}`",
+                f"reinstall with `{backend_install_command(profile.backend)}`",
             )
         )
         return report
@@ -553,7 +573,7 @@ def check_backend_readiness(
                     f"`{profile.backend} --version` was not usable "
                     f"(exit={version_result.returncode}, output={rendered_version[:160]!r})"
                 ),
-                f"reinstall with `{_INSTALL_COMMANDS[profile.backend]}`",
+                f"reinstall with `{backend_install_command(profile.backend)}`",
             )
         )
         return report

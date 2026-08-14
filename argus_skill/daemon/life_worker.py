@@ -347,7 +347,9 @@ class LifeWorker(LifeWorkerBootMixin, LifeWorkerRunMixin):
         from ..core.knobs import resolve_role_model
 
         model = resolve_role_model(
-            "curator", role_env="ARGUS_SKILL_CURATOR_MODEL"
+            "curator",
+            role_env="ARGUS_SKILL_CURATOR_MODEL",
+            backend=getattr(backend, "backend", self.config.backend),
         )
         effort = os.environ.get(
             "ARGUS_SKILL_CURATOR_REASONING_EFFORT", "high"
@@ -382,7 +384,11 @@ class LifeWorker(LifeWorkerBootMixin, LifeWorkerRunMixin):
             return None
         from ..core.knobs import resolve_role_model
 
-        model = resolve_role_model("manager", role_env="ARGUS_SKILL_MODEL")
+        model = resolve_role_model(
+            "manager",
+            role_env="ARGUS_SKILL_MODEL",
+            backend=getattr(backend, "backend", self.config.backend),
+        )
         workdir = str(self.config.project_workdir) if self.config.project_workdir else None
 
         def _summarize(prompt: str) -> str:

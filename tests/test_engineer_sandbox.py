@@ -199,6 +199,19 @@ def test_chokepoint_noop_when_gate_off(gate_off):
     assert o.dangerous_yolo is True and o.sandbox_mode is None
 
 
+def test_chokepoint_allows_per_invocation_safe_mode(gate_off):
+    o = _codex_runner()._apply_sandbox_policy(
+        RunnerOptions(
+            dangerous_yolo=True,
+            sandbox_mode="read-only",
+            force_safe_mode=True,
+            working_dir="/wd",
+        )
+    )
+    assert o.dangerous_yolo is True
+    assert o.sandbox_mode == "read-only"
+
+
 def test_chokepoint_converts_builder_when_gate_on(gate_on):
     o = _codex_runner()._apply_sandbox_policy(RunnerOptions(dangerous_yolo=True, working_dir="/wd"))
     assert o.sandbox_mode == "workspace-write"

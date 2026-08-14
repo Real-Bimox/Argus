@@ -151,13 +151,25 @@ def _prewarm_manager_context(
         )
 
         cwd = str(state.get("manager_runner_workdir") or Path.cwd())
+        classifier_backend_name = getattr(
+            classifier_backend,
+            "backend",
+            state.get("backend"),
+        )
+        reply_backend_name = getattr(
+            default_backend,
+            "backend",
+            state.get("backend"),
+        )
         classify_effort = resolve_knob(
             "ARGUS_SKILL_FRONTDOOR_CLASSIFY_EFFORT",
             "low",
         ).value.strip() or "low"
         prewarm_classifier(
             run_label="manager-frontdoor-classify",
-            model=resolve_manager_classify_model(),
+            model=resolve_manager_classify_model(
+                backend=classifier_backend_name,
+            ),
             reasoning_effort=classify_effort,
             lean=True,
             cwd=cwd,
@@ -165,7 +177,7 @@ def _prewarm_manager_context(
         )
         prewarm_reply(
             run_label="simple-1",
-            model=resolve_manager_reply_model(),
+            model=resolve_manager_reply_model(backend=reply_backend_name),
             reasoning_effort=resolve_role_reasoning_effort(
                 "ARGUS_SKILL_SELF_REASONING_EFFORT",
                 default="high",

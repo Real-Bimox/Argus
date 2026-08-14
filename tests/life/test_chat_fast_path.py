@@ -221,7 +221,7 @@ def test_execute_dispatches_to_manager_self_path_on_greeting(monkeypatch) -> Non
     monkeypatch.delenv("ARGUS_SKILL_SELF_REASONING_EFFORT", raising=False)
     monkeypatch.setattr(
         "argus_skill.apps._self_reply.resolve_manager_reply_model",
-        lambda: "best-manager",
+        lambda **_kwargs: "best-manager",
     )
     backend = _FakeBackend(response_message="Hi! How can I help?")
     runner = _make_runner(backend)
@@ -245,7 +245,7 @@ def test_execute_dispatches_to_manager_self_path_on_greeting(monkeypatch) -> Non
 def test_message_only_self_reply_uses_lean_low_cost_route(monkeypatch) -> None:
     monkeypatch.setattr(
         "argus_skill.apps._self_reply.resolve_manager_classify_model",
-        lambda: "cheap-manager",
+        lambda **_kwargs: "cheap-manager",
     )
     backend = _FakeBackend(response_message="exact reply")
     runner = _make_runner(backend)

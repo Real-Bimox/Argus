@@ -48,10 +48,13 @@ def test_debug_help_still_exposes_internal_flags(monkeypatch: pytest.MonkeyPatch
 
 
 def test_parser_exposes_doctor_and_repair_subcommands() -> None:
-    doctor = build_parser().parse_args(["doctor", "--json", "--deep"])
+    doctor = build_parser().parse_args(
+        ["doctor", "--json", "--deep", "--advisor", "claude"]
+    )
     assert doctor.command == "doctor"
     assert doctor.json is True
     assert doctor.deep is True
+    assert doctor.advisor == "claude"
 
     repair = build_parser().parse_args(["repair", "--safe", "--json"])
     assert repair.command == "repair"

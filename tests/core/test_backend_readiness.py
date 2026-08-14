@@ -35,6 +35,17 @@ def _fake_codex(monkeypatch, version: str, *, auth_returncode: int = 0) -> None:
     monkeypatch.setattr(readiness, "_run_text", run)
 
 
+def test_windows_install_commands_are_powershell_safe() -> None:
+    assert readiness.backend_install_command(
+        "copilot",
+        platform_name="nt",
+    ) == "npm.cmd install -g @github/copilot"
+    assert "curl" not in readiness.backend_install_command(
+        "opencode",
+        platform_name="nt",
+    )
+
+
 def test_default_timeout_allows_slow_cli_cold_start(monkeypatch) -> None:
     seen_timeouts = []
     monkeypatch.setattr(readiness, "resolve_runner_bin", lambda *_args: "/bin/copilot")

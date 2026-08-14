@@ -44,7 +44,7 @@ def test_front_door_runs_fresh_low_effort(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("ARGUS_SKILL_FRONTDOOR_CLASSIFY_EFFORT", raising=False)
     monkeypatch.setattr(
         "argus_skill.core.knobs.resolve_manager_classify_model",
-        lambda: "fast-manager",
+        lambda **_kwargs: "fast-manager",
     )
     mgr, backend = _manager(
         "CONFIG: NONE\nCONTROL: NONE\nROUTE: SELF",

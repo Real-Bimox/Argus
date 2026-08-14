@@ -57,86 +57,112 @@ Manager/Planner/Engineer/Reviewer runtime as a custom agent. See
 
 ## Quick Install
 
-### Requirements
+Choose the section for your operating system. Do not mix commands between
+platforms.
 
-- Python 3.11+
-- Node.js 22+
-- One supported Agent CLI installed and authenticated through its official login flow
+All platforms need:
 
-Check the actual interpreter before creating the virtual environment:
+- one supported Agent CLI already installed;
+- that CLI authenticated through its official login flow;
+- Node.js 22+ for the terminal cockpit.
+
+The public preview is installed directly from the current GitHub archive until
+the first PyPI release is published.
+
+### Windows 10/11 — direct pip install, no virtual environment
+
+Install Python 3.11+ from [python.org](https://www.python.org/downloads/windows/)
+and select **Add Python to PATH** in the installer. Then open a new PowerShell:
+
+```powershell
+py -m pip install --upgrade pip
+py -m pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+$Scripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+$env:Path = "$Scripts;$env:Path"
+argus --setup
+argus doctor --deep --advisor auto
+argus
+```
+
+`argus --setup` does not report success after only finding the CLI. It performs
+backend/auth checks and one real tool-restricted Agent turn. If `argus` is not
+found in a later PowerShell window, confirm that the Python installer's Scripts
+directory is on PATH; the `$Scripts` lines above make it available immediately
+in the current window.
+
+Until the first versioned PyPI release, refresh the moving GitHub preview with:
+
+```powershell
+py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+```
+
+Windows currently supports installation, Manager chat, pairing, Web/TUI, and
+terminal-scoped daemon control. Detached subagents remain a POSIX/WSL2 feature;
+native Windows fails explicitly instead of claiming a background task started.
+The Windows Desktop installer is documented separately in
+**[Windows Desktop](docs/windows-desktop.md)**.
+
+### macOS — managed command install, no manual virtual environment
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 
 ```bash
-python3 -c 'import sys; assert sys.version_info >= (3, 11), sys.version'
+uv tool install --python 3.12 \
+  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+argus --setup
+argus doctor --deep --advisor auto
+argus
 ```
 
-macOS may still provide Python 3.9 as `/usr/bin/python3`. If the check fails,
-install [uv](https://docs.astral.sh/uv/getting-started/installation/) and let it
-provision an isolated Python 3.12 environment:
+Upgrade later with:
 
 ```bash
-uv python install 3.12
-uv venv --python 3.12 --seed .venv
+uv tool install --force --python 3.12 \
+  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
 ```
 
-### 🚀 Agent-assisted installation (recommended)
+### Linux — isolated source venv
 
-> [!TIP]
-> **Skip the manual installation steps.** Send the complete prompt below to
-> Codex CLI, Claude Code, GitHub Copilot CLI, Pi, OpenCode, or Grok Build. The agent will
-> inspect the environment, install Argus, connect the current backend, and
-> verify it with `argus --doctor`.
-
-```text
-Read https://github.com/lbx154/Argus/blob/main/docs/agent-install.md and follow
-it to install and configure Argus on my machine. Prefer the Agent CLI currently
-running this conversation as the Argus backend. Perform the environment checks,
-installation, configuration, and argus --doctor verification. Before account
-login, sudo, global configuration changes, or any other action requiring human
-authorization, explain why and wait for my approval. Never ask me to paste a
-password, access token, or API key into the conversation.
-```
-
-The agent will follow the **[installation execution contract](docs/agent-install.md)**.
-
-### Install
-
-macOS / Linux:
+Linux servers keep an explicit venv so Python, CUDA tooling, and long-running
+process ownership remain reproducible:
 
 ```bash
 git clone https://github.com/lbx154/Argus.git
 cd Argus
-
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
+.venv/bin/argus --setup
+.venv/bin/argus doctor --deep --advisor auto
+.venv/bin/argus
 ```
 
-Windows PowerShell (portable preview):
+Private-preview collaborators use
+`https://github.com/lbx154/argus-skill.git` in the Linux clone command. On
+Windows/macOS, install a private wheel or authenticated private archive rather
+than putting a GitHub token in shell history.
 
-```powershell
-git clone https://github.com/lbx154/Argus.git
-Set-Location Argus
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install -e .
+### Agent-assisted installation
+
+Send this prompt to an already installed Code Agent:
+
+```text
+Read https://github.com/lbx154/Argus/blob/main/docs/agent-install.md and install
+Argus using the section for this operating system. Prefer the Agent CLI running
+this conversation as the Argus backend. Do not create a venv on Windows or
+macOS; keep the documented venv on Linux. Run setup through its real Agent-turn
+smoke test, then run `argus doctor --deep --advisor auto`. Before account login,
+sudo, or global configuration changes, explain why and wait for approval. Never
+ask me to paste a password, token, or API key into the conversation.
 ```
 
-Windows currently covers installation, Manager chat, pairing, and the
-terminal-scoped daemon. POSIX-only subagent detachment and locking paths are not
-yet full-parity features. The Windows CI job intentionally tests the portable
-surface rather than claiming every long-running workflow is supported.
+The agent follows the **[installation execution contract](docs/agent-install.md)**.
 
-Private-preview collaborators can clone
-`https://github.com/lbx154/argus-skill.git` instead. The repositories may be at
-different revisions, so use the URL for the release you intend to test.
-
-### Connect a backend
-
-```bash
-argus --setup
-```
+### Backend notes
 
 Use `copilot`, `pi`, `codex`, `claude`, `opencode`, or `grok` for `--backend`.
+When no model override is configured, Argus uses that CLI's native default
+model. It does not pass an OpenAI model id to Claude Code, Pi, OpenCode, or Grok.
 If you have an OpenAI-compatible endpoint, setup installs Pi when needed and
 configures it directly:
 
@@ -157,8 +183,7 @@ argus --setup --non-interactive --backend grok
 `XAI_API_KEY` is also supported for headless environments. Argus uses Grok's
 native headless JSON stream, resumes sessions by ID, and keeps role prompts out
 of process arguments.
-In PowerShell, run the same arguments with
-`.\.venv\Scripts\argus.exe`; use a backtick instead of `\` for line continuation.
+In PowerShell, use a backtick instead of `\` for line continuation.
 
 #### Choosing a provider on the multi-provider CLIs
 
@@ -347,11 +372,25 @@ The most capable setup is often an Argus instance deliberately adapted to your o
 
 ## Update
 
+Windows:
+
+```powershell
+pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+```
+
+macOS:
+
+```bash
+uv tool upgrade argus-skill
+```
+
+Linux source checkout:
+
 ```bash
 argus update
 ```
 
-The command refuses dirty or detached checkouts, fast-forwards the configured
+The Linux source command refuses dirty or detached checkouts, fast-forwards the configured
 upstream, and refreshes the editable installation when the revision changes.
 Run `argus` afterward; it detects stale local WebAPI and daemon processes and
 replaces them at a controlled task boundary.

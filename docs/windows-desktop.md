@@ -26,6 +26,21 @@ or Vertical behavior. Those remain owned by the main Argus runtime. It also does
 not expand the Windows portability claims of the underlying runtime; see the
 main README for the currently supported Windows surface.
 
+## End-user installation
+
+Download `Argus-<version>-setup.exe` from the matching GitHub Release and run it.
+The installer contains the frozen Argus backend; end users do not install
+Python, Node.js, or a virtual environment for the Desktop application.
+
+The first-run screen selects an installed Agent CLI and starts the bundled
+backend. Installation is usable only after the backend reaches the ready screen.
+If startup fails, use **Export sanitized diagnostics** from the error screen;
+the report includes the failed stage and backend log without credentials.
+
+`Argus-<version>-portable.exe` is the no-install alternative. The source
+development instructions later in this document are for contributors building
+the package, not for end users.
+
 ## Architecture
 
 ```text
@@ -86,7 +101,11 @@ The first-run UI supports Codex CLI, Claude Code, GitHub Copilot CLI, Pi,
 OpenCode, and Grok Build. Auto-detection is only a convenience; the operator can
 select the executable explicitly.
 
-## Development setup
+## Contributor-only development setup
+
+This section builds the frozen backend and installer and therefore uses an
+isolated build environment. End users do not run these commands and do not
+create a venv.
 
 From the repository root in PowerShell:
 

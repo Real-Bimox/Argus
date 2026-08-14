@@ -83,7 +83,7 @@ KNOBS: tuple[Knob, ...] = (
     # --- team Curator (resident pool + leaderboard strategy) ---
     Knob("ARGUS_SKILL_CURATOR_BACKEND", "(=LIFE_BACKEND)", "per-role backend override for the team Curator", "backend"),
     Knob("ARGUS_SKILL_CURATOR_RUNNER_BIN", "(=RUNNER_BIN)", "per-role CLI binary for the team Curator", "backend"),
-    Knob("ARGUS_SKILL_CURATOR_MODEL", "gpt-5.5", "model for Curator strategy distillation", "models"),
+    Knob("ARGUS_SKILL_CURATOR_MODEL", "auto", "model for Curator strategy distillation; auto uses the selected backend's default", "models"),
     Knob("ARGUS_SKILL_CURATOR_REASONING_EFFORT", "high", "Curator distillation reasoning effort", "reasoning"),
     Knob("ARGUS_SKILL_CURATOR_DISTILL_INTERVAL_S", "1260", "minimum seconds between Curator strategy updates", "team"),
     # --- resident teammate pool, time-box, and deterministic leaderboard ---
@@ -93,12 +93,12 @@ KNOBS: tuple[Knob, ...] = (
     Knob("ARGUS_TEAMMATE_RESULT_FILE", "(unset)", "path the mission writes {metric,mechanism} to → the leaderboard shard", "team"),
     Knob("ARGUS_LEADERBOARD_LOWER_IS_BETTER", "off (higher-is-better)", "global leaderboard direction; a task's lower_is_better overrides it per target", "team"),
     # --- models ---
-    Knob("ARGUS_SKILL_MODEL", "gpt-5.5", "shared default model for roles without a role-specific model", "models", cockpit=True),
-    Knob("ARGUS_SKILL_MANAGER_MODEL", "gpt-5.5", "model for the Manager", "models", cockpit=True),
-    Knob("ARGUS_SKILL_ENGINEER_MODEL", "gpt-5.5", "model for the L1 engineer", "models", cockpit=True),
-    Knob("ARGUS_SKILL_REVIEWER_MODEL", "gpt-5.5", "model for the L2 reviewer", "models", cockpit=True),
-    Knob("ARGUS_SKILL_SUPERVISOR_MODEL", "gpt-5.5", "model for supervised subagent health decisions", "models", cockpit=True),
-    Knob("ARGUS_SKILL_PLAN_MODEL", "gpt-5.5", "model for the L4 planner", "models", cockpit=True),
+    Knob("ARGUS_SKILL_MODEL", "auto", "shared model override; auto uses the selected backend's default", "models", cockpit=True),
+    Knob("ARGUS_SKILL_MANAGER_MODEL", "auto", "model for the Manager; auto uses the selected backend's default", "models", cockpit=True),
+    Knob("ARGUS_SKILL_ENGINEER_MODEL", "auto", "model for the L1 engineer; auto uses the selected backend's default", "models", cockpit=True),
+    Knob("ARGUS_SKILL_REVIEWER_MODEL", "auto", "model for the L2 reviewer; auto uses the selected backend's default", "models", cockpit=True),
+    Knob("ARGUS_SKILL_SUPERVISOR_MODEL", "auto", "model for supervised subagent health decisions; auto uses the selected backend's default", "models", cockpit=True),
+    Knob("ARGUS_SKILL_PLAN_MODEL", "auto", "model for the L4 planner; auto uses the selected backend's default", "models", cockpit=True),
     Knob("ARGUS_SKILL_PLAN_PREVIEW_MODEL", "auto", "interactive /plan model: gpt-5.4-mini on codex/copilot, planner model otherwise; set an id to override", "models"),
     Knob("ARGUS_SKILL_REWRITE_MODEL", "auto", "interactive prompt rewrite model: gpt-5.5 on codex/copilot, Manager model otherwise; set an id to override", "models"),
     Knob("ARGUS_SKILL_MANAGER_REPLY_MODEL", "inherit", "operator-facing Manager SELF model; inherit uses the configured Manager/shared route model", "models", cockpit=True),
@@ -537,6 +537,7 @@ def resolve_role_model(
     route: str,
     *,
     role_env: str = "",
+    backend: str | None = None,
     env: Mapping[str, str] | None = None,
 ) -> str:
     """Resolve a role model using Argus's runtime model precedence.
@@ -553,20 +554,35 @@ def resolve_role_model(
     if role_env:
         explicit = str(env_map.get(role_env, "") or "").strip()
         if explicit:
-            return explicit
+            return "" if explicit.lower() in _AUTO_MODEL_SENTINELS else explicit
     shared = str(env_map.get("ARGUS_SKILL_MODEL", "") or "").strip()
     if shared:
-        return shared
+        return "" if shared.lower() in _AUTO_MODEL_SENTINELS else shared
     from .knob_store import read_persisted_knobs
 
     persisted = read_persisted_knobs()
     if role_env:
         persisted_role = persisted.get(role_env, "").strip()
         if persisted_role:
-            return persisted_role
+            return (
+                ""
+                if persisted_role.lower() in _AUTO_MODEL_SENTINELS
+                else persisted_role
+            )
     persisted_shared = persisted.get("ARGUS_SKILL_MODEL", "").strip()
     if persisted_shared:
-        return persisted_shared
+        return (
+            ""
+            if persisted_shared.lower() in _AUTO_MODEL_SENTINELS
+            else persisted_shared
+        )
+    from ..agent_cli.runner_backend import normalize_runner_backend
+
+    backend_name = normalize_runner_backend(
+        backend or resolve_role_backend(route, env=env_map)
+    )
+    if backend_name not in _OPENAI_CATALOG_BACKENDS:
+        return ""
     from ..tools.capability_vault import resolve_route_model
 
     return resolve_route_model(route, env_map)
@@ -606,7 +622,11 @@ def resolve_role_backend(role: str, *, env: Mapping[str, str] | None = None) -> 
     return "codex"
 
 
-def resolve_manager_reply_model(*, env: Mapping[str, str] | None = None) -> str:
+def resolve_manager_reply_model(
+    *,
+    backend: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
     """Resolve the high-quality operator-facing Manager SELF model."""
     env_map = env if env is not None else os.environ
     configured = resolve_knob(
@@ -619,6 +639,7 @@ def resolve_manager_reply_model(*, env: Mapping[str, str] | None = None) -> str:
     return resolve_role_model(
         "manager",
         role_env="ARGUS_SKILL_MANAGER_MODEL",
+        backend=backend,
         env=env_map,
     )
 
@@ -641,6 +662,7 @@ def resolve_cheap_route_model(
     catalog_default: str,
     role: str,
     role_env: str,
+    backend: str | None = None,
     env: Mapping[str, str] | None = None,
 ) -> str:
     """Resolve one cheap control-plane route's model.
@@ -667,19 +689,31 @@ def resolve_cheap_route_model(
         return configured
     from ..agent_cli.runner_backend import normalize_runner_backend
 
-    backend = normalize_runner_backend(resolve_role_backend(role, env=env_map))
-    if backend in _OPENAI_CATALOG_BACKENDS:
+    backend_name = normalize_runner_backend(
+        backend or resolve_role_backend(role, env=env_map)
+    )
+    if backend_name in _OPENAI_CATALOG_BACKENDS:
         return catalog_default
-    return resolve_role_model(role, role_env=role_env, env=env_map)
+    return resolve_role_model(
+        role,
+        role_env=role_env,
+        backend=backend_name,
+        env=env_map,
+    )
 
 
-def resolve_manager_classify_model(*, env: Mapping[str, str] | None = None) -> str:
+def resolve_manager_classify_model(
+    *,
+    backend: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> str:
     """Resolve the cheap stateless front-door classification model."""
     return resolve_cheap_route_model(
         knob="ARGUS_SKILL_FRONTDOOR_MODEL",
         catalog_default="gpt-5.4-mini",
         role="manager",
         role_env="ARGUS_SKILL_MANAGER_MODEL",
+        backend=backend,
         env=env,
     )
 

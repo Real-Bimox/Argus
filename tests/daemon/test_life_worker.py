@@ -1251,6 +1251,22 @@ def test_handoff_config_payload_round_trips(tmp_path: Path) -> None:
     assert restored.continuous_open_ended is False
 
 
+def test_handoff_config_preserves_native_backend_model_sentinels(
+    tmp_path: Path,
+) -> None:
+    cfg = LifeWorkerConfig(
+        life_dir=tmp_path / "project",
+        backend="claude",
+        engineer_model="",
+        reviewer_model="",
+    )
+
+    restored = _config_from_payload(_config_payload(cfg))
+
+    assert restored.engineer_model == ""
+    assert restored.reviewer_model == ""
+
+
 def test_handoff_config_preserves_explicit_zero_global_budget_cap(tmp_path: Path) -> None:
     cfg = LifeWorkerConfig(
         life_dir=tmp_path / "project",

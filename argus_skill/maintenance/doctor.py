@@ -200,6 +200,15 @@ def _runtime_findings(context: DoctorContext) -> list[DoctorFinding]:
         recommendation="use Python 3.11+ and reinstall Argus into the intended environment",
         evidence={"executable": str(python_path), "version": platform.python_version()},
     )]
+    if context.install_mode == "frozen" or getattr(sys, "frozen", False):
+        findings.append(_finding(
+            "ARGUS-NODE-001",
+            "cli",
+            True,
+            "bundled_runtime",
+            "Node.js is bundled or not required by the frozen Desktop runtime",
+        ))
+        return findings
     node_ok, node_bin, node_detail = _command_version("node")
     match = re.search(r"v?(\d+)(?:\.(\d+))?", node_detail)
     node_version = (
@@ -244,7 +253,7 @@ def _desktop_finding(context: DoctorContext) -> DoctorFinding:
         "ARGUS-DESKTOP-001", "desktop", ready,
         "electron_ready" if ready else "electron_binary_missing",
         "Electron development runtime is installed" if ready else "Electron package exists without an installed runtime binary",
-        severity="error", actions=("install_electron_binary",),
+        severity="warning", actions=("install_electron_binary",),
         recommendation="run the registered Electron install action from desktop/",
         evidence={"desktop": str(desktop)},
     )

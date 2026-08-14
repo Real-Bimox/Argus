@@ -60,10 +60,16 @@ env:
     tests/daemon/test_spawn_helper.py
     tests/daemon/test_windows_daemon_control.py
     tests/daemon/test_windows_terminal_process.py
+    tests/core/test_agent_probe.py
+    tests/core/test_backend_readiness.py
+    tests/core/test_cheap_route_models.py
     tests/maintenance/test_repair_pipeline.py
+    tests/maintenance/test_doctor_advisor.py
     tests/test_agent_cli_backend.py
     tests/test_bootstrap_doctor.py
     tests/test_doctor.py
+    tests/test_install_documentation.py
+    tests/tools/test_setup_readiness.py
     tests/webapi/test_commands_m1.py
     tests/webapi/test_server_m0.py
     tests/webapi/test_workspace_v2.py
@@ -124,6 +130,28 @@ jobs:
           python -m pip install pytest
       - name: Test portable surface
         run: python -m pytest -q ${{ env.PORTABLE_TESTS }}
+
+      - uses: astral-sh/setup-uv@v5
+        if: runner.os == 'macOS'
+      - name: Smoke macOS uv tool install
+        if: runner.os == 'macOS'
+        run: |
+          export UV_TOOL_DIR="$RUNNER_TEMP/argus-tools"
+          export UV_TOOL_BIN_DIR="$RUNNER_TEMP/argus-bin"
+          uv tool install --python 3.12 .
+          "$UV_TOOL_BIN_DIR/argus-skill" --version
+          "$UV_TOOL_BIN_DIR/argus" --help
+
+      - name: Smoke Windows direct pip install
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python -m pip install build
+          python -m build --wheel
+          python -m pip uninstall -y argus-skill
+          python -m pip install --no-deps (Get-ChildItem dist\*.whl).FullName
+          argus-skill --version
+          argus --help
 
       # The pairing banner is written to stderr, which on Windows uses the ANSI
       # code page (cp1252/cp936) whenever output is redirected — not UTF-8.

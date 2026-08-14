@@ -75,6 +75,21 @@ def test_doctor_json_uses_stable_codes() -> None:
     assert payload["checks"][0]["code"] == "ARGUS-STATE-001"
 
 
+def test_frozen_doctor_does_not_require_system_node(tmp_path) -> None:
+    from argus_skill.maintenance.doctor import DoctorContext, _runtime_findings
+
+    findings = _runtime_findings(DoctorContext(
+        global_root=tmp_path,
+        project_root=tmp_path,
+        python_executable=Path(sys.executable),
+        install_mode="frozen",
+    ))
+    node = next(item for item in findings if item.code == "ARGUS-NODE-001")
+
+    assert node.ok is True
+    assert node.status == "bundled_runtime"
+
+
 def test_safe_repair_removes_only_a_verified_stale_daemon_pid(
     tmp_path,
     monkeypatch,
