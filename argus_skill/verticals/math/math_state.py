@@ -85,7 +85,7 @@ import os
 import re
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -936,6 +936,7 @@ def _claim_payload(state: MathState, claim: ClaimVersion) -> dict[str, Any]:
     payload["standing_on"] = [
         item.as_dict() for item in state.effective_assumptions(claim.claim_id)
     ]
+    payload["routes"] = _routes(state, claim, payload["routes"])
     certificates = _certificates(state, claim)
     if certificates:
         payload["certificates"] = certificates
@@ -945,6 +946,33 @@ def _claim_payload(state: MathState, claim: ClaimVersion) -> dict[str, Any]:
     if assessment.is_kernel:
         payload["caveats"] = [_FIDELITY_CAVEAT]
     return payload
+
+
+def _routes(
+    state: MathState, claim: ClaimVersion, assessed: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The decompositions aimed at this claim, each dead one saying what killed it.
+
+    ``RouteAssessment`` reports that a route is ``retired`` and not why, and
+    that is right for the kernel: a status is derived from records, and the
+    reason a mathematician gave up on an approach is derivable from nothing. It
+    is the wrong thing for a reader. "Retired" on its own is exactly what the
+    next planner cannot act on — a dead end whose obstruction is not written
+    beside it is one they re-open, which is the failure ``retired_because`` was
+    put in the schema to prevent, arriving one layer later at the surface that
+    renders it.
+    """
+    reasons = {
+        route.route_id: route.retired_because
+        for route in state.routes
+        if route.goal == claim.ref() and route.retired_because.strip()
+    }
+    return [
+        {**item, "retired_because": reasons[item["route_id"]]}
+        if item["route_id"] in reasons
+        else item
+        for item in assessed
+    ]
 
 
 def _certificates(state: MathState, claim: ClaimVersion) -> list[dict[str, str]]:
@@ -1251,14 +1279,23 @@ def _cmd_route(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
     obligations = tuple(
         _require_claim(state, claim_id).ref() for claim_id in args.obligation
     )
-    route = state.add_route(
-        ProofRoute(
-            route_id=args.id,
-            goal=goal.ref(),
-            obligations=obligations,
-            retired_because=args.retired_because or "",
-        )
+    proposed = ProofRoute(
+        route_id=args.id,
+        goal=goal.ref(),
+        obligations=obligations,
+        retired_because=args.retired_because or "",
     )
+    current = next((item for item in state.routes if item.route_id == args.id), None)
+    if current is not None:
+        if current == proposed:
+            return {"ok": True, "unchanged": True, "route": current.as_dict()}
+        raise MathStateError(
+            f"route {args.id!r} already records a different plan. A route is "
+            "written once and retired later, so `retire-route --id "
+            f"{args.id} --because \"...\"` is how it stops being attempted; a "
+            "different decomposition is a different plan and takes its own id"
+        )
+    route = state.add_route(proposed)
     return {
         "ok": True,
         "route": route.as_dict(),
@@ -1266,6 +1303,80 @@ def _cmd_route(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
             "a route records a plan and confers no status on its goal: nothing "
             "has checked that these obligations imply it, so finishing all of "
             "them leaves the goal exactly where the evidence put it"
+        ),
+    }
+
+
+def _cmd_retire_route(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
+    """Record that a plan died, on the route that was written down while it lived.
+
+    A verb of its own rather than a second reading of ``route
+    --retired-because``, because the two are typed at different moments by
+    people who know different things. A route is recorded before anybody starts
+    and dies after somebody has worked on it, so a reason carried by the write
+    that opens the route could only have been supplied by an author who already
+    knew the ending. The flag keeps the one job it can do — writing down an
+    attempt that was dead on arrival, which is also the only way a circular
+    decomposition can be recorded at all, since ``add_route`` exempts a route
+    that carries a reason from the cycle check.
+
+    Retirement moves in one direction, unset to set. The recorded reason is
+    what the next planner reads *instead of* re-opening the route, so replacing
+    it would leave the ledger unable to say which obstruction the project
+    actually met — the same objection that makes ``revise_claim`` mint a version
+    rather than edit one. Reopening is not a rewrite either: an approach
+    somebody now believes in is a new plan, and it gets its own id.
+
+    Nothing else moves. A route is a plan, and the kernel promotes no claim for
+    having one, so there is no status here to lose; every check is made before
+    the first row is touched, because a command that mutates and then refuses
+    would leave half a retirement behind.
+    """
+    reason = normalize_text(args.because)
+    if not reason:
+        raise MathStateError(
+            "retiring a route needs a reason, because the only honest one is "
+            "that the mathematics does not go through this way — a claim about "
+            "the problem rather than a note about the schedule, and the thing "
+            "the next planner needs in order not to repeat the attempt"
+        )
+    recorded = [item for item in state.routes if item.route_id == args.id]
+    if not recorded:
+        raise MathStateError(
+            f"no route {args.id!r} in {_STATE_REF}; record the decomposition "
+            "with `route` before recording that it failed"
+        )
+    held = next(
+        (item.retired_because for item in recorded if item.retired_because.strip()),
+        "",
+    )
+    if held and normalize_text(held) != reason:
+        raise MathStateError(
+            f"route {args.id!r} is already retired, because {held!r}. A route "
+            "dies once, and that reason is what a later reader has instead of "
+            "the attempt itself; a second one in its place would leave the "
+            "ledger unable to say which obstruction the project met. If the "
+            "approach is worth trying after all, it is a new plan — record it "
+            "with `route` under its own id"
+        )
+
+    changed = False
+    for index, item in enumerate(state.routes):
+        if item.route_id == args.id and item.retired_because != reason:
+            state.routes[index] = replace(item, retired_because=reason)
+            changed = True
+    route = next(item for item in state.routes if item.route_id == args.id)
+    if not changed:
+        return {"ok": True, "unchanged": True, "route": route.as_dict()}
+    return {
+        "ok": True,
+        "route": route.as_dict(),
+        "note": (
+            "a route is a plan, so retiring one takes nothing away from its "
+            "goal: the claim keeps the status its evidence gives it, and every "
+            "obligation established on the way stays established. What ends is "
+            "the plan — it leaves the dependency graph, and the reason is what "
+            "stops it being attempted again"
         ),
     }
 
@@ -1315,6 +1426,7 @@ _WRITERS = {
     "revise-claim": _cmd_revise_claim,
     "assume": _cmd_assume,
     "route": _cmd_route,
+    "retire-route": _cmd_retire_route,
     "judge": _cmd_judge,
 }
 
@@ -1394,7 +1506,27 @@ def _build_parser() -> argparse.ArgumentParser:
     route.add_argument("--id", required=True)
     route.add_argument("--goal", required=True)
     route.add_argument("--obligation", action="append", default=[], metavar="CLAIM_ID")
-    route.add_argument("--retired-because", help="why this route was abandoned")
+    route.add_argument(
+        "--retired-because",
+        help=(
+            "why an attempt that never went live is on record anyway: a dead "
+            "end worth keeping, including a circular one, which the cycle check "
+            "exempts. A route recorded while it was alive is retired later, with "
+            "`retire-route`"
+        ),
+    )
+
+    retire_route = add("retire-route", "record that a route died, and what killed it")
+    retire_route.add_argument("--id", required=True)
+    retire_route.add_argument(
+        "--because",
+        required=True,
+        help=(
+            "the obstruction, in your words. It is written once and not "
+            "rewritten: the next planner reads it instead of attempting the "
+            "route again, which is the whole of what retiring one buys"
+        ),
+    )
 
     judge = add("judge", "record a referee's opinion about a claim or an assumption")
     judge.add_argument("--claim", required=True)

@@ -91,6 +91,9 @@ there is no argument you can type that produces it. Keep it current with
     # one decomposition of a goal into obligations; records a plan, confers nothing
     $S route --id R1 --goal C1 --obligation L1 --obligation L2
 
+    # when that route dies: the obstruction, in your words, written once
+    $S retire-route --id R1 --because "the bound is unavoidable below dimension 3"
+
     # your own or a reviewer's opinion, recorded as an opinion
     $S judge --claim C1 --verdict supports --by "reviewer:alice" \
         --artifact research/lean/certificates/C1-<digest>.json
@@ -148,7 +151,7 @@ what that means: the obligations inside a route are an AND, several routes for
 one goal are an OR, and neither confers anything on the goal. Record them before
 anyone starts — `$S route --id R1 --goal C1 --obligation L1` — because an
 unrecorded alternative is one the next worker re-derives from scratch, and a
-route that dies without `--retired-because` is one that gets retried.
+route that dies without `$S retire-route` is one that gets retried.
 
 Then dispatch them. `argus_builtin_skills/engineer/agent-team-lead.md` is the
 mechanism: one task per route, the pool width set to how many you actually want
@@ -161,8 +164,10 @@ Whoever picks up a route is the one thinking about it. Give them the goal, the
 route's obligations, and what is already known not to work; do not hand over a
 decomposition into steps, because that decomposition is the mathematics you were
 asking somebody else to do. What comes back is a result or a reason the route is
-dead, and the reason goes into `--retired-because` in your words, since you are
-the one holding the OR and the next planner reads it there.
+dead, and the reason goes into `$S retire-route --id R1 --because "..."` in your
+words, since you are the one holding the OR and the next planner reads it there.
+It is written once: a route you come to believe in again is a new plan with a
+new id, not a rewritten reason on the old one.
 
 The team gate asks for non-overlapping writable paths, and here they overlap in
 exactly one place: `research/MATH_STATE.json`. That one is safe to share. Every

@@ -33,6 +33,7 @@ from argus_skill.research_math import (
     EvidenceTier,
     MathState,
     MathStateError,
+    RouteStatus,
     SubjectKind,
     SubjectRef,
     Verdict,
@@ -1322,6 +1323,184 @@ def test_dropping_an_assumption_without_a_reason_is_refused_from_the_cli(
     code, refused = _run(tmp_path, "revise-claim", "--id", "C1", "--retire", "RH=")
     assert code == 1
     assert "needs a reason" in refused["error"]
+
+
+# -- a route that dies ------------------------------------------------------
+
+def _open_route(root: Path) -> None:
+    """A goal, a lemma it would follow from, and a live route between them."""
+    _run(root, "context", "--id", "ctx", "--statement", "Fix n : Nat.")
+    for claim_id, text in (("C1", "n + n is even"), ("L1", "2 divides n + n")):
+        _run(root, "claim", "--id", claim_id, "--context", "ctx", "--statement", text)
+    _run(root, "route", "--id", "R1", "--goal", "C1", "--obligation", "L1")
+
+
+def test_a_route_is_retired_after_it_dies_and_says_what_killed_it(
+    tmp_path: Path,
+) -> None:
+    """The order the work happens in, which the write path has to allow.
+
+    A route is recorded before anybody starts and dies after somebody has spent
+    a week on it, so a reason supplied when the route is opened could only come
+    from an author who already knew the ending. Retiring the recorded route is
+    the operation the Engineer doc describes, and until this verb existed the
+    ledger had no way to perform it.
+    """
+    _open_route(tmp_path)
+
+    code, payload = _run(tmp_path, "retire-route", "--id", "R1",
+                         "--because", "the obstruction is unavoidable")
+    assert code == 0
+    assert payload["route"]["retired_because"] == "the obstruction is unavoidable"
+    assert "takes nothing away from its goal" in payload["note"]
+
+    # And the reason comes back out where the next planner reads it.
+    _, shown = _run(tmp_path, "show", "--claim", "C1")
+    route = shown["claim"]["routes"][0]
+    assert route["route_id"] == "R1"
+    assert route["status"] == RouteStatus.RETIRED.value
+    assert route["retired_because"] == "the obstruction is unavoidable"
+    assert _run(tmp_path, "check")[0] == 0
+
+
+def test_a_route_cannot_be_retired_without_saying_why(tmp_path: Path) -> None:
+    """Whitespace as well as nothing: the field exists to be said, not filled.
+
+    Abandoning a decomposition asserts that the mathematics does not go through
+    that way, which is a claim about the problem. A blank reason retires the
+    route and teaches the next planner nothing, which is the state the schema
+    carries a reason rather than a flag to prevent.
+    """
+    _open_route(tmp_path)
+    before = math_state.state_path(tmp_path).read_bytes()
+
+    for blank in ("", "   \n\t "):
+        code, payload = _run(tmp_path, "retire-route", "--id", "R1", "--because", blank)
+        assert code == 1
+        assert "needs a reason" in payload["error"]
+
+    assert math_state.state_path(tmp_path).read_bytes() == before
+    _, shown = _run(tmp_path, "show", "--claim", "C1")
+    assert shown["claim"]["routes"][0]["status"] == RouteStatus.OPEN.value
+
+
+def test_retiring_a_route_nobody_recorded_is_refused(tmp_path: Path) -> None:
+    """A retirement is a fact about a plan, so there has to be a plan.
+
+    Writing one anyway would mint a route out of a typo, and a route recorded
+    dead by accident is one nobody will ever attempt.
+    """
+    _open_route(tmp_path)
+
+    code, payload = _run(tmp_path, "retire-route", "--id", "R2",
+                         "--because", "the obstruction is unavoidable")
+    assert code == 1
+    assert "no route 'R2'" in payload["error"]
+    assert "record the decomposition" in payload["error"]
+    assert [route.route_id for route in load_state(tmp_path).routes] == ["R1"]
+
+
+def test_a_retired_route_keeps_the_reason_it_was_retired_for(tmp_path: Path) -> None:
+    """Unset to set, and no further: the first reason is the record.
+
+    A second reason in the same place leaves a reader unable to say which
+    obstruction the project actually met, and the recorded one is what they have
+    instead of the attempt itself. Repeating the same retirement is not a
+    rewrite and stays quiet, because retrying is how an autonomous loop
+    recovers.
+    """
+    _open_route(tmp_path)
+    _run(tmp_path, "retire-route", "--id", "R1",
+         "--because", "the obstruction is unavoidable")
+
+    code, refused = _run(tmp_path, "retire-route", "--id", "R1",
+                         "--because", "we ran out of time")
+    assert code == 1
+    assert "already retired" in refused["error"]
+    assert "the obstruction is unavoidable" in refused["error"]
+    assert "own id" in refused["error"]
+
+    code, repeated = _run(tmp_path, "retire-route", "--id", "R1",
+                          "--because", "the obstruction is unavoidable")
+    assert code == 0
+    assert repeated["unchanged"] is True
+
+    _, shown = _run(tmp_path, "show", "--claim", "C1")
+    assert shown["claim"]["routes"][0]["retired_because"] == (
+        "the obstruction is unavoidable"
+    )
+
+
+def test_retiring_a_route_leaves_its_goal_exactly_where_the_evidence_put_it(
+    tmp_path: Path,
+) -> None:
+    """A route confers nothing, so burying one can take nothing away.
+
+    The failure this guards is the mirror of the one ``with_routes`` guards: if
+    a discharged route must not promote its goal, a dead route must not demote
+    it. The claim's assessment is compared whole, so a later edit that let a
+    retirement touch support, undischarged assumptions, or stale evidence fails
+    here rather than in a run.
+    """
+    _open_route(tmp_path)
+    _run(tmp_path, "judge", "--claim", "C1", "--verdict", "supports",
+         "--by", "reviewer:alice")
+
+    _, before = _run(tmp_path, "show", "--claim", "C1")
+    assert before["claim"]["status"] == ClaimStatus.SUPPORTED.value
+
+    assert _run(tmp_path, "retire-route", "--id", "R1",
+                "--because", "the obstruction is unavoidable")[0] == 0
+
+    _, after = _run(tmp_path, "show", "--claim", "C1")
+    assert after["claim"]["status"] == ClaimStatus.SUPPORTED.value
+    assert {key: value for key, value in after["claim"].items() if key != "routes"} == {
+        key: value for key, value in before["claim"].items() if key != "routes"
+    }
+    # The lemma the dead route asked for is still a claim in its own right.
+    _, lemma = _run(tmp_path, "show", "--claim", "L1")
+    assert lemma["claim"]["status"] == ClaimStatus.PROPOSED.value
+
+
+def test_only_the_retirement_command_rewrites_a_recorded_route() -> None:
+    """Monotonic retirement is a property of one function or of none.
+
+    The tests above would all still pass if a later helper assigned
+    ``state.routes`` from somewhere that skipped the check, which is how the
+    reason a route died becomes something that can be quietly replaced. This
+    reads the source instead, and fails the moment a second door exists.
+    """
+    tree = ast.parse(MODULE.read_text(encoding="utf-8"))
+    writers: set[str] = set()
+    for function in ast.walk(tree):
+        if not isinstance(function, ast.FunctionDef):
+            continue
+        for node in ast.walk(function):
+            if isinstance(node, ast.Assign):
+                targets = list(node.targets)
+            elif isinstance(node, ast.AnnAssign | ast.AugAssign):
+                targets = [node.target]
+            else:
+                continue
+            for target in targets:
+                if (
+                    isinstance(target, ast.Subscript)
+                    and isinstance(target.value, ast.Attribute)
+                    and target.value.attr == "routes"
+                ):
+                    writers.add(function.name)
+    assert writers == {"_cmd_retire_route"}
+
+    openers = {
+        function.name
+        for function in ast.walk(tree)
+        if isinstance(function, ast.FunctionDef)
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "add_route"
+    }
+    assert openers == {"_cmd_route"}
 
 
 # -- an unreferenced CLI is the same as no CLI ------------------------------
