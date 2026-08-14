@@ -7,7 +7,8 @@ import {
   type ProjectRow,
 } from './api.js';
 import { App } from './App.js';
-import { HELP, parseArgs, type Args } from './args.js';
+import { isLocalApiHost } from './apiOwnership.js';
+import { HELP, parseArgs, withSelectedPort, type Args } from './args.js';
 import { FirstRun } from './components/FirstRun.js';
 import { ResumePicker } from './components/ResumePicker.js';
 import { Splash } from './components/Splash.js';
@@ -29,6 +30,7 @@ import { projectsForLaunchCwd } from '../../core/src/projects.js';
 import { openWebBrowser, resolvePairing, webUiUrl, withProject } from './webLaunch.js';
 import { createImeCursorOutput, ImeCursorProvider } from './imeCursor.js';
 import { InteractiveExitLifecycle } from './exitLifecycle.js';
+import { selectApiPort } from './portSelection.js';
 
 /** A small spinner shown if the animation finishes before the API is reachable. */
 function Connecting({ note }: { note: string }) {
@@ -78,6 +80,7 @@ function Boot({
   const [err, setErr] = useState('');
   const splashDone = useRef(!animate);
   const exitRequested = useRef(false);
+  const webOpened = useRef(false);
   const destination = useRef<'connecting' | 'picker' | 'empty' | 'live'>('connecting');
   const base = useMemo(
     () => new ApiClient({ host: args.host, port: args.port, project: '_', token: args.token }),
@@ -106,6 +109,10 @@ function Boot({
         setErr(res.message);
         setPhase('error');
         return;
+      }
+      if (args.openWebWithCli && !args.noOpen && !webOpened.current) {
+        webOpened.current = true;
+        openWebBrowser(webUiUrl(args.host, args.port, args.project, args.token));
       }
       setNote('connecting…');
       try {
@@ -180,7 +187,7 @@ function Boot({
     return () => {
       cancelled = true;
     };
-  }, [args.forceNew, args.host, args.objective, args.port, args.project, args.resume, args.resumeAll, args.token, base, launchCwd, lifecycle]);
+  }, [args.forceNew, args.host, args.noOpen, args.objective, args.openWebWithCli, args.port, args.project, args.resume, args.resumeAll, args.token, base, launchCwd, lifecycle]);
 
   const onSplashDone = () => {
     if (exitRequested.current) return;
@@ -270,16 +277,26 @@ function Boot({
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
+  let args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write(HELP);
     return;
   }
 
+  const selectedPort = await selectApiPort({
+    host: args.host,
+    preferredPort: args.port,
+    token: args.token,
+    explicit: args.portExplicit,
+  });
+  if (selectedPort !== args.port) args = withSelectedPort(args, selectedPort);
+
   if (args.web) {
     // Resolve pairing before starting the backend: on a non-loopback bind the
     // token may be minted here, and the backend has to be started with it.
-    const plan = resolvePairing(resolveBin(), args.host, args.port);
+    const plan = isLocalApiHost(args.host)
+      ? null
+      : resolvePairing(resolveBin(), args.host, args.port);
     const token = args.token || plan?.token || undefined;
     const result = await ensureApi({
       host: args.host,

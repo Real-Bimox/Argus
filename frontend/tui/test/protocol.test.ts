@@ -714,6 +714,22 @@ test('normal autostart records listener and launcher PIDs after the runtime hand
   });
 });
 
+test('normal autostart fails immediately when the spawned backend exits', async () => {
+  const result = await ensureApi({
+    host: '127.0.0.1',
+    port: 8899,
+    dependencies: {
+      probeApi: async () => unreachableProbe,
+      spawnApi: async () => ({ pid: 7777, exited: Promise.resolve(7) }),
+      sleep: async () => new Promise<void>(() => undefined),
+    },
+  });
+
+  assert.equal(result.reachable, false);
+  assert.equal(result.spawned, true);
+  assert.match(result.message, /exited before becoming ready \(exit 7\)/);
+});
+
 test('spawn cleanup verifies and signals both Windows listener and launcher PIDs', async () => {
   const ownership: ApiOwnershipRecord = {
     schema: 1,

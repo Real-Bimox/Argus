@@ -539,9 +539,9 @@ def _maybe_greeting_reply(
     """Short-circuit a safe message-only reply from the merged classifier.
 
     Only fires when no stateful action was decided and the classifier did not
-    need the startup/rotation handoff to
-    answer it (``send_body == body``) — otherwise the greeting reply could be
-    stale relative to the actual enriched turn sent to the Manager.
+    need the startup/rotation handoff to answer it (``send_body == body``).
+    Otherwise the greeting would consume the handoff without seeding the next
+    substantive Manager turn.
     """
     if (
         classify.greeting_reply

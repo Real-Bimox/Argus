@@ -189,8 +189,12 @@ def _claim_run_dir(
     claim_path = _claim_path(run_dir)
     key = (claim_owner, str(run_dir))
     with _CLAIMS_LOCK:
-        if key in _HELD_CLAIMS:
-            return f"experiment run directory is already claimed by task {task_id}: {run_dir}"
+        for (held_owner, claimed_dir), _handle in _HELD_CLAIMS.items():
+            if claimed_dir == str(run_dir):
+                return (
+                    "experiment run directory is already claimed"
+                    f" by task {held_owner}: {run_dir}"
+                )
         claim_path.parent.mkdir(parents=True, exist_ok=True)
         handle = claim_path.open("a+", encoding="utf-8")
         try:
@@ -198,15 +202,15 @@ def _claim_run_dir(
         except portalocker.exceptions.LockException:
             try:
                 handle.seek(0)
-                owner = json.load(handle)
+                owner_record = json.load(handle)
             except (OSError, ValueError, json.JSONDecodeError):
-                owner = {}
+                owner_record = {}
             handle.close()
             return (
                 "experiment run directory is already claimed"
                 + (
-                    f" by task {owner.get('task_id')}"
-                    if owner.get("task_id")
+                    f" by task {owner_record.get('task_id')}"
+                    if owner_record.get("task_id")
                     else ""
                 )
                 + f": {run_dir}"

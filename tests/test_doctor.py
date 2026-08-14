@@ -8,9 +8,11 @@ real network call.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 from argus_skill.webapi.diagnostics import Check, render_report, run_diagnostics
 
@@ -59,6 +61,72 @@ def test_render_report_all_green_has_no_recommendation():
     report = render_report([Check("daemon", True, "running (pid 5)", "")])
     assert "all checks passed" in report
     assert "→ recommended:" not in report
+
+
+def test_doctor_json_uses_stable_codes() -> None:
+    from argus_skill.apps.cli._core import _doctor_payload
+
+    payload = _doctor_payload([Check("lock sanity", False, "stale", "repair")])
+
+    assert payload["schema_version"] == 1
+    assert payload["ok"] is False
+    assert payload["checks"][0]["code"] == "ARGUS-STATE-001"
+
+
+def test_safe_repair_removes_only_a_verified_stale_daemon_pid(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from argus_skill.apps.cli import _core
+
+    pid_path = tmp_path / "daemon.pid"
+    pid_path.write_text("2000000000\n", encoding="ascii")
+    bundle = SimpleNamespace(project=SimpleNamespace(root=tmp_path))
+    checks = [Check("lock sanity", False, "stale", "remove")]
+    monkeypatch.setattr(_core, "_doctor_checks", lambda _args: (bundle, checks))
+
+    rc = _core._cmd_repair(
+        SimpleNamespace(safe=True, plan=False, json=True)
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 3  # mocked verification still reports the pre-repair failure
+    assert not pid_path.exists()
+    assert payload["actions"] == [{
+        "id": "remove_verified_stale_daemon_pid",
+        "risk": "safe",
+        "target": str(pid_path),
+        "status": "applied",
+    }]
+
+
+def test_safe_repair_does_not_unlink_a_lock_claimed_during_revalidation(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from argus_skill.apps.cli import _core
+    from argus_skill.core import daemon_lock
+
+    pid_path = tmp_path / "daemon.pid"
+    pid_path.write_text("2000000000\n", encoding="ascii")
+    bundle = SimpleNamespace(project=SimpleNamespace(root=tmp_path))
+    checks = [Check("lock sanity", False, "stale", "remove")]
+    monkeypatch.setattr(_core, "_doctor_checks", lambda _args: (bundle, checks))
+    monkeypatch.setattr(
+        daemon_lock,
+        "acquire_global_daemon_lock",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            daemon_lock.DaemonAlreadyRunning(os.getpid(), pid_path)
+        ),
+    )
+
+    _core._cmd_repair(SimpleNamespace(safe=True, plan=False, json=True))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert pid_path.exists()
+    assert payload["actions"][0]["status"] == "skipped_live"
 
 
 def test_render_report_with_theme_is_failsoft():

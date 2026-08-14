@@ -19,6 +19,7 @@ except ImportError:  # pragma: no cover - non-POSIX fallback
     fcntl = None  # type: ignore[assignment]
 
 from ...core.daemon_lock import is_pid_running
+from ...core.portable_filename import portable_filename_component
 from ._text import _tail_file
 
 # ---------------------------------------------------------------------------
@@ -55,13 +56,17 @@ _QUIET_LOGS_ENV = "ARGUS_SUBAGENT_QUIET_LOGS"
 # Registry paths
 # ---------------------------------------------------------------------------
 
+def _task_file_component(task_id: str) -> str:
+    return portable_filename_component(str(task_id), windows=os.name == "nt")
+
+
 def _registry_path(task_id: str) -> Path:
-    return REGISTRY_DIR / f"{task_id}.json"
+    return REGISTRY_DIR / f"{_task_file_component(task_id)}.json"
 
 
 def _exit_status_path(task_id: str, run_id: str | None = None) -> Path:
     name = f"exit_code.{run_id}" if run_id else "exit_code"
-    return REGISTRY_DIR / f"{task_id}_logs" / name
+    return REGISTRY_DIR / f"{_task_file_component(task_id)}_logs" / name
 
 
 # ---------------------------------------------------------------------------
