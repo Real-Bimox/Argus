@@ -39,3 +39,21 @@ def test_bootstrap_doctor_reports_missing_checkout_without_crashing(tmp_path: Pa
     install = next(item for item in report["findings"] if item["code"] == "ARGUS-INSTALL-001")
     assert install["ok"] is False
     assert "--root" in install["fix"]
+
+
+def test_bootstrap_doctor_uses_current_python_when_checkout_venv_is_absent(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(argus_doctor, "_venv_python", lambda _root: None)
+
+    report = argus_doctor.run_bootstrap_doctor(ROOT)
+
+    runtime = next(
+        item for item in report["findings"] if item["code"] == "ARGUS-PYTHON-002"
+    )
+    core_import = next(
+        item for item in report["findings"] if item["code"] == "ARGUS-PYTHON-003"
+    )
+    assert runtime["ok"] is True
+    assert "bootstrap fallback" in runtime["detail"]
+    assert core_import["ok"] is True
