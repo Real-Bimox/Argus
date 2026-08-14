@@ -86,6 +86,13 @@ feishu = [
 qr = [
   "qrcode>=7.4,<9",
 ]
+# Harbor Framework installed-agent adapter. Harbor itself requires Python
+# 3.12+, while core Argus continues to support Python 3.11.
+harbor = [
+  "build>=1",
+  "hatchling>=1.27",
+  "harbor>=0.21,<0.22; python_version >= '3.12'",
+]
 dev = [
   "build>=1",
   "mypy>=1.8,<2",

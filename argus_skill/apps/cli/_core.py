@@ -285,6 +285,18 @@ def main(argv: list[str] | None = None) -> int:
     load_backend_runtime_env()
     parser = build_parser()
     args = parser.parse_args(argv)
+    objective_file = getattr(args, "objective_file", None)
+    if objective_file:
+        try:
+            args.objective = Path(objective_file).expanduser().read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            sys.stderr.write(
+                f"argus-skill: could not read --objective-file {objective_file!r}: {exc}\n"
+            )
+            return 2
+        if not str(args.objective).strip():
+            sys.stderr.write("argus-skill: --objective-file must not be empty\n")
+            return 2
     from ...core.knobs import resolve_role_backend
 
     backend_default = (

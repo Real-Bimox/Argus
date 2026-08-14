@@ -51,6 +51,10 @@
 
 **原生 Backend：** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
 
+**Harbor 评测：** Harbor Framework 可以把完整的有界 Argus
+Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。配置和边界见
+**[Harbor 接入说明](docs/harbor.md)**。
+
 ## 快速安装
 
 ### 环境要求

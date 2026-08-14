@@ -484,6 +484,31 @@ def test_main_rejects_objective_without_continuous(capsys: pytest.CaptureFixture
     assert "--objective requires --continuous" in err
 
 
+def test_main_loads_objective_file_before_continuous_validation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    objective = tmp_path / "objective.txt"
+    objective.write_text("Fix the Harbor task", encoding="utf-8")
+
+    rc = main(["--objective-file", str(objective)])
+
+    assert rc == 2
+    assert "--objective requires --continuous" in capsys.readouterr().err
+
+
+def test_main_reports_missing_objective_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = tmp_path / "missing.txt"
+
+    rc = main(["--continuous", "--objective-file", str(missing)])
+
+    assert rc == 2
+    assert "could not read --objective-file" in capsys.readouterr().err
+
+
 def test_main_rejects_continuous_without_objective(capsys: pytest.CaptureFixture[str]) -> None:
     rc = main(["--continuous"])
     err = capsys.readouterr().err

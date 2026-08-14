@@ -182,10 +182,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="enable continuous planner mode (daemon generates new tasks "
              "when backlog is empty)",
     )
-    daemon_grp.add_argument(
+    objective_source = daemon_grp.add_mutually_exclusive_group()
+    objective_source.add_argument(
         "--objective",
         default="",
         help="continuous improvement objective (used with --continuous)",
+    )
+    objective_source.add_argument(
+        "--objective-file",
+        default=None,
+        metavar="PATH",
+        help="read the continuous objective from UTF-8 PATH instead of "
+             "process arguments",
     )
     daemon_grp.add_argument(
         "--resume-continuous",

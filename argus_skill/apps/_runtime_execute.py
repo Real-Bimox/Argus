@@ -514,6 +514,7 @@ class SkillLoopExecuteMixin:
             )
         effective_require_independent_review = bool(
             require_independent_review
+            or _env_flag("ARGUS_SKILL_REQUIRE_INDEPENDENT_REVIEW", False)
             or (
                 active_contract.requires_independent_review
                 if active_contract is not None

@@ -51,6 +51,10 @@ A project can stop, resume, survive a runtime replacement, and continue from its
 
 **Native backends:** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
 
+**Harbor evaluation:** Harbor Framework can invoke the complete bounded Argus
+Manager/Planner/Engineer/Reviewer runtime as a custom agent. See
+**[Harbor integration](docs/harbor.md)**.
+
 ## Quick Install
 
 ### Requirements
