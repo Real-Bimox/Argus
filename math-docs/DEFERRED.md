@@ -38,9 +38,31 @@ daemon 被砍掉的理由更硬：常驻进程要处理崩溃、重启、孤儿�
 
 **为什么否决**：被 goal 文档自己的判据否掉的。判据原文是「不要为了实现 portfolio reasoning，把 Argus 的一个 Engineer mission 逐渐变成隐藏在内部的第二个完整 orchestrator」，而 PR7 描述的正是这个。
 
-改成的形态见 PLAN_REVIEW §5.4：只读 explorer。worker 以 external verifier 身份存在，隔离 workspace、只读 canonical state、只提交 candidate，主 Engineer 下一轮消费。这样它是 evidence producer 而不是 orchestrator，符合「specialists 产生 artifacts，四角色保留控制权」。
+当时改成的形态见 PLAN_REVIEW §5.4：只读 explorer。那个替代形态后来也不做了，理由是下一条。
 
 **重新打开的信号**：真正的并行 approach portfolio 属于「转移到专用 Research Math OS」那一侧，不在本仓库的边界内。
+
+---
+
+## 只读 explorer（PR7 被否决后开出的替代形态）
+
+**是什么**：worker 以 external verifier 身份存在，隔离 workspace、只读 canonical state、只提交 candidate，主 Engineer 下一轮消费。设计意图是让它成为 evidence producer 而不是 orchestrator。
+
+**为什么不做**：它要防的事情在这个仓库里不可能发生，而它的隔离手段会切掉一个额外 worker 唯一真正值钱的产出。
+
+这个形态整个建立在一条前提上：route teammate 写 canonical ledger，那条写入是被信任的，而 explorer 不写，所以它的产出得由主 Engineer 挑选。**前提不成立。** `math_state.py` 的 `AGENT_WRITABLE_TIERS` 只有 `judgement` 一个 tier，`_agent_evidence` 是命令行通向 `add_evidence` 的唯一漏斗，而 `judgement` 不在 `KERNEL_TIERS`、`DISCHARGING_TIERS`、`REFUTING_TIERS`、`CITATION_CHECK_TIERS` 里的任何一个。十一个互不相同的 producer 对同一条 claim 记 `supports`，claim 停在 `supported`——这是跑出来的，不是读注释读出来的。agent 敲进去的任何东西本来就不被信任，没有一个「可信的 agent 写入」在等着被隔离掉。
+
+更根本的是，这个 ledger 的信任不挂在写入者身上，而挂在**执行了检查的那个程序**上。`mechanical` 之所以存在，是因为 `record_lean_evidence` 读到了编译器的回答，并把 statement fidelity 文档的哈希盖了进去；`literature` 之所以存在，是因为 `record_citation_evidence` 在记录裁决之前先把取回的原文归档到一个由内容决定的路径上。两者都不问是谁跑的。「把 worker 隔离开」是在一个信任模型根本不读的维度上加控制。
+
+而「speculative 的产出不该被信任进共享状态」这件事，ledger 已经有三个位置收：`proposed`（断言了，没有任何东西检查过）、`ProofRoute`（记录一个计划，不授予任何状态；且 `ESTABLISHED_STATUSES` 不含 `supported`，所以一条建立在非形式化引理上的路线不算 discharged）、以及 `judge`（意见，并且被当作意见记录）。主 Engineer 要记录一个自己都不信的东西，词汇是齐的。
+
+代价那一面更硬。真能强制只读的手段——一份拷贝、一个独立的 root——恰好是已发货的 skill 文档点名警告过的那个失败：`$S` 写的是它所运行目录下的 `research/MATH_STATE.json`，所以一个被派进自己 `cwd` 的 route 会悄悄拿到一本没人读的私有 ledger。被这样切断的 explorer 交不出额外 worker 唯一真正值钱的东西——`citation_check attribute`。那条通道的价值来自归档的原文而不是来自谁读的，而 `citation_check` 的模块说明写明它就是为无锁并发准备的：任何 worker、任何时刻、任何顺序，归档路径由内容决定，所以「本来会有的并发问题不会出现」。只读隔离防住了一个不可能发生的泄漏，挡掉了一个真实的贡献，方向正好反了。
+
+至于「隔离的 explorer 是更独立的裁判」——独立性在这里被报告，从不被采纳。`ClaimAssessment.support` 把每个 tier 映到互不相同的 producer 上，而没有任何 producer 数量能移动状态。assessment.py 自己说得最清楚：任何一个 LLM 裁决能通过的门，都会原样复现 principles 文档点名的那个失败。
+
+§5.4 要的其余每一条，route dispatch 已经给了：隔离的工作目录（`owns_paths` 下的 per-route 目录）、读到 canonical state（`acceptance_check` 经 `resolve_target` 把这条 claim 已记录的一切交过去，包括哪些引用真的有人去看过原文）、交回一个 candidate（一个结果，或者一条路线为什么死了）、主 Engineer 下一轮消费（它握着 OR，用自己的话写 `retire-route`）。route dispatch 唯一缺的是**机械强制**的隔离，而上面几段说的正是这条性质没有买主。
+
+**重新打开的信号**：出现一个被派出去的 teammate 占掉了某个**一次性写入的位置**，使得主 Engineer 再也写不进真实的那一条。最具体的形态是 `retire-route`——它拒绝用另一条理由覆盖已经退休的路线，而「只有握着 OR 的 Engineer 该写它」目前纯粹是散文里的约定，CLI 不知道是谁在跑。真出现这种事，该加的是那几个一次性动词的归属检查，不是一个新的 explorer 角色；到那时机械隔离才第一次有人付钱。
 
 ---
 
