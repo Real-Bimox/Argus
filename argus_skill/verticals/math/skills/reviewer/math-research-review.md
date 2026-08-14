@@ -62,10 +62,21 @@ actually paired with that claim's run. A claim with no `certificates` entry has
 no evidence bound to the statement it currently carries — if it once did, the
 statement was restated afterwards and the old certificate no longer describes
 it.
-Record the outcome with `math_state judge --claim ID --verdict ... --by you`,
-including the `inconclusive` verdicts — a step you could not settle is a result.
-Judgement is the only tier you can write, and it promotes nothing; a claim's
-status will not move because you agreed with it.
+Record the outcome with `math_state judge --claim ID --verdict ... --by you
+--artifact <the certificate you read>`, including the `inconclusive` verdicts —
+a step you could not settle is a result. Judgement is the only tier you can
+write, and it promotes nothing; a claim's status will not move because you
+agreed with it.
+
+Name the certificate. A fidelity verdict is about a particular reading of the
+theorem, not about the claim forever: if the fidelity note is later rewritten
+and the proof re-verified, the compiler answers as before but the reading it is
+paired with is a different one, and a verdict that named the old document is
+reported by `check` until whoever gave it reads the new one and judges again. A
+verdict that cites nothing is not reported — not because it is safer, but
+because it never said which document it was reached from, so it silently carries
+over to a reading nobody reviewed. That is the one approval that must not be
+inherited, so cite what you read.
 
 Say plainly whether the outcome is proved, disproved, computational evidence,
 partial progress, a conjecture, or unresolved. Check relevant primary sources

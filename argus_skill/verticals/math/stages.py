@@ -117,14 +117,26 @@ def _math_state_issues(project_root: Path) -> tuple[str, ...]:
     ``MathStateError`` escape would take down the completion gate for every
     other check with it, and a gate that reports nothing is indistinguishable
     from a gate that found nothing wrong.
+
+    ``certificate_issues`` is asked alongside the kernel's own ``validate``
+    because the kernel does not know what a Lean certificate is, and the defect
+    it catches — a fidelity verdict still standing after the reading it approved
+    was replaced — is precisely one a stage must not complete over. Both render
+    the same way, so the caller cannot tell which found what, and does not need
+    to.
     """
     from ...research_math import MathStateError, load_state, state_path
+    from .math_state import certificate_issues
 
     try:
         state = load_state(project_root)
     except MathStateError as exc:
         return (f"{state_path(project_root).name}: {exc}",)
-    return tuple(item.rendered() for item in state.validate())
+    return tuple(
+        item.rendered()
+        for item in (*state.validate(), *certificate_issues(state))
+    )
+
 
 def prepare_mission(  # noqa: ARG001 - see the docstring on stage/state_root
     *,

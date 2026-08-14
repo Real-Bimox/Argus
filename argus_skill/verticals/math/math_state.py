@@ -91,6 +91,7 @@ from ...research_math import (
     MathState,
     MathStateError,
     ProofRoute,
+    StateIssue,
     SubjectRef,
     Verdict,
     content_digest,
@@ -103,6 +104,7 @@ from ...research_math import (
 __all__ = [
     "AGENT_WRITABLE_TIERS",
     "LeanRecording",
+    "certificate_issues",
     "locked_state",
     "main",
     "record_lean_evidence",
@@ -238,6 +240,12 @@ def _agent_evidence(
         produced_by=produced_by,
         artifact=artifact,
     )
+    # One referee has one current opinion about one statement. Judging the same
+    # claim again from a different document is a re-read, not a second voice —
+    # and it is the remedy `certificate_issues` names, which only works if the
+    # new verdict replaces the one that cited the retired certificate rather
+    # than sitting beside it.
+    state.retire_superseded_evidence(record)
     return _append_evidence(state, record)
 
 
@@ -297,9 +305,14 @@ class LeanRecording:
     changed: bool = False
     refusals: tuple[str, ...] = ()
     statement_fidelity: str = ""
+    #: Certificates this run replaced: the same compiler answering about the
+    #: same statement from a different reading of it. Non-empty means the
+    #: fidelity note was rewritten, so anyone who approved the old reading was
+    #: approving a document this claim no longer stands on.
+    retired: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "recorded": self.record.as_dict() if self.record is not None else None,
             "changed": self.changed,
             "refusals": list(self.refusals),
@@ -309,6 +322,17 @@ class LeanRecording:
                 "note": _FIDELITY_CAVEAT,
             },
         }
+        if self.retired:
+            payload["retired_certificates"] = list(self.retired)
+            payload["retired_note"] = (
+                "the statement fidelity note was rewritten, so this run "
+                "certifies the same proof under a different reading of the "
+                "theorem and the certificates above are no longer what this "
+                "claim stands on. Any judgement recorded against one of them "
+                "was made about a reading that is no longer in force; "
+                "`math_state check` reports each one until it is judged again"
+            )
+        return payload
 
 
 def record_lean_evidence(
@@ -457,7 +481,11 @@ def record_lean_evidence(
         subject = claim.ref()
         artifact_dir = source_path.parent
         name = _certificate_name(
-            subject, EvidenceTier.MECHANICAL, verdict, produced_by
+            subject,
+            EvidenceTier.MECHANICAL,
+            verdict,
+            produced_by,
+            str(result.get("statement_fidelity_sha256") or ""),
         )
         artifact = _project_relative(
             artifact_dir / _CERTIFICATE_DIRNAME / name, root
@@ -511,10 +539,14 @@ def record_lean_evidence(
             produced_by=produced_by,
             artifact=artifact,
         )
+        retired = state.retire_superseded_evidence(record)
         stored, changed = _append_evidence(state, record)
 
     return LeanRecording(
-        record=stored, changed=changed, statement_fidelity=fidelity
+        record=stored,
+        changed=changed,
+        statement_fidelity=fidelity,
+        retired=tuple(item.artifact for item in retired),
     )
 
 
@@ -523,25 +555,26 @@ def _certificate_name(
     tier: EvidenceTier,
     verdict: Verdict,
     produced_by: str,
+    fidelity_sha256: str,
 ) -> str:
     """The archive's filename, derived from the record that will cite it.
 
     ``_evidence_id`` hashes (kind, subject, tier, verdict, produced_by,
     artifact), and the artifact is about to be this path, which reads as a
     circle. It is not one, because this digest is taken over *the same
-    arguments minus the artifact*::
+    arguments minus the artifact*, plus the fidelity note's digest::
 
-        artifact    = g(subject, tier, verdict, produced_by)
+        artifact    = g(subject, tier, verdict, produced_by, fidelity)
         evidence_id = f(subject, tier, verdict, produced_by, g(...))
 
-    Both are functions of the same four free variables, evaluated in that
-    order, so nothing waits on itself. What that buys is the property the
-    archive exists for: two records with different ids differ in at least one of
-    those four, since the artifact cannot be the tie-breaker when it is derived
-    from them — so ``g`` is injective over records, two of them can never
-    overwrite each other, and one record recorded twice lands on the same path.
-    That last part is what makes re-verifying idempotent rather than littering
-    the directory with a copy per run.
+    Both are functions of the same free variables, evaluated in that order, so
+    nothing waits on itself. What that buys is the property the archive exists
+    for: two records with different ids differ in at least one of them, since
+    the artifact cannot be the tie-breaker when it is derived from them — so
+    ``g`` is injective over records, two of them can never overwrite each
+    other, and one record recorded twice lands on the same path. That last part
+    is what makes re-verifying idempotent rather than littering the directory
+    with a copy per run.
 
     ``.json``, and deliberately never ``.lean``: ``discover_lean_sources`` finds
     project sources by extension, so an archived copy of the compiled source
@@ -555,21 +588,22 @@ def _certificate_name(
     before it becomes a filename; the digest, never the name, is what makes the
     path unique, so folding two ids together costs readability and nothing else.
 
-    **What this key deliberately leaves open.** The fidelity note is not in it,
-    so rewriting only that document and re-verifying the same proof lands on
-    this same path and replaces the archived note in place — and because the
-    record itself is unchanged, the command reports ``changed: false`` while
-    the note it points at is now a different one. A reviewer who judged the
-    fidelity of the old wording has their verdict silently re-pointed at the
-    new. This is not what the archive was built to stop: it is one claim's own
-    re-run, not another claim overwriting it, and it behaved identically before
-    the archive existed, when the canonical ``lean_check.json`` was rewritten
-    the same way. Adding ``statement_fidelity_sha256`` to the key would split
-    the two into separate records and close it, at the price of deciding that
-    re-reading a theorem mints a fresh certificate — a statement about what a
-    certificate *means*, which is not a decision to make in passing while
-    fixing a pointer. Left open, named here, so it is chosen rather than
-    inherited.
+    **Why the fidelity note is in the key.** ``fidelity_sha256`` is not part of
+    the record — the record says which claim, tier, verdict, and checker — so
+    including it here splits one record into two whenever only the note was
+    rewritten. That is deliberate, and it costs something real: rewording a note
+    for clarity mints a fresh certificate, and a reviewer who approved the old
+    wording has to be asked again. The alternative was tried first and fails
+    quietly. With the note left out, rewriting it and re-verifying the same
+    proof landed on this same path and replaced the archived note in place;
+    because the record itself was unchanged the command reported
+    ``changed: false``, so a reviewer's "the formal statement says what the
+    natural statement says" was re-pointed at a reading nobody had read.
+    Statement fidelity is the one question no compiler answers, which makes it
+    the one verdict that must not be allowed to drift onto text it was never
+    given. A note that was right does not need rewriting; when it does get
+    rewritten, something about the reading of the theorem changed, and that is
+    exactly when a prior approval must stop counting.
     """
     digest = content_digest(
         {
@@ -577,6 +611,7 @@ def _certificate_name(
             "tier": tier.value,
             "verdict": verdict.value,
             "produced_by": normalize_text(produced_by),
+            "statement_fidelity_sha256": normalize_text(fidelity_sha256),
         }
     )
     stem = _UNSAFE_IN_FILENAME.sub("_", subject.subject_id).strip("._-")
@@ -706,6 +741,74 @@ def _certificates(state: MathState, claim: ClaimVersion) -> list[dict[str, str]]
         for record in state.evidence
         if record.subject == subject and record.artifact
     ]
+
+
+def certificate_issues(state: MathState) -> tuple[StateIssue, ...]:
+    """Judgements that were made about a certificate the claim has moved past.
+
+    A defect the kernel cannot state, because it is about certificates and the
+    kernel does not know what one is. Every record here is either a Lean
+    certificate this vertical archived or something a reviewer chose to cite;
+    only the first kind is checked, by the directory it sits in.
+
+    The shape it catches: a reviewer reads a claim's certificate, judges that
+    the formal statement says what the natural statement says, and records that
+    with ``judge --artifact <certificate>``. Later the fidelity note is
+    rewritten and the proof re-verified. The compiler answers as before, so the
+    claim keeps its status — but the reading of the theorem it is paired with is
+    a different one, ``retire_superseded_evidence`` has dropped the certificate
+    the reviewer read, and their approval is now the only thing standing between
+    that new reading and a ``closed_kernel`` nobody has checked. Statement
+    fidelity is the one question the compiler does not answer, which is exactly
+    why this verdict must not be inherited by a document it was not given.
+
+    Clearable, and cheaply: read the certificate the claim now cites and judge
+    again. That matters more than it sounds. A blocking defect whose message
+    names a remedy that does not work is worse than no defect at all, because
+    the agent it blocks will do what the message says and stay blocked.
+
+    A judgement that cites nothing is not reported. It made no claim about which
+    document it was reached from, so there is nothing here to contradict — and
+    it is also not protected by this check, which is the reason the reviewer
+    skill asks for the citation.
+    """
+    issues: list[StateIssue] = []
+    for claim in sorted(state.current_claims(), key=lambda item: item.claim_id):
+        subject = claim.ref()
+        current = {
+            record.artifact
+            for record in state.evidence
+            if record.subject == subject
+            and record.tier is not EvidenceTier.JUDGEMENT
+            and record.artifact
+        }
+        for record in state.evidence:
+            if (
+                record.subject != subject
+                or record.tier is not EvidenceTier.JUDGEMENT
+                or not record.artifact
+                or record.artifact in current
+                or Path(record.artifact).parent.name != _CERTIFICATE_DIRNAME
+            ):
+                continue
+            issues.append(
+                StateIssue(
+                    "judgement_certificate_retired",
+                    f"$.evidence[{record.evidence_id}].artifact",
+                    f"{record.produced_by!r} judged claim {claim.claim_id!r} "
+                    f"from {record.artifact}, which is no longer a certificate "
+                    "this claim stands on: the statement fidelity note was "
+                    "rewritten and the proof re-verified, so the compiler's "
+                    "answer is now paired with a different reading of the "
+                    "theorem. The compile is unaffected and that verdict is "
+                    "not, because it was about the reading. Read the "
+                    "certificate this claim cites now — `show` lists it under "
+                    "`certificates` — and record the verdict again with "
+                    f"`judge --claim {claim.claim_id} --artifact <that path> "
+                    f"--by {record.produced_by}`",
+                )
+            )
+    return tuple(issues)
 
 
 def _show(project_root: Path, claim_id: str) -> dict[str, Any]:
@@ -1032,7 +1135,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--verdict", required=True, choices=[item.value for item in Verdict]
     )
     judge.add_argument("--by", required=True, help="who answered; the independence key")
-    judge.add_argument("--artifact", help="a file holding the reasoning behind the opinion")
+    judge.add_argument(
+        "--artifact",
+        help=(
+            "what the opinion was reached from: the certificate that was read, "
+            "or a file holding the reasoning. Citing the certificate is what "
+            "makes the verdict stop counting if the reading it approved is "
+            "later replaced"
+        ),
+    )
 
     show = add("show", "report what the records add up to")
     show.add_argument("--claim", default="")
@@ -1047,7 +1158,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "check":
-            issues = load_state(root).validate()
+            state = load_state(root)
+            issues = (*state.validate(), *certificate_issues(state))
             print(
                 json.dumps(
                     {"ok": not issues, "issues": [item.as_dict() for item in issues]},

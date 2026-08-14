@@ -56,6 +56,15 @@ rewriting it afterwards invalidates the run rather than quietly re-labelling it.
 Nothing checks that the document is *true* — that half of the argument is yours,
 and it is why a proved claim still reports what nobody verified.
 
+Write that document once and write it right; a reading that was correct does not
+need rewriting. If you do rewrite it and re-verify, the compile is unaffected but
+the reading it is paired with is a different one, so the certificate the claim
+stood on is retired in favour of a new one and anyone who judged the old reading
+is asked again — `check` reports each such verdict until they do. That is the
+cost of changing what the theorem is taken to say, and it is the right cost:
+statement fidelity is the one question the compiler does not answer, so it is the
+one approval that must never be inherited by a document nobody read.
+
 If the toolchain or a library such as Mathlib is missing, the run is recorded as
 unverified and still blocks: that is an environment fact rather than a
 mathematical verdict, but an unverified formalization is not evidence. Argue in
@@ -82,7 +91,8 @@ there is no argument you can type that produces it. Keep it current with
     $S route --id R1 --goal C1 --obligation L1 --obligation L2
 
     # your own or a reviewer's opinion, recorded as an opinion
-    $S judge --claim C1 --verdict supports --by "reviewer:alice"
+    $S judge --claim C1 --verdict supports --by "reviewer:alice" \
+        --artifact research/lean/certificates/C1-<digest>.json
 
     # the next version, when the definitions or the theorem change
     $S revise-context --id ctx --define "term=corrected meaning"

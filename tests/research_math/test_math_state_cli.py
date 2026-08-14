@@ -981,6 +981,159 @@ def test_recording_the_same_proof_twice_leaves_one_archive_at_one_path(
     assert len(load_state(tmp_path).evidence) == 1
 
 
+def _rewrite_the_note_and_reverify(root: Path, claim_id: str, note: str):
+    """The exact sequence the fidelity key exists for: note edited, proof not.
+
+    The Lean file is untouched, so the compiler answers exactly as before and
+    every identifying field of the record is unchanged. Only the reading of the
+    theorem the answer is paired with is different.
+    """
+    _fidelity(root, note)
+    _result(root)
+    return record_lean_evidence(
+        root, claim_id=claim_id, source=_lean_dir(root) / "Main.lean"
+    )
+
+
+ALPHA_FIDELITY_REWRITTEN = (
+    "# Statement fidelity\n\n"
+    "`alpha_thm` formalizes: the numeral 4 is the sum of 2 and 2.\n"
+    "Objects: natural number literals. Quantifiers: none. Hypotheses: none.\n"
+    "Conclusion: the two sides are definitionally equal.\n"
+)
+
+
+def test_rewriting_the_fidelity_note_does_not_overwrite_the_reviewed_one(
+    tmp_path: Path,
+) -> None:
+    """The reading a reviewer read has to survive the reading that replaced it.
+
+    Before the note entered the certificate key, this landed on the same path:
+    the record's four identifying fields were unchanged, so ``verify`` reported
+    ``changed: false`` while replacing the archived document underneath it. The
+    reviewer's copy of what they approved simply stopped existing.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    first = _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    assert first.record is not None
+
+    second = _rewrite_the_note_and_reverify(tmp_path, "A", ALPHA_FIDELITY_REWRITTEN)
+
+    assert second.record is not None
+    assert second.changed, "a different reading of the theorem is a different record"
+    assert second.record.artifact != first.record.artifact
+    assert second.retired == (first.record.artifact,)
+    reviewed = json.loads(
+        (tmp_path / first.record.artifact).read_text(encoding="utf-8")
+    )
+    assert reviewed["statement_fidelity"]["text"] == ALPHA_FIDELITY
+    current = json.loads(
+        (tmp_path / second.record.artifact).read_text(encoding="utf-8")
+    )
+    assert current["statement_fidelity"]["text"] == ALPHA_FIDELITY_REWRITTEN
+    # One reading is in force, not two: the ledger has to be able to say which.
+    assert [record.artifact for record in load_state(tmp_path).evidence] == [
+        second.record.artifact
+    ]
+
+
+def test_a_verdict_stops_counting_when_the_reading_it_approved_is_replaced(
+    tmp_path: Path,
+) -> None:
+    """Statement fidelity is the one verdict that must not be inherited.
+
+    A compiler cannot check that the formal statement says what the natural
+    statement says, which is why a reviewer is asked. Rewriting the note leaves
+    the compile untouched — so the claim keeps ``closed_kernel`` — while making
+    the reviewer's approval the only thing standing between a reading nobody
+    read and a kernel status. It has to stop counting, and a status alone cannot
+    say so, because the status did not move.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    first = _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    assert first.record is not None
+    _run(
+        tmp_path, "judge", "--claim", "A", "--verdict", "supports",
+        "--by", "reviewer/alice", "--artifact", first.record.artifact,
+    )
+    code, clean = _run(tmp_path, "check")
+    assert (code, clean["issues"]) == (0, [])
+
+    _rewrite_the_note_and_reverify(tmp_path, "A", ALPHA_FIDELITY_REWRITTEN)
+
+    code, blocked = _run(tmp_path, "check")
+    assert code == 1
+    assert [issue["code"] for issue in blocked["issues"]] == [
+        "judgement_certificate_retired"
+    ]
+    assert "reviewer/alice" in blocked["issues"][0]["message"]
+
+
+def test_judging_the_replacement_reading_clears_the_block(tmp_path: Path) -> None:
+    """A gate whose remedy does not work is worse than no gate.
+
+    The blocked agent will do what the message says. An earlier attempt at this
+    check named ``revise-claim`` as the remedy, which mints no version when the
+    statement itself has not changed — so the defect could be reported and never
+    cleared. The remedy here is the cheap and correct one: read the certificate
+    the claim cites now, and say what you think of it.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    first = _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    assert first.record is not None
+    _run(
+        tmp_path, "judge", "--claim", "A", "--verdict", "supports",
+        "--by", "reviewer/alice", "--artifact", first.record.artifact,
+    )
+    second = _rewrite_the_note_and_reverify(tmp_path, "A", ALPHA_FIDELITY_REWRITTEN)
+    assert second.record is not None
+
+    _run(
+        tmp_path, "judge", "--claim", "A", "--verdict", "supports",
+        "--by", "reviewer/alice", "--artifact", second.record.artifact,
+    )
+
+    code, payload = _run(tmp_path, "check")
+    assert (code, payload["issues"]) == (0, [])
+    # Re-reading is one referee's one opinion, not a second producer.
+    _, shown = _run(tmp_path, "show", "--claim", "A")
+    assert shown["claim"]["support"]["judgement"] == ["reviewer/alice"]
+    assert [
+        entry["artifact"]
+        for entry in shown["claim"]["certificates"]
+        if entry["tier"] == EvidenceTier.JUDGEMENT.value
+    ] == [second.record.artifact]
+
+
+def test_a_verdict_that_cites_nothing_is_left_alone(tmp_path: Path) -> None:
+    """Only a citation can go stale, so only a citation is checked.
+
+    A judgement recorded without an artifact has said nothing about which
+    document it was reached from; reporting it when the note changes would be
+    inventing a claim the reviewer never made. It is also unprotected, which is
+    why the reviewer skill asks for the path.
+    """
+    _run(tmp_path, "context", "--id", "ctx", "--statement", "Arithmetic.")
+    _verify_into_canonical_names(
+        tmp_path, "A", ALPHA, ALPHA_FIDELITY, "two plus two is four"
+    )
+    _run(
+        tmp_path, "judge", "--claim", "A", "--verdict", "supports",
+        "--by", "reviewer/alice",
+    )
+
+    _rewrite_the_note_and_reverify(tmp_path, "A", ALPHA_FIDELITY_REWRITTEN)
+
+    code, payload = _run(tmp_path, "check")
+    assert (code, payload["issues"]) == (0, [])
+
+
 def test_a_certificate_that_cannot_be_archived_records_nothing(
     tmp_path: Path,
 ) -> None:

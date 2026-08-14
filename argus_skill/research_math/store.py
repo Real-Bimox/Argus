@@ -16,10 +16,13 @@ losing silently — the optimistic-concurrency check, expressed as a schema
 constraint rather than as a transaction log. ``revise_claim`` is the only way
 to change a claim, and it mints the next version.
 
-Reads use no file lock and this file makes no attempt at multi-writer safety.
-That is honest about what exists today: nothing writes this file concurrently
-yet, because nothing writes it at all outside tests until an adapter lands.
-Adding a lock now would be guessing at the shape of a writer nobody has built.
+Reads use no file lock, and writes take none here either. That is not an
+omission: a lock taken inside ``save_state`` would cover the write and not the
+read that decided what to write, which is the half that actually races. The
+adapter that owns the read-modify-write owns the lock — see ``locked_state`` in
+the math vertical, which holds one across load, mutate, and save. Anything that
+mutates this file outside such a wrapper is a bug in the caller, and the
+``(claim_id, version)`` collision above is the backstop that makes it loud.
 """
 from __future__ import annotations
 
@@ -133,6 +136,53 @@ class MathState:
             )
         self.evidence.append(record)
         return record
+
+    def retire_superseded_evidence(
+        self, record: EvidenceRecord
+    ) -> tuple[EvidenceRecord, ...]:
+        """Drop the answers this one replaces: same checker, same statement.
+
+        Call this before adding ``record``. It removes every record that agrees
+        with it on subject, tier, and producer while naming a different
+        ``artifact``, and returns what it removed so the caller can say whose
+        reading just stopped being the one in force.
+
+        This is not a hole in the append-only rule, which has teeth about
+        *versions*: a version already written is never replaced, and none is
+        replaced here. Evidence is a different kind of row. It says what one
+        checker currently answers about one statement, and one checker has one
+        current answer — so two rows differing only in which document the answer
+        was reached from do not describe two supports, they describe one support
+        and a stale pointer to a document the project has moved past.
+
+        The case that forces this is a rewritten statement fidelity note. The
+        Lean file is untouched, so the compiler says exactly what it said before
+        and the record's identifying fields are unchanged; what changed is the
+        reading of the theorem the answer was paired with. Keeping both would
+        leave the ledger unable to say which reading the claim means, with no
+        way to ever resolve it — restating the claim mints no new version when
+        the statement itself did not change, so a defect reported about the pair
+        would be a defect nobody could clear.
+
+        Nothing is lost. The retired record's artifact is a file on disk and
+        stays there; what is dropped is the assertion that it is still what the
+        claim stands on.
+        """
+        retired = tuple(
+            item
+            for item in self.evidence
+            if item.evidence_id != record.evidence_id
+            and item.subject == record.subject
+            and item.tier == record.tier
+            and item.produced_by == record.produced_by
+            and item.artifact != record.artifact
+        )
+        if retired:
+            dropped = {item.evidence_id for item in retired}
+            self.evidence[:] = [
+                item for item in self.evidence if item.evidence_id not in dropped
+            ]
+        return retired
 
     def add_route(self, route: ProofRoute) -> ProofRoute:
         """Record a decomposition, unless it is one the project can chase forever.
