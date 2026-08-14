@@ -129,28 +129,52 @@ def _prewarm_manager_context(
         state["session_id"] = sid
         state["global_root"] = str(mem.global_root)
         runner = _ensure_manager_runner(state, mem)
-        backend = None
+        default_backend = getattr(runner, "_backend", None) if runner is not None else None
+        classifier_backend = None
         if runner is not None:
-            backend = getattr(runner, "manager_backend", None) or getattr(
-                runner,
-                "_backend",
-                None,
+            classifier_backend = (
+                getattr(runner, "manager_backend", None) or default_backend
             )
-        prewarm = getattr(backend, "prewarm_acp_client", None)
-        if not callable(prewarm):
+        prewarm_classifier = getattr(
+            classifier_backend,
+            "prewarm_acp_client",
+            None,
+        )
+        prewarm_reply = getattr(default_backend, "prewarm_acp_client", None)
+        if not callable(prewarm_classifier) or not callable(prewarm_reply):
             return
-        from ..core.knobs import resolve_knob, resolve_manager_classify_model
+        from ..core.knobs import (
+            resolve_knob,
+            resolve_manager_classify_model,
+            resolve_manager_reply_model,
+            resolve_role_reasoning_effort,
+        )
 
+        cwd = str(state.get("manager_runner_workdir") or Path.cwd())
         classify_effort = resolve_knob(
             "ARGUS_SKILL_FRONTDOOR_CLASSIFY_EFFORT",
             "low",
         ).value.strip() or "low"
-        prewarm(
+        prewarm_classifier(
             model=resolve_manager_classify_model(),
             reasoning_effort=classify_effort,
             lean=True,
-            cwd=str(state.get("manager_runner_workdir") or Path.cwd()),
+            cwd=cwd,
             front_door_session=True,
+        )
+        prewarm_reply(
+            model=resolve_manager_reply_model(),
+            reasoning_effort=resolve_role_reasoning_effort(
+                "ARGUS_SKILL_SELF_REASONING_EFFORT",
+                default="high",
+            ),
+            lean=False,
+            cwd=cwd,
+            add_dirs=(
+                [str(mem.project_root)]
+                if str(mem.project_root) != cwd
+                else None
+            ),
         )
         if not _is_manager_prewarm_owner(sid):
             _release_manager_state(sid)

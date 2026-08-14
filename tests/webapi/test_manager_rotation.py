@@ -117,15 +117,17 @@ def test_manager_prewarm_uses_manager_backend(
         "backend": "copilot",
         "last_access_monotonic": time.monotonic(),
     }
-    calls: list[str] = []
+    calls: list[tuple[str, bool]] = []
 
     default_backend = SimpleNamespace(
-        prewarm_acp_client=lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("default backend must not own Manager prewarm")
+        prewarm_acp_client=lambda **kwargs: calls.append(
+            ("default", bool(kwargs["lean"]))
         )
     )
     manager_backend = SimpleNamespace(
-        prewarm_acp_client=lambda **_kwargs: calls.append("manager")
+        prewarm_acp_client=lambda **kwargs: calls.append(
+            ("manager", bool(kwargs["lean"]))
+        )
     )
     runner = SimpleNamespace(
         _backend=default_backend,
@@ -138,7 +140,7 @@ def test_manager_prewarm_uses_manager_backend(
 
     manager_state._prewarm_manager_context(sid, global_root=tmp_path)
 
-    assert calls == ["manager"]
+    assert calls == [("manager", True), ("default", False)]
     assert manager_state._STATES[sid]["_manager_acp_prewarmed"] is True
 
 
