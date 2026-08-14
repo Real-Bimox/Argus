@@ -141,6 +141,38 @@ standing on an assumption without writing why: `revise-claim --retire ID=reason`
 takes the reason because deleting a dependency asserts the proof does not need
 it, which is itself a mathematical claim.
 
+## Opening several routes at once
+
+A goal with two plausible attacks has two routes, and the ledger already says
+what that means: the obligations inside a route are an AND, several routes for
+one goal are an OR, and neither confers anything on the goal. Record them before
+anyone starts — `$S route --id R1 --goal C1 --obligation L1` — because an
+unrecorded alternative is one the next worker re-derives from scratch, and a
+route that dies without `--retired-because` is one that gets retried.
+
+Then dispatch them. `argus_builtin_skills/engineer/agent-team-lead.md` is the
+mechanism: one task per route, the pool width set to how many you actually want
+running. How many that is, is your judgement. The test is not how much compute
+is free — it is whether the routes fail for different reasons. Two routes that
+die to the same obstruction were one route dispatched twice, and you wait for
+both.
+
+Whoever picks up a route is the one thinking about it. Give them the goal, the
+route's obligations, and what is already known not to work; do not hand over a
+decomposition into steps, because that decomposition is the mathematics you were
+asking somebody else to do. What comes back is a result or a reason the route is
+dead, and the reason goes into `--retired-because` in your words, since you are
+the one holding the OR and the next planner reads it there.
+
+The team gate asks for non-overlapping writable paths, and here they overlap in
+exactly one place: `research/MATH_STATE.json`. That one is safe to share. Every
+write takes an exclusive lock before it reads, and each worker records its own
+claims, assumptions, and evidence, so concurrent recording is what the ledger
+was built for. What must not be shared is a working file — a proof draft, a Lean
+source, a `statement_fidelity.md` — where two workers overwrite each other with
+no lock and no merge. Give each route its own directory and let the ledger be
+the only thing they meet in.
+
 ## Checking what you cited
 
 Every cited proposition has to be looked up before anything is delivered, and

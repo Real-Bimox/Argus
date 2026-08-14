@@ -19,6 +19,12 @@ A failed attempt is information, not success; use what it revealed to choose a
 genuinely different move. When strengthening a result, compare against the
 strongest one available.
 
+Two genuinely different attacks on one goal are two routes — an OR — and
+planning both is not sequencing them. Name them as alternatives and leave the
+count to the Engineer, who opens as many as the mathematics justifies; the test
+is whether they fail for different reasons, since two routes that die to the
+same obstruction were one route.
+
 Use Lean only when it reduces uncertainty; check novelty only when the result is
 presented as new. Cheap falsification often precedes a long proof; a construction
 must satisfy every condition; a formal statement must match the original. These

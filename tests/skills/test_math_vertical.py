@@ -302,6 +302,34 @@ def test_math_roles_keep_methods_optional_and_checks_real() -> None:
     assert "Do not create a process artifact" in scientist_adapt
 
 
+def test_parallel_routes_are_dispatched_without_a_prescribed_width() -> None:
+    """Several attacks on one goal are the OR the ledger already models.
+
+    The two things this guidance must not lose. It must not name a number:
+    how many routes are worth opening is a mathematical judgement about
+    whether they fail for different reasons, and a fixed width would turn a
+    judgement into a quota. And it must say which file the workers legitimately
+    share, because the generic team gate asks for disjoint writable paths and a
+    reader who applies that literally will either serialize the ledger or, worse,
+    give each route its own copy and lose the OR.
+    """
+    math = load_vertical("math")
+    planner = vertical_role_banner(math, "planner")
+    engineer = vertical_role_banner(math, "engineer")
+
+    assert "two routes — an OR — and" in planner
+    assert "leave the\ncount to the Engineer" in planner
+
+    assert "one task per route" in engineer
+    assert "fail for different reasons" in engineer
+    assert "agent-team-lead.md" in engineer
+    # The dispatcher describes the goal; the worker does the thinking.
+    assert "do not hand over a\ndecomposition into steps" in engineer
+    # Shared ledger, private working files.
+    assert "research/MATH_STATE.json`. That one is safe to share" in engineer
+    assert "statement_fidelity.md" in engineer
+
+
 def test_math_review_checklist_is_loaded_and_required(tmp_path: Path) -> None:
     persist_vertical(tmp_path, "math")
 
