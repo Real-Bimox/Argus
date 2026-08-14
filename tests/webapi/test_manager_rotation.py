@@ -13,6 +13,7 @@ import json
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 from argus_skill.life.memory import BacklogItem, LifeMemory
 from argus_skill.webapi import manager_bridge, manager_dispatch, manager_state
@@ -102,6 +103,43 @@ def test_manager_prewarm_schedule_does_not_wait_for_busy_manager_turn(
         release_lock.set()
         holder.join(timeout=1)
         caller.join(timeout=1)
+
+
+def test_manager_prewarm_uses_manager_backend(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    sid = "s-prewarm-manager-backend"
+    _make_project(tmp_path, sid)
+    manager_state._STATES.clear()
+    monkeypatch.setattr(manager_state, "_MANAGER_PREWARM_OWNER", sid)
+    manager_state._STATES[sid] = {
+        "backend": "copilot",
+        "last_access_monotonic": time.monotonic(),
+    }
+    calls: list[str] = []
+
+    default_backend = SimpleNamespace(
+        prewarm_acp_client=lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("default backend must not own Manager prewarm")
+        )
+    )
+    manager_backend = SimpleNamespace(
+        prewarm_acp_client=lambda **_kwargs: calls.append("manager")
+    )
+    runner = SimpleNamespace(
+        _backend=default_backend,
+        manager_backend=manager_backend,
+    )
+    monkeypatch.setattr(
+        "argus_skill.manager.front_door._ensure_manager_runner",
+        lambda _state, _memory: runner,
+    )
+
+    manager_state._prewarm_manager_context(sid, global_root=tmp_path)
+
+    assert calls == ["manager"]
+    assert manager_state._STATES[sid]["_manager_acp_prewarmed"] is True
 
 
 def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(

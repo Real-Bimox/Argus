@@ -178,9 +178,11 @@ def test_manager_runner_scopes_acp_to_session_id(tmp_path, monkeypatch) -> None:
     sid = "s-private-acp"
     memory = MemoryBundle.for_cwd(tmp_path, global_root=root, fingerprint=sid)
     memory.init()
-    scopes: list[str] = []
+    default_scopes: list[str] = []
+    manager_scopes: list[str] = []
     runner = SimpleNamespace(
-        _backend=SimpleNamespace(set_acp_scope=scopes.append),
+        _backend=SimpleNamespace(set_acp_scope=default_scopes.append),
+        manager_backend=SimpleNamespace(set_acp_scope=manager_scopes.append),
     )
     monkeypatch.setattr(
         "argus_skill.apps._runtime.build_life_runner",
@@ -193,4 +195,5 @@ def test_manager_runner_scopes_acp_to_session_id(tmp_path, monkeypatch) -> None:
     )
 
     assert result is runner
-    assert scopes == [f"manager:{sid}"]
+    assert default_scopes == [f"manager:{sid}"]
+    assert manager_scopes == [f"manager:{sid}"]
