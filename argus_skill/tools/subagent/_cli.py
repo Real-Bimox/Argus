@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -244,7 +245,14 @@ def cmd_submit(args: argparse.Namespace) -> int:
             "run_dir": run_dir,
             "description": args.description,
             "cpu_ids": list(selected_cpu_ids),
-            "check_with": f"python -m argus_skill.tools.subagent status --task-id {task_id}",
+            "check_with": shlex.join([
+                sys.executable,
+                "-m",
+                "argus_skill.tools.subagent",
+                "status",
+                "--task-id",
+                task_id,
+            ]),
         }))
         return 0
 

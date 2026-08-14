@@ -15,11 +15,34 @@ from .types import RoleName, RolePromptRequest
 MISSION = "mission"
 OPERATIONS = frozenset({MISSION})
 
-_LONG_EXPERIMENT_RULE = (
-    "For commands expected to run over two minutes, launch a supervised "
-    "subagent, record its run id, and yield or do independent work. Never hold "
-    "the provider turn open with foreground shell execution or polling."
+_POSIX_LONG_EXPERIMENT_RULE = (
+    "For commands expected to run over two minutes, use the bash tool to submit "
+    "through Argus's durable runner: `\"${ARGUS_SKILL_PYTHON:-python3}\" -m "
+    "argus_skill.tools.subagent submit --task-id <id> --mode direct "
+    "--timeout <seconds> --command '<command>'`. Use `--mode supervised` only "
+    "when an experiment needs semantic monitoring. Never use the provider's native "
+    "`task(mode=\"background\")` tool or a session-owned background shell for "
+    "durable work. Before handoff, require a JSON receipt with `state=submitted`, "
+    "`task_id`, `run_id`, and `check_with`; record those in CHECKPOINT.md only "
+    "when another round must observe the run. Then yield or do independent work; "
+    "do not poll in the foreground."
 )
+
+_WINDOWS_LONG_EXPERIMENT_RULE = (
+    "Native Windows preview cannot detach Argus subagents. Do not call "
+    "`argus_skill.tools.subagent submit`, provider-native background tasks, or "
+    "session-owned background shells for durable work. Run the command in the "
+    "foreground only when it fits this turn; otherwise use WSL2/an approved "
+    "durable runner or report a blocker. Never claim a detached run was submitted."
+)
+
+
+def _long_experiment_rule() -> str:
+    return (
+        _WINDOWS_LONG_EXPERIMENT_RULE
+        if native_shell_contract()
+        else _POSIX_LONG_EXPERIMENT_RULE
+    )
 
 
 def append_live_guidance(prompt: str, guidance: list[str]) -> str:
@@ -157,7 +180,7 @@ def build_mission_prompt(
         "repeatedly fail, prioritize fresh investigation of primary papers, official "
         "implementations, issues, hardware/API behavior, and the performance model "
         "before deciding the next implementation. Record durable findings in the Wiki.\n"
-        + _LONG_EXPERIMENT_RULE
+        + _long_experiment_rule()
     )
     learning_block = _post_task_learning_section(
         require_post_task_learning=require_post_task_learning,
@@ -189,7 +212,7 @@ def build_mission_prompt(
         "and the Reviewer guidance below. Do not repeat an unchanged failing "
         "command; reduce it to the cheapest decisive diagnostic. The original "
         "task, active vertical, and repository instructions remain binding.\n"
-        + _LONG_EXPERIMENT_RULE
+        + _long_experiment_rule()
         + "\n\n"
         "## Handoff\n"
         "CHECKPOINT.md remains the only role-maintained cross-round handoff file. "
