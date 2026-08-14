@@ -19,6 +19,14 @@ A failed attempt is information, not success; use what it revealed to choose a
 genuinely different move. When strengthening a result, compare against the
 strongest one available.
 
+Settle what is already known while still in `scope`, before anyone is
+dispatched. The results the work will lean on go into the ledger as assumptions
+with their citations, and so does an approach already known to fail. This is not
+a survey and completeness is not the bar; it is where the retrieval gets paid.
+Several workers on one goal cannot see each other's searches, so a lookup done
+in `scope` costs once and the same lookup done in `solve` costs once per worker.
+Finding nothing relevant is a result, and is recorded as one.
+
 Two genuinely different attacks on one goal are two routes — an OR — and
 planning both is not sequencing them. Name them as alternatives and leave the
 count to the Engineer, who opens as many as the mathematics justifies; the test

@@ -239,12 +239,16 @@ def test_math_engineer_uses_one_checkpoint_without_process_artifacts() -> None:
 def test_math_checklist_is_small_and_judges_results_not_files() -> None:
     items = vertical_checklist_items(load_vertical("math"))
     assert {stage: len(stage_items) for stage, stage_items in items.items()} == {
-        "scope": 2,
+        "scope": 3,
         "solve": 4,
         "review": 4,
     }
     assert {stage: {item.id for item in stage_items} for stage, stage_items in items.items()} == {
-        "scope": {"scope.problem-explicit", "scope.success-criterion"},
+        "scope": {
+            "scope.problem-explicit",
+            "scope.success-criterion",
+            "scope.known-status-recorded",
+        },
         "solve": {
             "solve.substantive-result",
             "solve.witness-valid",

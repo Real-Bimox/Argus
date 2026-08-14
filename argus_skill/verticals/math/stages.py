@@ -229,8 +229,10 @@ def prepare_mission(  # noqa: ARG001 - see the docstring on stage/state_root
 REVIEWER_CHECKLISTS: dict[str, tuple[str, str, list[str]]] = {
     "scope": (
         "reviewer/math-research-review.md",
-        "Confirm what problem is being solved and what would count as success. "
-        "Do not require a planning artifact.",
+        "Confirm what problem is being solved, what would count as success, and "
+        "that the known status of the problem has been established here rather "
+        "than left for the solve stage to rediscover once per worker. Do not "
+        "require a planning artifact.",
         [],
     ),
     "solve": (
@@ -270,6 +272,27 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
             evidence_hint=(
                 "the requested outcome and completion bar; math_objective_mode (and "
                 "math_goal when targeted) in research/PIPELINE_STATE.json"
+            ),
+        ),
+        ChecklistItem(
+            id="scope.known-status-recorded",
+            statement=(
+                "What is already known about this problem has been established here "
+                "and written into the ledger: the results the work will lean on, "
+                "recorded as assumptions with their citations, and the approaches "
+                "already known to fail. Completeness is not the bar and a literature "
+                "survey is not the deliverable. The bar is that the answer exists in "
+                "one place before several workers start, because a search performed "
+                "in scope is paid once and the same search performed in solve is paid "
+                "once per worker. \"Searched and found nothing relevant\" is a "
+                "recorded answer, and so is \"no source could be obtained here\", "
+                "which states a limitation a reviewer can weigh instead of leaving a "
+                "gap that reads like an omission."
+            ),
+            evidence_hint=(
+                "the assumptions recorded in research/MATH_STATE.json with their "
+                "sources, or an explicit statement of what was searched and what it "
+                "returned"
             ),
         ),
     ),
