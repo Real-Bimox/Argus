@@ -57,14 +57,19 @@ from .models import (
 )
 
 __all__ = [
+    "CITATION_CHECK_TIERS",
     "DISCHARGING_TIERS",
     "ESTABLISHED_STATUSES",
     "KERNEL_TIERS",
     "REFUTING_TIERS",
+    "SETTLED_CITATION_STATUSES",
+    "CitationAssessment",
+    "CitationStatus",
     "ClaimAssessment",
     "ClaimStatus",
     "RouteAssessment",
     "RouteStatus",
+    "assess_citation",
     "assess_claim",
     "assess_route",
     "assess_routes",
@@ -88,6 +93,20 @@ DISCHARGING_TIERS = frozenset({EvidenceTier.MECHANICAL})
 #: hear it until someone formalizes the refutation would keep a claim alive
 #: that is already dead.
 REFUTING_TIERS = frozenset({EvidenceTier.MECHANICAL, EvidenceTier.COMPUTATIONAL})
+
+#: What answers "is the cited proposition really in the cited source". The
+#: ``literature`` tier alone, which is that tier's definition rather than a
+#: policy choice: it is *an assertion about what a source says*.
+#:
+#: ``judgement`` is excluded because the reading that needs checking is usually
+#: the one the citing agent already did, and a tier whose checker is the agent
+#: cannot audit the agent. ``mechanical`` is excluded for the opposite reason:
+#: formalizing the cited theorem does not check the citation, it removes the
+#: dependency on it, and that stronger fact is already reported by the
+#: assumption leaving ``undischarged``. A citation check is not a step towards
+#: ``closed_kernel`` and must not be mistaken for one — see ``DISCHARGING_TIERS``,
+#: which literature will not join.
+CITATION_CHECK_TIERS = frozenset({EvidenceTier.LITERATURE})
 
 
 class ClaimStatus(str, Enum):
@@ -386,6 +405,139 @@ def assess_claim(
         issues=tuple(issues),
     )
 
+
+# -- citations ---------------------------------------------------------------
+
+class CitationStatus(str, Enum):
+    """Whether anyone has been to the source, and what they found when they did.
+
+    ``unchecked`` and ``disputed`` are separate states for the same reason
+    ``Verdict`` keeps ``inconclusive``: a citation nobody has looked up and a
+    citation somebody looked up and could not find are different facts about the
+    world, and a project that collapses them ships the second one believing it
+    is the first. ``inconclusive`` is the third: the checker ran, reached the
+    source or failed to reach it, and could not settle the question. It is not a
+    pass, and it is not a failure of the citation.
+
+    ``uncited`` is not a grade at all. It says the assumption names its source in
+    prose and names no proposition inside it, so there is nothing a checker could
+    be sent to look at. That is a legitimate state — an unpublished result or a
+    private communication has no locator — and calling it ``unchecked`` would
+    describe work that is not merely undone but undoable, which is how a queue
+    fills with tasks nobody can close.
+
+    Nothing here is a claim status. A confirmed citation says the source really
+    contains the proposition; it says nothing about whether the proposition's
+    hypotheses hold in this setting, which is the third question and a fidelity
+    one. The assumption stays undischarged either way, and the claim stays at
+    ``conditional_kernel``.
+    """
+
+    UNCITED = "uncited"
+    UNCHECKED = "unchecked"
+    CONFIRMED = "confirmed"
+    DISPUTED = "disputed"
+    INCONCLUSIVE = "inconclusive"
+
+
+@dataclass(frozen=True)
+class CitationAssessment:
+    """What the records say about one assumption's citation.
+
+    ``checked_by`` names the producers rather than counting them, for the reason
+    ``ClaimAssessment.support`` does: three answers from one checker are one
+    check. ``artifacts`` carries where each answer can be re-read, because a
+    literature verdict with nothing to re-inspect is exactly the unfalsifiable
+    record ``ARTIFACT_REQUIRED_TIERS`` exists to reject, and a reviewer asked to
+    trust "confirmed" needs the excerpt it was confirmed from.
+    """
+
+    assumption_id: str
+    status: CitationStatus
+    cited_proposition: str = ""
+    checked_by: tuple[str, ...] = ()
+    artifacts: tuple[str, ...] = ()
+
+    @property
+    def is_settled(self) -> bool:
+        """Whether this citation still owes anyone an answer.
+
+        ``disputed`` counts as settled: the checker went, looked, and reported.
+        What to do about it is a mathematical decision — correct the locator,
+        drop the dependency, prove it instead — and none of those are "check it
+        again". A gate that treated a refutation as unfinished work would ask
+        for the one thing already done.
+        """
+        return self.status in SETTLED_CITATION_STATUSES
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "assumption_id": self.assumption_id,
+            "status": self.status.value,
+            "cited_proposition": self.cited_proposition,
+            "checked_by": list(self.checked_by),
+            "artifacts": list(self.artifacts),
+        }
+
+
+#: Citation states that owe nobody further retrieval. ``uncited`` is here
+#: because there is nothing to retrieve, not because it is satisfactory.
+SETTLED_CITATION_STATUSES = frozenset(
+    {CitationStatus.UNCITED, CitationStatus.CONFIRMED, CitationStatus.DISPUTED}
+)
+
+
+def assess_citation(
+    assumption: ExternalAssumption, evidence: Iterable[EvidenceRecord]
+) -> CitationAssessment:
+    """Derive one citation's state from the checks that still bind to it.
+
+    Binding is by ``assumption.ref()``, so correcting the locator, the source,
+    or the statement drops every check obtained about the old one — the same
+    rule that governs claims, and the reason ``source_id`` and ``locator`` are
+    in the assumption's digest at all. A check of ``Theorem 3.1`` does not
+    quietly become a check of ``Theorem 3.2``.
+
+    A refutation outranks a confirmation. Two checkers disagreeing about whether
+    a paper contains a proposition is not a tie to be broken by counting: "it is
+    not there" is a finite observation about a specific document, and preferring
+    the agreeing checker is how a wrong citation reaches a reader. Both
+    producers are reported, so the disagreement is visible rather than resolved
+    in silence.
+    """
+    subject = assumption.ref()
+    if not assumption.cited_proposition:
+        return CitationAssessment(assumption.assumption_id, CitationStatus.UNCITED)
+
+    checks = [
+        record
+        for record in evidence
+        if record.binds_to(subject) and record.tier in CITATION_CHECK_TIERS
+    ]
+    verdicts = {record.verdict for record in checks}
+    if Verdict.REFUTES in verdicts:
+        status = CitationStatus.DISPUTED
+    elif Verdict.SUPPORTS in verdicts:
+        status = CitationStatus.CONFIRMED
+    elif Verdict.INCONCLUSIVE in verdicts:
+        status = CitationStatus.INCONCLUSIVE
+    else:
+        status = CitationStatus.UNCHECKED
+
+    return CitationAssessment(
+        assumption_id=assumption.assumption_id,
+        status=status,
+        cited_proposition=assumption.cited_proposition,
+        checked_by=tuple(
+            sorted({record.produced_by.strip() or "<unnamed>" for record in checks})
+        ),
+        artifacts=tuple(
+            sorted({record.artifact for record in checks if record.artifact})
+        ),
+    )
+
+
+# -- routes ------------------------------------------------------------------
 
 @dataclass(frozen=True)
 class RouteAssessment:

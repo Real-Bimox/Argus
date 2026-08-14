@@ -85,7 +85,8 @@ there is no argument you can type that produces it. Keep it current with
     $S claim --id C1 --context ctx --statement "..." --formal-file research/lean/Main.lean
 
     # a result taken from elsewhere: holds C1 at conditional_kernel until retired
-    $S assume --claim C1 --id RH --statement "..." --source "Riemann 1859, Thm 1.1"
+    $S assume --claim C1 --id RH --statement "..." --source "Riemann 1859" \
+        --source-id "doi:10.1093/oso/9780198533696.001.0001" --locator "Theorem 14.2"
 
     # one decomposition of a goal into obligations; records a plan, confers nothing
     $S route --id R1 --goal C1 --obligation L1 --obligation L2
@@ -113,6 +114,17 @@ on an unproved result — an undischarged assumption is the difference between
 down. Record a route when a goal splits into steps, so a retired decomposition
 is not retried. Record a judgement when you or a reviewer have read a proof that
 no checker can check.
+
+A citation names a proposition, not a paper. `--source-id` gives the document
+canonically and with its version (`arxiv:2504.01234v2`, `doi:...`, `isbn:...`),
+because theorem numbering moves between revisions and "Theorem 3.2" of the wrong
+version is a different result; `--locator` names the proposition inside it. Give
+both or neither — half a citation cannot be looked up, and `check` says so. With
+neither, the prose `--source` stands and `show` reports the citation as
+`uncited` rather than `unchecked`: a private communication or an unpublished
+note has no locator, and that is a legitimate answer, not an omission. What is
+not legitimate is a DOI you did not read; correcting a locator later mints a
+different assumption, and any check obtained against the old one stops counting.
 
 Revising a context supersedes it for every claim stated against it, and `check`
 reports each one as `claim_context_outdated` until you say what happened to it.

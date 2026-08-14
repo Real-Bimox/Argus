@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from argus_skill.research_math import (
+    CitationStatus,
     ClaimStatus,
     ClaimVersion,
     ContextVersion,
@@ -30,9 +31,12 @@ from argus_skill.research_math import (
     SubjectKind,
     SubjectRef,
     Verdict,
+    assess_citation,
     assess_claim,
     assess_route,
+    content_digest,
     load_state,
+    normalize_text,
     save_state,
 )
 
@@ -534,6 +538,212 @@ def test_history_is_never_overwritten() -> None:
 
     assert [item.version for item in state.claim_history("c1")] == [1, 2]
     assert state.claim_history("c1")[0].natural_statement == first.natural_statement
+
+
+# -- citations --------------------------------------------------------------
+
+CITED = ExternalAssumption(
+    assumption_id="rh",
+    statement=RIEMANN.statement,
+    source="Titchmarsh, The Theory of the Riemann Zeta-function",
+    source_id="doi:10.1093/oso/9780198533696.001.0001",
+    locator="Theorem 14.2",
+)
+
+
+def _lookup(
+    assumption: ExternalAssumption,
+    *,
+    evidence_id: str = "ev-cite",
+    verdict: Verdict = Verdict.SUPPORTS,
+    produced_by: str = "citation_check",
+    artifact: str = "research/literature/titchmarsh-14-2.txt",
+) -> EvidenceRecord:
+    return EvidenceRecord(
+        evidence_id=evidence_id,
+        subject=assumption.ref(),
+        tier=EvidenceTier.LITERATURE,
+        verdict=verdict,
+        produced_by=produced_by,
+        artifact=artifact,
+    )
+
+
+def test_a_citation_names_a_proposition_and_half_of_one_names_nothing() -> None:
+    assert CITED.cited_proposition == (
+        "doi:10.1093/oso/9780198533696.001.0001 Theorem 14.2"
+    )
+    assert RIEMANN.cited_proposition == ""
+
+    state, _, _ = _seeded_state()
+    state.revise_claim(
+        "c1",
+        external_assumptions=(
+            ExternalAssumption(
+                assumption_id="half",
+                statement=RIEMANN.statement,
+                source="Titchmarsh",
+                source_id="doi:10.1093/oso/9780198533696.001.0001",
+            ),
+        ),
+    )
+
+    codes = {issue.code for issue in state.validate()}
+    assert "citation_incomplete" in codes
+
+
+def test_a_citation_nobody_looked_up_is_not_one_that_was_looked_up_and_missing(
+) -> None:
+    """Three states, because the middle one is where a project ships a lie."""
+    unchecked = assess_citation(CITED, [])
+    assert unchecked.status is CitationStatus.UNCHECKED
+    assert not unchecked.is_settled
+
+    confirmed = assess_citation(CITED, [_lookup(CITED)])
+    assert confirmed.status is CitationStatus.CONFIRMED
+    assert confirmed.checked_by == ("citation_check",)
+    assert confirmed.artifacts == ("research/literature/titchmarsh-14-2.txt",)
+
+    disputed = assess_citation(CITED, [_lookup(CITED, verdict=Verdict.REFUTES)])
+    assert disputed.status is CitationStatus.DISPUTED
+
+    unreached = assess_citation(
+        CITED, [_lookup(CITED, verdict=Verdict.INCONCLUSIVE)]
+    )
+    assert unreached.status is CitationStatus.INCONCLUSIVE
+    assert not unreached.is_settled
+
+
+def test_a_source_with_no_proposition_is_uncited_and_owes_nobody_a_lookup() -> None:
+    """An unpublished result cannot be checked, and is not a task.
+
+    ``unchecked`` would put it in a queue nothing could ever take it out of,
+    which is how a gate that means something becomes a gate everybody learns to
+    override.
+    """
+    assessment = assess_citation(RIEMANN, [])
+    assert assessment.status is CitationStatus.UNCITED
+    assert assessment.is_settled
+    assert assessment.cited_proposition == ""
+
+
+def test_two_checkers_disagreeing_is_not_a_vote() -> None:
+    both = assess_citation(
+        CITED,
+        [
+            _lookup(CITED, evidence_id="ev-a", produced_by="citation_check"),
+            _lookup(
+                CITED,
+                evidence_id="ev-b",
+                verdict=Verdict.REFUTES,
+                produced_by="citation_check:rerun",
+            ),
+        ],
+    )
+    assert both.status is CitationStatus.DISPUTED
+    assert both.checked_by == ("citation_check", "citation_check:rerun")
+
+
+def test_a_referee_reading_a_paper_does_not_check_a_citation() -> None:
+    """The tier whose checker is the agent cannot audit the agent's reading."""
+    opinion = EvidenceRecord(
+        evidence_id="ev-opinion",
+        subject=CITED.ref(),
+        tier=EvidenceTier.JUDGEMENT,
+        verdict=Verdict.SUPPORTS,
+        produced_by="reviewer:alice",
+    )
+
+    assert assess_citation(CITED, [opinion]).status is CitationStatus.UNCHECKED
+
+
+def test_correcting_the_theorem_number_drops_the_lookup_obtained_against_it(
+) -> None:
+    misnumbered = ExternalAssumption(
+        assumption_id=CITED.assumption_id,
+        statement=CITED.statement,
+        source=CITED.source,
+        source_id=CITED.source_id,
+        locator="Theorem 14.1",
+    )
+    lookup = _lookup(misnumbered)
+
+    assert assess_citation(misnumbered, [lookup]).status is CitationStatus.CONFIRMED
+    assert assess_citation(CITED, [lookup]).status is CitationStatus.UNCHECKED
+
+
+def test_a_confirmed_citation_discharges_nothing() -> None:
+    """What the source says and whether its hypotheses hold here are two questions."""
+    context = _context()
+    claim = _claim(context, assumptions=(CITED,))
+    records = [_lean(claim), _lookup(CITED)]
+
+    assessment = assess_claim(claim, records)
+    assert assessment.status is ClaimStatus.CONDITIONAL_KERNEL
+    assert assessment.undischarged == ("rh",)
+
+
+def test_the_project_wide_question_lists_only_what_still_owes_a_lookup() -> None:
+    state, context, _ = _seeded_state()
+    unpublished = ExternalAssumption(
+        assumption_id="folklore",
+        statement="the standard averaging bound",
+        source="folklore; stated without proof in seminar notes",
+    )
+    state.revise_claim("c1", external_assumptions=(CITED, unpublished))
+    state.add_claim(
+        ClaimVersion(
+            claim_id="c2",
+            version=1,
+            context=context.ref(),
+            natural_statement="a second statement",
+            external_assumptions=(
+                ExternalAssumption(
+                    assumption_id="kkl",
+                    statement="the KKL inequality",
+                    source="Kahn, Kalai, Linial 1988",
+                    source_id="doi:10.1109/SFCS.1988.21923",
+                    locator="Theorem 3.1",
+                ),
+            ),
+        )
+    )
+    state.add_evidence(_lookup(CITED))
+
+    assert {
+        item.assumption_id: item.status for item in state.citations("c1")
+    } == {
+        "folklore": CitationStatus.UNCITED,
+        "rh": CitationStatus.CONFIRMED,
+    }
+    assert {
+        claim_id: tuple(item.assumption_id for item in items)
+        for claim_id, items in state.open_citations().items()
+    } == {"c2": ("kkl",)}
+
+
+def test_an_assumption_that_never_had_a_citation_hashes_as_it_always_did() -> None:
+    """Adding the fields must not restate every assumption already recorded.
+
+    The digest is what evidence binds to, so a schema change that moved it would
+    orphan every discharge in every live project on upgrade — the failure
+    ``content_digest`` refuses to cause by hashing a schema version. Absent
+    fields are absent from the payload rather than present and empty.
+    """
+    assert RIEMANN.content_hash == content_digest(
+        {
+            "assumption_id": "rh",
+            "statement": normalize_text(RIEMANN.statement),
+            "source": normalize_text(RIEMANN.source),
+        }
+    )
+    assert CITED.content_hash != content_digest(
+        {
+            "assumption_id": "rh",
+            "statement": normalize_text(CITED.statement),
+            "source": normalize_text(CITED.source),
+        }
+    )
 
 
 # -- structural validation --------------------------------------------------

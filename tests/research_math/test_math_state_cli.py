@@ -196,6 +196,79 @@ def test_a_context_claim_route_assumption_and_judgement_all_read_back(
     assert _run(tmp_path, "check")[0] == 0
 
 
+def test_a_citation_records_the_proposition_and_reports_that_nobody_checked_it(
+    tmp_path: Path,
+) -> None:
+    """The citation the reviewer can act on names a theorem, not a paper.
+
+    And the state it starts in is ``unchecked`` rather than absent: the whole
+    reason to record ``source_id`` and ``locator`` is that something can be sent
+    to look them up, which only means anything if not having looked is visible.
+    """
+    assert _run(tmp_path, "context", "--id", "ctx", "--statement", "Fix n : Nat.")[0] == 0
+    assert _run(tmp_path, "claim", "--id", "C1", "--context", "ctx",
+                "--statement", "n + n is even")[0] == 0
+    assert _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+                "--statement", "The Riemann Hypothesis",
+                "--source", "Titchmarsh, The Theory of the Riemann Zeta-function",
+                "--source-id", "doi:10.1093/oso/9780198533696.001.0001",
+                "--locator", "Theorem 14.2")[0] == 0
+
+    code, payload = _run(tmp_path, "show", "--claim", "C1")
+    assert code == 0
+    assert payload["claim"]["citations"] == [
+        {
+            "assumption_id": "RH",
+            "status": "unchecked",
+            "cited_proposition": (
+                "doi:10.1093/oso/9780198533696.001.0001 Theorem 14.2"
+            ),
+            "checked_by": [],
+            "artifacts": [],
+        }
+    ]
+    assert _run(tmp_path, "check")[0] == 0
+
+
+def test_an_assumption_citing_prose_says_so_instead_of_queuing_a_lookup(
+    tmp_path: Path,
+) -> None:
+    """No locator is a legitimate answer, and the command says which one it gave."""
+    assert _run(tmp_path, "context", "--id", "ctx", "--statement", "Fix n : Nat.")[0] == 0
+    assert _run(tmp_path, "claim", "--id", "C1", "--context", "ctx",
+                "--statement", "n + n is even")[0] == 0
+    code, payload = _run(tmp_path, "assume", "--claim", "C1", "--id", "F",
+                         "--statement", "the standard averaging bound",
+                         "--source", "folklore, stated in seminar notes")
+    assert code == 0
+    assert "uncited rather than unchecked" in payload["citation"]
+
+    _code, shown = _run(tmp_path, "show", "--claim", "C1")
+    assert [item["status"] for item in shown["claim"]["citations"]] == ["uncited"]
+
+
+def test_half_a_citation_is_refused_by_check_rather_than_read_as_uncited(
+    tmp_path: Path,
+) -> None:
+    """A document with no proposition would look like a source nobody could check.
+
+    That is the silent direction: ``assess_citation`` reads it as ``uncited``,
+    so an agent that meant to make a dependency checkable would get a state
+    saying it could not be, and no checker would ever be sent.
+    """
+    assert _run(tmp_path, "context", "--id", "ctx", "--statement", "Fix n : Nat.")[0] == 0
+    assert _run(tmp_path, "claim", "--id", "C1", "--context", "ctx",
+                "--statement", "n + n is even")[0] == 0
+    assert _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+                "--statement", "The Riemann Hypothesis",
+                "--source", "Titchmarsh",
+                "--source-id", "doi:10.1093/oso/9780198533696.001.0001")[0] == 0
+
+    code, payload = _run(tmp_path, "check")
+    assert code == 1
+    assert [issue["code"] for issue in payload["issues"]] == ["citation_incomplete"]
+
+
 def test_a_state_file_written_by_the_cli_is_the_one_the_kernel_reads(
     tmp_path: Path,
 ) -> None:

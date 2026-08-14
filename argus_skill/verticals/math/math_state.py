@@ -704,6 +704,9 @@ def _claim_payload(state: MathState, claim: ClaimVersion) -> dict[str, Any]:
     certificates = _certificates(state, claim)
     if certificates:
         payload["certificates"] = certificates
+    citations = [item.as_dict() for item in state.citations(claim.claim_id)]
+    if citations:
+        payload["citations"] = citations
     if assessment.is_kernel:
         payload["caveats"] = [_FIDELITY_CAVEAT]
     return payload
@@ -975,7 +978,11 @@ def _cmd_revise_claim(state: MathState, args: argparse.Namespace) -> dict[str, A
 def _cmd_assume(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
     _require_claim(state, args.claim)
     assumption = ExternalAssumption(
-        assumption_id=args.id, statement=args.statement, source=args.source
+        assumption_id=args.id,
+        statement=args.statement,
+        source=args.source,
+        source_id=str(getattr(args, "source_id", "") or ""),
+        locator=str(getattr(args, "locator", "") or ""),
     )
     kept = [
         item
@@ -985,7 +992,7 @@ def _cmd_assume(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
     revised = state.revise_claim(
         args.claim, external_assumptions=(*kept, assumption)
     )
-    return {
+    payload: dict[str, Any] = {
         "ok": True,
         "claim": revised.as_dict(),
         "note": (
@@ -994,6 +1001,14 @@ def _cmd_assume(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
             "conditional_kernel until a proof kernel discharges it"
         ),
     }
+    if not assumption.cited_proposition:
+        payload["citation"] = (
+            "this assumption cites prose and names no proposition, so `show` "
+            "reports it as uncited rather than unchecked: nothing can be sent to "
+            "look it up. If the result has a canonical home, say where with "
+            "--source-id and --locator"
+        )
+    return payload
 
 
 def _cmd_route(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
@@ -1121,6 +1136,24 @@ def _build_parser() -> argparse.ArgumentParser:
     assume.add_argument("--id", required=True)
     assume.add_argument("--statement", required=True)
     assume.add_argument("--source", required=True)
+    assume.add_argument(
+        "--source-id",
+        default="",
+        help=(
+            "the document, canonically and with its version: arxiv:2103.01234v2, "
+            "doi:10.1007/..., isbn:... . The version is part of it, because "
+            "theorem numbering moves between revisions"
+        ),
+    )
+    assume.add_argument(
+        "--locator",
+        default="",
+        help=(
+            "which proposition inside it: 'Theorem 3.2'. Give this with "
+            "--source-id or give neither; a proof leans on a proposition, not on "
+            "a paper, and half a citation cannot be looked up"
+        ),
+    )
 
     route = add("route", "record one decomposition of a goal into obligations")
     route.add_argument("--id", required=True)

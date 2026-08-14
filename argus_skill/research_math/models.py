@@ -247,21 +247,68 @@ class ExternalAssumption:
     ``source`` is required rather than decorative: an assumption nobody can
     look up cannot be discharged and cannot be audited, so it is not an
     assumption, it is a gap in the proof wearing a citation's clothes.
+
+    ``source_id`` and ``locator`` are that citation made checkable, and they are
+    two fields rather than one because a paper is not a citation. What a proof
+    leans on is a *proposition* — Theorem 3.2, not [K] — and "does [K] exist" is
+    a question nobody needed to ask, while "does [K] contain a Theorem 3.2, and
+    does it say this" is the question that actually fails. ``source_id`` names
+    the document canonically and *with its version* (``arxiv:2103.01234v2``,
+    ``doi:10.1007/...``), because theorem numbering moves between arXiv
+    revisions: Theorem 3.2 of v1 and Theorem 3.2 of v2 are different
+    propositions, and a citation that cannot tell them apart is not checkable in
+    the only sense that matters. ``locator`` names the proposition inside it.
+
+    Both are optional here and neither is validated for shape. A private
+    communication, an unpublished preprint, or a result the author states in
+    prose has no DOI and no theorem number, and a schema that refused to record
+    such a dependency would be paid for in dependencies that go unrecorded.
+    What the schema does insist on — in ``store.MathState.validate`` — is that
+    the pair is whole: half a citation names a document and leaves the
+    proposition unsaid, which reads as checkable and is not.
+
+    They join the digest only when present, so adding them to a schema that
+    already holds assumptions without them does not restate every one of those
+    and orphan the evidence about them. Once present they are load-bearing:
+    correcting ``locator`` from ``Theorem 3.1`` to ``Theorem 3.2`` mints a
+    different reference, and a check obtained against the wrong theorem does not
+    survive it.
     """
 
     assumption_id: str
     statement: str
     source: str
+    source_id: str = ""
+    locator: str = ""
 
     @property
     def content_hash(self) -> str:
-        return content_digest(
-            {
-                "assumption_id": self.assumption_id,
-                "statement": normalize_text(self.statement),
-                "source": normalize_text(self.source),
-            }
-        )
+        payload: dict[str, Any] = {
+            "assumption_id": self.assumption_id,
+            "statement": normalize_text(self.statement),
+            "source": normalize_text(self.source),
+        }
+        if normalize_text(self.source_id):
+            payload["source_id"] = normalize_text(self.source_id)
+        if normalize_text(self.locator):
+            payload["locator"] = normalize_text(self.locator)
+        return content_digest(payload)
+
+    @property
+    def cited_proposition(self) -> str:
+        """The citation as one string, empty unless it names a proposition.
+
+        Emptiness is the predicate every caller wants — "is there something here
+        a checker could go and look at" — and computing it from the two fields
+        at each call site would be the same conjunction written several times,
+        each free to disagree about whether a document alone counts. It does
+        not.
+        """
+        source_id = normalize_text(self.source_id)
+        locator = normalize_text(self.locator)
+        if not source_id or not locator:
+            return ""
+        return f"{source_id} {locator}"
 
     def ref(self) -> SubjectRef:
         """Correcting a citation or a statement produces a different reference.
@@ -278,6 +325,8 @@ class ExternalAssumption:
             "assumption_id": self.assumption_id,
             "statement": self.statement,
             "source": self.source,
+            "source_id": self.source_id,
+            "locator": self.locator,
             "content_hash": self.content_hash,
         }
 
@@ -289,6 +338,8 @@ class ExternalAssumption:
             assumption_id=str(payload.get("assumption_id") or ""),
             statement=str(payload.get("statement") or ""),
             source=str(payload.get("source") or ""),
+            source_id=str(payload.get("source_id") or ""),
+            locator=str(payload.get("locator") or ""),
         )
 
 

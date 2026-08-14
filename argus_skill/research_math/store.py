@@ -35,8 +35,10 @@ from pathlib import Path
 from typing import Any
 
 from .assessment import (
+    CitationAssessment,
     ClaimAssessment,
     RouteAssessment,
+    assess_citation,
     assess_claim,
     assess_routes,
     route_cycles,
@@ -530,6 +532,41 @@ class MathState:
                 result[claim.claim_id] = outstanding
         return result
 
+    def citations(self, claim_id: str) -> tuple[CitationAssessment, ...]:
+        """Where every result this claim imports was looked up, and by whom.
+
+        Drawn from ``effective_assumptions`` rather than from the latest
+        version's own list, for the same reason ``undischarged_assumptions`` is:
+        a dependency dropped without a recorded reason still counts, and it is
+        exactly the one whose citation nobody wants examined.
+
+        Unfiltered by status on purpose. A caller that wants only the open ones
+        can say so, and a method that answered "the unchecked citations" would
+        make ``confirmed`` and ``uncited`` indistinguishable from absent — which
+        is the distinction ``CitationStatus`` exists to keep.
+        """
+        return tuple(
+            assess_citation(item, self.evidence)
+            for item in self.effective_assumptions(claim_id)
+        )
+
+    def open_citations(self) -> dict[str, tuple[CitationAssessment, ...]]:
+        """Every citation in the project that still owes a retrieval, by claim.
+
+        The question a delivery gate asks. It is asked project-wide rather than
+        per claim because "has everything been checked" is not answerable one
+        claim at a time, and because the answer has to be empty for the whole
+        project before anything ships.
+        """
+        result: dict[str, tuple[CitationAssessment, ...]] = {}
+        for claim in self.current_claims():
+            outstanding = tuple(
+                item for item in self.citations(claim.claim_id) if not item.is_settled
+            )
+            if outstanding:
+                result[claim.claim_id] = outstanding
+        return result
+
     # -- validation --------------------------------------------------------
 
     def validate(self) -> tuple[StateIssue, ...]:
@@ -848,7 +885,47 @@ def _assumption_issues(claim: ClaimVersion, path: str) -> list[StateIssue]:
                     "not a citation",
                 )
             )
+        issues.extend(_citation_issues(assumption, where))
     return issues
+
+
+def _citation_issues(assumption: ExternalAssumption, where: str) -> list[StateIssue]:
+    """Half a machine-readable citation, which reads as checkable and is not.
+
+    Neither field is required — a private communication has no DOI and no
+    theorem number, and the prose ``source`` covers that case. What is refused
+    is one without the other. A ``source_id`` alone cites a document, and no
+    proof leans on a document; whoever comes to check it has to guess which
+    result inside it was meant, which is the guess the locator exists to remove.
+    A ``locator`` alone names ``Theorem 3.2`` of nothing.
+
+    Reported rather than corrected, and reported as a defect rather than
+    tolerated as a partial answer, because the failure is silent in the other
+    direction: ``assess_citation`` reads a half citation as ``uncited``, so a
+    dependency the agent believed it had made checkable would sit in the state
+    looking like one that could not be checked at all, and no checker would ever
+    be sent to it.
+    """
+    source_id = assumption.source_id.strip()
+    locator = assumption.locator.strip()
+    if bool(source_id) == bool(locator):
+        return []
+    missing, given = (
+        ("locator", f"source_id {source_id!r}")
+        if source_id
+        else ("source_id", f"locator {locator!r}")
+    )
+    return [
+        StateIssue(
+            "citation_incomplete",
+            f"{where}.{missing}",
+            f"assumption {assumption.assumption_id!r} gives {given} and no "
+            f"{missing}; a citation names a proposition, not a document and not "
+            "a theorem number floating free, and half of one cannot be looked "
+            "up. Give both or neither — with neither, the prose source stands "
+            "and the citation is reported as `uncited` rather than unchecked",
+        )
+    ]
 
 
 def _parse(key: str, payload: Mapping[str, Any], build: Any) -> Iterable[Any]:
