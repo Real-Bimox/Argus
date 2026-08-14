@@ -188,6 +188,13 @@ def read_optional(values: Mapping[str, str], key: str) -> str:
     return raw
 
 
+def strip_named_lines(text: str, keys: Iterable[str]) -> str:
+    pattern = _line_pattern(keys)
+    return "\n".join(
+        line for line in str(text or "").splitlines() if pattern.match(line) is None
+    ).strip()
+
+
 def legacy_json_object(text: str) -> dict[str, Any] | None:
     """A JSON object the role volunteered, if it did. Never required.
 
@@ -221,4 +228,5 @@ __all__ = [
     "read_list",
     "read_optional",
     "read_records",
+    "strip_named_lines",
 ]

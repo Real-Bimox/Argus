@@ -351,6 +351,7 @@ def test_continuous_dispatch_persists_operator_priority_item(memory):
     )
     assert item is not None
     assert memory.backlog.all() == [item]
+    assert item.title == "operator request"
     assert item.objective == "managed: operator request"
     assert item.original_objective == "managed: operator request"
     assert item.priority == -1

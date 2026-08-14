@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import sys
 import time
 from pathlib import Path
@@ -28,8 +29,8 @@ from ._registry import (
     _open_discussion_blockers,
     _progress_summary,
     _read_task,
-    _registry_path,
     _run_dir_from_command,
+    _unlink_task_records,
     _write_task,
     reconcile_terminal_task,
 )
@@ -198,6 +199,12 @@ def cmd_submit(args: argparse.Namespace) -> int:
                 initial_task["cpu_ids"] = list(selected_cpu_ids)
                 initial_task["cpu_count"] = len(selected_cpu_ids)
             _write_task(task_id, initial_task)
+    except ValueError as exc:
+        print(json.dumps({
+            "error": f"invalid task id: {exc}",
+            "task_id": task_id,
+        }))
+        return 1
     except _cpu_admission.CpuAdmissionError as exc:
         print(json.dumps({
             "error": f"CPU admission rejected: {exc}",
@@ -210,7 +217,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         pid = os.fork()
     except OSError as exc:
         with _cpu_admission.cpu_admission_lock(Path.cwd()):
-            _registry_path(task_id).unlink(missing_ok=True)
+            _unlink_task_records(task_id)
         print(json.dumps({
             "error": f"failed to fork background subagent: {exc}",
             "task_id": task_id,
@@ -238,7 +245,14 @@ def cmd_submit(args: argparse.Namespace) -> int:
             "run_dir": run_dir,
             "description": args.description,
             "cpu_ids": list(selected_cpu_ids),
-            "check_with": f"python -m argus_skill.tools.subagent status --task-id {task_id}",
+            "check_with": shlex.join([
+                sys.executable,
+                "-m",
+                "argus_skill.tools.subagent",
+                "status",
+                "--task-id",
+                task_id,
+            ]),
         }))
         return 0
 
@@ -414,8 +428,7 @@ def cmd_clean(_args: argparse.Namespace) -> int:
     for task in tasks:
         state = task.get("state", "")
         if state in ("done", "error", "crashed", "timeout"):
-            path = _registry_path(task["task_id"])
-            path.unlink(missing_ok=True)
+            _unlink_task_records(task["task_id"])
             removed += 1
     print(f"Cleaned {removed} completed task(s)")
     return 0

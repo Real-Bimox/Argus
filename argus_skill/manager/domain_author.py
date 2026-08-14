@@ -1,12 +1,8 @@
 """Manager vertical decision + domain authoring: prompts and strict parsers.
 
 ``Manager.decide_vertical`` always makes one bounded, repository-grounded
-routing request before any vertical can commit. The legacy fast-route parser
-remains available for wire/source compatibility, but it no longer controls
-formal project routing. This
-Prompt bodies live in :mod:`argus_skill.roles.prompts.manager` and are
-re-exported here for source compatibility; this module owns their fail-closed
-parsers.
+routing request before any vertical can commit. This module owns the
+fail-closed parsers for that decision.
 
 The proposed domain (when authored) is persisted as project-local DATA by
 :func:`argus_skill.verticals._data_domain.write_data_domain`; the per-stage
@@ -23,8 +19,6 @@ from dataclasses import dataclass
 from typing import Any, Sequence
 
 from ..roles.prompts.manager import (
-    build_domain_author_prompt,
-    build_fast_vertical_decision_prompt,
     build_research_target_prompt,
     build_vertical_decision_prompt,
 )
@@ -211,8 +205,6 @@ __all__ = [
     "FastVerticalRoute",
     "VerticalDecision",
     "VerticalDecisionError",
-    "build_domain_author_prompt",
-    "build_fast_vertical_decision_prompt",
     "build_research_target_prompt",
     "build_vertical_decision_prompt",
     "parse_domain_proposal",

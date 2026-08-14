@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
@@ -53,6 +53,7 @@ class _Outcome:
     had_follow_up: bool = False
     final_message: str = "done"
     operator_question: str = ""
+    operator_options: list[dict[str, Any]] = field(default_factory=list)
     research_result: dict[str, Any] | None = None
 
 
@@ -797,6 +798,20 @@ class _BlockedQuestionRunner:
         return _Outcome(
             success=False, status="blocked", final_message="needs a decision",
             operator_question="fp16 精度损失可以接受吗，还是必须 fp32？",
+            operator_options=[
+                {
+                    "id": "allow-fp16",
+                    "label": "允许 fp16",
+                    "description": "接受精度损失并继续优化。",
+                    "requires_note": False,
+                },
+                {
+                    "id": "require-fp32",
+                    "label": "必须 fp32",
+                    "description": "保持 fp32 精度约束。",
+                    "requires_note": False,
+                },
+            ],
         )
 
 
@@ -831,6 +846,10 @@ def test_blocked_verdict_persists_operator_question_onto_backlog_item(
     assert rows[item.id].status == "paused_operator"
     assert rows[item.id].pending_question == "fp16 精度损失可以接受吗，还是必须 fp32？"
     assert rows[item.id].operator_decision["project_id"] == mem.root.name
+    assert rows[item.id].operator_decision["options_source"] == "agent"
+    assert [
+        option["id"] for option in rows[item.id].operator_decision["options"]
+    ] == ["allow-fp16", "require-fp32"]
     assert "campaign_generation" not in rows[item.id].operator_decision
     pending_events = [
         event

@@ -539,9 +539,9 @@ def _maybe_greeting_reply(
     """Short-circuit a safe message-only reply from the merged classifier.
 
     Only fires when no stateful action was decided and the classifier did not
-    need the startup/rotation handoff to
-    answer it (``send_body == body``) — otherwise the greeting reply could be
-    stale relative to the actual enriched turn sent to the Manager.
+    need the startup/rotation handoff to answer it (``send_body == body``).
+    Otherwise the greeting would consume the handoff without seeding the next
+    substantive Manager turn.
     """
     if (
         classify.greeting_reply
@@ -1018,6 +1018,9 @@ def _dispatch_team_mission(
     workflow_mode = str(
         getattr(prepared.decision, "workflow_mode", "") or ""
     )
+    prepared.lifetime = str(
+        chat_state.get("_frontdoor_lifetime", "bounded") or "bounded"
+    ).strip().lower()
     try:
         maybe_promote_to_continuous(
             mem,
@@ -1026,6 +1029,16 @@ def _dispatch_team_mission(
             root_task_id=root_task_id,
             workflow_mode=workflow_mode,
         )
+        prepared.continuous = bool(
+            chat_state.get("config", {}).get("continuous", False)
+        )
+        prepared.open_ended = bool(
+            chat_state.get("_continuous_open_ended", False)
+        )
+        if prepared.continuous:
+            prepared.lifetime = (
+                "standing" if prepared.open_ended else "bounded"
+            )
     except Exception as exc:
         prepared.failed(exc)
         raise

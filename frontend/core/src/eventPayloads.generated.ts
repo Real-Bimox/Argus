@@ -170,6 +170,7 @@ export interface LifeMissionCompletedEvent extends EventMsg {
   "objective"?: string;
   "scope"?: string;
   "status": string;
+  "summary"?: string;
   "outcome_class"?: "completed" | "incomplete" | "stalled" | "blocked" | "failed" | "ended";
   "outcome"?: { "execution_status": string; "review_status": string; "stage_certification": string; "interruption_kind": string; "resumable": boolean; };
   "success"?: boolean;
@@ -230,6 +231,7 @@ export interface RoundReviewCompletedEvent extends EventMsg {
   "reason": string;
   "next_action"?: string;
   "operator_question"?: string;
+  "operator_options"?: Array<{ "id"?: string; "label"?: string; "description"?: string; "requires_note"?: boolean; }>;
   "review_source"?: string;
   "forward_progress"?: boolean;
   "plan_signal"?: string;
@@ -330,6 +332,11 @@ export interface LifeManagerIntentCompletedEvent extends EventMsg {
   "vertical": string;
   "kind": string;
   "stages": Array<string>;
+  "route"?: string;
+  "workflow_mode"?: string;
+  "lifetime"?: string;
+  "continuous"?: boolean;
+  "open_ended"?: boolean;
   "reason"?: string;
 }
 

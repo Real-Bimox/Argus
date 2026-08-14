@@ -241,6 +241,7 @@ class _ExecuteState:
         self.final_planner_report: dict[str, Any] = {}
         self.plan_challenge: dict[str, Any] = {}
         self.operator_question: str = ""
+        self.operator_options: list[dict[str, Any]] = []
         self.final_review_status: str = ""
         self.final_review_next_action: str = ""
         self.review_source: str = ""

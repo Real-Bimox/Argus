@@ -18,6 +18,7 @@ classifiers = [
   "Environment :: Console",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
   "Operating System :: POSIX :: Linux",
   "Operating System :: MacOS",
   "Programming Language :: Python :: 3",
@@ -36,6 +37,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "uvicorn[standard]>=0.29",
   "websockets>=12",
+  "tzdata>=2024.1; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
@@ -84,6 +86,13 @@ feishu = [
 qr = [
   "qrcode>=7.4,<9",
 ]
+# Harbor Framework installed-agent adapter. Harbor itself requires Python
+# 3.12+, while core Argus continues to support Python 3.11.
+harbor = [
+  "build>=1",
+  "hatchling>=1.27",
+  "harbor>=0.21,<0.22; python_version >= '3.12'",
+]
 dev = [
   "build>=1",
   "mypy>=1.8,<2",
@@ -103,6 +112,7 @@ dev = [
 
 [project.scripts]
 argus = "argus_skill.apps.tui_launcher:main"
+argus-doctor = "argus_doctor:main"
 argus-skill = "argus_skill.__main__:main"
 
 [project.urls]
@@ -114,6 +124,7 @@ packages = ["argus_skill"]
 # Package Markdown and JSON files are runtime Skill data.
 
 [tool.hatch.build.targets.wheel.force-include]
+"argus_doctor.py" = "argus_doctor.py"
 "frontend/tui/bundle/argus.mjs" = "argus_skill/_frontend/tui/bundle/argus.mjs"
 "frontend/web/dist" = "argus_skill/_frontend/web/dist"
 
@@ -123,6 +134,7 @@ artifacts = [
   "frontend/web/dist/**",
 ]
 include = [
+  "argus_doctor.py",
   "argus_skill/**",
   "tests/**",
   "frontend/tui/bundle/**",

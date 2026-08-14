@@ -8,9 +8,13 @@ real network call.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
 
 from argus_skill.webapi.diagnostics import Check, render_report, run_diagnostics
 
@@ -59,6 +63,48 @@ def test_render_report_all_green_has_no_recommendation():
     report = render_report([Check("daemon", True, "running (pid 5)", "")])
     assert "all checks passed" in report
     assert "→ recommended:" not in report
+
+
+def test_doctor_json_uses_stable_codes() -> None:
+    from argus_skill.apps.cli._core import _doctor_payload
+
+    payload = _doctor_payload([Check("lock sanity", False, "stale", "repair")])
+
+    assert payload["schema_version"] == 1
+    assert payload["ok"] is False
+    assert payload["checks"][0]["code"] == "ARGUS-STATE-001"
+
+
+def test_safe_repair_removes_only_a_verified_stale_daemon_pid(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from argus_skill.apps.cli import _core
+    from argus_skill.maintenance.doctor import DoctorContext
+
+    pid_path = tmp_path / "daemon.pid"
+    pid_path.write_text("2000000000\n", encoding="ascii")
+    context = DoctorContext(
+        global_root=tmp_path / "state",
+        project_root=tmp_path,
+        checkout=Path(__file__).resolve().parents[1],
+        python_executable=Path(sys.executable),
+    )
+    monkeypatch.setattr(_core, "_maintenance_context", lambda _args: context)
+
+    rc = _core._cmd_repair(
+        SimpleNamespace(safe=True, plan=False, json=True)
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc in {0, 3}  # consent/manual findings may remain after SAFE actions
+    assert not pid_path.exists()
+    stale = next(
+        item for item in payload["actions"]
+        if item["id"] == "remove_verified_stale_daemon_pid"
+    )
+    assert stale["status"] == "applied"
 
 
 def test_render_report_with_theme_is_failsoft():

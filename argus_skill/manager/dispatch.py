@@ -259,11 +259,11 @@ def enqueue_mission(
             from ..life.memory import BacklogItem
             from ..life.supervisor.backlog_guard import decision_evidence
 
-            compact = " ".join(execution_body.split())
-            title = compact if len(compact) <= 160 else compact[:157] + "..."
+            compact = " ".join(body.split()).replace("`", "")
+            title = compact if len(compact) <= 96 else compact[:93] + "..."
             item = BacklogItem.new(
                 item_id=root_task_id,
-                title=title.replace("`", ""),
+                title=title,
                 objective=execution_body,
                 priority=min(head_priority - 1, -1),
                 tags=[

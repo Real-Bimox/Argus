@@ -20,6 +20,7 @@ from pathlib import Path
 
 from ..core.knobs import resolve_role_reasoning_effort
 from ..core.ports import EventSink
+from ..core.role_reply import strip_named_lines
 from ..engineer.runner import should_clear_thread_id_after_outcome
 from ._env import env_flag as _env_flag
 from ._runtime_backends import _Outcome
@@ -513,6 +514,7 @@ class SkillLoopExecuteMixin:
             )
         effective_require_independent_review = bool(
             require_independent_review
+            or _env_flag("ARGUS_SKILL_REQUIRE_INDEPENDENT_REVIEW", False)
             or (
                 active_contract.requires_independent_review
                 if active_contract is not None
@@ -546,10 +548,10 @@ class SkillLoopExecuteMixin:
             "require_post_task_learning": bool(
                 getattr(self, "_role_memory_maintenance_enabled", True)
             ),
-            "wiki_enabled": _env_flag("ARGUS_SKILL_WIKI", default=False),
+            "wiki_enabled": _env_flag("ARGUS_SKILL_WIKI", default=True),
             "auto_init_wiki": _env_flag(
                 "ARGUS_SKILL_AUTO_INIT_WIKI",
-                default=False,
+                default=True,
             ),
             "dangerous_yolo": not safe_mode,
             "full_auto": safe_mode,
@@ -1065,6 +1067,7 @@ class SkillLoopExecuteMixin:
         final_submission_certified = False
         completion_evidence = ""
         operator_question = ""
+        operator_options: list[dict] = []
         final_review_status = ""
         final_review_next_action = ""
         review_source = ""
@@ -1081,6 +1084,13 @@ class SkillLoopExecuteMixin:
                 operator_question = str(
                     getattr(_final_review, "operator_question", "") or ""
                 ).strip()
+                raw_operator_options = getattr(_final_review, "operator_options", []) or []
+                if isinstance(raw_operator_options, list):
+                    operator_options = [
+                        dict(option)
+                        for option in raw_operator_options
+                        if isinstance(option, dict)
+                    ]
                 final_review_next_action = str(
                     getattr(_final_review, "next_action", "") or ""
                 ).strip()
@@ -1133,6 +1143,7 @@ class SkillLoopExecuteMixin:
         ex_state.auth_fail = auth_fail
         ex_state.rounds_list = rounds_list
         ex_state.operator_question = operator_question
+        ex_state.operator_options = operator_options
         ex_state.final_review_status = final_review_status
         ex_state.final_review_next_action = final_review_next_action
         ex_state.review_source = review_source
@@ -1239,6 +1250,19 @@ class SkillLoopExecuteMixin:
         gathered across the prior lifecycle phases.
         """
         outcome = ex_state.outcome
+        rounds = getattr(outcome, "rounds", None) or ex_state.rounds_list
+        engineer_message = str(getattr(outcome, "final_message", "") or "")
+        summary_lines = []
+        visible_engineer_message = strip_named_lines(
+            engineer_message,
+            ("MILESTONE_STATUS", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
+        )
+        for line in visible_engineer_message.splitlines():
+            cleaned = line.strip()
+            if not cleaned:
+                continue
+            summary_lines.append(cleaned.lstrip("#").strip())
+        summary = " ".join(summary_lines)[:1200]
         return _Outcome(
             success=bool(outcome.successful and ex_state.effective_status == "done"),
             status=ex_state.effective_status,
@@ -1253,19 +1277,21 @@ class SkillLoopExecuteMixin:
             stage_transition=ex_state.stage_transition,
             stage_transition_skipped=ex_state.stage_transition_skipped,
             operator_question=ex_state.operator_question,
+            operator_options=ex_state.operator_options,
             final_review_status=ex_state.final_review_status,
             final_review_source=ex_state.review_source,
             final_review_reason=str(
                 getattr(outcome, "final_review_reason", "") or ""
             ),
             final_review_next_action=ex_state.final_review_next_action,
+            summary=summary,
             research_result=(
                 getattr(
-                    (getattr(outcome, "rounds", None) or ex_state.rounds_list)[-1].review,
+                    rounds[-1].review,
                     "research_result",
                     None,
                 )
-                if (getattr(outcome, "rounds", None) or ex_state.rounds_list)
+                if rounds
                 else None
             ),
             final_planner_report=ex_state.final_planner_report,

@@ -13,6 +13,8 @@ def test_named_reviewer_verdict_parses_with_multiline_reason() -> None:
         "A second material fact is also missing.\n"
         "NEXT_ACTION=Collect the missing evidence.\n"
         "OPERATOR_QUESTION=Which route?\n"
+        "OPERATOR_OPTIONS=collect-logs :: Collect logs :: "
+        "Collect the missing provider logs.\n"
         "CHECKPOINT_RECOMMENDED=false\n"
         "FORWARD_PROGRESS=false\n"
         "PLAN_SIGNAL=continue\n"
@@ -23,6 +25,12 @@ def test_named_reviewer_verdict_parses_with_multiline_reason() -> None:
     assert "second material fact" in decision.reason
     assert decision.next_action == "Collect the missing evidence."
     assert decision.operator_question == "Which route?"
+    assert decision.operator_options == [{
+        "id": "collect-logs",
+        "label": "Collect logs",
+        "description": "Collect the missing provider logs.",
+        "requires_note": False,
+    }]
 
 
 def test_named_verdict_fails_closed_without_status_or_reason() -> None:
@@ -47,12 +55,15 @@ def test_legacy_json_verdict_still_parses_for_inflight_sessions() -> None:
     decision = parse_decision_text(
         '{"status":"blocked","reason":"Need operator input.",'
         '"next_action":"","operator_question":"Which route?",'
+        '"operator_options":[{"id":"route-a","label":"Route A",'
+        '"description":"Take route A.","requires_note":false}],'
         '"checkpoint_recommended":false}'
     )
 
     assert decision is not None
     assert decision.status == "blocked"
     assert decision.operator_question == "Which route?"
+    assert decision.operator_options[0]["label"] == "Route A"
 
 
 def test_named_reviewer_verdict_parses_research_result_contract() -> None:

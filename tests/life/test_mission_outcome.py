@@ -36,6 +36,8 @@ class _Outcome:
     final_review_status: str = ""
     final_review_source: str = ""
     final_review_reason: str = ""
+    final_message: str = ""
+    summary: str = ""
 
 
 class _FixedOutcomeRunner:
@@ -65,6 +67,27 @@ def _make_supervisor(tmp_path, outcome: _Outcome) -> tuple[LifeSupervisor, _Sink
         ),
     )
     return supervisor, sink
+
+
+def test_completed_event_carries_existing_engineer_summary(tmp_path) -> None:
+    supervisor, sink = _make_supervisor(
+        tmp_path,
+        _Outcome(
+            success=True,
+            status="done",
+            summary="Created RESULT.txt and verified its exact contents.",
+            final_review_reason="Reviewer accepted the file.",
+        ),
+    )
+    supervisor.memory.backlog.add(
+        BacklogItem.new(title="Create result", objective="Create RESULT.txt")
+    )
+
+    supervisor.tick()
+
+    assert _completed_event(sink)["summary"] == (
+        "Created RESULT.txt and verified its exact contents."
+    )
 
 
 @pytest.mark.parametrize(
@@ -338,7 +361,11 @@ def test_research_result_survives_runtime_and_mission_event(tmp_path) -> None:
         rounds=[
             RoundRecord(
                 round_index=1,
-                engineer_message="",
+                engineer_message=(
+                    "Wrote the survey and verified every cited source.\n\n"
+                    "MILESTONE_STATUS=done\n"
+                    "OPERATOR_QUESTION=none"
+                ),
                 engineer_exit_code=0,
                 review=ReviewDecision(
                     status="done",
@@ -348,7 +375,11 @@ def test_research_result_survives_runtime_and_mission_event(tmp_path) -> None:
                 ),
             )
         ],
-        final_message="",
+        final_message=(
+            "Wrote the survey and verified every cited source.\n\n"
+            "MILESTONE_STATUS=done\n"
+            "OPERATOR_QUESTION=none"
+        ),
         reason="",
         workdir=str(tmp_path),
     )
@@ -366,7 +397,13 @@ def test_research_result_survives_runtime_and_mission_event(tmp_path) -> None:
     supervisor.tick()
 
     assert runtime_outcome.research_result == research_result
+    assert runtime_outcome.summary == (
+        "Wrote the survey and verified every cited source."
+    )
     assert _completed_event(sink)["research_result"] == research_result
+    assert _completed_event(sink)["summary"] == (
+        "Wrote the survey and verified every cited source."
+    )
 
 
 def test_daemon_shutdown_is_persisted_as_recoverable_pause(tmp_path) -> None:

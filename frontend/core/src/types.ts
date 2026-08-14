@@ -24,6 +24,14 @@ export interface Role {
   age_s: number | null;
 }
 
+export interface DaemonHealth {
+  state?: string;
+  stalled?: boolean;
+  last_progress_at?: number | null;
+  last_progress_event?: string;
+  seconds_since_progress?: number | null;
+}
+
 export interface Daemon {
   alive: boolean;
   pid: number | null;
@@ -31,6 +39,8 @@ export interface Daemon {
   liveness_source?: 'pid_lock' | 'namespace_heartbeat' | 'none' | string;
   heartbeat_age_seconds?: number | null;
   uptime_seconds: number | null;
+  started_at_iso?: string | null;
+  health?: DaemonHealth;
   backend: string | null;
   backend_label?: string | null;
   global_daily_cap_usd: number | null;
@@ -83,6 +93,7 @@ export interface MissionOutcomeDimensions {
 
 export interface ContinuousState {
   enabled: boolean;
+  open_ended?: boolean;
   objective: string;
   done_reason?: string;
   done_at?: string;
@@ -278,12 +289,13 @@ export interface MissionStorageView {
 }
 
 export interface MissionView {
-  schema_version: 3;
+  schema_version: 5;
   bootstrapped?: boolean;
   mission: {
     id: string;
     title: string;
     objective: string;
+    summary: string;
     status: string;
     started_at: number | null;
     completed_at: number | null;
@@ -292,6 +304,14 @@ export interface MissionView {
     campaign_elapsed_seconds: number;
   };
   stage: { id: string; label: string };
+  routing: {
+    route: string;
+    vertical: string;
+    workflow_mode: string;
+    lifetime: string;
+    continuous: boolean;
+    open_ended: boolean;
+  };
   round: { current: number; max: number };
   active_role: string;
   roles: MissionRoleView[];

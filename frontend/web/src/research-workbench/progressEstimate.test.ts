@@ -17,7 +17,7 @@ function snapshot(overrides: { alive?: boolean; activeStatus?: string; reviewSta
     ],
     recent_events: [],
     mission_view: {
-      schema_version: 3,
+      schema_version: 4,
       mission: { id: 'active', title: 'Current task', objective: 'Run probe', status: complete ? 'complete' : 'working', started_at: 900, completed_at: complete ? 990 : null, elapsed_seconds: 100, campaign_started_at: 100, campaign_elapsed_seconds: 900 },
       stage: { id: 'experiment', label: 'Experiment' }, round: { current: 1, max: 3 }, active_role: complete ? '' : 'engineer', roles: [], role_work: [],
       dag: [

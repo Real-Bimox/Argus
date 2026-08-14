@@ -555,19 +555,12 @@ class MissionExecutionSettlementMixin:
 
             decision_root = self.memory.root
             evidence = list(getattr(item, "context_refs", None) or [])
-            if str(getattr(item, "acceptance_check", "") or "").strip():
-                evidence.append({
-                    "label": "Acceptance check",
-                    "summary": str(item.acceptance_check).strip(),
-                })
             decision_card = build_operator_decision(
                 item_id=item.id,
                 title=item.title,
                 reason=str(getattr(outcome, "final_review_reason", "") or err),
                 question=operator_question,
-                recommendation=str(
-                    getattr(outcome, "final_review_next_action", "") or ""
-                ),
+                options=list(getattr(outcome, "operator_options", []) or []),
                 evidence=evidence,
                 project_id=decision_root.name,
             )
@@ -746,10 +739,22 @@ class MissionExecutionSettlementMixin:
             getattr(outcome, "final_planner_report", {}) or {}
         )
         plan_challenge = dict(getattr(outcome, "plan_challenge", {}) or {})
+        mission_summary = " ".join(
+            str(
+                getattr(outcome, "summary", "")
+                or getattr(outcome, "final_message", "")
+                or getattr(outcome, "final_review_reason", "")
+                or getattr(outcome, "reason", "")
+                or planner_report.get("summary")
+                or ""
+            ).split()
+        )[:1200]
         try:
             from ...core.metrics import metrics_root_for_project, record_metric
 
             forward_progress = planner_report.get("forward_progress")
+            if not isinstance(forward_progress, bool) and success and status == "done":
+                forward_progress = True
             record_metric(
                 metrics_root_for_project(self.memory.root),
                 "goal.mission",
@@ -785,6 +790,7 @@ class MissionExecutionSettlementMixin:
             ),
             "success": success,
             "status": status,
+            "summary": mission_summary,
             "outcome_class": mission_outcome_class(status=status, success=success),
             "outcome": state.outcome_dimensions,
             "planner_report": planner_report,
@@ -896,6 +902,7 @@ class MissionExecutionSettlementMixin:
                 or getattr(outcome, "reason", "")
                 or ""
             ),
+            "summary": mission_summary,
             "planner_report": planner_report,
             "plan_challenge": plan_challenge,
             "expected_plan_id": item.plan_id,

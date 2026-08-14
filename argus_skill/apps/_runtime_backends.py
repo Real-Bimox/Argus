@@ -53,10 +53,12 @@ class _Outcome:
     # without this, the question only ever existed for as long as whatever
     # cockpit process happened to be tailing events.jsonl at that instant.
     operator_question: str = ""
+    operator_options: list[dict] = field(default_factory=list)
     final_review_status: str = ""
     final_review_source: str = ""
     final_review_reason: str = ""
     final_review_next_action: str = ""
+    summary: str = ""
     research_result: dict | None = None
     final_planner_report: dict = field(default_factory=dict)
     plan_challenge: dict = field(default_factory=dict)

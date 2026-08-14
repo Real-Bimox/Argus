@@ -3,6 +3,7 @@ import type { GitDiffView, MissionView } from '../../../core/src/types';
 import {
   displayObjective,
   formatMissionElapsed,
+  formatMissionRouting,
 } from '../../../core/src/missionView';
 import { outcomeDimensionSummary } from '../../../core/src/missionOutcome';
 import { formatBytes } from '../lib/format';
@@ -87,6 +88,7 @@ export function MissionControl({
   const [selectedRole, setSelectedRole] = useState(view.active_role || 'planner');
   const [selectedTaskId, setSelectedTaskId] = useState(activeNode?.id || '');
   const outcome = outcomeDimensionSummary(view.outcome);
+  const routing = formatMissionRouting(view.routing);
   useEffect(() => setReplayIndex(Math.max(0, view.timeline.length - 1)), [view.timeline.length]);
   useEffect(() => {
     if (activeNode?.id) setSelectedTaskId(activeNode.id);
@@ -116,14 +118,25 @@ export function MissionControl({
             <div className="mt-2 text-ink-dim"><MarkdownContent>{objective}</MarkdownContent></div>
           </details>
         ) : null}
-        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-xs sm:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-xs sm:grid-cols-4">
           <div><div className="text-ink-faint">{t('mission.stage')}</div><div className="mt-0.5 font-medium capitalize text-blue-sky">{view.stage.label || view.stage.id || '—'}</div></div>
-          <div><div className="text-ink-faint">{t('mission.campaign')}</div><div className="mt-0.5 font-mono text-ink">{formatMissionElapsed(view.mission.campaign_elapsed_seconds)}</div></div>
+          <div><div className="text-ink-faint">{t(view.routing.open_ended ? 'mission.campaign' : 'mission.totalElapsed')}</div><div className="mt-0.5 font-mono text-ink">{formatMissionElapsed(view.mission.campaign_elapsed_seconds)}</div></div>
           <div><div className="text-ink-faint">{t('mission.round')}</div><div className="mt-0.5 font-mono text-ink">{view.round.current || '—'}{view.round.max ? ` / ${view.round.max}` : ''}</div></div>
+          <div><div className="text-ink-faint">{t('mission.mode')}</div><div className="mt-0.5 font-mono text-ink">{routing || '—'}</div></div>
         </div>
         {outcome.length ? (
           <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-ink-dim">
             {outcome.map((row) => <span key={row}>{row}</span>)}
+          </div>
+        ) : null}
+        {view.mission.summary ? (
+          <div className="mt-3 rounded border border-ok/25 bg-ok/5 px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ok">
+              {t('mission.summary')}
+            </div>
+            <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink-dim">
+              {view.mission.summary}
+            </p>
           </div>
         ) : null}
         {view.frontier.change ? (

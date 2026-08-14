@@ -119,7 +119,7 @@ def test_video_research_harness_is_grounded_before_authoring_domain(
     assert [call["run_label"] for call in runner.calls] == [
         "manager-classify-grounded",
     ]
-    assert "Repository inspection is mandatory" in runner.calls[0]["prompt"]
+    assert "First inspect only the repository evidence needed" in runner.calls[0]["prompt"]
     assert (
         tmp_path / "research" / "DOMAINS" / "video_robotics_research.json"
     ).exists()
@@ -429,8 +429,8 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     assert opts.dangerous_yolo is True
     assert opts.full_auto is False
     assert opts.reasoning_effort == "low"
-    assert "full repository tool environment" in call["prompt"].lower()
-    assert "investigate" in call["prompt"].lower()
+    assert "repository evidence needed to route correctly" in call["prompt"].lower()
+    assert "at most four file/search operations" in call["prompt"].lower()
 
 
 def test_copilot_vertical_decision_keeps_tools_available_for_repo_inspection(
@@ -455,8 +455,8 @@ def test_copilot_vertical_decision_keeps_tools_available_for_repo_inspection(
         "default",
     ]
     assert call["options"].sandbox_mode is None
-    assert "Repository inspection is mandatory" in call["prompt"]
-    assert "full repository tool environment" in call["prompt"]
+    assert "First inspect only the repository evidence needed" in call["prompt"]
+    assert "at most four file/search operations" in call["prompt"]
 
 
 def test_authoring_call_respects_safe_mode(tmp_path, monkeypatch):

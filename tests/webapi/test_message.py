@@ -1542,7 +1542,7 @@ def test_explicit_pending_answer_continues_without_a_model_call(
     assert "Inherited blocked mission objective" in continuation.objective
     assert continuation.iterate is False
     assert continuation.tags == [
-        "paper", "operator-reply", "manager-approved",
+        "paper", "operator-reply", "manager-approved", "review:required",
     ]
     assert "MANAGER OPERATOR-ANSWER DECISION" in (
         life / "inbox.jsonl"

@@ -14,6 +14,7 @@ import type {
   ProjectCostRow,
   RequestUsage,
   Role,
+  Snapshot,
 } from '../../core/src/types';
 import { ensureResponseOk } from '../../core/src/http';
 import {
@@ -209,15 +210,137 @@ const token = (): string | null => {
   }
 };
 
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const t = token();
   return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(path, { headers: authHeaders(), signal });
-  await ensureResponseOk(r, 'GET', path);
-  return (await r.json()) as T;
+/** Shared bearer value for non-HTTP transports such as project WebSockets. */
+export function authToken(): string {
+  return token() ?? '';
+}
+
+const API_META_TIMEOUT_MS = 8_000;
+const API_LOCAL_READ_TIMEOUT_MS = 12_000;
+
+export class PairingRequiredError extends Error {
+  constructor() {
+    super('This browser is not paired with Argus. Reopen it from Argus Desktop or use a fresh pairing link.');
+    this.name = 'PairingRequiredError';
+  }
+}
+
+export class LocalArgusUnavailableError extends Error {
+  readonly method: string;
+  readonly path: string;
+
+  constructor(method: string, path: string, detail = 'could not reach the local Argus service') {
+    super(`${method.toUpperCase()} ${path} ${detail}. Make sure Argus Desktop is running, then retry.`);
+    this.name = 'LocalArgusUnavailableError';
+    this.method = method.toUpperCase();
+    this.path = path;
+  }
+}
+
+export function isAuthenticationError(error: unknown): boolean {
+  if (error instanceof PairingRequiredError) return true;
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && Number((error as { status?: unknown }).status) === 401,
+  );
+}
+
+export function isConnectionError(error: unknown): boolean {
+  return isAuthenticationError(error) || error instanceof LocalArgusUnavailableError;
+}
+
+async function fetchArgus(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init);
+  } catch (error) {
+    // React Query cancellation is normal lifecycle control, not a backend
+    // outage. Preserve it so unmount/navigation cannot raise a false alarm.
+    if (init.signal?.aborted) throw error;
+    throw new LocalArgusUnavailableError(String(init.method ?? 'GET'), path);
+  }
+}
+
+export async function requestWithTimeout<T>(
+  path: string,
+  init: RequestInit,
+  timeoutMs: number,
+  consume: (response: Response) => Promise<T> | T,
+): Promise<T> {
+  const controller = new AbortController();
+  const parentSignal = init.signal ?? undefined;
+  let timedOut = false;
+  let removeParentAbortListener: () => void = () => {};
+
+  if (parentSignal) {
+    const abortFromParent = () => controller.abort(parentSignal.reason);
+    if (parentSignal.aborted) abortFromParent();
+    else {
+      parentSignal.addEventListener('abort', abortFromParent, { once: true });
+      removeParentAbortListener = () => parentSignal.removeEventListener('abort', abortFromParent);
+    }
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const operation = (async () => {
+    const response = await fetchArgus(path, { ...init, signal: controller.signal });
+    return await consume(response);
+  })();
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      const error = new Error(`request timed out after ${timeoutMs}ms`);
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, deadline]);
+  } catch (error) {
+    if (timedOut) {
+      const seconds = Math.round(timeoutMs / 1_000);
+      throw new LocalArgusUnavailableError(
+        String(init.method ?? 'GET'),
+        path,
+        `timed out after ${seconds}s because the local Argus service did not respond`,
+      );
+    }
+    throw error;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    removeParentAbortListener();
+  }
+}
+
+/** Bound connection establishment for callers that consume the body later. */
+export function fetchWithTimeout(
+  path: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  return requestWithTimeout(path, init, timeoutMs, (response) => response);
+}
+
+async function getJson<T>(
+  path: string,
+  signal?: AbortSignal,
+  timeoutMs?: number,
+): Promise<T> {
+  const init = { headers: authHeaders(), signal };
+  return requestWithTimeout(
+    path,
+    init,
+    timeoutMs ?? API_LOCAL_READ_TIMEOUT_MS,
+    async (response) => {
+      await ensureResponseOk(response, 'GET', path);
+      return (await response.json()) as T;
+    },
+  );
 }
 
 async function postJson<T = Record<string, unknown>>(
@@ -302,19 +425,33 @@ export function compatibleApiMeta(): Promise<ApiMeta> {
   if (!apiMetaPromise) {
     const request = (async () => {
       const path = '/api/meta';
-      const r = await fetch(path, { headers: authHeaders() });
-      if (r.status === 404) {
-        throw new Error('incompatible Argus API: service does not expose /api/meta');
-      }
-      await ensureResponseOk(r, 'GET', path);
-      return requireCompatibleApiMeta(
-        await r.json(),
-        (warning) => console.warn(`Argus API compatibility warning: ${warning}`),
+      const meta = await requestWithTimeout(
+        path,
+        { headers: authHeaders() },
+        API_META_TIMEOUT_MS,
+        async (response) => {
+          if (response.status === 404) {
+            throw new Error('incompatible Argus API: service does not expose /api/meta');
+          }
+          await ensureResponseOk(response, 'GET', path);
+          return requireCompatibleApiMeta(
+            await response.json(),
+            (warning) => console.warn(`Argus API compatibility warning: ${warning}`),
+          );
+        },
       );
+      if (meta.authentication?.required && !meta.authentication.authenticated) {
+        throw new PairingRequiredError();
+      }
+      return meta;
     })();
     apiMetaPromise = request;
-    void request.catch(() => {
-      if (apiMetaPromise === request) apiMetaPromise = undefined;
+    void request.catch((error) => {
+      // An unpaired page cannot heal by polling: it needs a new token-bearing
+      // navigation. Keep that rejected handshake cached to stop a 401 storm.
+      if (apiMetaPromise === request && !(error instanceof PairingRequiredError)) {
+        apiMetaPromise = undefined;
+      }
     });
   }
   return apiMetaPromise;
@@ -359,15 +496,18 @@ export function parseSSEFrames(buf: string): { frames: SSEFrame[]; rest: string 
   return { frames, rest: buf };
 }
 
+let activeSnapshotPrewarmSid: string | null = null;
+
 export const api = {
   meta: compatibleApiMeta,
   projectIndex: async () => {
     await compatibleApiMeta();
-    return getJson<ProjectIndex>('/api/projects');
+    return getJson<ProjectIndex>('/api/projects', undefined, API_LOCAL_READ_TIMEOUT_MS);
   },
   listProjects: async () => {
     await compatibleApiMeta();
-    return getJson<ProjectIndex>('/api/projects').then((result) => result.projects);
+    return getJson<ProjectIndex>('/api/projects', undefined, API_LOCAL_READ_TIMEOUT_MS)
+      .then((result) => result.projects);
   },
   projectCosts: async (signal?: AbortSignal) => {
     await compatibleApiMeta();
@@ -421,14 +561,29 @@ export const api = {
       workdir: string;
       workdir_preserved: boolean;
     }>('DELETE', P(sid)),
-  snapshot: async (sid: string, signal?: AbortSignal) => {
+  snapshot: async (sid: string, signal?: AbortSignal, prewarm = false) => {
     await compatibleApiMeta();
     const value = await getJson<unknown>(
-      P(sid, '/snapshot?compact=true&events_limit=1'),
+      P(sid, `/snapshot?compact=true&events_limit=1${prewarm ? '&prewarm=true' : ''}`),
       signal,
+      API_LOCAL_READ_TIMEOUT_MS,
     );
     return requireSnapshotContract(value);
   },
+  activeSnapshot: async (sid: string, signal?: AbortSignal): Promise<Snapshot> => {
+    const prewarm = activeSnapshotPrewarmSid !== sid;
+    if (prewarm) activeSnapshotPrewarmSid = sid;
+    try {
+      return await api.snapshot(sid, signal, prewarm);
+    } catch (error) {
+      if (prewarm && activeSnapshotPrewarmSid === sid) {
+        activeSnapshotPrewarmSid = null;
+      }
+      throw error;
+    }
+  },
+  prefetchSnapshot: (sid: string, signal?: AbortSignal) =>
+    api.snapshot(sid, signal, false),
   status: (sid: string, signal?: AbortSignal) =>
     getJson<StatusView>(P(sid, '/status'), signal),
   journal: (sid: string, n = 20, signal?: AbortSignal) =>

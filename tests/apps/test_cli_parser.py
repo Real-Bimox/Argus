@@ -23,7 +23,8 @@ def test_public_help_distinguishes_human_and_automation_surfaces() -> None:
     assert "supervised foreground worker" in help_text
     assert "argus --daemon" in help_text
     assert "persistent unattended background worker" in help_text
-    assert "argus --doctor" in help_text
+    assert "argus doctor" in help_text
+    assert "argus repair --plan" in help_text
     assert "argus update" in help_text
     assert "--status" not in help_text
     assert "dashboard" not in help_text.lower()
@@ -44,6 +45,47 @@ def test_debug_help_still_exposes_internal_flags(monkeypatch: pytest.MonkeyPatch
     assert "--daemon" in help_text
     assert "--status" in help_text
     assert "wiki" in help_text
+
+
+def test_parser_exposes_doctor_and_repair_subcommands() -> None:
+    doctor = build_parser().parse_args(["doctor", "--json", "--deep"])
+    assert doctor.command == "doctor"
+    assert doctor.json is True
+    assert doctor.deep is True
+
+    repair = build_parser().parse_args(["repair", "--safe", "--json"])
+    assert repair.command == "repair"
+    assert repair.safe is True
+    assert repair.json is True
+
+
+def test_parser_accepts_doctor_safe_fix_and_repair_lifecycle() -> None:
+    doctor = build_parser().parse_args(["doctor", "--fix-safe", "--json"])
+    legacy = build_parser().parse_args(["-doctor", "--fix-safe", "--json"])
+    apply = build_parser().parse_args(["repair", "--apply", "rp-20260814T000000Z-abc12345", "--yes"])
+    prepare = build_parser().parse_args(["repair", "--prepare-pr", "rp-20260814T000000Z-abc12345"])
+    submit = build_parser().parse_args(["repair", "--submit-pr", "rp-20260814T000000Z-abc12345", "--yes"])
+
+    assert doctor.command == "doctor" and doctor.fix_safe is True
+    assert legacy.doctor is True and legacy.fix_safe is True and legacy.json is True
+    assert apply.apply == "rp-20260814T000000Z-abc12345" and apply.yes is True
+    assert prepare.prepare_pr == "rp-20260814T000000Z-abc12345"
+    assert submit.submit_pr == "rp-20260814T000000Z-abc12345" and submit.yes is True
+
+
+def test_missing_repair_plan_fails_without_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = main([
+        "--life-dir", str(tmp_path),
+        "repair", "--apply", "rp-20260814T000000Z-deadbeef", "--yes",
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 3
+    assert "repair refused" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_parser_exposes_update_subcommand():
@@ -107,11 +149,21 @@ def test_parser_accepts_grok_backend() -> None:
     assert args.backend == "grok"
 
 
+def test_parser_accepts_qoder_backend() -> None:
+    args = build_parser().parse_args(["--doctor", "--backend", "qoder"])
+    assert args.backend == "qoder"
+
+
 def test_parser_exposes_cli_doctor() -> None:
     args = build_parser().parse_args(["--doctor", "--backend", "copilot"])
 
     assert args.doctor is True
     assert args.backend == "copilot"
+
+
+def test_parser_accepts_hidden_single_dash_doctor_alias() -> None:
+    args = build_parser().parse_args(["-doctor"])
+    assert args.doctor is True
 
 
 def test_parser_accepts_wiki_ingest_subcommand(tmp_path: Path):
@@ -254,8 +306,15 @@ def test_parser_no_daemon_default_false():
     assert args.no_daemon is False
 
 
-def test_parser_accepts_documented_web_port_alias():
-    args = build_parser().parse_args(["--web", "--port", "8800"])
+def test_parser_accepts_documented_web_host_and_port_aliases():
+    args = build_parser().parse_args([
+        "--web",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8800",
+    ])
+    assert args.web_host == "0.0.0.0"
     assert args.web_port == 8800
 
 
@@ -274,11 +333,14 @@ def test_web_uses_documented_flags_and_explicit_life_dir(
     assert main([
         "--web",
         "--no-open",
+        "--host",
+        "127.0.0.1",
         "--port",
         "8800",
         "--life-dir",
         str(tmp_path),
     ]) == 0
+    assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 8800
     assert captured["global_root"] == tmp_path
 
@@ -449,6 +511,31 @@ def test_main_rejects_objective_without_continuous(capsys: pytest.CaptureFixture
     err = capsys.readouterr().err
     assert rc == 2
     assert "--objective requires --continuous" in err
+
+
+def test_main_loads_objective_file_before_continuous_validation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    objective = tmp_path / "objective.txt"
+    objective.write_text("Fix the Harbor task", encoding="utf-8")
+
+    rc = main(["--objective-file", str(objective)])
+
+    assert rc == 2
+    assert "--objective requires --continuous" in capsys.readouterr().err
+
+
+def test_main_reports_missing_objective_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing = tmp_path / "missing.txt"
+
+    rc = main(["--continuous", "--objective-file", str(missing)])
+
+    assert rc == 2
+    assert "could not read --objective-file" in capsys.readouterr().err
 
 
 def test_main_rejects_continuous_without_objective(capsys: pytest.CaptureFixture[str]) -> None:

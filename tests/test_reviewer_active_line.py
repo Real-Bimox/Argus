@@ -49,6 +49,7 @@ def test_reviewer_final_handoff_requires_explicit_progress_fields():
         "PLAN_CHALLENGE=<invalidated plan assumption, or none>",
         "PLAN_ALTERNATIVE=<better technical route, or none>",
         "AUTHORITY_IMPACT=technical|manager_contract|operator",
+        "OPERATOR_OPTIONS=<id :: label :: description; ...|none>",
     ):
         assert field in p
     assert "Return only STATUS, REASON, NEXT_ACTION and OPERATOR_QUESTION" not in p

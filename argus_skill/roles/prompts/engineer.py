@@ -15,19 +15,34 @@ from .types import RoleName, RolePromptRequest
 MISSION = "mission"
 OPERATIONS = frozenset({MISSION})
 
-_LONG_EXPERIMENT_RULE = (
+_POSIX_LONG_EXPERIMENT_RULE = (
     "For commands expected to run over two minutes, use the bash tool to submit "
-    "the command through Argus's durable runner exactly as "
-    "`\"${ARGUS_SKILL_PYTHON:-python3}\" -m "
-    "argus_skill.tools.subagent submit --task-id <id> --mode supervised "
-    "--timeout <seconds> --command '<command>'`. Do not use the provider's native "
-    "`task(mode=\"background\")` tool or a session-owned background shell as the "
-    "owner or supervisor of long-running work. Before ending the turn, require "
-    "the submit JSON receipt to contain `state=submitted`, `task_id`, `run_id`, "
-    "and `check_with`; record that Argus task/run id and status command in "
-    "CHECKPOINT.md when another round must observe it. Then yield or do independent "
-    "work. Never hold the provider turn open with foreground shell execution or polling."
+    "through Argus's durable runner: `\"${ARGUS_SKILL_PYTHON:-python3}\" -m "
+    "argus_skill.tools.subagent submit --task-id <id> --mode direct "
+    "--timeout <seconds> --command '<command>'`. Use `--mode supervised` only "
+    "when an experiment needs semantic monitoring. Never use the provider's native "
+    "`task(mode=\"background\")` tool or a session-owned background shell for "
+    "durable work. Before handoff, require a JSON receipt with `state=submitted`, "
+    "`task_id`, `run_id`, and `check_with`; record those in CHECKPOINT.md only "
+    "when another round must observe the run. Then yield or do independent work; "
+    "do not poll in the foreground."
 )
+
+_WINDOWS_LONG_EXPERIMENT_RULE = (
+    "Native Windows preview cannot detach Argus subagents. Do not call "
+    "`argus_skill.tools.subagent submit`, provider-native background tasks, or "
+    "session-owned background shells for durable work. Run the command in the "
+    "foreground only when it fits this turn; otherwise use WSL2/an approved "
+    "durable runner or report a blocker. Never claim a detached run was submitted."
+)
+
+
+def _long_experiment_rule() -> str:
+    return (
+        _WINDOWS_LONG_EXPERIMENT_RULE
+        if native_shell_contract()
+        else _POSIX_LONG_EXPERIMENT_RULE
+    )
 
 
 def append_live_guidance(prompt: str, guidance: list[str]) -> str:
@@ -165,7 +180,7 @@ def build_mission_prompt(
         "repeatedly fail, prioritize fresh investigation of primary papers, official "
         "implementations, issues, hardware/API behavior, and the performance model "
         "before deciding the next implementation. Record durable findings in the Wiki.\n"
-        + _LONG_EXPERIMENT_RULE
+        + _long_experiment_rule()
     )
     learning_block = _post_task_learning_section(
         require_post_task_learning=require_post_task_learning,
@@ -176,14 +191,14 @@ def build_mission_prompt(
     sections.append(
         "## Handoff\n"
         "CHECKPOINT.md is the only role-maintained cross-round handoff file; do not "
-        "create handoff or evidence packets. End with a concise change summary and "
-        "decisive check. The Host invokes Reviewer only when required; do not spawn "
-        "a Reviewer subagent. End with `MILESTONE_STATUS=done` only when the full "
-        "milestone reached its decision point; otherwise write the next action to "
-        "CHECKPOINT.md and end with `MILESTONE_STATUS=continue`. Also end with "
-        "`OPERATOR_QUESTION=<question>` only when blocked by a decision or input "
-        "that only the operator can provide; otherwise use `OPERATOR_QUESTION=none`. "
-        "Never keep opening fresh rounds while waiting for that answer."
+        "create handoff or evidence packets. Host invokes Reviewer only when required; "
+        "do not spawn a Reviewer subagent. End with a concise summary, decisive check, "
+        "`MILESTONE_STATUS=done|continue`, "
+        "`OPERATOR_QUESTION=<operator-only question|none>`, and "
+        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. "
+        "Agent-author at most five complete choices in the operator's language; `stop` "
+        "explicitly stops and a question parks the task. During long work, briefly report "
+        "meaningful progress to the operator; never narrate every tool or hidden reasoning."
     )
     static_text = "\n\n".join(sections)
     delta_text = "\n\n".join(delta_sections)
@@ -197,14 +212,16 @@ def build_mission_prompt(
         "and the Reviewer guidance below. Do not repeat an unchanged failing "
         "command; reduce it to the cheapest decisive diagnostic. The original "
         "task, active vertical, and repository instructions remain binding.\n"
-        + _LONG_EXPERIMENT_RULE
+        + _long_experiment_rule()
         + "\n\n"
         "## Handoff\n"
         "CHECKPOINT.md remains the only role-maintained cross-round handoff file. "
         "End with a concise natural summary, decisive check, and "
         "`MILESTONE_STATUS=done|continue`. End with "
-        "`OPERATOR_QUESTION=<operator-only question|none>`; a real question parks "
-        "the task instead of opening another Engineer round."
+        "`OPERATOR_QUESTION=<operator-only question|none>` and "
+        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. Agent-author "
+        "complete choices in the operator's language. A real question parks the task. "
+        "For long work, give brief operator-facing updates at meaningful transitions."
     )
     if shell_contract:
         compact = shell_contract + "\n\n" + compact

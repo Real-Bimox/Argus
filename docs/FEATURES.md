@@ -25,7 +25,7 @@ flowchart TD
     U[Operator message] --> F[Manager front door]
     F -->|SELF| S[Manager SELF turn]
     S --> SR[Reply]
-    SR --> SL{Five completed user turns?}
+    SR --> SL{Five operator turns since last SELF review?}
     SL -->|Yes| SLR[Isolated SELF learning review]
     SL -->|No| IDLE[Ready]
     SLR --> IDLE
@@ -160,21 +160,38 @@ outcome genuinely requires dependent phases or independent evidence tracks.
 Missing scope, manifest, checkpoint, Wiki, or report files are not automatic
 reasons to delay substantive work.
 
-## 5. SELF and TEAM evolution
+## 5. Learning, Wiki, and framework self-maintenance
+
+Argus has four distinct evolution mechanisms. SELF and TEAM learning maintain
+reusable Skills; the Wiki stores durable project facts; framework
+self-maintenance repairs or adopts Argus runtime code. These names are not
+interchangeable: a `manager.self_maintenance.*` event is not a SELF learning
+review.
 
 ### SELF evolution
 
-- Trigger: after every five completed user turns.
-- Input: bounded recent conversation evidence.
+- Events: `self.learning.review.started`, `self.learning.review.completed`, and
+  `self.learning.review.failed`.
+- Trigger: after a successful SELF/chat reply when at least five operator turns
+  have accumulated since the previous SELF review.
+- Execution: an asynchronous post-answer review that never delays or changes the
+  answer that triggered it.
+- Input: at most the latest twelve transcript turns.
 - Learns: stable terminology, interpretation rules, reply preferences, and
-  reusable SELF procedures.
-- Destination: profile `skills/self/`.
+  reusable SELF answer/tool procedures.
+- Excludes: one-off history, transient paths and process IDs, unresolved
+  failures, secrets, and generic advice.
+- Destination: at most one related Skill under profile `skills/self/`.
 - First use: the next applicable turn in the same session.
 - Reuse: later tasks and later sessions using the same profile.
 
 ### TEAM evolution
 
+- Events: `team.learning.review.started`, `team.learning.review.completed`, and
+  `team.learning.review.failed`.
 - Trigger: after a TEAM mission settles.
+- Execution: an isolated post-mission learning review after the canonical
+  mission result is already final.
 - Success rule: one canonical successful mission is verified evidence for a
   reusable project candidate.
 - Failure rule: learn only from a verified root cause or a repeated failure
@@ -185,6 +202,40 @@ reasons to delay substantive work.
   `manager/`, `planner/`, `engineer/`, or `reviewer/`.
 - First use: the next applicable mission.
 - Reuse: later tasks and later sessions using the same profile.
+
+### Project Wiki
+
+- Events include `wiki.initialized`, `wiki.created`, and `wiki.updated`.
+- Purpose: declarative project knowledge, not execution procedure.
+- Contains: project architecture and contracts, support and limitation
+  matrices, stable environment constraints, and scope-qualified measurements.
+- Excludes: procedures and checklists (Skills), task history, handoffs,
+  evaluator results, and transient runtime metadata.
+- Root: `.autors/<semantic-project>/wiki/`, with `INDEX.md` and semantic pages
+  under `pages/`.
+- Bootstrap: when Wiki support and automatic initialization are enabled, the
+  runtime creates the root before the first mission; an existing root is always
+  discovered and reused.
+- Use: roles read `INDEX.md` for progressive disclosure and edit the relevant
+  page and index directly during reviewed work.
+- Scope: project workspace. Wiki facts do not silently become profile Skills.
+
+### Framework self-maintenance
+
+- Event family: `manager.self_maintenance.*`, deliberately separate from
+  `self.learning.review.*`.
+- Trigger: observed supervisor/Planner/Wiki-hook failures may request an
+  immediate audit; otherwise the daemon audits on a recovery interval (30
+  minutes by default).
+- Input: a bounded, deduplicated set of runtime observations plus upstream
+  update availability.
+- Decision: Manager chooses `no_action`, evidence-bound `repair`, or `adopt`.
+- Execution: repairs run in a private framework worktree with explicit affected
+  paths and an acceptance check. Upstream adoption also uses a private worktree.
+- Safety: the change must pass independent review and canary validation before
+  handoff/publication; the maintenance role does not push, merge, or publish.
+- Scope: Argus framework source and runtime release state. It does not learn user
+  preferences and does not write SELF Skills or project Wiki pages.
 
 ### Cross-role visibility
 
@@ -215,9 +266,13 @@ Consequences:
 | --- | --- | --- | --- | --- |
 | SELF review | Cannot change the reply that triggered it | Available | Available | Only if the profile is copied or synced |
 | TEAM review | Cannot change the settled mission | Available | Available | Only if the profile is copied or synced |
+| Wiki edit | Available to later turns after the edit | Available | Available when the same project workspace is reused | Only if the project workspace is copied or synced |
+| Framework self-maintenance | Never mutates the active turn in place | Available only after reviewed canary adoption | Available through the adopted runtime revision | Available only when that runtime revision is installed |
 | Custom vertical promotion | Applies after review | Available | Available | Only if learned vertical data is copied or synced |
 
-Learning is profile-scoped, not silently cloud-synchronized.
+SELF and TEAM Skills are profile-scoped, Wiki knowledge is project-scoped, and
+framework self-maintenance is runtime-revision-scoped. None is silently
+cloud-synchronized.
 
 ## 6. Restrained execution and token efficiency
 

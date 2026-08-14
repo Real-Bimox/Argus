@@ -177,6 +177,7 @@ class ReviewDecision:
     reason: str
     next_action: str
     operator_question: str = ""
+    operator_options: list[dict[str, Any]] = field(default_factory=list)
     checkpoint_recommended: bool = False
     # Strategic judgment is separate from bounded implementation acceptance.
     # A round may be correctly ``done`` yet still fail to move the operator's
@@ -215,6 +216,11 @@ class ReviewDecision:
             "reason": self.reason,
             "next_action": self.next_action,
             "operator_question": self.operator_question or "",
+            "operator_options": [
+                dict(option)
+                for option in (self.operator_options or [])
+                if isinstance(option, dict)
+            ],
             "checkpoint_recommended": bool(self.checkpoint_recommended),
             "review_source": self.review_source or "reviewer",
             "prompt_block_stats": {

@@ -27,18 +27,33 @@ const N = (event: EventMsg, key: string): number | null => {
   return Number.isFinite(value) ? value : null;
 };
 
+export function formatMissionRouting(routing: MissionView['routing']): string {
+  const parts = [
+    routing.route ? routing.route.toUpperCase() : '',
+    routing.vertical,
+    routing.workflow_mode ? routing.workflow_mode.toUpperCase() : '',
+  ].filter(Boolean);
+  if (routing.lifetime === 'standing') parts.push('STANDING · OPEN-ENDED');
+  else if (routing.lifetime === 'bounded_increment') parts.push('BOUNDED INCREMENT');
+  else if (routing.lifetime === 'bounded' && routing.continuous) {
+    parts.push('BOUNDED · FINITE CONTINUOUS');
+  } else if (routing.lifetime) parts.push(routing.lifetime.toUpperCase());
+  return parts.join(' · ');
+}
+
 function copyView(view: MissionView): MissionView {
   return JSON.parse(JSON.stringify(view)) as MissionView;
 }
 
 export function emptyMissionView(): MissionView {
   return {
-    schema_version: 3,
+    schema_version: 5,
     bootstrapped: false,
     mission: {
       id: '',
       title: '',
       objective: '',
+      summary: '',
       status: 'idle',
       started_at: null,
       completed_at: null,
@@ -47,6 +62,14 @@ export function emptyMissionView(): MissionView {
       campaign_elapsed_seconds: 0,
     },
     stage: { id: '', label: '' },
+    routing: {
+      route: '',
+      vertical: '',
+      workflow_mode: '',
+      lifetime: '',
+      continuous: false,
+      open_ended: false,
+    },
     round: { current: 0, max: 0 },
     active_role: '',
     roles: ROLE_NAMES.map((role) => ({ role, status: 'waiting', label: 'Waiting', updated_at: 0 })),
@@ -202,6 +225,12 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     view.mission.title = S(event, 'objective').slice(0, 240);
     view.mission.objective = S(event, 'objective');
     view.mission.status = 'framed';
+    view.routing.route = S(event, 'route') || view.routing.route || 'team';
+    view.routing.vertical = S(event, 'vertical') || view.routing.vertical;
+    view.routing.workflow_mode = S(event, 'workflow_mode') || view.routing.workflow_mode;
+    view.routing.lifetime = S(event, 'lifetime') || view.routing.lifetime;
+    if ('continuous' in event) view.routing.continuous = event.continuous === true;
+    if ('open_ended' in event) view.routing.open_ended = event.open_ended === true;
     const currentStage = S(event, 'current_stage');
     const stages = Array.isArray(event.stages) ? event.stages : [];
     if (currentStage) {
@@ -288,6 +317,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
       id: S(event, 'item_id'),
       title: S(event, 'title'),
       objective: S(event, 'objective'),
+      summary: '',
       status: 'working',
       started_at: ts,
       completed_at: null,
@@ -476,6 +506,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     view.mission.id = S(event, 'item_id') || view.mission.id;
     view.mission.title = S(event, 'title') || view.mission.title;
     view.mission.objective = S(event, 'objective') || view.mission.objective;
+    view.mission.summary = S(event, 'summary');
     view.mission.status = presentation.missionStatus;
     view.mission.completed_at = ts;
     view.outcome = missionOutcomeDimensions(event);
@@ -491,7 +522,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
       event,
       'engineer',
       presentation.label,
-      S(event, 'title') || S(event, 'status'),
+      S(event, 'summary') || S(event, 'title') || S(event, 'status'),
       missionTimelineTone(presentation.tone),
     );
     addRoleWork(
@@ -500,7 +531,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
       'engineer',
       'completion',
       presentation.label,
-      S(event, 'title') || S(event, 'status'),
+      S(event, 'summary') || S(event, 'title') || S(event, 'status'),
       presentation.missionStatus,
     );
   }
@@ -522,6 +553,14 @@ function mergeSnapshot(view: MissionView, snapshot: Snapshot, artifacts: Artifac
     || view.mission.id
     || !['', 'idle'].includes(view.mission.status),
   );
+  if (snapshot.continuous?.enabled) {
+    view.routing.route = view.routing.route || 'team';
+    view.routing.continuous = true;
+    view.routing.open_ended = snapshot.continuous.open_ended === true;
+    view.routing.lifetime = view.routing.open_ended
+      ? 'standing'
+      : view.routing.lifetime || 'bounded';
+  }
   const objective = selected?.objective
     || selected?.title
     || (snapshot.continuous?.enabled ? snapshot.continuous.objective : '')

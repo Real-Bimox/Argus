@@ -180,7 +180,9 @@ def test_frontend_dependency_links_are_temporary(tmp_path: Path) -> None:
             Path("frontend/tui/node_modules"),
         ):
             target = worktree / relative
-            assert target.is_symlink()
+            assert target.is_symlink() or (
+                hasattr(target, "is_junction") and target.is_junction()
+            )
             assert (target / "marker").read_text(encoding="utf-8") == "installed\n"
 
     assert not (worktree / "frontend/web/node_modules").exists()
@@ -369,6 +371,65 @@ def test_manager_no_action_never_creates_make_work(tmp_path: Path) -> None:
     })
     assert controller.audit_if_due(daemon_state={}) == ""
     assert manager.calls == 2
+
+
+def test_repeated_failed_repair_family_is_suppressed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    manager = _Manager()
+    controller = _controller(tmp_path, manager)
+    events: list[dict[str, object]] = []
+    controller.on_event = events.append
+    from argus_skill.core.runtime_identity import source_revision
+
+    revision = str(source_revision() or controller.framework_root)
+    paths = sorted(manager.affected_paths)
+    controller._write_state(repair_revision=revision, repair_paths=paths)
+    controller._record_repair_failure(
+        controller._state(),
+        phase="review_rejected",
+        error="provider failed before completion",
+    )
+    controller._record_repair_failure(
+        controller._state(),
+        phase="review_rejected",
+        error="provider failed before completion",
+    )
+    controller.observe({
+        "type": "life.planner.error",
+        "ts": 20.0,
+        "error": "same planner schema family failed again",
+    })
+    controller._write_state(
+        phase="",
+        event_audit_pending=True,
+        last_audit_at=0.0,
+        active_item_id="",
+    )
+    monkeypatch.setattr(
+        controller,
+        "_prepare_worktree",
+        lambda _incident_id: (_ for _ in ()).throw(
+            AssertionError("suppressed repair must not create a worktree")
+        ),
+    )
+
+    assert controller.audit_if_due(daemon_state={}) == ""
+
+    state = controller._state()
+    assert manager.calls == 1
+    assert controller.memory.backlog.all() == []
+    assert state["phase"] == "repair_suppressed"
+    assert state["repair_revision"] == revision
+    assert state["repair_paths"] == paths
+    assert state["failed_repair_attempts"] == 2
+    assert events[-1] == {
+        "type": "manager.self_maintenance.repair_suppressed",
+        "failure_count": 2,
+        "affected_paths": paths,
+        "agent_layer": "manager",
+    }
 
 
 def test_unmerged_local_repair_blocks_a_new_maintenance_audit(
@@ -1181,6 +1242,15 @@ def test_paused_or_failed_result_is_not_positive_canary_health(
         "results": [{"status": "paused_budget", "success": False}],
     }) == ""
     assert controller._state()["phase"] == "canary_running"
+    controller._write_state(canary_started_at=time.time() - 60.0)
+    assert controller.publish_after_canary(summary={
+        "stopped_by": "backlog_empty",
+        "results": [],
+    }) == ""
+    state = controller._state()
+    assert state["phase"] == "canary_running"
+    assert state["canary_mission_observed"] is True
+    assert state["canary_success_observed"] is False
 
 
 def test_stable_idle_canary_is_accepted_locally(
@@ -1414,7 +1484,10 @@ def test_manager_directory_path_does_not_authorize_descendants(
     assert "argus_skill/base.py" in controller._state()["error"]
 
 
-def test_generated_output_symlink_is_rejected_before_build(tmp_path: Path) -> None:
+def test_generated_output_symlink_is_rejected_before_build(
+    tmp_path: Path,
+    require_symlink_support,
+) -> None:
     controller = _controller(tmp_path, _Manager())
     repo, base = _publication_repo(tmp_path)
     (repo / "argus_skill" / "new_feature.py").write_text(

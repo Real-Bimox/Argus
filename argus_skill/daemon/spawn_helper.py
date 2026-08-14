@@ -11,7 +11,10 @@ from .life_worker import spawn_detached_daemon
 
 def main() -> int:
     config = config_from_payload(json.load(sys.stdin))
-    return spawn_detached_daemon(config, quiet=True)
+    # This helper's stdio is captured by ``spawn_detached_daemon_clean``.  Keep
+    # failure output enabled so the parent WebAPI can return an actionable
+    # diagnostic instead of reducing every failure to an opaque ``rc=1``.
+    return spawn_detached_daemon(config, quiet=False)
 
 
 if __name__ == "__main__":

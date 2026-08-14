@@ -58,6 +58,11 @@ export interface ApiMeta {
   snapshot_schema_version: number;
   capabilities: string[];
   runtime: ApiRuntimeIdentity;
+  /** Optional for compatibility with pre-handshake-auth servers. */
+  authentication?: {
+    required: boolean;
+    authenticated: boolean;
+  };
 }
 
 export interface ApiCompatibility {

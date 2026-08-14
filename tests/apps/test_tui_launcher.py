@@ -6,6 +6,27 @@ import pytest
 from argus_skill.apps import tui_launcher
 
 
+class _ReconfigurableStream:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, str]] = []
+
+    def reconfigure(self, **kwargs: str) -> None:
+        self.calls.append(dict(kwargs))
+
+
+def test_windows_console_streams_are_forced_to_utf8(monkeypatch) -> None:
+    stdout = _ReconfigurableStream()
+    stderr = _ReconfigurableStream()
+    monkeypatch.setattr(tui_launcher.sys, "stdout", stdout)
+    monkeypatch.setattr(tui_launcher.sys, "stderr", stderr)
+
+    tui_launcher._configure_windows_console_encoding(platform_name="nt")
+
+    expected = [{"encoding": "utf-8", "errors": "replace"}]
+    assert stdout.calls == expected
+    assert stderr.calls == expected
+
+
 @pytest.fixture(autouse=True)
 def _trusted_special_prompt(monkeypatch) -> None:
     monkeypatch.setattr(
@@ -141,7 +162,64 @@ def test_public_admin_flags_stay_on_python_admin_path(monkeypatch) -> None:
     )
     assert tui_launcher.main(["--setup", "--non-interactive"]) == 7
     assert tui_launcher.main(["--pair-plan"]) == 7
-    assert seen == [["--setup", "--non-interactive"], ["--pair-plan"]]
+    assert tui_launcher.main(["--daemon-stop", "--resume", "s-holder"]) == 7
+    assert seen == [
+        ["--setup", "--non-interactive"],
+        ["--pair-plan"],
+        ["--daemon-stop", "--resume", "s-holder"],
+    ]
+
+
+def test_web_launch_uses_tui_unless_raw_backend_options_are_requested(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    bundle = tmp_path / "argus.mjs"
+    bundle.write_text("// bundle", encoding="utf-8")
+    seen = {}
+    admin = []
+    monkeypatch.setattr(tui_launcher, "_bundle_path", lambda: bundle)
+    monkeypatch.setattr(tui_launcher.shutil, "which", lambda name: "/usr/bin/node")
+    monkeypatch.setattr(tui_launcher, "_node_major", lambda node: 20)
+    monkeypatch.setattr(tui_launcher, "_needs_foreground_spawn", lambda: False)
+    monkeypatch.setattr(
+        tui_launcher.os,
+        "execv",
+        lambda executable, argv: seen.update(executable=executable, argv=argv),
+    )
+    monkeypatch.setattr(
+        tui_launcher,
+        "_run_python_admin",
+        lambda argv: admin.append(argv) or 7,
+    )
+
+    assert tui_launcher.main(["--web", "--no-open"]) == 0
+    assert seen["argv"] == ["/usr/bin/node", str(bundle), "--web", "--no-open"]
+    assert tui_launcher.main(["--web", "--web-port", "8800"]) == 7
+    assert tui_launcher.main(["--web", "--host", "127.0.0.1", "--port", "8801"]) == 7
+    assert admin == [
+        ["--web", "--web-port", "8800"],
+        ["--web", "--host", "127.0.0.1", "--port", "8801"],
+    ]
+
+
+def test_documented_web_aliases_before_action_stay_on_python_admin_path(
+    monkeypatch,
+) -> None:
+    seen = []
+    monkeypatch.setattr(
+        tui_launcher,
+        "_run_python_admin",
+        lambda argv: seen.append(argv) or 7,
+    )
+    monkeypatch.setattr(
+        tui_launcher,
+        "_bundle_path",
+        lambda: (_ for _ in ()).throw(AssertionError("TUI must not launch")),
+    )
+    argv = ["--host", "127.0.0.1", "--port", "8801", "--web"]
+
+    assert tui_launcher.main(argv) == 7
+    assert seen == [argv]
 
 
 def test_admin_subcommands_stay_on_python_admin_path(monkeypatch) -> None:

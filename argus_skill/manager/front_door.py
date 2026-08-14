@@ -468,6 +468,9 @@ class PreparedManagerHandoff:
     decision: Any
     intent_id: str
     root_task_id: str | None
+    lifetime: str = "bounded"
+    continuous: bool | None = None
+    open_ended: bool | None = None
 
     @property
     def execution_task(self) -> str:
@@ -497,6 +500,23 @@ class PreparedManagerHandoff:
         *,
         continuous_generation: int | None = None,
     ) -> None:
+        workflow_mode = str(
+            getattr(division, "workflow_mode", "staged") or "staged"
+        ).strip().lower()
+        lifetime = str(self.lifetime or "bounded").strip().lower()
+        inferred_continuous = lifetime == "standing" or (
+            lifetime == "bounded" and workflow_mode == "staged"
+        )
+        continuous = (
+            self.continuous
+            if self.continuous is not None
+            else inferred_continuous
+        )
+        open_ended = (
+            self.open_ended
+            if self.open_ended is not None
+            else lifetime == "standing"
+        )
         event = {
             "type": "life.manager.intent.completed",
             "agent_layer": "manager",
@@ -507,7 +527,11 @@ class PreparedManagerHandoff:
             "execution_task": self.execution_task,
             "vertical": getattr(division, "vertical", ""),
             "domain": getattr(division, "domain", ""),
-            "workflow_mode": getattr(division, "workflow_mode", "staged"),
+            "route": "team",
+            "workflow_mode": workflow_mode,
+            "lifetime": lifetime,
+            "continuous": continuous,
+            "open_ended": open_ended,
             "kind": getattr(division, "kind", ""),
             "learned_vertical_status": getattr(
                 division,
@@ -517,8 +541,8 @@ class PreparedManagerHandoff:
             "stages": list(getattr(division, "stages", []) or []),
             "reason": getattr(division, "headline", lambda: "")(),
             "text": (
-                f"manager interpreted user task as "
-                f"{getattr(division, 'vertical', '')}"
+                "manager routed TEAM · "
+                f"{getattr(division, 'vertical', '')} · {workflow_mode} · {lifetime}"
             ),
         }
         if continuous_generation is not None:
@@ -560,6 +584,15 @@ def prepare_manager_execution_task(
     ensure_runner: Callable[[dict[str, Any], Any], Any] | None = None,
 ) -> PreparedManagerHandoff:
     intent_id = f"intent-{time.time_ns()}"
+    lifetime = str(
+        chat_state.get("_frontdoor_lifetime", "bounded") or "bounded"
+    ).strip().lower()
+    configured_continuous = bool(
+        chat_state.get("config", {}).get("continuous", False)
+    )
+    configured_open_ended = bool(
+        chat_state.get("_continuous_open_ended", False)
+    )
     _emit_manager_event(mem, {
         "type": "life.manager.intent.started",
         "agent_layer": "manager",
@@ -592,6 +625,9 @@ def prepare_manager_execution_task(
             decision=decision,
             intent_id=intent_id,
             root_task_id=root_task_id,
+            lifetime=lifetime,
+            continuous=configured_continuous,
+            open_ended=configured_open_ended,
         )
     except Exception as exc:
         prepared = PreparedManagerHandoff(
@@ -601,6 +637,9 @@ def prepare_manager_execution_task(
             decision=None,
             intent_id=intent_id,
             root_task_id=root_task_id,
+            lifetime=lifetime,
+            continuous=configured_continuous,
+            open_ended=configured_open_ended,
         )
         prepared.failed(exc)
         if isinstance(exc, ManagerHandoffError):
@@ -845,14 +884,15 @@ def manager_continuous_handoff(
         lock_factory = getattr(prepared.manager, "pipeline_lock", None)
         pipeline_lock = lock_factory() if callable(lock_factory) else nullcontext()
         with pipeline_lock:
+            resolved_open_ended = bool(
+                chat_state.get("_continuous_open_ended", expected.open_ended)
+            )
             swapped = compare_and_swap_continuous_config(
                 life_dir,
                 expected=expected,
                 enabled=True,
                 objective=prepared.execution_task,
-                open_ended=bool(
-                    chat_state.get("_continuous_open_ended", expected.open_ended)
-                ),
+                open_ended=resolved_open_ended,
                 before_write=_commit,
             )
     except Exception as exc:
@@ -872,6 +912,9 @@ def manager_continuous_handoff(
         raise ManagerHandoffSupersededError(
             "newer continuous command superseded Manager handoff"
         )
+    prepared.continuous = True
+    prepared.open_ended = resolved_open_ended
+    prepared.lifetime = "standing" if resolved_open_ended else "bounded"
     prepared.completed(
         committed["division"],
         continuous_generation=expected.generation + 1,

@@ -8,7 +8,7 @@ import pytest
 from argus_skill.adapters.agent_cli_backend import _needed_for_live_progress
 from argus_skill.agent_cli.agent_cli_runner import AgentCliRunner, RunnerOptions
 from argus_skill.agent_cli.runner_backend import BACKEND_PI
-from argus_skill.core.codex_usage import extract_token_usage
+from argus_skill.core.token_usage import extract_token_usage
 
 
 def _runner() -> AgentCliRunner:
@@ -30,7 +30,7 @@ def test_pi_command_uses_json_stdin_and_exact_session(
         ),
     )
 
-    assert Path(command[0]).name == "pi"
+    assert Path(command[0]).stem.casefold() == "pi"
     assert command[1:] == [
         "--mode",
         "json",

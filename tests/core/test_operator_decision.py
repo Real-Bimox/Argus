@@ -15,7 +15,12 @@ def test_card_is_readable_and_uses_item_identity() -> None:
         title="Choose a route",
         reason="The current API is unavailable.",
         question="Use the local fallback?",
-        recommendation="Use the local fallback and keep the same acceptance check.",
+        options=[{
+            "id": "local-fallback",
+            "label": "Use the local fallback",
+            "description": "Keep the same acceptance check.",
+            "requires_note": False,
+        }],
         evidence=[{"ref": "logs/run.txt", "why": "provider refusal"}],
         project_id="s-project",
     )
@@ -24,7 +29,8 @@ def test_card_is_readable_and_uses_item_identity() -> None:
     assert card["revision"] == 1
     assert card["project_id"] == "s-project"
     assert "campaign_generation" not in card
-    assert [row["id"] for row in card["options"]] == ["recommended", "custom", "stop"]
+    assert card["options_source"] == "agent"
+    assert [row["id"] for row in card["options"]] == ["local-fallback"]
     assert card["evidence"] == [{
         "label": "provider refusal",
         "path": "logs/run.txt",
@@ -38,14 +44,15 @@ def test_chinese_decision_uses_operator_language_and_human_reason() -> None:
         title="验证内核性能",
         reason="row exceeded timeout_s=300",
         question="是否继续使用更小的诊断 shape？",
-        recommendation="先运行单行诊断。",
+        options=[{
+            "id": "small-shape",
+            "label": "先运行单行诊断",
+            "description": "使用更小的诊断 shape 后再决定。",
+            "requires_note": False,
+        }],
     )
 
-    assert [row["label"] for row in card["options"]] == [
-        "按建议继续",
-        "给出其他指示",
-        "保留当前结果并停止",
-    ]
+    assert [row["label"] for row in card["options"]] == ["先运行单行诊断"]
     assert "300 秒" in card["reason"]
     assert "不代表方案错误" in card["reason"]
 
@@ -56,13 +63,43 @@ def test_option_selection_is_direct_and_custom_requires_text() -> None:
         title="t",
         reason="r",
         question="q",
-        recommendation="Use fallback.",
+        options=[
+            {
+                "id": "fallback",
+                "label": "Use fallback",
+                "description": "Use fallback.",
+                "requires_note": False,
+            },
+            {
+                "id": "custom",
+                "label": "Describe another route",
+                "description": "",
+                "requires_note": True,
+            },
+        ],
     )
 
-    assert selected_decision_text(card, "recommended", "") == "Use fallback."
-    with pytest.raises(ValueError, match="requires guidance"):
+    assert selected_decision_text(card, "fallback", "") == "Use fallback."
+    assert card["options"][1]["id"] == "option-2"
+    assert selected_decision_text(card, "option-2", "") == "Describe another route"
+    with pytest.raises(ValueError, match="requires an answer"):
         selected_decision_text(card, "custom", "")
     assert selected_decision_text(card, "custom", "Try B") == "Try B"
+
+
+def test_missing_agent_options_stays_freeform_without_host_choices() -> None:
+    card = build_operator_decision(
+        item_id="i",
+        title="t",
+        reason="r",
+        question="What should I do?",
+    )
+
+    assert card["options"] == []
+    assert card["options_source"] == "none"
+    with pytest.raises(ValueError, match="requires an answer"):
+        selected_decision_text(card, "custom", "")
+    assert selected_decision_text(card, "custom", "Wait for access") == "Wait for access"
 
 
 def test_backlog_persists_and_resolves_card_with_continuation(tmp_path) -> None:

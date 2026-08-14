@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from ..core.models import ReviewDecision
+from ..core.operator_decision import parse_agent_operator_options
 from .round_state import (
     EngineerTurnOutcome,
     RoundControl,
@@ -63,12 +64,14 @@ class RoundSelfReviewMixin:
         )
         operator_question = _engineer_operator_question(outcome.engineer_message)
         if operator_question:
+            operator_options = parse_agent_operator_options(outcome.engineer_message)
             return self._settle_round(
                 review=ReviewDecision(
                     status="blocked",
                     reason="Engineer requires an operator-owned decision before continuing.",
                     next_action="Resume after the operator answers the pending question.",
                     operator_question=operator_question,
+                    operator_options=operator_options,
                     review_source="engineer_operator_question",
                     planner_report={
                         "plan_signal": "continue",
@@ -91,9 +94,8 @@ class RoundSelfReviewMixin:
                     review=ReviewDecision(
                         status="done",
                         reason=(
-                            "Engineer reached the Host-defined milestone decision "
-                            "point; completion was accepted without an independent "
-                            "Reviewer call."
+                            "Engineer reported the requested milestone complete; "
+                            "independent review was not required for this mission."
                         ),
                         next_action="",
                         review_source="engineer_self_review",

@@ -90,6 +90,7 @@ describe('MissionControl', () => {
       />,
     );
     expect(markup).toContain('Optimize FlashAttention on B200');
+    expect(markup).toContain('Total elapsed');
     expect(markup).toContain('Research DAG');
     expect(markup).toContain('Official scorer passed');
     expect(markup).toContain('Capabilities unlocked');

@@ -51,6 +51,10 @@
 
 **原生 Backend：** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
 
+**Harbor 评测：** Harbor Framework 可以把完整的有界 Argus
+Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。配置和边界见
+**[Harbor 接入说明](docs/harbor.md)**。
+
 ## 快速安装
 
 ### 环境要求
@@ -134,19 +138,24 @@ argus update
 ### 连接后端
 
 ```bash
-argus --setup --non-interactive \
-  --backend copilot \
-  --accept-house-rules
+argus --setup
 ```
 
 `--backend` 可使用 `copilot`、`pi`、`codex`、`claude`、`opencode` 或 `grok`。
+如果已有 OpenAI-compatible URL，setup 会在需要时自动安装 Pi 并完成配置：
+
+```bash
+ARGUS_SETUP_API_KEY=... argus --setup --non-interactive \
+  --api-url https://api.example.com/v1 \
+  --api-model model-id
+```
 
 使用 Grok Build 时，请先安装并登录 xAI 官方 CLI：
 
 ```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
 grok login
-argus --setup --non-interactive --backend grok --accept-house-rules
+argus --setup --non-interactive --backend grok
 ```
 
 无界面环境也可以使用 `XAI_API_KEY`。Argus 通过 Grok 原生 headless JSON
@@ -191,6 +200,13 @@ argus --status   # 查看当前运行状态
 
 ## 交互界面
 
+### Windows Desktop
+
+Windows x64 源码包含一个 Electron 桌面宿主：它监管由同一套 Argus 运行时冻结得到的
+本地后端，并直接打开现有 Web Cockpit；Manager、Workbench 与 WebAPI 不存在单独的
+Desktop 分叉。源码运行、安全边界、验收和打包命令见
+**[Windows Desktop 文档](docs/windows-desktop.md)**。
+
 ### Terminal Cockpit
 
 ```bash
@@ -198,6 +214,9 @@ argus
 ```
 
 通过终端 Cockpit 与 Manager 对话、跟踪实时工作、检查状态并恢复项目。
+未显式指定 `--port` 时，Argus 会复用兼容后端；若默认端口被其他程序或旧后端占用，
+则从 `8799` 开始选择首个可用端口。在 Windows 上，普通 `argus` 启动会同时打开
+Web UI；使用 `argus --no-open` 可只保留终端 Cockpit。
 
 ### Web UI
 
@@ -207,7 +226,7 @@ argus
 argus --web
 ```
 
-默认地址：[http://127.0.0.1:8799](http://127.0.0.1:8799)
+首选地址：[http://127.0.0.1:8799](http://127.0.0.1:8799)；被占用时会自动顺延。
 
 ```bash
 argus --web --web-port 8800  # 使用其他端口
@@ -303,10 +322,15 @@ Vertical 可以为你的领域提供专属阶段、Skill、数据集、工具、
 - **Argus 原生 Backend：** GitHub Copilot CLI、Pi、Codex CLI、Claude Code、OpenCode、Grok Build
 - **外层 Agent：** OpenClaw、Hermes，或任何能够使用 Shell / HTTP API 的 Agent
 
+如需运行持久任务，可安装或适配可移植的
+[`argus-runtime-orchestration` Agent Skill](integrations/agent-skills/argus-runtime-orchestration/SKILL.md)。
+该 Skill 明确定义了双方操作模型、主动检查 `Needs you` 的干预闭环、
+各宿主适配器、证据边界与收尾检查。
+
 常用入口：
 
 ```bash
-argus --doctor
+argus doctor
 argus --status
 argus --web
 ```

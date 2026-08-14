@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { artifactRefreshEventKey, snapshotRefreshEventKey, useProjects, useProjectCosts, useSnapshot, useEventStream, useProjectActions, useArtifacts, useTranscript, useJournal, useGitDiff } from './hooks';
-import { api, type EventMsg } from './api';
+import { api, isConnectionError, type EventMsg } from './api';
 import { TopBar } from './components/TopBar';
 import { EventStream } from './components/EventStream';
 import { ChatBox } from './components/ChatBox';
@@ -55,6 +55,7 @@ import { usePendingReplySession } from './usePendingReplySession';
 import { useProjectSelection } from './useProjectSelection';
 import { useWorkbenchLayout } from './useWorkbenchLayout';
 import { useI18n } from './i18n';
+import { ConnectionProblemBanner } from './components/ConnectionProblemBanner';
 
 type Overlay = 'none' | 'palette' | 'help' | 'doctor' | 'config' | 'identity' | 'transcript' | 'inspector' | 'operations';
 interface ActiveMessageRequest {
@@ -81,6 +82,8 @@ export default function App() {
     [projectCostsQ.data?.projects, projectsQ.data?.projects],
   );
   const localCwd = projectsQ.data?.local_cwd ?? '';
+  const connectionError = [projectsQ.error, projectCostsQ.error]
+    .find((error) => isConnectionError(error));
 
   const [overlay, setOverlay] = useState<Overlay>('none');
   const {
@@ -135,6 +138,7 @@ export default function App() {
   const [taskItemId, setTaskItemId] = useState<string | null>(null);
   const [newDaemonOpen, setNewDaemonOpen] = useState(false);
   const [daemonManageOpen, setDaemonManageOpen] = useState(false);
+  const messageSubmitLockRef = useRef(false);
   const messageRequestRef = useRef<ActiveMessageRequest | null>(null);
   const messageEpochRef = useRef(0);
   const [notice, setNotice] = useState<UiNotice | null>(null);
@@ -373,20 +377,28 @@ export default function App() {
 
   const sendMessage = async (text: string, attachments: File[] = []): Promise<boolean> => {
     const requestSid = activeSid;
-    if (!requestSid || messageRequestRef.current) return false;
+    if (!requestSid || messageSubmitLockRef.current || messageRequestRef.current) return false;
 
-    if (!attachments.length) {
-      const command = await dispatchWebCommand(text, commandHandlers);
-      if (command.kind === 'handled') return true;
-      if (command.kind === 'error') {
-        notify('error', command.message);
-        return false;
+    messageSubmitLockRef.current = true;
+    let requestId: number;
+    let controller: AbortController;
+    try {
+      if (!attachments.length) {
+        const command = await dispatchWebCommand(text, commandHandlers);
+        if (command.kind === 'handled') return true;
+        if (command.kind === 'error') {
+          notify('error', command.message);
+          return false;
+        }
       }
+
+      requestId = ++messageEpochRef.current;
+      controller = new AbortController();
+      messageRequestRef.current = { id: requestId, sid: requestSid, controller };
+    } finally {
+      messageSubmitLockRef.current = false;
     }
 
-    const requestId = ++messageEpochRef.current;
-    const controller = new AbortController();
-    messageRequestRef.current = { id: requestId, sid: requestSid, controller };
     const isCurrent = () => {
       const request = messageRequestRef.current;
       return Boolean(
@@ -636,6 +648,13 @@ export default function App() {
 
   return (
     <div ref={shellRef} className="workbench-shell ambient-canvas flex h-screen h-[100dvh] w-screen max-w-full overflow-hidden text-ink">
+      <ConnectionProblemBanner
+        error={connectionError}
+        onRetry={() => {
+          void projectsQ.refetch();
+          void projectCostsQ.refetch();
+        }}
+      />
       {!kiosk && sidebarOpen ? (
         <button
           type="button"

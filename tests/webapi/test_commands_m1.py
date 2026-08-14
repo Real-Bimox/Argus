@@ -5,6 +5,7 @@ Daemon start/stop are monkeypatched so no real subprocess is spawned.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 from contextlib import contextmanager
@@ -24,6 +25,7 @@ from argus_skill.manager.front_door import (
 )
 from argus_skill.skills.vertical_select import persist_vertical
 from argus_skill.webapi import (
+    daemon_lifecycle,
     manager_dispatch,
     manager_state,
     project_state,
@@ -697,6 +699,131 @@ def test_daemon_start_delegates(ctx, monkeypatch) -> None:
     r = client.post(f"/api/projects/{sid}/daemon/start")
     assert r.status_code == 200 and r.json()["rc"] == 0
     assert calls["life_dir"] == life.resolve() and calls["quiet"] is True
+
+
+def test_daemon_start_surfaces_clean_launcher_failure(ctx, monkeypatch) -> None:
+    root, sid, _life = ctx
+
+    def fail_spawn(_config, *, quiet=False):
+        assert quiet is True
+        raise RuntimeError("ModuleNotFoundError: No module named 'uvicorn'")
+
+    monkeypatch.setattr(server, "spawn_detached_daemon", fail_spawn)
+    client = TestClient(server.create_app(global_root=root))
+    response = client.post(f"/api/projects/{sid}/daemon/start")
+
+    assert response.status_code == 200
+    assert response.json()["rc"] == 2
+    assert "ModuleNotFoundError: No module named 'uvicorn'" in response.json()["error"]
+
+
+def test_daemon_start_surfaces_captured_helper_stderr(ctx, monkeypatch, caplog) -> None:
+    root, sid, _life = ctx
+    diagnostic = "Traceback: UnicodeEncodeError during Windows daemon bootstrap"
+
+    def fake_spawn(config, *, quiet=False):
+        assert quiet is True
+        config.last_spawn_error = diagnostic
+        return 1
+
+    monkeypatch.setattr(server, "spawn_detached_daemon", fake_spawn)
+    client = TestClient(server.create_app(global_root=root))
+
+    response = client.post(f"/api/projects/{sid}/daemon/start")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rc"] == 1
+    assert body["startup_diagnostic"] == diagnostic
+    assert body["error"] == f"background executor failed to start (rc=1): {diagnostic}"
+    assert diagnostic in caplog.text
+
+
+def test_daemon_start_retries_one_transient_windows_sharing_failure(
+    ctx,
+    monkeypatch,
+) -> None:
+    root, sid, _life = ctx
+    attempts = 0
+
+    def fake_spawn(config, *, quiet=False):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            config.last_spawn_error = (
+                "PermissionError: [WinError 32] The process cannot access the file"
+            )
+            return 1
+        config.last_spawn_error = ""
+        return 0
+
+    monkeypatch.setattr(server, "spawn_detached_daemon", fake_spawn)
+    monkeypatch.setattr(daemon_lifecycle, "_running_on_windows", lambda: True)
+
+    result = server.start_project_daemon(sid, global_root=root)
+
+    assert result is not None and result["rc"] == 0
+    assert result["startup_retried"] is True
+    assert "startup_diagnostic" not in result
+    assert attempts == 2
+
+
+def test_daemon_start_does_not_retry_deterministic_rc1(
+    ctx,
+    monkeypatch,
+) -> None:
+    root, sid, _life = ctx
+    attempts = 0
+
+    def fake_spawn(config, *, quiet=False):
+        nonlocal attempts
+        attempts += 1
+        config.last_spawn_error = "ModuleNotFoundError: No module named argus_skill"
+        return 1
+
+    monkeypatch.setattr(server, "spawn_detached_daemon", fake_spawn)
+    monkeypatch.setattr(daemon_lifecycle, "_running_on_windows", lambda: True)
+
+    result = server.start_project_daemon(sid, global_root=root)
+
+    assert result is not None and result["rc"] == 1
+    assert attempts == 1
+
+
+def test_daemon_start_accepts_runtime_published_after_transient_launcher_failure(
+    ctx,
+    monkeypatch,
+) -> None:
+    root, sid, _life = ctx
+    attempts = 0
+    original_status = server.read_daemon_status
+
+    def fake_spawn(config, *, quiet=False):
+        nonlocal attempts
+        attempts += 1
+        config.last_spawn_error = "OSError: [WinError 33] lock violation"
+        return 1
+
+    status_reads = 0
+
+    def fake_status(path):
+        nonlocal status_reads
+        status_reads += 1
+        status = original_status(path)
+        if status_reads < 2:
+            return status
+        return dataclasses.replace(status, alive=True, pid=4242)
+
+    monkeypatch.setattr(server, "spawn_detached_daemon", fake_spawn)
+    monkeypatch.setattr(server, "read_daemon_status", fake_status)
+    monkeypatch.setattr(daemon_lifecycle, "_running_on_windows", lambda: True)
+
+    result = server.start_project_daemon(sid, global_root=root)
+
+    assert result is not None and result["rc"] == 0
+    assert result["startup_retried"] is True
+    assert "startup_diagnostic" not in result
+    assert attempts == 1
 
 
 def test_daemon_start_resume_reenables_preserved_continuous_objective(

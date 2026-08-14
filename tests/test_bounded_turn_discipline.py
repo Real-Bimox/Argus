@@ -102,6 +102,7 @@ def test_engineer_surfaces_operator_only_blockers_to_host():
 
     for out in (full, compact):
         assert "OPERATOR_QUESTION=" in out
+        assert "OPERATOR_OPTIONS=" in out
         assert "parks the task" in out or "Never keep opening fresh rounds" in out
 
 

@@ -51,6 +51,10 @@ A project can stop, resume, survive a runtime replacement, and continue from its
 
 **Native backends:** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
 
+**Harbor evaluation:** Harbor Framework can invoke the complete bounded Argus
+Manager/Planner/Engineer/Reviewer runtime as a custom agent. See
+**[Harbor integration](docs/harbor.md)**.
+
 ## Quick Install
 
 ### Requirements
@@ -129,19 +133,25 @@ different revisions, so use the URL for the release you intend to test.
 ### Connect a backend
 
 ```bash
-argus --setup --non-interactive \
-  --backend copilot \
-  --accept-house-rules
+argus --setup
 ```
 
 Use `copilot`, `pi`, `codex`, `claude`, `opencode`, or `grok` for `--backend`.
+If you have an OpenAI-compatible endpoint, setup installs Pi when needed and
+configures it directly:
+
+```bash
+ARGUS_SETUP_API_KEY=... argus --setup --non-interactive \
+  --api-url https://api.example.com/v1 \
+  --api-model model-id
+```
 
 For Grok Build, install and authenticate the official xAI CLI first:
 
 ```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
 grok login
-argus --setup --non-interactive --backend grok --accept-house-rules
+argus --setup --non-interactive --backend grok
 ```
 
 `XAI_API_KEY` is also supported for headless environments. Argus uses Grok's
@@ -190,6 +200,14 @@ argus --status   # inspect the current runtime
 
 ## Interfaces
 
+### Windows Desktop
+
+The Windows x64 source tree includes an Electron host that supervises a frozen
+copy of the same Argus runtime and opens the existing Web cockpit—there is no
+separate Desktop fork of Manager, Workbench, or the WebAPI. Source setup,
+security boundaries, verification, and packaging commands are documented in
+**[Windows Desktop](docs/windows-desktop.md)**.
+
 ### Terminal cockpit
 
 ```bash
@@ -197,6 +215,10 @@ argus
 ```
 
 Use the terminal cockpit to talk to the Manager, follow live work, inspect state, and resume projects.
+Without an explicit `--port`, Argus reuses a compatible backend or selects the
+first available port starting at `8799` when another program or stale backend
+occupies it. On Windows, a plain `argus` launch also opens the Web UI; use
+`argus --no-open` for the terminal cockpit only.
 
 ### Web UI
 
@@ -206,7 +228,8 @@ Start Argus and open the Web UI in your default browser:
 argus --web
 ```
 
-Default address: [http://127.0.0.1:8799](http://127.0.0.1:8799)
+Preferred address: [http://127.0.0.1:8799](http://127.0.0.1:8799); Argus advances
+to the next available port when needed.
 
 The Web UI follows the browser language on first launch and supports English
 and Simplified Chinese. Use the language button in the session sidebar to
@@ -307,10 +330,15 @@ GitHub Copilot, Pi, Codex, Claude Code, OpenCode, Grok Build, OpenClaw, or Herme
 - **Native Argus backends:** GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, Grok Build
 - **External agent operators:** OpenClaw, Hermes, or any agent that can use a shell or HTTP API
 
+For durable missions, install or adapt the portable
+[`argus-runtime-orchestration` Agent Skill](integrations/agent-skills/argus-runtime-orchestration/SKILL.md).
+It defines the two-party operator model, the active `Needs you` intervention loop,
+host-specific adapters, evidence boundaries, and closeout checks.
+
 Useful entry points:
 
 ```bash
-argus --doctor
+argus doctor
 argus --status
 argus --web
 ```

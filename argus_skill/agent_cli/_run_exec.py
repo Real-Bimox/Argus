@@ -28,6 +28,7 @@ from ._env import (
     _DEFAULT_STREAM_QUEUE_LINES,
     _STREAM_QUEUE_LINES_ENV,
     _incomplete_turn_error,
+    _is_manager_turn_label,
     _positive_env_int,
     _turn_wall_clock_seconds,
 )
@@ -336,14 +337,17 @@ class RunExecMixin:
                 except queue.Full:
                     continue
 
+        process_id = int(getattr(process, "pid", 0) or 0)
         stdout_thread = threading.Thread(
             target=consume_pipe,
             args=("stdout", process.stdout),
+            name=f"argus-provider-pipe-{process_id}-stdout",
             daemon=True,
         )
         stderr_thread = threading.Thread(
             target=consume_pipe,
             args=("stderr", process.stderr),
+            name=f"argus-provider-pipe-{process_id}-stderr",
             daemon=True,
         )
         stdout_thread.start()
@@ -374,13 +378,15 @@ class RunExecMixin:
                 or time.monotonic() - turn_started_at < turn_wall_clock_seconds
             ):
                 return False
-            subject = (
-                "scientist skill distill"
-                if str(run_label or "").strip().lower() == "scientist.skill_distill"
-                else "engineer turn"
-            )
+            normalized_label = str(run_label or "").strip().lower()
+            if _is_manager_turn_label(normalized_label):
+                subject = "Manager turn"
+            elif normalized_label == "scientist.skill_distill":
+                subject = "scientist skill distill"
+            else:
+                subject = "engineer turn"
             state.watchdog_reason = (
-                f"External interrupt: {subject} time budget reached after "
+                f"External interrupt: {subject} wall-clock limit reached after "
                 f"{turn_wall_clock_seconds}s; yield for review/steering"
             )
             self._emit(
@@ -569,8 +575,25 @@ class RunExecMixin:
         if process.poll() is None:
             process.wait(timeout=10.0)
 
-        stdout_thread.join(timeout=2.0 if stdout_closed else 0.05)
-        stderr_thread.join(timeout=2.0 if stderr_closed else 0.05)
+        pipe_readers = (
+            (process.stdout, stdout_thread),
+            (process.stderr, stderr_thread),
+        )
+        for pipe, reader in pipe_readers:
+            if reader.is_alive() and pipe is not None:
+                try:
+                    os.close(pipe.fileno())
+                except (AttributeError, OSError, ValueError):
+                    pass
+        for pipe, reader in pipe_readers:
+            reader.join(timeout=2.0)
+            if not reader.is_alive() and pipe is not None:
+                close = getattr(pipe, "close", None)
+                try:
+                    if callable(close):
+                        close()
+                except OSError:
+                    pass
         return state
 
     def _finalize_turn_result(

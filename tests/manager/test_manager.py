@@ -561,8 +561,8 @@ def test_vertical_decision_pins_manager_model(tmp_path, monkeypatch) -> None:
     assert decision.workflow_mode == "direct"
     assert runner.last_options.model == "gpt-5.5"
     assert runner.calls[0]["options"].external_interrupt_reason_provider is None
-    assert "multiple independent evidence tracks" in runner.calls[0]["prompt"]
-    assert "A single final report does not make multi-track work direct" in runner.calls[0]["prompt"]
+    assert "multiple evidence tracks/alternatives" in runner.calls[0]["prompt"]
+    assert "One final report can still be staged" in runner.calls[0]["prompt"]
 
 
 def test_software_planner_requirement_overrides_direct_route(
@@ -633,8 +633,8 @@ def test_vertical_decision_always_uses_repository_grounded_route(
     assert runner.calls[0]["options"].sandbox_mode is None
     assert runner.calls[0]["options"].dangerous_yolo is True
     assert "--available-tools=" not in runner.calls[0]["options"].extra_args
-    assert "Repository inspection is mandatory" in runner.calls[0]["prompt"]
-    assert "ONE focused inspection batch" in runner.calls[0]["prompt"]
+    assert "First inspect only the repository evidence needed" in runner.calls[0]["prompt"]
+    assert "one focused batch, at most four file/search operations" in runner.calls[0]["prompt"]
 
 
 def test_fast_route_environment_cannot_restore_tool_free_shortcut(
@@ -920,21 +920,6 @@ class _FakeResult:
         self.exit_code = 0
 
 
-def test_manager_no_runner_treats_free_text_as_task():
-    # No backend → can't chat-classify → safe default is TASK (never drop work).
-    assert Manager(runner=None).is_conversational("hi") is False
-
-
-def test_manager_owns_chat_vs_task_decision():
-    mgr = Manager()
-    assert mgr.is_conversational(
-        "hello there", run_exec=lambda p: _FakeResult("CHAT")
-    ) is True
-    assert mgr.is_conversational(
-        "minimize val_bpb on train.py", run_exec=lambda p: _FakeResult("TASK")
-    ) is False
-
-
 # ---- Classification may omit library paths; no matcher exists --------------
 
 class _CountingMission:
@@ -980,10 +965,3 @@ def test_route_does_not_fire_matcher(tmp_path):
     out = mgr.route("hello", run_exec=lambda p: _FakeResult("TEAM"))
     assert mgr.mission.calls == 0
     assert out in ("simple", "complex")
-
-
-def test_is_conversational_does_not_fire_matcher(tmp_path):
-    mgr = _mgr_with_store(tmp_path)
-    out = mgr.is_conversational("hi there", run_exec=lambda p: _FakeResult("CHAT"))
-    assert mgr.mission.calls == 0
-    assert out is True

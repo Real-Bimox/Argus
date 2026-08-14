@@ -88,6 +88,21 @@ def test_event_journal_reads_every_rollover_in_chronological_order(tmp_path: Pat
     ]
 
 
+def test_event_journal_total_cost_cache_is_bounded(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(EventJournal, "_TOTAL_COST_CACHE_MAX_ENTRIES", 2)
+    journal = EventJournal(path)
+
+    for timestamp in range(5):
+        assert journal.total_cost_since(float(timestamp)) == 0.0
+
+    assert list(journal._total_cost_cache) == [3.0, 4.0]
+
+
 def test_event_journal_projects_canonical_lifecycle_events(tmp_path: Path) -> None:
     path = tmp_path / "events.jsonl"
     path.write_text(
@@ -310,14 +325,22 @@ def test_backlog_add_and_claim_are_process_safe(tmp_path: Path) -> None:
     add_ids = [item[3] for item in outcomes if item[0] == "ok" and item[1] == "add"]
     claim_ids = [item[3] for item in outcomes if item[0] == "ok" and item[1] == "claim" and item[3] is not None]
     assert len(add_ids) == 2
-    assert len(claim_ids) == 1
+    # Adds and claims start together; an added item is allowed to become
+    # claimable before the second claimant runs.  The concurrency invariant is
+    # that no item is handed out twice and no update is lost.
+    assert len(claim_ids) == len(set(claim_ids))
+    assert 1 <= len(claim_ids) <= 3
 
     rows = backlog.all()
     assert len(rows) == 3
-    statuses = {row.title: row.status for row in rows}
-    assert statuses["seed"] == "running"
-    assert statuses["add-a"] == "pending"
-    assert statuses["add-b"] == "pending"
+    claimed = set(claim_ids)
+    assert {
+        row.id for row in rows if row.status == "running"
+    } == claimed
+    assert all(
+        row.status == ("running" if row.id in claimed else "pending")
+        for row in rows
+    )
     assert seed.id in {row.id for row in rows}
 
 

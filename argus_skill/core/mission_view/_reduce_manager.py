@@ -59,6 +59,17 @@ def reduce_manager_event(
             "objective": objective,
             "status": "framed",
         })
+        routing = dict(view.get("routing") or {})
+        for key in ("route", "vertical", "workflow_mode", "lifetime"):
+            value = _text(event, key)
+            if value:
+                routing[key] = value
+        if not routing.get("route"):
+            routing["route"] = "team"
+        for key in ("continuous", "open_ended"):
+            if key in event:
+                routing[key] = event.get(key) is True
+        view["routing"] = routing
         current_stage = _text(event, "current_stage")
         stages = event.get("stages")
         if current_stage:

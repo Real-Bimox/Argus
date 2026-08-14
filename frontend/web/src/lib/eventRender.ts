@@ -1,11 +1,13 @@
 import type { EventMsg } from '../api';
 import { theme } from './theme';
 import { missionOutcomePresentation } from '../../../core/src';
+import { formatMissionRouting } from '../../../core/src/missionView';
 import {
   eventKey as sharedEventKey,
   isReasoning,
   isStructuredAgentPayload,
   mergeFragment,
+  visibleAgentText,
 } from '../../../core/src/events';
 import type { Locale } from '../i18n';
 
@@ -85,7 +87,7 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
   const roleLabel = (role: string) => (locale === 'zh-CN' ? ROLE_LABEL_ZH : ROLE_LABEL)[role] || role;
 
   if (t === 'ui.operator') {
-    const body = S(ev, 'text');
+    const body = visibleAgentText(S(ev, 'text'));
     return body ? { role: 'operator', label: l('You', '你'), glyph: '›', text: body, tone: 'bright', rule: true } : null;
   }
   if (t === 'ui.argus') {
@@ -105,21 +107,21 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
     }
     if (kind === 'assistant_message' || kind === 'agent_message' || kind === 'message') {
       if (isStructuredAgentPayload(ev)) return null;
-      const body = trunc(S(ev, 'text'), 280);
+      const body = visibleAgentText(S(ev, 'text'));
       if (!body) return null;
       return { role: layer, label: roleLabel(layer), glyph: '▌', text: body, tone: 'bright' };
     }
     if (kind === 'command_execution') {
-      const cmd = trunc(S(ev, 'action_summary') || S(ev, 'command') || text, 160);
+      const cmd = S(ev, 'text') || S(ev, 'command') || S(ev, 'action_summary');
       if (!cmd) return null;
       return { role: layer, label: roleLabel(layer), glyph: '▸ $', text: cmd, tone: 'dim' };
     }
     if (kind === 'file_change') {
-      const f = trunc(text, 160);
+      const f = S(ev, 'text') || S(ev, 'action_summary');
       return { role: layer, label: roleLabel(layer), glyph: '✎', text: f || l('(file change)', '（文件变更）'), tone: 'dim' };
     }
     if (kind === 'tool_use') {
-      const tu = trunc(text, 160);
+      const tu = S(ev, 'text') || S(ev, 'action_summary');
       return { role: layer, label: roleLabel(layer), glyph: '⚙', text: tu || l('(tool)', '（工具）'), tone: 'dim' };
     }
     if (!text) return null;
@@ -129,8 +131,17 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
   // ── Manager triage
   if (t === 'life.manager.intent.started')
     return { role: 'manager', label: 'Manager', glyph: '🧭', text: l('classifying request…', '判断任务归属…'), tone: 'info' };
-  if (t === 'life.manager.intent.completed')
-    return { role: 'manager', label: 'Manager', glyph: '🧭', text: `→ ${S(ev, 'vertical') || S(ev, 'kind') || l('resolved', '已确定')}`, tone: 'info' };
+  if (t === 'life.manager.intent.completed') {
+    const routing = formatMissionRouting({
+      route: S(ev, 'route') || 'team',
+      vertical: S(ev, 'vertical'),
+      workflow_mode: S(ev, 'workflow_mode'),
+      lifetime: S(ev, 'lifetime'),
+      continuous: (ev as Record<string, unknown>).continuous === true,
+      open_ended: (ev as Record<string, unknown>).open_ended === true,
+    });
+    return { role: 'manager', label: 'Manager', glyph: '🧭', text: `→ ${routing || S(ev, 'kind') || l('resolved', '已确定')}`, tone: 'info' };
+  }
   if (t === 'life.manager.intent.failed')
     return { role: 'manager', label: 'Manager', glyph: '⚠', text: `${l('routing failed', '分流失败')} ${trunc(S(ev, 'error'), 140)}`, tone: 'err' };
   if (t === 'life.manager.stage_decision') {
@@ -183,11 +194,12 @@ export function renderEvent(ev: EventMsg, locale: Locale = 'en'): Rendered | nul
     return { role: 'critic', label: 'Critic', glyph: '🔁', text: l('queued next iteration', '已加入下一轮迭代'), tone: 'dim' };
   if (t === 'life.mission.completed' || t === 'mission.completed' || t === 'loop.completed') {
     const presentation = missionOutcomePresentation(ev);
+    const summary = trunc(S(ev, 'summary'), 240);
     return {
       role: 'engineer',
       label: 'Engineer',
       glyph: presentation.glyph,
-      text: presentation.label,
+      text: summary ? `${presentation.label} · ${summary}` : presentation.label,
       tone: presentation.tone,
       rule: true,
     };
