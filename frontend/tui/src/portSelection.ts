@@ -48,6 +48,13 @@ export async function selectApiPort(
   const available = deps.available ?? isPortAvailable;
   const preferredProbe = await probe(options.host, options.preferredPort, options.token);
   if (preferredProbe.state === 'compatible') return options.preferredPort;
+  if (
+    preferredProbe.state === 'incompatible'
+    && preferredProbe.meta
+    && isLocalApiHost(options.host)
+  ) {
+    return options.preferredPort;
+  }
   const host = options.host.trim().toLowerCase();
   const localBind = isLocalApiHost(host) || host === '0.0.0.0' || host === '::' || host === '::0';
   if (!localBind) return options.preferredPort;

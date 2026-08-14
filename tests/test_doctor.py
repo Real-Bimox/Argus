@@ -73,7 +73,7 @@ def test_doctor_json_uses_stable_codes() -> None:
     assert payload["checks"][0]["code"] == "ARGUS-STATE-001"
 
 
-def test_safe_repair_removes_only_a_verified_stale_daemon_pid(
+def test_safe_repair_does_not_mutate_stale_daemon_pid_without_a_safe_protocol(
     tmp_path,
     monkeypatch,
     capsys,
@@ -92,41 +92,29 @@ def test_safe_repair_removes_only_a_verified_stale_daemon_pid(
     payload = json.loads(capsys.readouterr().out)
 
     assert rc == 3  # mocked verification still reports the pre-repair failure
-    assert not pid_path.exists()
-    assert payload["actions"] == [{
-        "id": "remove_verified_stale_daemon_pid",
-        "risk": "safe",
-        "target": str(pid_path),
-        "status": "applied",
-    }]
+    assert pid_path.exists()
+    assert payload["actions"] == []
 
 
-def test_safe_repair_does_not_unlink_a_lock_claimed_during_revalidation(
-    tmp_path,
-    monkeypatch,
-    capsys,
-) -> None:
+def test_repair_plan_reports_stale_lock_as_manual(tmp_path, monkeypatch, capsys) -> None:
     from argus_skill.apps.cli import _core
-    from argus_skill.core import daemon_lock
 
     pid_path = tmp_path / "daemon.pid"
     pid_path.write_text("2000000000\n", encoding="ascii")
     bundle = SimpleNamespace(project=SimpleNamespace(root=tmp_path))
     checks = [Check("lock sanity", False, "stale", "remove")]
     monkeypatch.setattr(_core, "_doctor_checks", lambda _args: (bundle, checks))
-    monkeypatch.setattr(
-        daemon_lock,
-        "acquire_global_daemon_lock",
-        lambda **_kwargs: (_ for _ in ()).throw(
-            daemon_lock.DaemonAlreadyRunning(os.getpid(), pid_path)
-        ),
-    )
-
-    _core._cmd_repair(SimpleNamespace(safe=True, plan=False, json=True))
+    _core._cmd_repair(SimpleNamespace(safe=False, plan=True, json=True))
     payload = json.loads(capsys.readouterr().out)
 
     assert pid_path.exists()
-    assert payload["actions"][0]["status"] == "skipped_live"
+    assert payload["actions"] == [{
+        "id": "manual_required",
+        "risk": "manual",
+        "target": "lock sanity",
+        "status": "planned",
+        "detail": "remove",
+    }]
 
 
 def test_render_report_with_theme_is_failsoft():

@@ -730,6 +730,21 @@ test('normal autostart fails immediately when the spawned backend exits', async 
   assert.match(result.message, /exited before becoming ready \(exit 7\)/);
 });
 
+test('normal autostart accepts a competing compatible backend after bind loss', async () => {
+  const result = await ensureApi({
+    host: '127.0.0.1',
+    port: 8899,
+    dependencies: {
+      probeApi: probeSequence(unreachableProbe, currentProbeWithPid(8888)),
+      spawnApi: async () => ({ pid: 7777, exited: Promise.resolve(1) }),
+      sleep: async () => new Promise<void>(() => undefined),
+    },
+  });
+
+  assert.equal(result.reachable, true);
+  assert.equal(result.spawned, false);
+});
+
 test('spawn cleanup verifies and signals both Windows listener and launcher PIDs', async () => {
   const ownership: ApiOwnershipRecord = {
     schema: 1,

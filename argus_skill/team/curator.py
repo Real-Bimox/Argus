@@ -65,13 +65,12 @@ def _windows_process_command_line(pid: int) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _terminate_windows_tree(pid: int) -> None:
-    subprocess.run(
-        ["taskkill.exe", "/PID", str(int(pid)), "/T", "/F"],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+def _terminate_windows_tree(proc: Any) -> bool:
+    from ..daemon.state import _terminate_windows_process_tree
+
+    return _terminate_windows_process_tree(
+        int(proc.pid),
+        identity_check=lambda: proc.poll() is None,
     )
 
 
@@ -171,12 +170,21 @@ class _AdoptedProc:
     ``_terminate`` rely on, so adopted children flow through every owned-child
     path unchanged."""
 
-    def __init__(self, pid: int, member_id: str, root: Path) -> None:
+    def __init__(
+        self,
+        pid: int,
+        member_id: str,
+        root: Path,
+        *,
+        windows_handle: int = 0,
+    ) -> None:
         self.pid = int(pid)
         self._member_id = member_id
         self._root = Path(root)
         self._windows_handle = (
-            _open_windows_process_handle(self.pid) if os.name == "nt" else 0
+            windows_handle or _open_windows_process_handle(self.pid)
+            if os.name == "nt"
+            else 0
         )
         if os.name == "nt" and self._windows_handle <= 0:
             raise OSError(f"could not retain Windows process handle for pid {self.pid}")
@@ -361,12 +369,20 @@ class Curator:
             child_key = _child_key(root, str(mid or ""))
             if not mid or child_key in self._children or not pid:
                 continue
-            if m.get("status") != "running" or not _pid_is_teammate(int(pid), mid, root):
+            if m.get("status") != "running":
                 continue
-            try:
+            if os.name == "nt":
+                handle = _open_windows_process_handle(int(pid))
+                if handle <= 0:
+                    continue
+                if not _pid_is_teammate(int(pid), mid, root):
+                    _close_windows_process_handle(handle)
+                    continue
+                proc = _AdoptedProc(int(pid), mid, root, windows_handle=handle)
+            else:
+                if not _pid_is_teammate(int(pid), mid, root):
+                    continue
                 proc = _AdoptedProc(int(pid), mid, root)
-            except OSError:
-                continue
             self._children[child_key] = TrackedTeammate(
                 proc, member_id=mid,
                 task_id=m.get("task_id", ""), root=root, started_at=now,
@@ -435,20 +451,20 @@ class Curator:
                 "failed_dead_cwd": failed_dead_cwd}
 
     # ---- reaping --------------------------------------------------------
-    def _terminate(self, tt: TrackedTeammate, *, grace: float = 2.0) -> None:
+    def _terminate(self, tt: TrackedTeammate, *, grace: float = 2.0) -> bool:
         """Kill one tracked child's process group (SIGTERM → grace → SIGKILL)."""
         proc = tt.proc
         if proc.poll() is not None:
-            return
+            return True
         if os.name == "nt":
-            _terminate_windows_tree(proc.pid)
+            tree_stopped = _terminate_windows_tree(proc)
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=max(grace, 5.0))
-            return
+            return tree_stopped and proc.poll() is not None
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except (OSError, ProcessLookupError):
-            return
+            return proc.poll() is not None
         try:
             proc.wait(timeout=grace)
         except subprocess.TimeoutExpired:
@@ -456,6 +472,7 @@ class Curator:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             with contextlib.suppress(subprocess.TimeoutExpired):
                 proc.wait(timeout=5)
+        return proc.poll() is not None
 
     def _reap(self, now: float | None = None) -> dict[str, list[str]]:
         """Drop children that exited on their own; hard-kill+free those past the
@@ -479,7 +496,12 @@ class Curator:
                 dropped.append(tt.member_id)
                 continue
             if now >= tt.hard_deadline():
-                self._terminate(tt)
+                if not self._terminate(tt):
+                    log.error(
+                        "curator: timed-out teammate %s remained alive after termination",
+                        tt.member_id,
+                    )
+                    continue
                 with contextlib.suppress(Exception):
                     task_board.fail(tt.root, tt.task_id, reason="curator hard-timeout")
                     roster.set_member_status(tt.root, tt.member_id, "failed")
@@ -661,7 +683,12 @@ class Curator:
         stopped_roots: set[Path] = set()
         for tt in list(self._children.values()):
             status = "stopped" if tt.alive() else "exited"
-            self._terminate(tt)
+            if not self._terminate(tt):
+                log.error(
+                    "curator: teammate %s remained alive during shutdown",
+                    tt.member_id,
+                )
+                continue
             stopped_roots.add(tt.root)
             with contextlib.suppress(Exception):
                 roster.set_member_status(tt.root, tt.member_id, status)

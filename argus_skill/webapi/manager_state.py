@@ -157,31 +157,12 @@ def _is_manager_prewarm_owner(sid: str) -> bool:
         return _MANAGER_PREWARM_OWNER == sid
 
 
-def _release_speculative_prewarm(sid: str) -> None:
-    lock = _lock_for(sid)
-    if not lock.acquire(blocking=False):
-        return
-    try:
-        state = _STATES.get(sid)
-        if (
-            state
-            and state.get("_manager_acp_prewarmed")
-            and not state.get("_manager_activity_seen")
-        ):
-            _release_manager_state(sid)
-    finally:
-        lock.release()
-
-
 def _claim_manager_prewarm_owner(sid: str) -> None:
     """Make the latest explicit active-project request the sole prewarm owner."""
     global _MANAGER_PREWARM_OWNER
 
     with _MANAGER_PREWARMING_LOCK:
-        previous = _MANAGER_PREWARM_OWNER
         _MANAGER_PREWARM_OWNER = sid
-    if previous and previous != sid:
-        _release_speculative_prewarm(previous)
 
 
 def _mark_manager_activity(sid: str) -> None:

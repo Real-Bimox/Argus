@@ -19,7 +19,10 @@ except ImportError:  # pragma: no cover - non-POSIX fallback
     fcntl = None  # type: ignore[assignment]
 
 from ...core.daemon_lock import is_pid_running
-from ...core.portable_filename import portable_filename_component
+from ...core.portable_filename import (
+    legacy_hashed_filename_components,
+    portable_filename_component,
+)
 from ._text import _tail_file
 
 # ---------------------------------------------------------------------------
@@ -64,9 +67,41 @@ def _registry_path(task_id: str) -> Path:
     return REGISTRY_DIR / f"{_task_file_component(task_id)}.json"
 
 
+def _legacy_registry_paths(task_id: str) -> tuple[Path, ...]:
+    return tuple(
+        REGISTRY_DIR / f"{component}.json"
+        for component in legacy_hashed_filename_components(task_id)
+    )
+
+
+def _task_record_paths(task_id: str) -> tuple[Path, ...]:
+    return (_registry_path(task_id), *_legacy_registry_paths(task_id))
+
+
+def _unlink_task_records(task_id: str) -> None:
+    for path in _task_record_paths(task_id):
+        try:
+            task = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(task, dict) and str(task.get("task_id") or "") == task_id:
+            path.unlink(missing_ok=True)
+
+
 def _exit_status_path(task_id: str, run_id: str | None = None) -> Path:
     name = f"exit_code.{run_id}" if run_id else "exit_code"
     return REGISTRY_DIR / f"{_task_file_component(task_id)}_logs" / name
+
+
+def _legacy_exit_status_paths(
+    task_id: str,
+    run_id: str | None = None,
+) -> tuple[Path, ...]:
+    name = f"exit_code.{run_id}" if run_id else "exit_code"
+    return tuple(
+        REGISTRY_DIR / f"{component}_logs" / name
+        for component in legacy_hashed_filename_components(task_id)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -135,10 +170,10 @@ def _launch_durable_command(
 def _write_task(task_id: str, data: dict[str, Any]) -> None:
     REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
     path = _registry_path(task_id)
-    try:
-        existing = json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
-    except (json.JSONDecodeError, OSError):
-        existing = None
+    legacy_paths = _legacy_registry_paths(task_id)
+    existing = _read_task(task_id)
+    if existing is None and len(str(task_id).encode("utf-8")) > 120:
+        raise ValueError("task_id exceeds 120 UTF-8 bytes")
     if isinstance(existing, dict):
         preserved_fields = {
             key: existing[key]
@@ -151,6 +186,17 @@ def _write_task(task_id: str, data: dict[str, Any]) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     os.replace(tmp, path)
+    for legacy in legacy_paths:
+        try:
+            legacy_task = json.loads(legacy.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            legacy_task = None
+        if (
+            legacy != path
+            and isinstance(legacy_task, dict)
+            and str(legacy_task.get("task_id") or "") == task_id
+        ):
+            legacy.unlink(missing_ok=True)
 
 
 def _write_task_if_run_id(
@@ -171,27 +217,46 @@ def _write_task_if_run_id(
 
 
 def _read_task(task_id: str) -> dict[str, Any] | None:
-    path = _registry_path(task_id)
-    if not path.exists():
+    records: list[tuple[int, bool, dict[str, Any]]] = []
+    canonical = _registry_path(task_id)
+    for path in _task_record_paths(task_id):
+        if not path.exists():
+            continue
+        try:
+            task = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(task, dict) and str(task.get("task_id") or "") == task_id:
+            try:
+                modified = path.stat().st_mtime_ns
+            except OSError:
+                modified = 0
+            records.append((modified, path == canonical, task))
+    if not records:
         return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
+    return max(records, key=lambda item: item[:2])[2]
 
 
 def _list_tasks() -> list[dict[str, Any]]:
     if not REGISTRY_DIR.exists():
         return []
-    tasks = []
+    tasks: dict[str, tuple[int, dict[str, Any]]] = {}
     for f in sorted(REGISTRY_DIR.glob("*.json")):
         if f.name.endswith(".tmp"):
             continue
         try:
-            tasks.append(json.loads(f.read_text(encoding="utf-8")))
+            task = json.loads(f.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            pass
-    return tasks
+            continue
+        if isinstance(task, dict):
+            task_id = str(task.get("task_id") or f.name)
+            try:
+                modified = f.stat().st_mtime_ns
+            except OSError:
+                modified = 0
+            if task_id not in tasks or modified > tasks[task_id][0]:
+                tasks[task_id] = (modified, task)
+    return [task for _modified, task in tasks.values()]
 
 
 # ---------------------------------------------------------------------------
@@ -203,12 +268,15 @@ def _is_pid_alive(pid: int) -> bool:
 
 
 def _read_exit_code(task_id: str, run_id: str | None = None) -> int | None:
-    try:
-        return int(
-            _exit_status_path(task_id, run_id).read_text(encoding="utf-8").strip()
-        )
-    except (OSError, ValueError):
-        return None
+    for path in (
+        _exit_status_path(task_id, run_id),
+        *_legacy_exit_status_paths(task_id, run_id),
+    ):
+        try:
+            return int(path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def reconcile_terminal_task(task_id: str, task: dict[str, Any]) -> dict[str, Any]:

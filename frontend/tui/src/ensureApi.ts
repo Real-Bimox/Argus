@@ -552,6 +552,14 @@ export async function ensureApi(opts: {
     ) {
       const exitCode = await waitForStartupPoll(spawned, doSleep);
       if (exitCode !== undefined) {
+        const competing = await doProbe();
+        if (competing.state === 'compatible') {
+          return compatibleResult(competing, {
+            spawned: false,
+            prefix: 'api up',
+            onWarning,
+          });
+        }
         return {
           reachable: false,
           spawned: true,
@@ -640,6 +648,14 @@ export async function ensureApi(opts: {
   ) {
     const exitCode = await waitForStartupPoll(spawned, doSleep);
     if (exitCode !== undefined) {
+      const competing = await doProbe();
+      if (competing.state === 'compatible') {
+        return compatibleResult(competing, {
+          spawned: false,
+          prefix: 'api up',
+          onWarning,
+        });
+      }
       return {
         reachable: false,
         spawned: true,

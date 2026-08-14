@@ -41,6 +41,23 @@ test('a compatible preferred backend is reused', async () => {
   assert.equal(port, 8799);
 });
 
+test('an outdated Argus backend stays on the preferred port for safe replacement', async () => {
+  const port = await selectApiPort(
+    { host: '127.0.0.1', preferredPort: 8799, explicit: false },
+    {
+      probe: async () => ({
+        state: 'incompatible',
+        message: 'release mismatch',
+        meta: {} as ApiProbeResult['meta'],
+      }),
+      available: async () => {
+        throw new Error('availability should not be checked');
+      },
+    },
+  );
+  assert.equal(port, 8799);
+});
+
 test('a remote host keeps its requested port without attempting a local bind', async () => {
   let bound = false;
   const port = await selectApiPort(
@@ -55,6 +72,21 @@ test('a remote host keeps its requested port without attempting a local bind', a
   );
   assert.equal(port, 8799);
   assert.equal(bound, false);
+});
+
+test('a wildcard bind advances past an outdated occupied backend', async () => {
+  const port = await selectApiPort(
+    { host: '0.0.0.0', preferredPort: 8799, explicit: false },
+    {
+      probe: async () => ({
+        state: 'incompatible',
+        message: 'release mismatch',
+        meta: {} as ApiProbeResult['meta'],
+      }),
+      available: async (_host, candidate) => candidate === 8800,
+    },
+  );
+  assert.equal(port, 8800);
 });
 
 test('an occupied incompatible preferred port advances to the first available port', async () => {

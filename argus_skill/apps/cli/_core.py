@@ -737,35 +737,14 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
 def _cmd_repair(args: argparse.Namespace) -> int:
     import json
 
-    from ...core import daemon_lock
     from ...webapi.diagnostics import render_report
 
-    bundle, before = _doctor_checks(args)
+    _bundle, before = _doctor_checks(args)
     actions: list[dict[str, str]] = []
-    pid_path = bundle.project.root / "daemon.pid"
-    pid = daemon_lock.read_daemon_pid(pid_path)
-    if pid is not None and not daemon_lock.is_pid_running(pid):
-        action = {
-            "id": "remove_verified_stale_daemon_pid",
-            "risk": "safe",
-            "target": str(pid_path),
-        }
-        if bool(getattr(args, "safe", False)):
-            try:
-                lock = daemon_lock.acquire_global_daemon_lock(pid_path=pid_path)
-            except daemon_lock.DaemonAlreadyRunning as exc:
-                action["status"] = "skipped_live"
-                action["detail"] = f"daemon lock is now held by pid {exc.pid}"
-            else:
-                lock.release()
-                action["status"] = "applied"
-        else:
-            action["status"] = "planned"
-        actions.append(action)
 
     if bool(getattr(args, "plan", False)):
         for check in before:
-            if not check.ok and check.fix and check.name != "lock sanity":
+            if not check.ok and check.fix:
                 actions.append({
                     "id": "manual_required",
                     "risk": "manual",
