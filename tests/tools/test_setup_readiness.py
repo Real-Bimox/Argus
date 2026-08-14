@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from argus_skill.apps.cli import _core as cli_core
 from argus_skill.apps.cli import main as cli_main
@@ -22,16 +25,6 @@ def test_noninteractive_setup_requires_explicit_backend(capsys) -> None:
 
     assert rc == SETUP_EXIT_USAGE
     assert "requires --backend" in capsys.readouterr().err
-
-
-def test_noninteractive_setup_requires_house_rule_acceptance(capsys) -> None:
-    rc = setup.run_setup(
-        backend="copilot",
-        non_interactive=True,
-    )
-
-    assert rc == SETUP_EXIT_USAGE
-    assert "--accept-house-rules" in capsys.readouterr().err
 
 
 def test_interactive_setup_requires_choice_when_multiple_backends_exist(
@@ -89,6 +82,10 @@ def test_noninteractive_setup_validates_then_persists_without_global_mutation(
         lambda _report: calls.append("persist") or True,
     )
     monkeypatch.setattr(
+        "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
+        lambda name: "/usr/bin/copilot" if name == "copilot" else None,
+    )
+    monkeypatch.setattr(
         setup,
         "_apply_git_identity",
         lambda *_args: (_ for _ in ()).throw(
@@ -114,9 +111,87 @@ def test_noninteractive_setup_validates_then_persists_without_global_mutation(
     assert existing_house_rules.read_text(encoding="utf-8") == (
         "Keep operator-authored policy unchanged.\n"
     )
-    assert "No global Git identity or backend authentication files were changed" in (
-        capsys.readouterr().out
+    assert "Setup complete. Run `argus`." in capsys.readouterr().out
+
+
+def test_missing_pi_is_installed_automatically(monkeypatch) -> None:
+    installed = False
+
+    def resolve(name: str):
+        return "/usr/bin/pi" if name == "pi" and installed else None
+
+    def install() -> bool:
+        nonlocal installed
+        installed = True
+        return True
+
+    monkeypatch.setattr(
+        "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
+        resolve,
     )
+    monkeypatch.setattr(setup, "_install_pi_cli", install)
+
+    assert setup._configure_runner_backend("pi") == "pi"
+
+
+def test_noninteractive_api_url_configures_pi_without_backend_flag(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    report = BackendReadiness(
+        profile=BackendProfile(
+            backend="pi",
+            auth_mode="subscription_cli",
+            backend_source="argument",
+            auth_mode_source="argument",
+        ),
+        executable="/usr/bin/pi",
+        version="0.84.1",
+        auth_checked=True,
+    )
+    models_path = tmp_path / ".pi" / "agent" / "models.json"
+    persisted: list[str] = []
+    monkeypatch.setattr(setup, "_pi_models_path", lambda: models_path)
+    monkeypatch.setattr(setup, "_configure_runner_backend", lambda backend: backend)
+    monkeypatch.setattr(setup, "check_backend_readiness", lambda *_a, **_k: report)
+    monkeypatch.setattr(setup, "persist_validated_profile", lambda _report: True)
+    monkeypatch.setattr(
+        setup,
+        "_persist_pi_profile",
+        lambda model: persisted.append(model) or True,
+    )
+    monkeypatch.setenv(
+        "ARGUS_SKILL_SPECIAL_PROMPTS_DIR",
+        str(tmp_path / "special-prompts"),
+    )
+
+    rc = setup.run_setup(
+        non_interactive=True,
+        api_url="https://api.example.com/v1",
+        api_key="secret",
+        api_model="model-x",
+    )
+
+    assert rc == 0
+    provider = json.loads(models_path.read_text(encoding="utf-8"))["providers"]["argus"]
+    assert provider == {
+        "baseUrl": "https://api.example.com/v1",
+        "api": "openai-completions",
+        "apiKey": "secret",
+        "models": [{"id": "model-x"}],
+    }
+    assert persisted == ["model-x"]
+
+
+def test_pi_provider_rejects_non_http_url(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        setup,
+        "_pi_models_path",
+        lambda: tmp_path / "models.json",
+    )
+
+    with pytest.raises(ValueError, match="absolute http"):
+        setup._save_pi_provider("api.example.com/v1", "secret", "model-x")
 
 
 def test_cli_forwards_noninteractive_setup_contract(monkeypatch) -> None:
@@ -147,6 +222,9 @@ def test_cli_forwards_noninteractive_setup_contract(monkeypatch) -> None:
     assert captured["non_interactive"] is True
     assert captured["accept_house_rules"] is True
     assert captured["allow_prerelease"] is True
+    assert captured["api_url"] is None
+    assert captured["api_key"] is None
+    assert captured["api_model"] is None
 
 
 def test_daemon_readiness_failure_prevents_spawn(monkeypatch, capsys) -> None:

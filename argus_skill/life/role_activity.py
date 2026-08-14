@@ -277,7 +277,9 @@ def role_activity(
             ev.get("canonical_type") or ev.get("type")
         )
         call_id = str(ev.get("call_id") or "").strip()
-        if event_type == "agent.io.start" and role and call_id:
+        if event_type == "life.mission.completed":
+            inflight_calls.clear()
+        elif event_type == "agent.io.start" and role and call_id:
             inflight_calls[call_id] = role
         elif event_type in {"agent.io.complete", "agent.io.error"} and call_id:
             inflight_calls.pop(call_id, None)

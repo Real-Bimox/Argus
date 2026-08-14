@@ -19,6 +19,7 @@ import argparse
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -461,6 +462,74 @@ def test_self_learning_review_catches_up_after_missed_cadence(
     assert started[0]["operator_turn_count"] == 6
 
 
+def test_self_learning_review_reports_applied_skill_changes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from argus_skill.core.transcript import append_turn
+    from argus_skill.skills.layered import LayeredSkillStore
+
+    class _ImmediateThread:
+        def __init__(self, *, target, **_kwargs):
+            self._target = target
+
+        @staticmethod
+        def is_alive() -> bool:
+            return False
+
+        def start(self) -> None:
+            self._target()
+
+    runner = _make_runner(_FakeBackend(response_message="unused"))
+    runner._manager_session_root = tmp_path / "life"
+    runner.manager.skill_store = LayeredSkillStore(
+        project_dir=tmp_path / "project-skills",
+        global_dir=tmp_path / "profile-skills",
+    )
+    runner.manager.memory_maintenance_enabled = True
+    for index in range(5):
+        append_turn(runner._manager_session_root, "operator", f"turn {index}")
+
+    def _learn(*_args, options, **_kwargs):
+        skill_dir = Path(options.working_dir)
+        (skill_dir / "answer-preference.md").write_text(
+            "---\n"
+            'name: "Answer preference"\n'
+            'description: "Use the operator preferred answer shape."\n'
+            "---\n\n"
+            "# Answer preference\n\nUse concise evidence-first answers.\n",
+            encoding="utf-8",
+        )
+        return SimpleNamespace(exit_code=0, fatal_error="")
+
+    monkeypatch.setattr(
+        "argus_skill.apps._self_reply.threading.Thread",
+        _ImmediateThread,
+    )
+    monkeypatch.setattr(
+        "argus_skill.apps._self_reply.gateway_run_exec",
+        _learn,
+    )
+
+    runner._schedule_self_learning_review(objective="turn 4", reply="answer")
+
+    events = [
+        json.loads(line)
+        for line in (runner._manager_session_root / "events.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    completed = next(
+        event
+        for event in events
+        if event["type"] == "self.learning.review.completed"
+    )
+    assert completed["learning_applied"] is True
+    assert completed["created"] == ["answer-preference.md"]
+    assert completed["updated"] == []
+    assert completed["removed"] == []
+
+
 def test_manager_self_progress_blocks_redacted_before_live_sink() -> None:
     secret = "ghp_" + "A" * 36
     backend = _FakeBackend(
@@ -795,8 +864,8 @@ def test_execute_uses_full_pipeline_on_real_task(
     assert isinstance(layered, LayeredSkillStore)
     assert layered.project.skills_dir == tmp_path / "project-state" / "skills"
     assert layered.global_.skills_dir == tmp_path / "global-skills"
-    assert loop_kwargs[0]["config"].wiki_enabled is False
-    assert loop_kwargs[0]["config"].auto_init_wiki is False
+    assert loop_kwargs[0]["config"].wiki_enabled is True
+    assert loop_kwargs[0]["config"].auto_init_wiki is True
     assert loop_kwargs[0]["config"].session_id == "mission-tree"
 
     from argus_skill.apps import _runtime
@@ -819,8 +888,8 @@ def test_execute_uses_full_pipeline_on_real_task(
     )
     assert "## Planner execution plan" not in planned_tasks[0]
     assert loop_kwargs[0]["config"].workflow_mode == "direct"
-    assert loop_kwargs[0]["config"].wiki_enabled is False
-    assert loop_kwargs[0]["config"].auto_init_wiki is False
+    assert loop_kwargs[0]["config"].wiki_enabled is True
+    assert loop_kwargs[0]["config"].auto_init_wiki is True
 
     backend.calls.clear()
     planned_tasks.clear()
@@ -836,7 +905,7 @@ def test_execute_uses_full_pipeline_on_real_task(
     assert planned_tasks and "## Planner execution plan" not in planned_tasks[0]
     assert loop_kwargs[0]["config"].max_rounds == 1
     assert loop_kwargs[0]["config"].workflow_mode == "direct"
-    assert loop_kwargs[0]["config"].auto_init_wiki is False
+    assert loop_kwargs[0]["config"].auto_init_wiki is True
 
     planned_tasks.clear()
     loop_kwargs.clear()
@@ -849,6 +918,19 @@ def test_execute_uses_full_pipeline_on_real_task(
     assert planned_tasks
     assert loop_kwargs[0]["config"].active_vertical == "kernel_engineering"
     assert loop_kwargs[0]["config"].workflow_mode == "direct"
+
+    planned_tasks.clear()
+    loop_kwargs.clear()
+    monkeypatch.setenv("ARGUS_SKILL_WIKI", "0")
+    monkeypatch.setenv("ARGUS_SKILL_AUTO_INIT_WIKI", "0")
+    runner.execute(
+        objective="run without project Wiki",
+        sink=_RecordingSink(),
+        preplanned=True,
+        workflow_mode_override="direct",
+    )
+    assert loop_kwargs[0]["config"].wiki_enabled is False
+    assert loop_kwargs[0]["config"].auto_init_wiki is False
 
 
 def test_chat_path_emits_minimum_event_sequence() -> None:

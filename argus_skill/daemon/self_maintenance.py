@@ -40,6 +40,7 @@ _PUBLICATION_OPENED = "opened"
 _PUBLICATION_FAILED = "failed"
 _PUBLICATION_RETRY_SECONDS = 300.0
 _IDLE_CANARY_STABILITY_SECONDS = 30.0
+_REPAIR_FAMILY_FAILURE_LIMIT = 2
 _PRIVATE_RUNTIME_PATHS = (
     ".autors",
     ".argus-self-maintenance-runtime",
@@ -528,6 +529,50 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             })
             _atomic_json(self.state_path, state)
 
+    def _record_repair_failure(
+        self,
+        state: dict[str, Any],
+        *,
+        phase: str,
+        error: str,
+    ) -> None:
+        revision = str(state.get("repair_revision") or "")
+        paths = [
+            str(path)
+            for path in (state.get("repair_paths") or [])
+            if str(path)
+        ]
+        current = self._state()
+        previous_revision = str(current.get("failed_repair_revision") or "")
+        previous_paths = [
+            str(path)
+            for path in (current.get("failed_repair_paths") or [])
+            if str(path)
+        ]
+        previous_count = (
+            int(current.get("failed_repair_attempts") or 0)
+            if revision
+            and revision == previous_revision
+            and paths == previous_paths
+            else 0
+        )
+        failure_count = previous_count + 1 if revision else previous_count
+        self._write_state(
+            phase=phase,
+            error=error[:2000],
+            failed_repair_revision=revision or previous_revision,
+            failed_repair_paths=paths or previous_paths,
+            failed_repair_attempts=failure_count,
+            failed_repair_at=time.time(),
+        )
+        self._emit({
+            "type": "manager.self_maintenance.repair_failed",
+            "failure_count": failure_count,
+            "affected_paths": paths,
+            "error": error[:1000],
+            "agent_layer": "manager",
+        })
+
     def _active_item(self) -> BacklogItem | None:
         active_id = str(self._state().get("active_item_id") or "")
         for item in self.memory.backlog.all():
@@ -781,6 +826,47 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
                 "agent_layer": "manager",
             })
             return ""
+        from ..core.runtime_identity import source_revision
+
+        repair_revision = (
+            str(source_revision() or "").strip() or str(self.framework_root)
+        )
+        repair_paths = sorted(
+            str(path).strip().replace("\\", "/")
+            for path in affected_paths
+            if str(path).strip()
+        )
+        state = self._state()
+        prior_revision = str(state.get("failed_repair_revision") or "")
+        prior_paths = [
+            str(path)
+            for path in (state.get("failed_repair_paths") or [])
+            if str(path)
+        ]
+        prior_failures = int(state.get("failed_repair_attempts") or 0)
+        if (
+            repair_revision == prior_revision
+            and repair_paths == prior_paths
+            and prior_failures >= _REPAIR_FAMILY_FAILURE_LIMIT
+        ):
+            self._mark_observations_adjudicated(observations)
+            error = (
+                "suppressed repeated framework repair after "
+                f"{prior_failures} failed attempts for the same source/path family"
+            )
+            self._write_state(
+                phase="repair_suppressed",
+                repair_revision=repair_revision,
+                repair_paths=repair_paths,
+                error=error,
+            )
+            self._emit({
+                "type": "manager.self_maintenance.repair_suppressed",
+                "failure_count": prior_failures,
+                "affected_paths": repair_paths,
+                "agent_layer": "manager",
+            })
+            return ""
         try:
             worktree, branch = self._prepare_worktree(incident_id)
             base_revision = _run(
@@ -874,6 +960,8 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             problem=decision.problem,
             acceptance_check=decision.acceptance_check,
             affected_paths=list(affected_paths),
+            repair_revision=repair_revision,
+            repair_paths=repair_paths,
             error="",
         )
         self._emit({
@@ -1160,14 +1248,21 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             or not bool(outcome.get("success"))
             or str(outcome.get("review_status") or "") != "done"
         ):
-            self._write_state(
+            self._record_repair_failure(
+                state,
                 phase="review_rejected",
-                error=str(outcome.get("stop_reason") or outcome.get("status") or ""),
+                error=str(
+                    outcome.get("stop_reason") or outcome.get("status") or ""
+                ),
             )
             return None
         worktree = Path(str(state.get("worktree") or ""))
         if not worktree.is_dir():
-            self._write_state(phase="review_rejected", error="private worktree missing")
+            self._record_repair_failure(
+                state,
+                phase="review_rejected",
+                error="private worktree missing",
+            )
             return None
         try:
             base_revision = str(state.get("base_revision") or "")
@@ -1398,7 +1493,8 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             )
             commit = _run(["git", "rev-parse", "HEAD"], cwd=worktree).stdout.strip()
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
-            self._write_state(
+            self._record_repair_failure(
+                state,
                 phase="commit_failed",
                 error=f"{type(exc).__name__}: {exc}"[:2000],
             )
@@ -1411,6 +1507,9 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             canary_source_root=str(worktree),
             pr_url="",
             adopted_at=None,
+            failed_repair_revision="",
+            failed_repair_paths=[],
+            failed_repair_attempts=0,
             error="",
         )
         return worktree
@@ -1445,6 +1544,8 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             # the window so downtime never counts as healthy canary runtime.
             canary_started_at=time.time(),
             canary_pid=os.getpid(),
+            canary_mission_observed=False,
+            canary_success_observed=False,
             handoff_error="",
             error="",
         )
@@ -1698,6 +1799,24 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             resuming_publication
         ):
             return ""
+        result_rows = [
+            result
+            for result in (summary.get("results") or [])
+            if isinstance(result, dict)
+        ]
+        positive_mission = any(
+            result.get("success") is True
+            and str(result.get("status") or "") == "done"
+            for result in result_rows
+        )
+        if phase == "canary_running" and result_rows:
+            self._write_state(
+                canary_mission_observed=True,
+                canary_success_observed=bool(
+                    state.get("canary_success_observed") or positive_mission
+                ),
+            )
+            state = self._state()
         legacy_publication_failure = phase == "publication_failed"
         expected_root = Path(
             str(state.get("canary_source_root") or "")
@@ -1716,17 +1835,9 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
                     error=f"canary supervisor stopped by {stopped_by}",
                 )
                 return f"rollback:{state.get('old_source_root') or ''}"
-            results = summary.get("results")
-            made_progress = (
-                isinstance(results, list)
-                and any(
-                    isinstance(result, dict)
-                    and result.get("success") is True
-                    and str(result.get("status") or "") == "done"
-                    for result in results
-                )
-            ) or (
-                int(summary.get("planning_cycles") or 0) > 0
+            made_progress = positive_mission or (
+                not bool(state.get("canary_mission_observed"))
+                and int(summary.get("planning_cycles") or 0) > 0
                 and stopped_by
                 in {
                     "planner_retry",
@@ -1737,7 +1848,8 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             )
             stable_idle = (
                 stopped_by == "backlog_empty"
-                and (not isinstance(results, list) or not results)
+                and not result_rows
+                and not bool(state.get("canary_mission_observed"))
                 and float(state.get("canary_started_at") or 0.0) > 0.0
                 and (
                     time.time() - float(state.get("canary_started_at") or 0.0)

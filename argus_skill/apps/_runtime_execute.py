@@ -514,6 +514,7 @@ class SkillLoopExecuteMixin:
             )
         effective_require_independent_review = bool(
             require_independent_review
+            or _env_flag("ARGUS_SKILL_REQUIRE_INDEPENDENT_REVIEW", False)
             or (
                 active_contract.requires_independent_review
                 if active_contract is not None
@@ -547,10 +548,10 @@ class SkillLoopExecuteMixin:
             "require_post_task_learning": bool(
                 getattr(self, "_role_memory_maintenance_enabled", True)
             ),
-            "wiki_enabled": _env_flag("ARGUS_SKILL_WIKI", default=False),
+            "wiki_enabled": _env_flag("ARGUS_SKILL_WIKI", default=True),
             "auto_init_wiki": _env_flag(
                 "ARGUS_SKILL_AUTO_INIT_WIKI",
-                default=False,
+                default=True,
             ),
             "dangerous_yolo": not safe_mode,
             "full_auto": safe_mode,

@@ -1,8 +1,8 @@
 # Argus runtime surfaces
 
-**Evidence level:** locally tested and source-inspected on `argus-skill 0.1.1` at revision `58b9fbbec286e43c`; conditional on other versions.
+**Evidence level:** source-inspected on `argus-skill 0.1.1` at revision `009f7a19`; conditional on other versions.
 
-- `argus --doctor` and `argus --status` were executed successfully from the dedicated review workdir. Top-level `--help` is intentionally terse and does not enumerate every accepted automation flag.
+- `argus doctor` is the routine read-only preflight; `argus doctor --deep` adds available backend authentication probes and should be used only when needed. It is not universal proof of a live route: heed unchecked-token/offline/unreachable findings and use a backend-specific non-mutating readiness probe when required. `argus --doctor` remains a legacy deep-diagnostic alias. `argus --status` inspects the selected project. Top-level `--help` is intentionally terse and does not enumerate every accepted automation flag.
 - Local parser `argus_skill/apps/cli/_parser.py` defines `--daemon`, `--daemon-fg`, `--daemon-stop`, `--status`, `--continuous`, `--objective`, `--bounded`, `--notify`, `--follow`, cockpit/Web, resume, and related controls. Local README documents the two-party operating model: an outer operator supervises Argus; any provider CLI Argus invokes internally is configuration, not a third role.
 - Local route registrations in `argus_skill/webapi/routes/projects.py`, `workitems.py`, and `manager.py` define project snapshot/status, item answer, decision resolve, and Manager message endpoints.
 - Local `argus_skill/webapi/project_state.py` and `mission_items.py` expose `pending_questions`; Manager dispatch code routes a normal reply only when exactly one question is pending and points multiple questions to item-specific Needs you prompts.

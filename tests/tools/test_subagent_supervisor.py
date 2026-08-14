@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import time
 import types
@@ -38,6 +39,11 @@ from argus_skill.tools.subagent import (
     _supervisor_discuss,
     _write_task,
     cmd_reply,
+)
+
+requires_fork = pytest.mark.skipif(
+    not hasattr(os, "fork"),
+    reason="subagent daemonization uses POSIX fork",
 )
 
 _ORIGINAL_RUN_BACKEND_TURN = _sub._llm._run_backend_turn
@@ -92,6 +98,59 @@ def _install_fake_codex(monkeypatch: pytest.MonkeyPatch, fake_run: Callable[...,
         )
 
     monkeypatch.setattr(_sub._llm, "_run_backend_turn", fake_turn)
+
+
+def test_legacy_hashed_registry_record_is_read_and_migrated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from argus_skill.core.portable_filename import legacy_hashed_filename_components
+    from argus_skill.tools.subagent import _registry
+
+    monkeypatch.chdir(tmp_path)
+    task_id = "team::task"
+    legacy_component = legacy_hashed_filename_components(task_id)[0]
+    legacy = _registry.REGISTRY_DIR / f"{legacy_component}.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        json.dumps({"task_id": task_id, "status": "running"}) + "\n",
+        encoding="utf-8",
+    )
+    legacy_exit = _registry.REGISTRY_DIR / f"{legacy_component}_logs" / "exit_code.run-1"
+    legacy_exit.parent.mkdir()
+    legacy_exit.write_text("7\n", encoding="utf-8")
+
+    assert _registry._read_task(task_id)["status"] == "running"
+    assert _registry._read_exit_code(task_id, "run-1") == 7
+    _registry._write_task(task_id, {"task_id": task_id, "status": "done"})
+
+    assert _registry._registry_path(task_id).exists()
+    assert not legacy.exists()
+    assert _registry._list_tasks() == [{"task_id": task_id, "status": "done"}]
+
+    legacy_only_id = "~legacy"
+    legacy_only = _registry.REGISTRY_DIR / f"{legacy_only_id}.json"
+    legacy_only.write_text(
+        json.dumps({"task_id": legacy_only_id, "state": "done"}) + "\n",
+        encoding="utf-8",
+    )
+
+    assert _sub.cmd_clean(argparse.Namespace()) == 0
+    assert not legacy_only.exists()
+
+    other_id = "other::task"
+    aliased = _registry.REGISTRY_DIR / (
+        f"{legacy_hashed_filename_components(other_id)[0]}.json"
+    )
+    aliased.write_text(
+        json.dumps({"task_id": other_id, "state": "done"}) + "\n",
+        encoding="utf-8",
+    )
+    alias_id = aliased.stem
+
+    _registry._unlink_task_records(alias_id)
+
+    assert aliased.exists()
 
 
 def _skip_supervisor_summary(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1002,6 +1061,26 @@ def _submit_args(**kw) -> argparse.Namespace:
     return argparse.Namespace(**base)
 
 
+def test_cmd_submit_rejects_new_oversized_task_id(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        _sub._cli.os,
+        "fork",
+        lambda: (_ for _ in ()).throw(AssertionError("forked")),
+    )
+
+    rc = _sub.cmd_submit(_submit_args(task_id="x" * 121))
+    output = json.loads(capsys.readouterr().out)
+
+    assert rc == 1
+    assert "invalid task id" in output["error"]
+
+
+@requires_fork
 def test_cmd_submit_blocks_on_open_discussion(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     me = __import__("os").getpid()
@@ -1017,6 +1096,7 @@ def test_cmd_submit_blocks_on_open_discussion(monkeypatch, tmp_path, capsys) -> 
     assert "truncation" in out["supervisor_concern"]
 
 
+@requires_fork
 def test_cmd_submit_rejects_same_id_while_discussion_worker_lives(
     monkeypatch,
     tmp_path,
@@ -1052,6 +1132,7 @@ def test_cmd_submit_rejects_same_id_while_discussion_worker_lives(
     assert "already discussing" in out["error"]
 
 
+@requires_fork
 def test_cmd_submit_rejects_terminal_record_while_report_worker_lives(
     monkeypatch,
     tmp_path,
@@ -1082,6 +1163,7 @@ def test_cmd_submit_rejects_terminal_record_while_report_worker_lives(
     assert "already done" in out["error"]
 
 
+@requires_fork
 def test_cmd_submit_override_records_and_proceeds(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     me = __import__("os").getpid()
@@ -1096,6 +1178,7 @@ def test_cmd_submit_override_records_and_proceeds(monkeypatch, tmp_path, capsys)
     assert "I checked, proceed" in ledger
 
 
+@requires_fork
 def test_cmd_submit_refuses_poisoned_stop(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     rd = tmp_path / "runs" / "r1"
@@ -1112,6 +1195,7 @@ def test_cmd_submit_refuses_poisoned_stop(monkeypatch, tmp_path, capsys) -> None
     assert not (rd / "STOP").exists()
 
 
+@requires_fork
 def test_cmd_submit_rejects_insufficient_cpus_before_artifacts(
     monkeypatch, tmp_path, capsys
 ) -> None:
@@ -1138,6 +1222,7 @@ def test_cmd_submit_rejects_insufficient_cpus_before_artifacts(
     assert not run_dir.exists()
 
 
+@requires_fork
 def test_cmd_submit_rejects_cpu_conflict_before_new_task_record(
     monkeypatch, tmp_path, capsys
 ) -> None:
@@ -1169,6 +1254,7 @@ def test_cmd_submit_rejects_cpu_conflict_before_new_task_record(
     assert not _sub._registry_path("new").exists()
 
 
+@requires_fork
 def test_cmd_submit_reserves_disjoint_cpus_before_fork(
     monkeypatch, tmp_path, capsys
 ) -> None:
@@ -1199,6 +1285,7 @@ def test_cmd_submit_reserves_disjoint_cpus_before_fork(
     assert record["cpu_count"] == 2
 
 
+@requires_fork
 def test_cmd_submit_normalizes_relative_cwd_and_run_dir(
     monkeypatch,
     tmp_path,

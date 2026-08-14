@@ -13,7 +13,8 @@ Human cockpit:
 
 First-time setup and diagnostics:
   argus --setup
-  argus --doctor
+  argus doctor
+  argus repair --plan
   argus update
 
 Automation:
@@ -181,10 +182,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="enable continuous planner mode (daemon generates new tasks "
              "when backlog is empty)",
     )
-    daemon_grp.add_argument(
+    objective_source = daemon_grp.add_mutually_exclusive_group()
+    objective_source.add_argument(
         "--objective",
         default="",
         help="continuous improvement objective (used with --continuous)",
+    )
+    objective_source.add_argument(
+        "--objective-file",
+        default=None,
+        metavar="PATH",
+        help="read the continuous objective from UTF-8 PATH instead of "
+             "process arguments",
     )
     daemon_grp.add_argument(
         "--resume-continuous",
@@ -244,6 +253,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     cockpit_grp.add_argument(
         "--web-host",
+        "--host",
         default="127.0.0.1",
         help="bind host for --web (default 127.0.0.1; use 0.0.0.0 to reach it "
              "from a phone on the same network). A non-loopback bind always "
@@ -282,8 +292,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="run backend/auth, capability, daemon, and state diagnostics",
     )
     capability_grp.add_argument(
+        "-doctor",
+        dest="doctor",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    capability_grp.add_argument(
         "--backend",
-        choices=("copilot", "codex", "claude", "opencode", "pi", "grok"),
+        choices=("copilot", "codex", "claude", "opencode", "pi", "grok", "qoder", "dsh"),
         default=None,
         help="backend selected by --setup, --doctor, or this daemon launch",
     )
@@ -301,7 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
     capability_grp.add_argument(
         "--accept-house-rules",
         action="store_true",
-        help="with noninteractive --setup: explicitly accept the default house rules",
+        help=argparse.SUPPRESS,
     )
     capability_grp.add_argument(
         "--allow-prerelease",
@@ -309,14 +325,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="allow an explicitly selected prerelease backend CLI",
     )
     capability_grp.add_argument(
-        "--set-git-global",
-        action="store_true",
-        help="with --setup: opt in to changing global Git identity",
+        "--api-url",
+        default=None,
+        help="with --setup: configure an OpenAI-compatible API through Pi",
     )
     capability_grp.add_argument(
-        "--configure-codex",
-        action="store_true",
-        help="with --setup: opt in to writing Codex config/auth files",
+        "--api-key",
+        default=None,
+        help="with --setup: API key (prefer ARGUS_SETUP_API_KEY to avoid shell history)",
+    )
+    capability_grp.add_argument(
+        "--api-model",
+        default=None,
+        help="with --setup: model id for --api-url (default gpt-5.5)",
     )
     capability_grp.add_argument(
         "--model-api-status",
@@ -431,6 +452,45 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command")
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Run read-only Argus diagnostics",
+    )
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print a stable machine-readable diagnostic report",
+    )
+    doctor_parser.add_argument(
+        "--deep",
+        action="store_true",
+        help="include backend authentication probes",
+    )
+    doctor_parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="label this run as post-repair verification",
+    )
+    repair_parser = subparsers.add_parser(
+        "repair",
+        help="Plan or apply registered Argus recovery actions",
+    )
+    repair_mode = repair_parser.add_mutually_exclusive_group(required=True)
+    repair_mode.add_argument(
+        "--plan",
+        action="store_true",
+        help="show deterministic repair recommendations without modifying state",
+    )
+    repair_mode.add_argument(
+        "--safe",
+        action="store_true",
+        help="apply only registered SAFE actions, then verify",
+    )
+    repair_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print a stable machine-readable repair result",
+    )
     subparsers.add_parser(
         "update",
         help="Safely fast-forward and reinstall this source checkout",

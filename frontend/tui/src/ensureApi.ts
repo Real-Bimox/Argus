@@ -58,6 +58,48 @@ export interface ApiProbeResult {
   meta?: ApiMeta;
 }
 
+function startupPollAttempts(platform: NodeJS.Platform = process.platform): number {
+  return platform === 'win32' ? 60 : 20;
+}
+
+function startupPollDeadline(platform: NodeJS.Platform = process.platform): number {
+  return Date.now() + (platform === 'win32' ? 30_000 : 10_000);
+}
+
+interface SpawnedApiProcess {
+  pid: number;
+  exited?: Promise<number | null>;
+}
+
+function spawnDetachedApi(bin: string, host: string, port: number, token?: string): SpawnedApiProcess {
+  const child = spawn(bin, ['--web', '--web-host', host, '--web-port', String(port)], {
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+    env: spawnEnv(token),
+  });
+  const exited = new Promise<number | null>((resolveExit) => {
+    child.once('exit', (code) => resolveExit(code));
+    child.once('error', () => resolveExit(-1));
+  });
+  child.unref();
+  return { pid: child.pid!, exited };
+}
+
+async function waitForStartupPoll(
+  spawned: SpawnedApiProcess,
+  sleep: (ms: number) => Promise<void>,
+): Promise<number | null | undefined> {
+  if (!spawned.exited) {
+    await sleep(500);
+    return undefined;
+  }
+  return Promise.race([
+    sleep(500).then(() => undefined),
+    spawned.exited,
+  ]);
+}
+
 function localRuntimeExpectation(
   env: NodeJS.ProcessEnv = process.env,
 ): ApiRuntimeExpectation {
@@ -340,7 +382,7 @@ export async function ensureApi(opts: {
     readOwnedApi?: () => Promise<ApiOwnershipRecord | null>;
     claimApiOwnership?: (path: string, record: ApiOwnershipRecord) => Promise<boolean>;
     signal?: (pid: number, signal: NodeJS.Signals) => void;
-    spawnApi?: () => Promise<{ pid: number }>;
+    spawnApi?: () => Promise<SpawnedApiProcess>;
     writeOwnershipRecord?: (path: string, record: ApiOwnershipRecord) => Promise<void>;
     sleep?: (ms: number) => Promise<void>;
   };
@@ -496,23 +538,34 @@ export async function ensureApi(opts: {
     }
 
     // Spawn replacement backend.
-    const doSpawn = deps?.spawnApi ?? (async () => {
-      const child = spawn(bin, ['--web', '--web-host', host, '--web-port', String(port)], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-        env: spawnEnv(token),
-      });
-      child.unref();
-      return { pid: child.pid! };
-    });
+    const doSpawn = deps?.spawnApi ?? (async () => spawnDetachedApi(bin, host, port, token));
 
     onStatus?.('starting backend api…');
     const spawned = await doSpawn();
 
     // Poll for the new backend to come online.
-    for (let i = 0; i < 20; i++) {
-      await doSleep(500);
+    const replacementDeadline = startupPollDeadline();
+    for (
+      let i = 0;
+      i < startupPollAttempts() && Date.now() < replacementDeadline;
+      i++
+    ) {
+      const exitCode = await waitForStartupPoll(spawned, doSleep);
+      if (exitCode !== undefined) {
+        const competing = await doProbe();
+        if (competing.state === 'compatible') {
+          return compatibleResult(competing, {
+            spawned: false,
+            prefix: 'api up',
+            onWarning,
+          });
+        }
+        return {
+          reachable: false,
+          spawned: true,
+          message: `replacement backend exited before becoming ready (exit ${exitCode ?? 'unknown'})`,
+        };
+      }
       const probe = await doProbe();
       if (probe.state === 'compatible') {
         const ownership = spawnedOwnershipRecord(probe, spawned.pid, host, port, bin);
@@ -565,16 +618,8 @@ export async function ensureApi(opts: {
   onStatus?.('starting backend api…');
   const bin = resolveBin();
 
-  const doNormalSpawn = deps?.spawnApi ?? (async () => {
-    const child = spawn(bin, ['--web', '--web-host', host, '--web-port', String(port)], {
-      detached: true,
-      stdio: 'ignore',
-      windowsHide: true,
-      env: spawnEnv(token),
-    });
-    child.unref();
-    return { pid: child.pid! };
-  });
+  const doNormalSpawn = deps?.spawnApi ??
+    (async () => spawnDetachedApi(bin, host, port, token));
 
   const doNormalSignal = deps?.signal ?? ((pid: number, sig: NodeJS.Signals) => {
     process.kill(pid, sig);
@@ -582,10 +627,9 @@ export async function ensureApi(opts: {
   const doNormalWriteOwnership = deps?.writeOwnershipRecord ??
     ((p: string, r: ApiOwnershipRecord) => writeOwnershipRecordImpl(p, r));
 
-  let spawnedPid: number;
+  let spawned: SpawnedApiProcess;
   try {
-    const spawned = await doNormalSpawn();
-    spawnedPid = spawned.pid;
+    spawned = await doNormalSpawn();
   } catch (err) {
     return {
       reachable: false,
@@ -596,13 +640,33 @@ export async function ensureApi(opts: {
     };
   }
 
-  for (let i = 0; i < 20; i++) {
-    await doSleep(500);
+  const startupDeadline = startupPollDeadline();
+  for (
+    let i = 0;
+    i < startupPollAttempts() && Date.now() < startupDeadline;
+    i++
+  ) {
+    const exitCode = await waitForStartupPoll(spawned, doSleep);
+    if (exitCode !== undefined) {
+      const competing = await doProbe();
+      if (competing.state === 'compatible') {
+        return compatibleResult(competing, {
+          spawned: false,
+          prefix: 'api up',
+          onWarning,
+        });
+      }
+      return {
+        reachable: false,
+        spawned: true,
+        message: `backend exited before becoming ready (exit ${exitCode ?? 'unknown'})`,
+      };
+    }
     const probe = await doProbe();
     if (probe.state === 'compatible') {
       let spawnedApi: SpawnedApiReceipt | undefined;
       if (ownerFile) {
-        const ownership = spawnedOwnershipRecord(probe, spawnedPid, host, port, bin);
+        const ownership = spawnedOwnershipRecord(probe, spawned.pid, host, port, bin);
         try {
           await doNormalWriteOwnership(ownerFile, ownership);
         } catch (writeErr) {
@@ -625,7 +689,7 @@ export async function ensureApi(opts: {
       });
     }
     if (probe.state === 'incompatible') {
-      sendSigterm([spawnedPid], doNormalSignal);
+      sendSigterm([spawned.pid], doNormalSignal);
       return {
         reachable: false,
         spawned: true,
@@ -634,7 +698,7 @@ export async function ensureApi(opts: {
     }
     onStatus?.(`starting backend api… ${i + 1}`);
   }
-  sendSigterm([spawnedPid], doNormalSignal);
+  sendSigterm([spawned.pid], doNormalSignal);
   return {
     reachable: false,
     spawned: true,

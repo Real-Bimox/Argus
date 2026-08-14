@@ -8,12 +8,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-_PYTHON_ADMIN_COMMANDS = frozenset({"update", "wiki", "learn"})
+_PYTHON_ADMIN_COMMANDS = frozenset({"doctor", "repair", "update", "wiki", "learn"})
 
 _PYTHON_ADMIN_FLAGS = frozenset(
     {
         "-h",
         "--help",
+        "-doctor",
         "--version",
         "--update",
         "--daemon",
@@ -26,7 +27,6 @@ _PYTHON_ADMIN_FLAGS = frozenset(
         "--gc",
         "--watch",
         "--follow",
-        "--web",
         "--pair-plan",
         "--notify",
         "--init-identity",
@@ -53,7 +53,9 @@ _PYTHON_PRE_ACTION_VALUE_OPTIONS = frozenset(
         "--gc-days",
         "--objective",
         "--web-host",
+        "--host",
         "--web-port",
+        "--port",
         "--notify-stage",
         "--backend",
         "--auth-mode",
@@ -138,6 +140,15 @@ def _run_python_admin(argv: list[str]) -> int:
 
 
 def _uses_python_admin(argv: list[str]) -> bool:
+    # `argus --web` is a cockpit surface: it needs the TUI's automatic port
+    # selection and browser launch. Keep the legacy raw WebAPI spelling on the
+    # Python path only when its backend-specific options are present.
+    if "--web" in argv and any(
+        arg == option or arg.startswith(f"{option}=")
+        for arg in argv
+        for option in ("--web-host", "--host", "--web-port", "--port")
+    ):
+        return True
     i = 0
     while i < len(argv):
         arg = argv[i]

@@ -284,20 +284,26 @@ class LifeWorker(LifeWorkerBootMixin, LifeWorkerRunMixin):
         self._control_started_at_iso = started_at_iso
 
         def _watch() -> None:
-            while not self._stop.is_set():
+            last_request_at = -1.0
+            # A drain request sets ``_stop`` but deliberately leaves the current
+            # mission running. Keep watching so a later operator click can
+            # escalate that graceful drain to an immediate, PID-bound interrupt.
+            while not self._mission_stop.is_set():
                 request = read_daemon_control_stop(
                     self.config.life_dir,
                     pid=os.getpid(),
                     started_at_iso=started_at_iso,
                 )
-                if request is not None:
+                if request is not None and request.requested_at != last_request_at:
+                    last_request_at = request.requested_at
                     log.info(
                         "daemon: received PID-bound %s request",
                         "drain" if request.drain else "stop",
                     )
                     self.request_process_stop(drain=request.drain)
-                    return
-                self._stop.wait(0.1)
+                    if not request.drain:
+                        return
+                time.sleep(0.1)
 
         self._control_thread = threading.Thread(
             target=_watch,

@@ -51,6 +51,7 @@ def _source_files(root: Path) -> Iterable[Path]:
         "frontend/*/tsconfig*.json",
         "frontend/web/*.config.*",
         "frontend/web/index.html",
+        "argus_doctor.py",
         "pyproject.toml",
     )
     tracked = _git_tracked_files(root)

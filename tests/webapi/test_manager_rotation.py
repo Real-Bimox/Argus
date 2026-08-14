@@ -36,6 +36,7 @@ def test_manager_prewarm_schedule_is_one_shot_after_success(
 ) -> None:
     manager_state._STATES.clear()
     manager_state._MANAGER_PREWARMING.clear()
+    monkeypatch.setattr(manager_state, "_MANAGER_PREWARM_OWNER", None)
     calls: list[tuple[str, Path | None]] = []
 
     def fake_prewarm(sid: str, *, global_root=None) -> None:
@@ -69,6 +70,7 @@ def test_manager_prewarm_schedule_does_not_wait_for_busy_manager_turn(
     sid = "s-prewarm-busy"
     manager_state._STATES.clear()
     manager_state._MANAGER_PREWARMING.clear()
+    monkeypatch.setattr(manager_state, "_MANAGER_PREWARM_OWNER", None)
     lock_held = threading.Event()
     release_lock = threading.Event()
     schedule_returned = threading.Event()
@@ -106,6 +108,7 @@ def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
     monkeypatch,
 ) -> None:
     manager_state._STATES.clear()
+    manager_state._CONTROL_GENERATIONS.clear()
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_WARM_CONTEXT_LIMIT", "2")
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_WARM_CONTEXT_IDLE_SECONDS", "99999")
     closed: list[str] = []
@@ -135,12 +138,33 @@ def test_warm_manager_contexts_are_bounded_and_oldest_is_closed(
             "last_access_monotonic": now - 1,
         },
     })
+    manager_state.interrupt_manager_turns("s-old")
 
     manager_state._chat_state_for("s-third")
 
     assert "s-old" not in manager_state._STATES
+    assert "s-old" not in manager_state._CONTROL_GENERATIONS
     assert {"s-new", "s-third"} <= set(manager_state._STATES)
     assert closed == ["s-old"]
+
+
+def test_manager_shutdown_clears_control_generations() -> None:
+    manager_state._STATES.clear()
+    manager_state._CONTROL_GENERATIONS.clear()
+    manager_state.interrupt_manager_turns("s-old")
+
+    manager_state.shutdown_manager_bridge()
+
+    assert manager_state._CONTROL_GENERATIONS == {}
+
+
+def test_latest_explicit_project_becomes_prewarm_owner(monkeypatch) -> None:
+    monkeypatch.setattr(manager_state, "_MANAGER_PREWARM_OWNER", None)
+
+    manager_state._claim_manager_prewarm_owner("s-first")
+    assert manager_state._MANAGER_PREWARM_OWNER == "s-first"
+    manager_state._claim_manager_prewarm_owner("s-second")
+    assert manager_state._MANAGER_PREWARM_OWNER == "s-second"
 
 
 def test_manager_session_rotates_with_structured_handoff(tmp_path: Path, monkeypatch) -> None:

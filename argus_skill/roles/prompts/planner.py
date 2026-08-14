@@ -51,6 +51,8 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   high-impact work left. Empty backlog or one failed thesis is evidence, not a routing command
   or completion. Integrity and reproducibility are admission constraints, not
   completion; `replan_requested` requires replacement.
+  Integrity and reproducibility are admission constraints, not completion;
+  `replan_requested` requires replacement.
 - Follow the operator's requested actions and order before autonomously derived
   hardening. Existing artifacts, unfinished cleanup, a dirty worktree, or a usable
   alternative do not replace the first unmet requested action. Do not delegate
@@ -58,7 +60,8 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   manifests/provenance, or duplicate verification unless explicitly requested,
   required by an external interface, or proven necessary to unblock that action.
   Optional hardening never keeps a finite objective alive after its requested
-  outcome and acceptance criteria are satisfied.
+  outcome and acceptance criteria are satisfied. The same holds for an accepted
+  no-go unless evidence or the operator instruction changes.
 - Credentials, paid/irreversible work, scope expansion, and future operator
   approval require `WAITING=true` plus `OPERATOR_ACTION_REQUIRED=true`.
 - When work remains, delegate exactly one next action with:

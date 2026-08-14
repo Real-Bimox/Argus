@@ -8,9 +8,11 @@ real network call.
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
+from types import SimpleNamespace
 
 from argus_skill.webapi.diagnostics import Check, render_report, run_diagnostics
 
@@ -59,6 +61,60 @@ def test_render_report_all_green_has_no_recommendation():
     report = render_report([Check("daemon", True, "running (pid 5)", "")])
     assert "all checks passed" in report
     assert "→ recommended:" not in report
+
+
+def test_doctor_json_uses_stable_codes() -> None:
+    from argus_skill.apps.cli._core import _doctor_payload
+
+    payload = _doctor_payload([Check("lock sanity", False, "stale", "repair")])
+
+    assert payload["schema_version"] == 1
+    assert payload["ok"] is False
+    assert payload["checks"][0]["code"] == "ARGUS-STATE-001"
+
+
+def test_safe_repair_does_not_mutate_stale_daemon_pid_without_a_safe_protocol(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    from argus_skill.apps.cli import _core
+
+    pid_path = tmp_path / "daemon.pid"
+    pid_path.write_text("2000000000\n", encoding="ascii")
+    bundle = SimpleNamespace(project=SimpleNamespace(root=tmp_path))
+    checks = [Check("lock sanity", False, "stale", "remove")]
+    monkeypatch.setattr(_core, "_doctor_checks", lambda _args: (bundle, checks))
+
+    rc = _core._cmd_repair(
+        SimpleNamespace(safe=True, plan=False, json=True)
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert rc == 3  # mocked verification still reports the pre-repair failure
+    assert pid_path.exists()
+    assert payload["actions"] == []
+
+
+def test_repair_plan_reports_stale_lock_as_manual(tmp_path, monkeypatch, capsys) -> None:
+    from argus_skill.apps.cli import _core
+
+    pid_path = tmp_path / "daemon.pid"
+    pid_path.write_text("2000000000\n", encoding="ascii")
+    bundle = SimpleNamespace(project=SimpleNamespace(root=tmp_path))
+    checks = [Check("lock sanity", False, "stale", "remove")]
+    monkeypatch.setattr(_core, "_doctor_checks", lambda _args: (bundle, checks))
+    _core._cmd_repair(SimpleNamespace(safe=False, plan=True, json=True))
+    payload = json.loads(capsys.readouterr().out)
+
+    assert pid_path.exists()
+    assert payload["actions"] == [{
+        "id": "manual_required",
+        "risk": "manual",
+        "target": "lock sanity",
+        "status": "planned",
+        "detail": "remove",
+    }]
 
 
 def test_render_report_with_theme_is_failsoft():

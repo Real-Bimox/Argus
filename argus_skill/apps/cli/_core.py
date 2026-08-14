@@ -276,11 +276,27 @@ _FOLLOW_HEARTBEAT_SECONDS = 20.0
 
 
 def main(argv: list[str] | None = None) -> int:
-    from ...core.runtime_env import load_backend_runtime_env
+    from ...core.runtime_env import (
+        configure_framework_python_env,
+        load_backend_runtime_env,
+    )
 
+    configure_framework_python_env()
     load_backend_runtime_env()
     parser = build_parser()
     args = parser.parse_args(argv)
+    objective_file = getattr(args, "objective_file", None)
+    if objective_file:
+        try:
+            args.objective = Path(objective_file).expanduser().read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            sys.stderr.write(
+                f"argus-skill: could not read --objective-file {objective_file!r}: {exc}\n"
+            )
+            return 2
+        if not str(args.objective).strip():
+            sys.stderr.write("argus-skill: --objective-file must not be empty\n")
+            return 2
     from ...core.knobs import resolve_role_backend
 
     backend_default = (
@@ -374,6 +390,10 @@ def main(argv: list[str] | None = None) -> int:
             "are mutually exclusive.\n"
         )
         return 2
+    if args.command == "doctor":
+        return _run_with_path_resolution_errors(lambda: _cmd_doctor(args))
+    if args.command == "repair":
+        return _run_with_path_resolution_errors(lambda: _cmd_repair(args))
     if getattr(args, "update", False) or args.command == "update":
         from ..update import run_update
 
@@ -483,12 +503,9 @@ def main(argv: list[str] | None = None) -> int:
             non_interactive=bool(getattr(args, "non_interactive", False)),
             accept_house_rules=bool(getattr(args, "accept_house_rules", False)),
             allow_prerelease=bool(getattr(args, "allow_prerelease", False)),
-            set_git_global=(
-                True if bool(getattr(args, "set_git_global", False)) else None
-            ),
-            configure_codex=(
-                True if bool(getattr(args, "configure_codex", False)) else None
-            ),
+            api_url=getattr(args, "api_url", None),
+            api_key=getattr(args, "api_key", None),
+            api_model=getattr(args, "api_model", None),
         )
     if getattr(args, "doctor", False):
         return _run_with_path_resolution_errors(lambda: _cmd_doctor(args))
@@ -654,20 +671,110 @@ def _cmd_daemon_start(args: argparse.Namespace, *, foreground: bool) -> int:
     return int(receipt.result.get("rc", 3 if receipt.status != "applied" else 0))
 
 
-def _cmd_doctor(args: argparse.Namespace) -> int:
-    from ...webapi.diagnostics import render_report, run_diagnostics
+def _doctor_checks(args: argparse.Namespace):
+    from ...webapi.diagnostics import run_diagnostics
 
     bundle = _resolve_project_bundle(args)
-    checks = run_diagnostics(
+    legacy = bool(getattr(args, "doctor", False))
+    return bundle, run_diagnostics(
         bundle.project.root,
         global_root=bundle.global_root,
         backend=getattr(args, "backend", None),
         auth_mode=getattr(args, "auth_mode", None),
-        probe_auth=True,
+        probe_auth=legacy or bool(getattr(args, "deep", False)),
         allow_prerelease=bool(getattr(args, "allow_prerelease", False)),
     )
-    sys.stdout.write(render_report(checks) + "\n")
+
+
+def _doctor_payload(checks, *, verification: bool = False) -> dict[str, Any]:
+    codes = {
+        "backend preflight": "ARGUS-BACKEND-001",
+        "model API capability": "ARGUS-BACKEND-002",
+        "daemon": "ARGUS-DAEMON-001",
+        "lock sanity": "ARGUS-STATE-001",
+        "empty session": "ARGUS-STATE-002",
+    }
+    return {
+        "schema_version": 1,
+        "ok": all(check.ok for check in checks),
+        "verification": verification,
+        "checks": [
+            {
+                "code": codes.get(check.name, "ARGUS-CHECK-001"),
+                "name": check.name,
+                "ok": check.ok,
+                "detail": check.detail,
+                "fix": check.fix,
+            }
+            for check in checks
+        ],
+    }
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    import json
+
+    from ...webapi.diagnostics import render_report
+
+    _bundle, checks = _doctor_checks(args)
+    if bool(getattr(args, "json", False)):
+        sys.stdout.write(
+            json.dumps(
+                _doctor_payload(
+                    checks,
+                    verification=bool(getattr(args, "verify", False)),
+                ),
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n"
+        )
+    else:
+        sys.stdout.write(render_report(checks) + "\n")
     return 0 if all(check.ok for check in checks) else 3
+
+
+def _cmd_repair(args: argparse.Namespace) -> int:
+    import json
+
+    from ...webapi.diagnostics import render_report
+
+    _bundle, before = _doctor_checks(args)
+    actions: list[dict[str, str]] = []
+
+    if bool(getattr(args, "plan", False)):
+        for check in before:
+            if not check.ok and check.fix:
+                actions.append({
+                    "id": "manual_required",
+                    "risk": "manual",
+                    "target": check.name,
+                    "status": "planned",
+                    "detail": check.fix,
+                })
+        after = before
+    else:
+        _bundle, after = _doctor_checks(args)
+
+    payload = {
+        "schema_version": 1,
+        "mode": "safe" if bool(getattr(args, "safe", False)) else "plan",
+        "actions": actions,
+        "verification": _doctor_payload(after, verification=True),
+    }
+    if bool(getattr(args, "json", False)):
+        sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    else:
+        if actions:
+            for action in actions:
+                sys.stdout.write(
+                    f"{action['status']}: {action['id']} ({action['risk']}) "
+                    f"→ {action['target']}\n"
+                )
+        else:
+            sys.stdout.write("no registered repair action is needed\n")
+        sys.stdout.write(render_report(after) + "\n")
+    return 0 if all(check.ok for check in after) else 3
 
 
 def _cmd_daemon_stop(args: argparse.Namespace) -> int:

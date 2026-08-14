@@ -12,9 +12,9 @@ export function createLogger(): typeof log {
   log.transports.file.resolvePathFn = () =>
     join(app.getPath('userData'), 'logs', 'desktop.log');
   log.transports.file.maxSize = 5 * 1024 * 1024;
-  log.catchErrors({
+  log.errorHandler.startCatching({
     showDialog: false,
-    onError(error) {
+    onError({ error }) {
       log.error('uncaught main-process error', error);
     }
   });

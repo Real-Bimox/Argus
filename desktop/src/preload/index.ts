@@ -83,7 +83,7 @@ const api = {
   openLogs: (): Promise<string> => ipcRenderer.invoke('argus:open-logs'),
   openData: (): Promise<string> => ipcRenderer.invoke('argus:open-data'),
   restartBackend: (): Promise<boolean> => ipcRenderer.invoke('argus:restart-backend'),
-  exportDiagnostics: (): Promise<string> => ipcRenderer.invoke('argus:export-diagnostics'),
+  exportDiagnostics: (): Promise<string | null> => ipcRenderer.invoke('argus:export-diagnostics'),
   openCockpit: (): Promise<void> => ipcRenderer.invoke('argus:open-cockpit'),
   onShowSetup: (callback: () => void): (() => void) => {
     const listener = (): void => callback();

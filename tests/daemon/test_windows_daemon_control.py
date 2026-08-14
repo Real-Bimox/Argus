@@ -97,6 +97,42 @@ def test_worker_consumes_pid_bound_stop_without_console_signal(
     assert signal.SIGTERM in handlers
 
 
+def test_worker_upgrades_drain_request_to_immediate_interrupt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(life_worker_mod.signal, "signal", lambda *_args: None)
+    monkeypatch.setattr(
+        life_worker_mod,
+        "read_daemon_status",
+        lambda _path: SimpleNamespace(
+            alive=True,
+            pid=os.getpid(),
+            started_at_iso=_STARTED,
+        ),
+    )
+    daemon_state.request_daemon_control_stop(
+        tmp_path,
+        pid=os.getpid(),
+        started_at_iso=_STARTED,
+        drain=True,
+    )
+    worker = LifeWorker(LifeWorkerConfig(life_dir=tmp_path))
+    worker._install_signal_handlers()
+
+    assert worker._stop.wait(timeout=2.0)
+    assert worker._mission_stop.is_set() is False
+
+    daemon_state.request_daemon_control_stop(
+        tmp_path,
+        pid=os.getpid(),
+        started_at_iso=_STARTED,
+        drain=False,
+    )
+
+    assert worker._mission_stop.wait(timeout=2.0)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows signal semantics")
 def test_windows_nonblocking_stop_writes_control_without_os_kill(
     tmp_path: Path,

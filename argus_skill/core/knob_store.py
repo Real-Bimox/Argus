@@ -37,6 +37,7 @@ import logging
 import os
 import tempfile
 import threading
+import weakref
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Mapping
@@ -54,7 +55,9 @@ __all__ = [
     "persisted_knob",
 ]
 
-_THREAD_LOCKS: dict[str, threading.Lock] = {}
+_THREAD_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
+    weakref.WeakValueDictionary()
+)
 _THREAD_LOCKS_GUARD = threading.Lock()
 
 

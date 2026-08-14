@@ -753,6 +753,8 @@ class MissionExecutionSettlementMixin:
             from ...core.metrics import metrics_root_for_project, record_metric
 
             forward_progress = planner_report.get("forward_progress")
+            if not isinstance(forward_progress, bool) and success and status == "done":
+                forward_progress = True
             record_metric(
                 metrics_root_for_project(self.memory.root),
                 "goal.mission",

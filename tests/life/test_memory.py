@@ -88,6 +88,21 @@ def test_event_journal_reads_every_rollover_in_chronological_order(tmp_path: Pat
     ]
 
 
+def test_event_journal_total_cost_cache_is_bounded(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_text("", encoding="utf-8")
+    monkeypatch.setattr(EventJournal, "_TOTAL_COST_CACHE_MAX_ENTRIES", 2)
+    journal = EventJournal(path)
+
+    for timestamp in range(5):
+        assert journal.total_cost_since(float(timestamp)) == 0.0
+
+    assert list(journal._total_cost_cache) == [3.0, 4.0]
+
+
 def test_event_journal_projects_canonical_lifecycle_events(tmp_path: Path) -> None:
     path = tmp_path / "events.jsonl"
     path.write_text(
