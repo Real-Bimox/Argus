@@ -91,7 +91,7 @@ def test_run_one_mission_has_no_hard_self_sigkill_timer(tmp_path: Path, monkeypa
         def __init__(self, ns):
             pass
 
-        def execute(self, *, objective, sink):
+        def execute(self, *, objective, sink, prelude_context=""):
             return _Outcome()
 
     monkeypatch.setattr(rt, "_SkillLoopRunner", _Runner)
@@ -120,7 +120,7 @@ def test_teammate_forces_checkpoint_persist_off(tmp_path: Path, monkeypatch) -> 
         def __init__(self, ns):
             pass
 
-        def execute(self, *, objective, sink):
+        def execute(self, *, objective, sink, prelude_context=""):
             return _Outcome()
 
     monkeypatch.setattr(rt, "_SkillLoopRunner", _Runner)
@@ -291,3 +291,124 @@ def test_no_verify_key_is_backward_compatible(tmp_path: Path, monkeypatch) -> No
     monkeypatch.setattr(te, "run_one_engineer_mission", lambda *a, **k: True)
     te.main(["--root", str(root), "--member-id", "t1::w1", "--task-id", "t1::a", "--cwd", str(tmp_path)])
     assert _shard(root)["metric"] == 2.5
+
+
+# ── the vertical's per-mission prelude reaches a dispatched teammate ──────────
+# A teammate is an Engineer mission like any other and was the only one starting
+# without whatever its vertical wanted every mission to know. It now goes through
+# ``verticals._base.vertical_mission_prelude`` — the same seam the daemon's
+# supervisor uses — so the two cannot resolve one project two ways. Most projects
+# supply nothing, so "contributes exactly nothing" is the property under most of
+# the load here, not the happy path.
+
+def _math_project(tmp_path: Path, claim_id: str = "udist-main") -> Path:
+    """A project root the math vertical will actually project from."""
+    from argus_skill.research_math import (
+        ClaimVersion,
+        ContextVersion,
+        MathState,
+        save_state,
+    )
+
+    cwd = tmp_path / "proj"
+    (cwd / "research").mkdir(parents=True)
+    (cwd / "research" / "PIPELINE_STATE.json").write_text(
+        json.dumps({"vertical": "math", "current_stage": "solve"}), encoding="utf-8")
+    state = MathState()
+    context = state.add_context(ContextVersion(
+        context_id="c1", version=1,
+        statement="Fix a finite abelian group G.", definitions={}))
+    state.add_claim(ClaimVersion(
+        claim_id=claim_id, version=1, context=context.ref(),
+        natural_statement="Every G carries a uniform distribution."))
+    save_state(cwd, state)
+    return cwd
+
+
+def _dispatch(tmp_path: Path, monkeypatch, cwd: Path, **spec) -> dict:
+    """Run one teammate over ``spec`` and capture what the runner was handed."""
+    root = tmp_path / ".argus_team" / "t1"
+    tb.form(root, [{"task_id": "t1::a", "owns_paths": ["a/**"], **spec}])
+    assert tb.claim_top(root, "t1::w1", now=1.0)["task_id"] == "t1::a"
+    seen: dict = {}
+
+    def _capture(objective, **kwargs):
+        seen["objective"] = objective
+        seen["prelude"] = kwargs.get("prelude_context", "")
+        return True
+
+    monkeypatch.setattr(te, "run_one_engineer_mission", _capture)
+    assert te.main(["--root", str(root), "--member-id", "t1::w1",
+                    "--task-id", "t1::a", "--cwd", str(cwd)]) == 0
+    return seen
+
+
+def test_teammate_receives_the_verticals_mission_prelude(tmp_path, monkeypatch) -> None:
+    # The point of the change: a teammate whose task names a claim starts knowing
+    # what the project already records about it instead of re-deriving it.
+    cwd = _math_project(tmp_path)
+    seen = _dispatch(tmp_path, monkeypatch, cwd,
+                     objective="Close udist-main by the Fourier route.")
+
+    assert "udist-main" in seen["prelude"]
+    assert "MATH_STATE.json" in seen["prelude"]
+    # It travels as prelude_context, NOT folded into the objective. The runner
+    # reuses `objective` as the Reviewer's task, so prepending there would hand
+    # the Reviewer the briefing to review instead of the work.
+    assert seen["objective"] == "Close udist-main by the Fourier route."
+
+
+def test_teammate_prelude_is_empty_for_a_project_with_no_vertical(
+    tmp_path, monkeypatch
+) -> None:
+    # The overwhelmingly common case, and the one the change must not disturb:
+    # no PIPELINE_STATE.json, so nothing is resolved and nothing is contributed.
+    seen = _dispatch(tmp_path, monkeypatch, tmp_path, objective="optimize kA",
+                     target="kA")
+
+    assert seen["prelude"] == ""
+    assert seen["objective"] == "optimize kA"
+
+
+def test_teammate_prelude_never_raises_on_unreadable_project_state(
+    tmp_path, monkeypatch
+) -> None:
+    # Corrupt Manager state makes vertical resolution raise. The supervisor lets
+    # that end the run on purpose; a single subordinate teammate must not die for
+    # a briefing it could do without — its parent already reports the same fault.
+    cwd = tmp_path / "proj"
+    (cwd / "research").mkdir(parents=True)
+    (cwd / "research" / "PIPELINE_STATE.json").write_text("{not json", encoding="utf-8")
+
+    seen = _dispatch(tmp_path, monkeypatch, cwd, objective="do a")
+
+    assert seen["prelude"] == ""
+
+
+def test_teammate_prelude_is_empty_when_the_task_names_no_claim(
+    tmp_path, monkeypatch
+) -> None:
+    # Pinned deliberately. A route ("try the Fourier-analytic approach") names no
+    # claim, and the projection is claim-scoped by design: guessing which claim a
+    # route meant would produce a fragment about the wrong theorem that reads as
+    # if it were right. Empty is the correct answer here — the fix belongs in what
+    # the Engineer writes into the task, not in loosening the projection.
+    cwd = _math_project(tmp_path)
+    seen = _dispatch(tmp_path, monkeypatch, cwd,
+                     title="Fourier-analytic route",
+                     objective="Try the Fourier-analytic approach and report.")
+
+    assert seen["prelude"] == ""
+
+
+def test_teammate_and_supervisor_share_one_prelude_seam() -> None:
+    # Two ways of computing this text is how a teammate and the Engineer that
+    # dispatched it end up reading different projects. Both call sites route
+    # through the one helper; nothing calls the hook directly.
+    import inspect
+
+    from argus_skill.life.supervisor import _mission_execution_runtime
+
+    assert "vertical_mission_prelude" in inspect.getsource(_mission_execution_runtime)
+    assert "vertical_mission_prelude" in inspect.getsource(te)
+    assert "prepare_mission(" not in inspect.getsource(te)

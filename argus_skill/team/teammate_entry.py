@@ -90,12 +90,18 @@ def _build_runner_ns(cwd: str, *, max_rounds: int, paper_mission: bool,
 
 def run_one_engineer_mission(objective: str, *, cwd: str, life_dir: Path,
                              paper_mission: bool = False, max_rounds: int | None = None,
-                             timeout_s: float | None = None) -> bool:
+                             timeout_s: float | None = None,
+                             prelude_context: str = "") -> bool:
     """Run ONE headless engineer mission in-process on ``objective`` in ``cwd``.
 
     Reuses ``_SkillLoopRunner.execute`` — the exact per-mission call the
     daemon's supervisor makes. No cockpit, no daemon lock, no planner, no
     recursion. Events go to the isolated ``life_dir``. Returns True on success.
+
+    ``prelude_context`` is the same channel the supervisor uses for a
+    mission-level agent: text prepended above the live objective rather than
+    folded into it, so the Reviewer still reviews the task and not the briefing.
+    Empty for the common case; see ``_vertical_prelude``.
 
     Time-boxed: capped at ``max_rounds`` engineer rounds AND a wall-clock
     ``timeout_s`` (a watchdog sets the runner's stop_event), so a hard task
@@ -135,7 +141,8 @@ def run_one_engineer_mission(objective: str, *, cwd: str, life_dir: Path,
             )
             runner = _SkillLoopRunner(ns)
             sink = JsonlEventSink(LifeStderrSink(quiet=False), life_dir=life_dir)
-            outcome = runner.execute(objective=objective, sink=sink)
+            outcome = runner.execute(
+                objective=objective, sink=sink, prelude_context=prelude_context)
         except SystemExit as exc:  # codex extra missing, etc.
             sys.stderr.write(f"teammate_entry: runner unavailable: {exc}\n")
             return False
@@ -205,6 +212,61 @@ def _read_optional_result(expected_target: str | None = None) -> dict:
     return data
 
 
+def _vertical_prelude(task: dict, *, cwd: str, state_root: Path) -> str:
+    """The active vertical's per-mission block for the board task this teammate owns.
+
+    A dispatched teammate is an Engineer mission like any other, and until now
+    it was the only one that started without whatever its vertical wanted every
+    mission to know. Parallel fan-out is where that costs most: N teammates each
+    re-derive the project's shared context because none of them was handed it.
+
+    Routed through ``vertical_mission_prelude`` — the same seam the daemon's
+    supervisor uses — so a teammate and the Engineer that dispatched it read one
+    project through one resolution, not two that can disagree.
+
+    ``cwd`` serves as both roots. The teammate works in the project tree and the
+    Manager's ``PIPELINE_STATE.json`` decision is read relative to that same
+    tree, so unlike the supervisor (session artifact root vs. adopted mission
+    workdir) there are not two candidates to choose between. The stage is read
+    from that state for the same reason the supervisor reads it rather than
+    assuming one: a teammate runs inside the project's current stage, and
+    passing a blank would tell a stage-sensitive vertical it has no stage when
+    it plainly does. ``state_root`` is the teammate's own isolated ``life_dir``:
+    a vertical that materializes per-mission scratch from it then gets one per
+    teammate, instead of N concurrent siblings racing on a single shared
+    directory.
+
+    The board record is passed as the mission with its real fields exposed as
+    attributes — nothing synthesized. A vertical that reads a field the board
+    does not carry (``acceptance_check``, notably) sees it absent, which is the
+    truth, rather than a plausible-looking value invented here.
+
+    Everything is caught and degraded to no prelude. This is a deliberate
+    departure from the supervisor, which lets the hook halt the run: there the
+    loud failure is the point, because a mission-blind vertical would stay wrong
+    for the life of the project and the operator is watching. Here the caller is
+    one subordinate worker of many, its parent already fails loudly on the same
+    fault, and killing it before it starts would discard real work to report a
+    defect that has already been reported.
+    """
+    try:
+        from types import SimpleNamespace
+
+        from ..skills.stage_machine import current_stage
+        from ..verticals._base import vertical_mission_prelude
+
+        return vertical_mission_prelude(
+            vertical_root=Path(cwd),
+            project_root=Path(cwd),
+            state_root=Path(state_root),
+            stage=current_stage(cwd),
+            mission=SimpleNamespace(**task),
+        )
+    except Exception as exc:  # noqa: BLE001 - a briefing must not cost the mission
+        sys.stderr.write(f"teammate_entry: no vertical prelude: {exc!r}\n")
+        return ""
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="argus_skill.team.teammate_entry")
     p.add_argument("--root", required=True)
@@ -237,8 +299,10 @@ def main(argv: list[str] | None = None) -> int:
     stop = threading.Event()
     threading.Thread(target=_heartbeat_loop, args=(root, task_id, stop), daemon=True).start()
 
+    life_dir = root / "life" / member_safe
     success = run_one_engineer_mission(
-        objective, cwd=cwd, life_dir=root / "life" / member_safe)
+        objective, cwd=cwd, life_dir=life_dir,
+        prelude_context=_vertical_prelude(task, cwd=cwd, state_root=life_dir))
 
     stop.set()
     _result = _read_optional_result(expected_target=task.get("target") or task_id)
