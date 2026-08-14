@@ -31,6 +31,7 @@ import { openWebBrowser, resolvePairing, webUiUrl, withProject } from './webLaun
 import { createImeCursorOutput, ImeCursorProvider } from './imeCursor.js';
 import { InteractiveExitLifecycle } from './exitLifecycle.js';
 import { selectApiPort } from './portSelection.js';
+import { installParentExitGuard } from './parentExitGuard.js';
 
 /** A small spinner shown if the animation finishes before the API is reachable. */
 function Connecting({ note }: { note: string }) {
@@ -277,6 +278,7 @@ function Boot({
 }
 
 async function main() {
+  installParentExitGuard();
   let args = parseArgs(process.argv.slice(2));
   if (args.help) {
     process.stdout.write(HELP);
