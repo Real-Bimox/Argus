@@ -129,7 +129,13 @@ def _prewarm_manager_context(
         state["session_id"] = sid
         state["global_root"] = str(mem.global_root)
         runner = _ensure_manager_runner(state, mem)
-        backend = getattr(runner, "_backend", None) if runner is not None else None
+        backend = None
+        if runner is not None:
+            backend = getattr(runner, "manager_backend", None) or getattr(
+                runner,
+                "_backend",
+                None,
+            )
         prewarm = getattr(backend, "prewarm_acp_client", None)
         if not callable(prewarm):
             return

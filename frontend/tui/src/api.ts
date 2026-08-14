@@ -459,10 +459,17 @@ export class ApiClient {
     return (await r.json()) as { ok: boolean; sid: string; name: string };
   }
 
-  async snapshot(eventsLimit = 1, signal?: AbortSignal): Promise<Snapshot> {
+  async snapshot(
+    eventsLimit = 1,
+    signal?: AbortSignal,
+    prewarm = false,
+  ): Promise<Snapshot> {
     await this.meta();
     return requestWithTimeout(
-      this.p(`/snapshot?compact=true&events_limit=${eventsLimit}`),
+      this.p(
+        `/snapshot?compact=true&events_limit=${eventsLimit}`
+        + (prewarm ? '&prewarm=true' : ''),
+      ),
       { headers: this.authHeaders(), signal },
       this.readTimeoutMs,
       async (r) => {

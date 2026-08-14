@@ -206,10 +206,18 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
         from ..apps._runtime import build_life_runner
 
         runner = build_life_runner(ns)
-        manager_backend = getattr(runner, "_backend", None)
-        set_acp_scope = getattr(manager_backend, "set_acp_scope", None)
-        if callable(set_acp_scope):
-            set_acp_scope(f"manager:{chat_state.get('session_id') or workspace_key}")
+        acp_scope = f"manager:{chat_state.get('session_id') or workspace_key}"
+        backends: list[Any] = []
+        for backend in (
+            getattr(runner, "_backend", None),
+            getattr(runner, "manager_backend", None),
+        ):
+            if backend is not None and not any(backend is item for item in backends):
+                backends.append(backend)
+        for backend in backends:
+            set_acp_scope = getattr(backend, "set_acp_scope", None)
+            if callable(set_acp_scope):
+                set_acp_scope(acp_scope)
     except Exception:  # noqa: BLE001 — retry on the next operator turn
         return None
 
