@@ -29,6 +29,7 @@ def test_release_digest_covers_runtime_and_frontend_build_inputs() -> None:
         "frontend/web/package-lock.json",
         "frontend/web/vite.config.ts",
         "frontend/web/index.html",
+        "argus_doctor.py",
     }.issubset(included)
     assert "frontend/web/dist/index.html" not in included
     assert "frontend/tui/bundle/argus.mjs" not in included

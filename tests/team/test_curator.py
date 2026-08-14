@@ -96,6 +96,39 @@ def test_windows_adopted_process_uses_retained_handle_for_polling(
     assert closed == [77]
 
 
+def test_windows_adoption_opens_handle_before_identity_check(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "team"
+    roster.add_member(root, {
+        "id": "w1",
+        "pid": 4242,
+        "cwd": str(tmp_path),
+        "task_id": "t::a",
+        "status": "running",
+    })
+    order: list[str] = []
+    monkeypatch.setattr(cur, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(
+        cur,
+        "_open_windows_process_handle",
+        lambda _pid: order.append("open") or 77,
+    )
+    monkeypatch.setattr(
+        cur,
+        "_pid_is_teammate",
+        lambda *_args, **_kwargs: order.append("verify") or True,
+    )
+    monkeypatch.setattr(cur, "_windows_process_handle_alive", lambda _handle: True)
+    monkeypatch.setattr(cur, "_close_windows_process_handle", lambda _handle: None)
+
+    c = _fake_curator(tmp_path)
+
+    assert c._adopt_orphans(root, now=100.0) == ["w1"]
+    assert order == ["open", "verify"]
+
+
 def test_adopt_then_stop_kills_real_orphan(tmp_path: Path) -> None:
     import subprocess
     import sys
@@ -374,7 +407,11 @@ def test_reap_hard_timeout_killpg_and_fails_task(tmp_path: Path, monkeypatch) ->
     task_board.form(root, [{"task_id": "t::a", "objective": "x"}])
     killed: list = []
     if os.name == "nt":
-        monkeypatch.setattr(cur, "_terminate_windows_tree", lambda pid: killed.append((pid, "force")))
+        monkeypatch.setattr(
+            cur,
+            "_terminate_windows_tree",
+            lambda proc: killed.append((proc.pid, "force")) or True,
+        )
     else:
         monkeypatch.setattr(cur.os, "killpg", lambda pgid, sig: killed.append((pgid, sig)))
         monkeypatch.setattr(cur.os, "getpgid", lambda pid: pid)
@@ -392,6 +429,24 @@ def test_reap_hard_timeout_killpg_and_fails_task(tmp_path: Path, monkeypatch) ->
     member = next(m for m in roster.members(root) if m["id"] == tt.member_id)
     assert member["status"] == "failed"
     assert c._children == {}
+
+
+def test_reap_keeps_tracking_when_termination_does_not_finish(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / "team"
+    task_board.form(root, [{"task_id": "t::a", "objective": "x"}])
+    c = _fake_curator(tmp_path, teammate_timeout_s=10.0, hard_grace_s=5.0)
+    c._refill(root, width=1, cwd=tmp_path, now=100.0)
+    monkeypatch.setattr(c, "_terminate", lambda _tt: False)
+
+    result = c._reap(now=200.0)
+
+    assert result["hard_killed"] == []
+    assert len(c._children) == 1
+    task = next(task for task in task_board.snapshot(root) if task["task_id"] == "t::a")
+    assert task["state"] == "claimed"
 
 
 def test_reap_keeps_alive_child_within_deadline(tmp_path: Path) -> None:

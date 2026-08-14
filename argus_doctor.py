@@ -94,13 +94,20 @@ def run_bootstrap_doctor(root=None):
         "pass --root <Argus checkout>, or restore the checkout before running full Doctor",
     ))
 
-    runtime = _venv_python(checkout)
+    venv_runtime = _venv_python(checkout)
+    runtime = venv_runtime or (Path(sys.executable) if checkout is not None else None)
     findings.append(_finding(
         "ARGUS-PYTHON-002",
-        "Argus virtual environment",
+        "Argus Python runtime",
         runtime is not None,
-        str(runtime) if runtime is not None else "checkout .venv Python is missing",
-        "recreate .venv with Python 3.11+ and reinstall the checkout",
+        (
+            str(runtime)
+            if venv_runtime is not None
+            else f"{runtime} (bootstrap fallback; checkout .venv is absent)"
+            if runtime is not None
+            else "no usable Python runtime found"
+        ),
+        "install Python 3.11+ or recreate .venv and reinstall the checkout",
     ))
     if runtime is not None:
         try:

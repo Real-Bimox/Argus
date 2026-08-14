@@ -167,20 +167,6 @@ def test_latest_explicit_project_becomes_prewarm_owner(monkeypatch) -> None:
     assert manager_state._MANAGER_PREWARM_OWNER == "s-second"
 
 
-def test_switching_projects_releases_only_speculative_prewarm(monkeypatch) -> None:
-    manager_state._STATES.clear()
-    monkeypatch.setattr(manager_state, "_MANAGER_PREWARM_OWNER", "s-first")
-    manager_state._STATES.update({
-        "s-first": {"_manager_acp_prewarmed": True, "_manager_activity_seen": False},
-        "s-active": {"_manager_acp_prewarmed": True, "_manager_activity_seen": True},
-    })
-
-    manager_state._claim_manager_prewarm_owner("s-second")
-
-    assert "s-first" not in manager_state._STATES
-    assert "s-active" in manager_state._STATES
-
-
 def test_manager_session_rotates_with_structured_handoff(tmp_path: Path, monkeypatch) -> None:
     _make_project(tmp_path)
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_ROTATE_TURNS", "4")

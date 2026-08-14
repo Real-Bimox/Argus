@@ -11,7 +11,10 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..core.portable_filename import portable_filename_component
+from ..core.portable_filename import (
+    legacy_hashed_filename_components,
+    portable_filename_component,
+)
 from . import _store
 
 
@@ -37,6 +40,43 @@ def _path(root: Path, task_id: str) -> Path:
     return _tasks_dir(root) / _task_filename(task_id)
 
 
+def _legacy_paths(root: Path, task_id: str) -> tuple[Path, ...]:
+    directory = _tasks_dir(root)
+    return tuple(
+        directory / f"{component}.json"
+        for component in legacy_hashed_filename_components(task_id)
+    )
+
+
+def _read_task(root: Path, task_id: str) -> dict[str, Any] | None:
+    records: list[tuple[int, bool, dict[str, Any]]] = []
+    canonical = _path(root, task_id)
+    for path in (_path(root, task_id), *_legacy_paths(root, task_id)):
+        task = _store.read_json(path, default=None)
+        if isinstance(task, dict) and str(task.get("task_id") or "") == task_id:
+            try:
+                modified = path.stat().st_mtime_ns
+            except OSError:
+                modified = 0
+            records.append((modified, path == canonical, task))
+    if not records:
+        return None
+    return max(records, key=lambda item: item[:2])[2]
+
+
+def _write_task(root: Path, task_id: str, task: dict[str, Any]) -> None:
+    path = _path(root, task_id)
+    _store.atomic_write_json(path, task)
+    for legacy in _legacy_paths(root, task_id):
+        legacy_task = _store.read_json(legacy, default=None)
+        if (
+            legacy != path
+            and isinstance(legacy_task, dict)
+            and str(legacy_task.get("task_id") or "") == task_id
+        ):
+            legacy.unlink(missing_ok=True)
+
+
 def _load_all(root: Path) -> list[dict[str, Any]]:
     d = _tasks_dir(root)
     if not d.exists():
@@ -44,12 +84,25 @@ def _load_all(root: Path) -> list[dict[str, Any]]:
     # Atomic writes use hidden ``.tmp-*.json`` siblings. If a process dies
     # between temp creation and replace, the leftover file must not become a
     # second claimable copy of the same logical task.
-    out = [
-        _store.read_json(p, default=None)
-        for p in sorted(d.glob("*.json"))
-        if not p.name.startswith(".")
-    ]
-    return [t for t in out if isinstance(t, dict)]
+    tasks: dict[str, tuple[int, bool, dict[str, Any]]] = {}
+    for path in sorted(d.glob("*.json")):
+        if path.name.startswith("."):
+            continue
+        task = _store.read_json(path, default=None)
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("task_id") or "")
+        if not task_id:
+            continue
+        canonical = path == _path(root, task_id)
+        try:
+            modified = path.stat().st_mtime_ns
+        except OSError:
+            modified = 0
+        candidate = (modified, canonical, task)
+        if task_id not in tasks or candidate[:2] > tasks[task_id][:2]:
+            tasks[task_id] = candidate
+    return [task for _modified, _canonical, task in tasks.values()]
 
 
 # Liveness/ownership fields that belong to a teammate ACTIVELY working a task.
@@ -103,14 +156,19 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
                 "attempts": 0,
                 "priority": int(spec.get("priority", 100)),
             }
-            prior = _store.read_json(_path(root, tid), default=None)
+            prior = _read_task(root, tid)
+            if (
+                prior is None
+                and len(str(tid).encode("utf-8")) > 120
+            ):
+                raise ValueError("task_id exceeds 120 UTF-8 bytes")
             if isinstance(prior, dict) and prior.get("state") in ("claimed", "running"):
                 # A teammate is mid-flight on this task — keep its ownership and
                 # only refresh the static spec fields rebuilt above.
                 for field in _LIVE_OWNERSHIP_FIELDS:
                     if field in prior:
                         task[field] = prior[field]
-            _store.atomic_write_json(_path(root, tid), task)
+            _write_task(root, tid, task)
 
 
 def _done_ids(tasks: list[dict[str, Any]]) -> set[str]:
@@ -138,7 +196,7 @@ def claim_top(root: Path, member_id: str, *, now: float) -> dict[str, Any] | Non
         task["owner"] = member_id
         task["claim_ts"] = now
         task["heartbeat_ts"] = now
-        _store.atomic_write_json(_path(root, task["task_id"]), task)
+        _write_task(root, task["task_id"], task)
         return task
 
 
@@ -150,22 +208,22 @@ def count_in_flight(root: Path) -> int:
 def heartbeat(root: Path, task_id: str, *, now: float) -> None:
     """Refresh liveness; first heartbeat promotes ``claimed`` -> ``running``."""
     with _store.locked(_lock(root)):
-        task = _store.read_json(_path(root, task_id), default=None)
+        task = _read_task(root, task_id)
         if not isinstance(task, dict):
             return
         task["heartbeat_ts"] = now
         if task["state"] == "claimed":
             task["state"] = "running"
-        _store.atomic_write_json(_path(root, task_id), task)
+        _write_task(root, task_id, task)
 
 
 def _mutate(root: Path, task_id: str, **changes: Any) -> None:
     with _store.locked(_lock(root)):
-        task = _store.read_json(_path(root, task_id), default=None)
+        task = _read_task(root, task_id)
         if not isinstance(task, dict):
             return
         task.update(changes)
-        _store.atomic_write_json(_path(root, task_id), task)
+        _write_task(root, task_id, task)
 
 
 def complete(root: Path, task_id: str, *, shard: str = "") -> None:
@@ -200,7 +258,7 @@ def reassign_stale(
                 task["state"] = "pending"
                 task["owner"] = ""
                 task["attempts"] = int(task.get("attempts", 0)) + 1
-                _store.atomic_write_json(_path(root, task["task_id"]), task)
+                _write_task(root, task["task_id"], task)
                 reassigned.append(task["task_id"])
     return reassigned
 
