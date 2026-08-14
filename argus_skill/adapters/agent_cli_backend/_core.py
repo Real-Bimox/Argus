@@ -155,6 +155,7 @@ class AgentCliBackend:
     def prewarm_acp_client(
         self,
         *,
+        run_label: str,
         model: str | None,
         reasoning_effort: str | None,
         lean: bool,
@@ -166,6 +167,7 @@ class AgentCliBackend:
         prewarm = getattr(self._runner, "prewarm_acp_client", None)
         if callable(prewarm):
             prewarm(
+                run_label=run_label,
                 model=model,
                 reasoning_effort=reasoning_effort,
                 lean=lean,
