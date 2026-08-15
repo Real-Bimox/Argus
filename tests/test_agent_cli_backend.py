@@ -177,6 +177,21 @@ def _make_cli_result(
     )
 
 
+def test_explicit_secret_snapshot_survives_per_call_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "ambient-secret-value")
+    backend = AgentCliBackend(
+        backend="codex",
+        known_secret_values_override=("custom-vault-secret",),
+    )
+
+    backend._refresh_known_secret_values()
+
+    assert "custom-vault-secret" in backend._known_secret_values
+    assert "ambient-secret-value" in backend._known_secret_values
+
+
 def test_run_exec_translates_options_and_result(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

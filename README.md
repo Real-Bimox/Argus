@@ -90,6 +90,12 @@ found in a later PowerShell window, confirm that the Python installer's Scripts
 directory is on PATH; the `$Scripts` lines above make it available immediately
 in the current window.
 
+`argus doctor` is an active repair command. By default it launches an installed
+Agent CLI in the real Argus directories with tools enabled, lets the Agent
+inspect and fix the machine, then reruns deterministic checks. Use
+`argus doctor --advisor none` only when you want diagnostics without an Agent
+repair turn.
+
 Until the first versioned PyPI release, refresh the moving GitHub preview with:
 
 ```powershell

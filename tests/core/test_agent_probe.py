@@ -5,7 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from argus_skill.core.agent_probe import run_read_only_agent_prompt
+from argus_skill.core.agent_probe import (
+    run_agent_repair_prompt,
+    run_read_only_agent_prompt,
+)
 
 
 def test_agent_probe_runs_read_only_without_mutating_safe_mode(
@@ -138,6 +141,91 @@ def test_agent_probe_rejects_tool_activity(monkeypatch) -> None:
 
     assert result.ok is False
     assert result.error == "Agent used a tool during the tool-free verification turn"
+
+
+def test_agent_repair_prompt_enables_tools_and_real_workdir(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    calls: dict[str, object] = {}
+
+    class Runner:
+        def __init__(self, *, backend: str, runner_bin: str, **kwargs) -> None:
+            calls["backend"] = backend
+            calls["executable"] = runner_bin
+            calls["runner_defaults"] = kwargs
+
+        def run_exec(self, **kwargs):
+            calls.update(kwargs)
+            options = kwargs["options"]
+            assert options.working_dir == str(tmp_path)
+            assert options.add_dirs == [str(tmp_path / "argus-home")]
+            assert options.dangerous_yolo is True
+            assert options.full_auto is True
+            assert options.sandbox_mode is None
+            return SimpleNamespace(
+                exit_code=0,
+                tool_activity_observed=True,
+                last_agent_message="Fixed config and verified Doctor.",
+                agent_messages=["Fixed config and verified Doctor."],
+                fatal_error="",
+                stderr_lines=[],
+            )
+
+    monkeypatch.setattr(
+        "argus_skill.adapters.agent_cli_backend.AgentCliBackend",
+        Runner,
+    )
+
+    result = run_agent_repair_prompt(
+        backend="codex",
+        executable="/usr/bin/codex",
+        prompt="repair Argus",
+        working_dir=tmp_path,
+        add_dirs=(tmp_path / "argus-home",),
+        known_secret_values=("secret-value",),
+    )
+
+    assert result.ok is True
+    assert result.output == "Fixed config and verified Doctor."
+    assert calls["run_label"] == "doctor-repair"
+    assert calls["runner_defaults"]["known_secret_values_override"] == (
+        "secret-value",
+    )
+
+
+def test_agent_repair_prompt_requires_real_tool_activity(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    class Runner:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def run_exec(self, **_kwargs):
+            return SimpleNamespace(
+                exit_code=0,
+                tool_activity_observed=False,
+                last_agent_message="Run these commands yourself.",
+                agent_messages=["Run these commands yourself."],
+                fatal_error="",
+                stderr_lines=[],
+            )
+
+    monkeypatch.setattr(
+        "argus_skill.adapters.agent_cli_backend.AgentCliBackend",
+        Runner,
+    )
+
+    result = run_agent_repair_prompt(
+        backend="claude",
+        executable="/usr/bin/claude",
+        prompt="repair Argus",
+        working_dir=tmp_path,
+    )
+
+    assert result.ok is False
+    assert result.error == "Agent returned without inspecting or repairing with tools"
 
 
 def test_agent_probe_fails_closed_for_tool_free_codex() -> None:

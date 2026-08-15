@@ -12,7 +12,7 @@ import os
 import threading
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from ...core.models import RunnerOptions, RunnerResult
 from ...core.secret_guard import known_secret_values
@@ -94,6 +94,7 @@ class AgentCliBackend:
         default_watchdog_hard_idle_seconds: int = _RUNNER_DEFAULT_HARD_IDLE_SECONDS,
         before_exec=None,
         event_callback=None,
+        known_secret_values_override: Iterable[str] | None = None,
     ) -> None:
         deps = load_agent_cli_runtime()
         self._deps = deps
@@ -140,7 +141,11 @@ class AgentCliBackend:
         self._usage_project_root: Path | None = None
         self._usage_global_root: Path | None = None
         self._usage_mission_id: str | None = None
-        self._known_secret_values = known_secret_values()
+        self._known_secret_values_override = tuple(
+            known_secret_values_override or ()
+        )
+        self._known_secret_values: tuple[str, ...] = ()
+        self._refresh_known_secret_values()
 
     @property
     def backend(self) -> str:
@@ -209,6 +214,12 @@ class AgentCliBackend:
                 self._usage_mission_id,
                 self._usage_global_root,
             )
+
+    def _refresh_known_secret_values(self) -> None:
+        self._known_secret_values = tuple(dict.fromkeys((
+            *self._known_secret_values_override,
+            *known_secret_values(),
+        )))
 
     def _configured_pricing_model(self, *, profile: str = "") -> str:
         """Read the implicit model from Codex's own config, never another route."""

@@ -86,6 +86,10 @@ argus
 一次禁止工具调用的 Agent turn。上面的 `$Scripts` 命令会让当前 PowerShell 立即找到
 `argus`；如果新窗口仍找不到，再确认 Python 安装器的 Scripts 目录已加入 PATH。
 
+`argus doctor` 是主动修复命令：默认会在真实 Argus 目录中启动用户电脑上已安装的
+Agent CLI，开放工具让 Agent 直接检查并修复机器，然后重新运行确定性检查验收。
+只有需要“纯诊断、不启动 Agent 修复”时才使用 `argus doctor --advisor none`。
+
 正式 PyPI 版本发布前，用下面的命令刷新持续更新的 GitHub Preview：
 
 ```powershell
