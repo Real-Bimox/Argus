@@ -46,6 +46,11 @@ class _Outcome:
     # True when a trusted review-only workflow deliberately bypassed the formal
     # stage writer. Persisted separately so recovery cannot replay the review.
     stage_transition_skipped: bool = False
+    # True when a Planner-authored intermediate node held the stage rather than
+    # closing it. The opposite of the flag above: the Reviewer verdict is real
+    # and campaign-level reconciliation is meant to replay it once the stage's
+    # planned work drains.
+    stage_transition_deferred: bool = False
     # The reviewer's named ``OPERATOR_QUESTION`` verdict field from the
     # FINAL round, when the mission stopped with ``status == "blocked"``. The
     # supervisor persists this onto the backlog item (``pending_question``)

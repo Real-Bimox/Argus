@@ -276,3 +276,4 @@ class _ExecuteState:
         self.effective_reason: str = ""
         self.stage_transition: dict = {}
         self.stage_transition_skipped: bool = False
+        self.stage_transition_deferred: bool = False

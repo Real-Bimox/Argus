@@ -1363,6 +1363,11 @@ class LifeSupervisor(
                     "This bounded work item is finished; project and stage "
                     "completion were not certified."
                 )
+            elif str(outcome.get("stage_certification") or "").strip() == "deferred":
+                continuation = (
+                    "This planned work item is finished; its review is on record "
+                    "and the stage decision waits for the rest of the plan."
+                )
             else:
                 continuation = "This task is finished."
             publish_operator_message(

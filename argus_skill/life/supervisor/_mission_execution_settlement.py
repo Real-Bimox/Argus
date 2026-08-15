@@ -481,6 +481,9 @@ class MissionExecutionSettlementMixin:
                 self._item_skips_stage_transition(item)
                 or bool(getattr(outcome, "stage_transition_skipped", False))
             ),
+            stage_transition_deferred=bool(
+                getattr(outcome, "stage_transition_deferred", False)
+            ),
             stop_kind=state.stop_kind,
             resumable=resumable,
         )

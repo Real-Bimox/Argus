@@ -1255,7 +1255,6 @@ class SkillLoopExecuteMixin:
         ex_state.stage_transition = stage_transition
         ex_state.stage_transition_skipped = bool(
             workflow_skips_stage_transition
-            or planned_node_holds_stage
             or not holds_stage_authority
             or (
                 effective_skip_stage_transition
@@ -1263,6 +1262,17 @@ class SkillLoopExecuteMixin:
                 and ex_state.mission_scope.strip().lower().replace("-", "_")
                 == "bounded"
             )
+        )
+        # Deliberately NOT folded into ``stage_transition_skipped`` above. A
+        # planned node holding the stage is a deferral, not a suppression: its
+        # Reviewer verdict is genuine evidence that the campaign-level stage
+        # reconciliation is entitled to replay later. Collapsing the two made
+        # every Planner node look review-suppressed, which left no vertical
+        # whose completion gate is not ``certified`` any way to close a stage.
+        ex_state.stage_transition_deferred = bool(
+            planned_node_holds_stage
+            and not ex_state.stage_transition_skipped
+            and not stage_transition
         )
 
     def _build_execute_outcome(self, ex_state: "_ExecuteState") -> _Outcome:
@@ -1296,6 +1306,7 @@ class SkillLoopExecuteMixin:
             completion_evidence=ex_state.completion_evidence,
             stage_transition=ex_state.stage_transition,
             stage_transition_skipped=ex_state.stage_transition_skipped,
+            stage_transition_deferred=ex_state.stage_transition_deferred,
             operator_question=ex_state.operator_question,
             operator_options=ex_state.operator_options,
             final_review_status=ex_state.final_review_status,

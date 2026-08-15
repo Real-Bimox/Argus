@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Callable
 
 from ..core.event_catalog import EventType
 from ..core.models import LoopStatus, ReviewDecision, RoundRecord
+from .checkpoint import resolve_shared_checkpoint
 from .round_signals import _review_event_payload
 from .round_state import (
     EngineerTurnOutcome,
@@ -183,6 +184,32 @@ class RoundSettlementMixin:
         )
         state.rounds.append(record)
         state.reviewer_next_action = review.next_action if review.status == "continue" else None
+        # Seal the Reviewer half of the round packet, symmetrically with
+        # ``record_engineer_handoff`` in round_execution. Sealed before the
+        # terminal classification below, because the terminal round is exactly
+        # the one whose verdict the campaign-level stage reconciliation needs.
+        #
+        # Only a genuine independent Reviewer verdict is sealed: the packet
+        # declares ``producer_role="reviewer"`` and the supervisor replays it
+        # as independent stage evidence, so sealing a self-review here would
+        # let the Engineer certify its own stage transition.
+        if supervised_config.context_packet_path and str(
+            getattr(review, "review_source", "reviewer") or "reviewer"
+        ) == "reviewer":
+            try:
+                from ..life.context_packet import record_reviewed_handoff
+
+                record_reviewed_handoff(
+                    mission_context_path=supervised_config.context_packet_path,
+                    round_index=round_index,
+                    engineer_summary=engineer_message,
+                    review=review,
+                    checkpoint_path=resolve_shared_checkpoint(
+                        supervised_config.checkpoint_path
+                    ),
+                )
+            except Exception:  # noqa: BLE001 - handoff persistence is fail-soft
+                log.exception("failed to persist Reviewer context packet")
         if review_completed_hook is not None:
             try:
                 review_completed_hook(record)
