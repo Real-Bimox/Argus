@@ -759,6 +759,9 @@ def _maintenance_context(args: argparse.Namespace):
         web_port=int(getattr(args, "web_port", 8799) or 8799),
         desktop_user_data=desktop_user_data,
         install_mode=install_mode,
+        backend=getattr(args, "backend", None),
+        auth_mode=getattr(args, "auth_mode", None),
+        allow_prerelease=bool(getattr(args, "allow_prerelease", False)),
     )
 
 

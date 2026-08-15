@@ -75,6 +75,80 @@ def test_doctor_json_uses_stable_codes() -> None:
     assert payload["checks"][0]["code"] == "ARGUS-STATE-001"
 
 
+def test_full_doctor_forwards_explicit_backend_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from argus_skill.maintenance.doctor import DoctorContext, run_full_doctor
+    from argus_skill.webapi import diagnostics
+
+    seen = {}
+
+    def fake_diagnostics(project_root, **kwargs):
+        seen["project_root"] = project_root
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr(diagnostics, "run_diagnostics", fake_diagnostics)
+    context = DoctorContext(
+        global_root=tmp_path,
+        project_root=tmp_path / "project",
+        backend="copilot",
+        auth_mode="subscription_cli",
+        allow_prerelease=True,
+    )
+
+    run_full_doctor(context, probe_auth=True)
+
+    assert seen == {
+        "project_root": context.project_root,
+        "global_root": context.global_root,
+        "backend": "copilot",
+        "auth_mode": "subscription_cli",
+        "probe_auth": True,
+        "allow_prerelease": True,
+    }
+
+
+def test_cli_maintenance_context_keeps_explicit_backend_contract(
+    tmp_path: Path,
+) -> None:
+    from argus_skill.apps.cli import _core
+
+    context = _core._maintenance_context(
+        SimpleNamespace(
+            life_dir=str(tmp_path),
+            resume="",
+            backend="copilot",
+            auth_mode="subscription_cli",
+            allow_prerelease=True,
+            web_host="127.0.0.1",
+            web_port=8799,
+        )
+    )
+
+    assert context.backend == "copilot"
+    assert context.auth_mode == "subscription_cli"
+    assert context.allow_prerelease is True
+
+
+def test_backend_probe_flags_do_not_change_repair_target_fingerprint(
+    tmp_path: Path,
+) -> None:
+    from argus_skill.maintenance.doctor import DoctorContext
+
+    base = DoctorContext(global_root=tmp_path, project_root=tmp_path / "project")
+    selected = DoctorContext(
+        global_root=tmp_path,
+        project_root=tmp_path / "project",
+        backend="copilot",
+        auth_mode="subscription_cli",
+        allow_prerelease=True,
+    )
+
+    assert selected.target_fingerprint == base.target_fingerprint
+
+
 def test_frozen_doctor_does_not_require_system_node(tmp_path) -> None:
     from argus_skill.maintenance.doctor import DoctorContext, _runtime_findings
 

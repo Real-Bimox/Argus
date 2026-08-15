@@ -111,6 +111,9 @@ def test_build_quick_reply_prompt_names_the_worker_and_guards_identity() -> None
     assert f"{runner_backend_label()} worker" in out
     assert _IDENTITY_GUARD in out
     assert "identify only as Argus Manager" in out
+    assert "我是 Argus Manager。" in out
+    assert "I am Argus Manager." in out
+    assert "AI assistant, API assistant" in out
     assert "do not narrate Skill matching" in out
     assert "Argus's durable runner" in out
     assert out.endswith("Message:\n你好")
