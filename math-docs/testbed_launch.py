@@ -39,12 +39,17 @@ PROJECT = Path(
 ).expanduser()
 PIN = PROJECT / ".testbed_session"
 
-PROBLEM = (REPO / "testbed.md").read_text(encoding="utf-8").strip()
+PROBLEM_FILE = Path(
+    os.environ.get("ARGUS_TESTBED_PROBLEM") or (REPO / "testbed.md")
+).expanduser()
+PROBLEM = PROBLEM_FILE.read_text(encoding="utf-8").strip()
 
 # The statement alone, without the "Prove or disprove" instruction wrapper: this
 # is what every gap measurement and the proof graph's root are checked against,
-# so it has to be the mathematical claim rather than the task framing.
-GOAL = (
+# so it has to be the mathematical claim rather than the task framing. It has to
+# travel separately from the problem file for exactly that reason — the file is
+# written for the Engineer to read and carries the framing with it.
+GOAL = os.environ.get("ARGUS_TESTBED_GOAL", "").strip() or (
     "Let z_1,...,z_5 be complex numbers with sum_{i=1}^5 |z_i|^2 = 5. "
     "Then prod_{1<=i<j<=5} |z_i - z_j|^2 <= 5^5, with equality if and only if "
     "z_1,...,z_5 are the vertices of a regular pentagon centered at the origin."
