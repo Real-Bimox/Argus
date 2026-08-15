@@ -194,7 +194,10 @@ def test_provider_exit_does_not_wait_for_separate_owned_process_pipes() -> None:
         )
         child_pid = int(state.stdout_lines[-1])
 
-        assert time.monotonic() - started < 3
+        # A leaked grandchild pipe blocks until the 30-second child exits.
+        # Shared CI runners can take several seconds to schedule the reader
+        # shutdown, so keep the bound decisive without treating load as a leak.
+        assert time.monotonic() - started < 15
         assert state.orphan_process_group_id == 0
         os.kill(child_pid, 0)
         reader_prefix = f"argus-provider-pipe-{provider.pid}-"
