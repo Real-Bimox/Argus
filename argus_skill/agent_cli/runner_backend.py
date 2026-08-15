@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Literal
 
-RunnerBackend = Literal["codex", "claude", "copilot", "opencode", "pi", "grok"]
+RunnerBackend = Literal["codex", "claude", "copilot", "opencode", "pi", "grok", "qoder", "dsh"]
 
 BACKEND_CODEX: RunnerBackend = "codex"
 BACKEND_CLAUDE: RunnerBackend = "claude"
@@ -12,7 +12,17 @@ BACKEND_COPILOT: RunnerBackend = "copilot"
 BACKEND_OPENCODE: RunnerBackend = "opencode"
 BACKEND_PI: RunnerBackend = "pi"
 BACKEND_GROK: RunnerBackend = "grok"
+BACKEND_QODER: RunnerBackend = "qoder"
+BACKEND_DSH: RunnerBackend = "dsh"
 DEFAULT_RUNNER_BACKEND: RunnerBackend = BACKEND_CODEX
+
+# Qoder's official CLI (``qodercli``) is a Claude Code fork: it accepts the same
+# headless argv (``-p --output-format stream-json --model … --permission-mode …
+# --resume …``) and emits the same stream-json event schema. So ``qoder`` reuses
+# the ``claude`` command builder, event consumer, sandbox policy, and prompt
+# delivery verbatim. This family set is the single source of truth for "treat it
+# like claude" so those call sites never drift apart.
+CLAUDE_FAMILY: frozenset[str] = frozenset({BACKEND_CLAUDE, BACKEND_QODER})
 
 
 def normalize_runner_backend(raw: str | None) -> RunnerBackend:
@@ -27,6 +37,10 @@ def normalize_runner_backend(raw: str | None) -> RunnerBackend:
         return BACKEND_PI
     if value == BACKEND_GROK:
         return BACKEND_GROK
+    if value == BACKEND_QODER:
+        return BACKEND_QODER
+    if value == BACKEND_DSH:
+        return BACKEND_DSH
     return BACKEND_CODEX
 
 
@@ -41,6 +55,10 @@ def default_runner_bin(backend: RunnerBackend) -> str:
         return "pi"
     if backend == BACKEND_GROK:
         return "grok"
+    if backend == BACKEND_QODER:
+        return "qodercli"
+    if backend == BACKEND_DSH:
+        return "dsh"
     return "codex"
 
 
@@ -68,6 +86,17 @@ def resolve_runner_bin(
         resolved = _resolve_explicit_candidate(opencode_home)
         if resolved:
             return resolved
+    if chosen == BACKEND_DSH:
+        # dsh is installed through the nvm-managed Node toolchain, whose bin
+        # directory is absent from non-interactive PATHs (the daemon may be
+        # started from one). Probe the per-version nvm bins newest-first.
+        nvm_versions = Path.home() / ".nvm" / "versions" / "node"
+        if nvm_versions.is_dir():
+            for version_dir in sorted(nvm_versions.iterdir(), reverse=True):
+                candidate = version_dir / "bin" / expanded
+                resolved = _resolve_explicit_candidate(candidate)
+                if resolved:
+                    return resolved
     user_local = Path.home() / ".local" / "bin" / expanded
     resolved = _resolve_explicit_candidate(user_local)
     if resolved:

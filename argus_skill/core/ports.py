@@ -7,7 +7,7 @@ skill-agent's ``codex_exec(...)`` callable used to be. By making it a
 ``Protocol`` we can plug in:
 
   * ``AgentCliBackend`` — drives the codex / claude / copilot / opencode / pi /
-    grok CLIs.
+    grok/dsh CLIs.
   * ``MemoryBackend`` — deterministic stub for tests / CI.
 """
 from __future__ import annotations

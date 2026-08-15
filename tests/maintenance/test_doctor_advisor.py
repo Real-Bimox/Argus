@@ -130,6 +130,24 @@ def test_doctor_advisor_uses_configured_manager_executable(monkeypatch) -> None:
     assert all(requested is None for _backend, requested in calls[2:])
 
 
+def test_doctor_advisor_accepts_qoder_and_dsh(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "argus_skill.core.knobs.resolve_role_backend",
+        lambda _role: "codex",
+    )
+    monkeypatch.setattr(
+        "argus_skill.core.knobs.resolve_runner_bin_setting",
+        lambda _role: "",
+    )
+    monkeypatch.setattr(
+        "argus_skill.agent_cli.runner_backend.resolve_runner_bin",
+        lambda backend, _requested=None: f"/usr/bin/{backend}",
+    )
+
+    assert advisor._resolve_advisor("qoder") == ("qoder", "/usr/bin/qoder")
+    assert advisor._resolve_advisor("dsh") == ("dsh", "/usr/bin/dsh")
+
+
 def test_doctor_advisor_retries_path_when_configured_executable_is_stale(
     monkeypatch,
 ) -> None:

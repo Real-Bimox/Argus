@@ -18,6 +18,8 @@ _LIFE_BACKENDS = (
     "opencode",
     "pi",
     "grok",
+    "qoder",
+    "dsh",
     "memory",
 )
 

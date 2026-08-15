@@ -122,7 +122,7 @@ def _bundle_path() -> Path | None:
     return next((path for path in candidates if path is not None and path.is_file()), None)
 
 
-def _node_major(node: str) -> int | None:
+def _node_version(node: str) -> tuple[int, int, int] | None:
     try:
         completed = subprocess.run(
             [node, "--version"],
@@ -133,8 +133,14 @@ def _node_major(node: str) -> int | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    match = re.search(r"v?(\d+)", completed.stdout or completed.stderr or "")
-    return int(match.group(1)) if match else None
+    match = re.search(
+        r"v?(\d+)\.(\d+)(?:\.(\d+))?",
+        completed.stdout or completed.stderr or "",
+    )
+    if match is None:
+        return None
+    major, minor, patch = (int(part or 0) for part in match.groups())
+    return major, minor, patch
 
 
 def _run_python_admin(argv: list[str]) -> int:
@@ -262,13 +268,17 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     node = shutil.which("node")
     if node is None:
-        sys.stderr.write("argus: Ink TUI requires Node.js 18 or newer.\n")
+        sys.stderr.write("argus: Ink TUI requires Node.js 22.12 or newer.\n")
         return 2
-    major = _node_major(node)
-    if major is None or major < 18:
-        found = "unknown" if major is None else str(major)
+    node_version = _node_version(node)
+    if node_version is None or node_version < (22, 12, 0):
+        found = (
+            "unknown"
+            if node_version is None
+            else ".".join(str(part) for part in node_version)
+        )
         sys.stderr.write(
-            f"argus: Ink TUI requires Node.js 18 or newer (found {found}).\n"
+            f"argus: Ink TUI requires Node.js 22.12 or newer (found {found}).\n"
         )
         return 2
     _configure_tui_backend_bin()

@@ -2,9 +2,26 @@ import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export type RunnerKind = 'codex' | 'claude' | 'copilot' | 'pi' | 'opencode' | 'grok';
+export type RunnerKind =
+  | 'codex'
+  | 'claude'
+  | 'copilot'
+  | 'pi'
+  | 'opencode'
+  | 'grok'
+  | 'qoder'
+  | 'dsh';
 
-export const RUNNER_KINDS: RunnerKind[] = ['codex', 'claude', 'copilot', 'pi', 'opencode', 'grok'];
+export const RUNNER_KINDS: RunnerKind[] = [
+  'codex',
+  'claude',
+  'copilot',
+  'pi',
+  'opencode',
+  'grok',
+  'qoder',
+  'dsh'
+];
 
 export const RUNNER_LABELS: Record<RunnerKind, string> = {
   codex: 'Codex CLI',
@@ -12,7 +29,9 @@ export const RUNNER_LABELS: Record<RunnerKind, string> = {
   copilot: 'GitHub Copilot CLI',
   pi: 'Pi (follows your Pi model)',
   opencode: 'OpenCode',
-  grok: 'Grok Build'
+  grok: 'Grok Build',
+  qoder: 'Qoder CLI',
+  dsh: 'DeepSeek Harness'
 };
 
 const RUNNER_NAMES: Record<RunnerKind, string[]> = {
@@ -21,11 +40,13 @@ const RUNNER_NAMES: Record<RunnerKind, string[]> = {
   copilot: ['copilot.cmd', 'copilot.exe', 'copilot'],
   pi: ['pi.cmd', 'pi.exe', 'pi'],
   opencode: ['opencode.cmd', 'opencode.exe', 'opencode'],
-  grok: ['grok.cmd', 'grok.exe', 'grok']
+  grok: ['grok.cmd', 'grok.exe', 'grok'],
+  qoder: ['qodercli.cmd', 'qodercli.exe', 'qodercli'],
+  dsh: ['dsh.cmd', 'dsh.exe', 'dsh']
 };
 
 export function isRunnerKind(value: unknown): value is RunnerKind {
-  return value === 'codex' || value === 'claude' || value === 'copilot' || value === 'pi' || value === 'opencode' || value === 'grok';
+  return typeof value === 'string' && RUNNER_KINDS.includes(value as RunnerKind);
 }
 
 function isFile(path: string): boolean {

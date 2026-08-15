@@ -9,6 +9,7 @@ from argus_skill.agent_cli.runner_backend import (
     BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
+    BACKEND_QODER,
     resolve_available_runner,
     resolve_runner_bin,
 )
@@ -57,6 +58,16 @@ def test_grok_runner_uses_grok_binary(tmp_path: Path, monkeypatch) -> None:
 
     assert resolve_runner_bin(BACKEND_GROK) == str(executable)
     assert AgentCliRunner(backend=BACKEND_GROK).agent_bin == str(executable)
+
+
+def test_qoder_runner_uses_qodercli_binary(tmp_path: Path, monkeypatch) -> None:
+    executable = tmp_path / "qodercli"
+    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    executable.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    assert resolve_runner_bin(BACKEND_QODER) == str(executable)
+    assert AgentCliRunner(backend=BACKEND_QODER).agent_bin == str(executable)
 
 
 def test_opencode_runner_resolves_standard_install_directory(

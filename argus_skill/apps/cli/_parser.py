@@ -332,7 +332,7 @@ def build_parser() -> argparse.ArgumentParser:
     capability_grp.add_argument(
         "--non-interactive",
         action="store_true",
-        help="with --setup: never prompt; requires --backend and --accept-house-rules",
+        help="with --setup: never prompt; requires --backend or --api-url",
     )
     capability_grp.add_argument(
         "--accept-house-rules",
@@ -498,7 +498,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doctor_parser.add_argument(
         "--advisor",
-        choices=("auto", "none", "copilot", "codex", "claude", "opencode", "pi", "grok"),
+        choices=(
+            "auto",
+            "none",
+            "copilot",
+            "codex",
+            "claude",
+            "opencode",
+            "pi",
+            "grok",
+            "qoder",
+            "dsh",
+        ),
         default="auto",
         help="ask an installed Code Agent to inspect and repair Argus (default: auto)",
     )

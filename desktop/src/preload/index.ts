@@ -4,7 +4,15 @@ window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.dataset.argusDesktop = 'true';
 });
 
-export type RunnerKind = 'codex' | 'claude' | 'copilot' | 'pi' | 'opencode' | 'grok';
+export type RunnerKind =
+  | 'codex'
+  | 'claude'
+  | 'copilot'
+  | 'pi'
+  | 'opencode'
+  | 'grok'
+  | 'qoder'
+  | 'dsh';
 export type AppearanceTheme = 'system' | 'light' | 'dark';
 
 export interface DesktopAppearance {

@@ -52,7 +52,7 @@ class AgentCliBackend:
     """``RunnerBackend`` implementation that shells out to a real CLI.
 
     Construct once with the runner backend choice ("codex" / "claude" /
-    "copilot" / "opencode" / "pi" / "grok") and any cross-call defaults
+    "copilot" / "opencode" / "pi" / "grok" / "qoder" / "dsh") and any cross-call defaults
     (e.g. ``default_extra_args``
     for ``-c "config_profile=..."``), then pass the same instance to
     every ``SkillLoop`` actor (author / engineer / reviewer). Each
@@ -67,11 +67,11 @@ class AgentCliBackend:
 
     Args:
         backend: which CLI to drive ("codex" / "claude" / "copilot" /
-            "opencode" / "pi" / "grok").
+            "opencode" / "pi" / "grok" / "qoder" / "dsh").
             Defaults to the bundled runner's default (codex).
         runner_bin: explicit path to the CLI binary. Default: resolve
             from ``$PATH`` (e.g. ``codex`` / ``claude`` / ``copilot`` /
-            ``opencode`` / ``pi`` / ``grok``).
+            ``opencode`` / ``pi`` / ``grok`` / ``qodercli`` / ``dsh``).
         default_extra_args: appended to every command (after
             ``options.extra_args``). Useful for global ``-c`` flags.
         before_exec: called before each subprocess spawn — used to reset
@@ -350,6 +350,20 @@ class AgentCliBackend:
             if options.watchdog_hard_idle_seconds is None
             else max(0, int(options.watchdog_hard_idle_seconds))
         )
+        if self._backend_name == "dsh":
+            # dsh's headless runner emits nothing until the final assistant
+            # text, so byte-level inactivity is NOT a health signal: a long
+            # tool-heavy turn looks identical to a hung one. Several callers
+            # pass streaming-assuming thresholds (the SELF reply path uses
+            # 5s/120s for progress display and stuck-turn killing; subagents
+            # pass their own timeout), any of which would kill healthy dsh
+            # turns. The ONLY knob that re-enables the stages for dsh is the
+            # operator's explicit ARGUS_SKILL_RUNNER_*_IDLE_SECONDS; caller
+            # options are ignored, and hung turns are bounded by dsh's own
+            # internal request/tool timeouts instead.
+            soft_idle = _env_int("ARGUS_SKILL_RUNNER_SOFT_IDLE_SECONDS", 0)
+            stalled_idle = _env_int("ARGUS_SKILL_RUNNER_STALLED_IDLE_SECONDS", 0)
+            hard_idle = _env_int("ARGUS_SKILL_RUNNER_HARD_IDLE_SECONDS", 0)
         option_fields = getattr(cli_cls, "__dataclass_fields__", {})
         kwargs = dict(
             model=options.model,
@@ -444,7 +458,7 @@ def build_agent_cli_backend_from_env() -> AgentCliBackend:
     Honours:
 
       * ``ARGUS_SKILL_RUNNER_BACKEND`` — "codex" / "claude" / "copilot" /
-        "opencode" / "pi" / "grok"
+        "opencode" / "pi" / "grok" / "qoder" / "dsh"
         (default: codex)
       * ``ARGUS_SKILL_RUNNER_BIN``     — path to the CLI binary
       * ``ARGUS_SKILL_RUNNER_EXTRA_ARGS`` — space-separated default args

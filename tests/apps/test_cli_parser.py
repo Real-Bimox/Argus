@@ -55,6 +55,9 @@ def test_parser_exposes_doctor_and_repair_subcommands() -> None:
     assert doctor.json is True
     assert doctor.deep is True
     assert doctor.advisor == "claude"
+    for backend in ("qoder", "dsh"):
+        parsed = build_parser().parse_args(["doctor", "--advisor", backend])
+        assert parsed.advisor == backend
 
     repair = build_parser().parse_args(["repair", "--safe", "--json"])
     assert repair.command == "repair"

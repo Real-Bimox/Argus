@@ -39,7 +39,7 @@ from ._idle_watchdog import (
     IdleEscalation,
 )
 from .models import AgentRunResult, InactivitySnapshot
-from .runner_backend import BACKEND_OPENCODE
+from .runner_backend import BACKEND_DSH, BACKEND_OPENCODE
 
 _POST_EXIT_PIPE_DRAIN_QUIET_SECONDS = 0.1
 _POST_EXIT_PIPE_DRAIN_MAX_SECONDS = 5.0
@@ -199,7 +199,9 @@ class RunExecMixin:
         command = self._build_command(
             resume_thread_id=resume_thread_id, options=options
         )
-        command, stdin_prompt, prompt_path = self._prepare_prompt_delivery(command, prompt)
+        command, stdin_prompt, prompt_path = self._prepare_prompt_delivery(
+            command, prompt, working_dir=options.working_dir
+        )
         command[0] = self._resolve_executable(command[0])
         if options.isolate_workdir:
             try:
@@ -652,6 +654,38 @@ class RunExecMixin:
                                 callback(message)
                             except Exception:  # noqa: BLE001 — UI callback must not break the turn
                                 pass
+
+        if (
+            self.backend == BACKEND_DSH
+            and not state.watchdog_terminated
+            and not state.turn_completed
+            and not state.turn_failed
+            and state.fatal_error is None
+        ):
+            # dsh's headless runner emits no JSON events at all: it prints the
+            # final assistant text once and exits 0 on a completed turn. Treat
+            # a clean exit as the authoritative completion receipt and a
+            # nonzero exit as the failure receipt, mirroring the fail-closed
+            # discipline of the generic branch below.
+            if process.returncode == 0:
+                final_text = "\n".join(
+                    line for line in state.stdout_lines if line.strip()
+                ).strip()
+                if final_text:
+                    state.agent_messages.append(final_text)
+                    state.turn_completed = True
+                else:
+                    state.turn_failed = True
+                    state.fatal_error = (
+                        "dsh completed with no assistant output: "
+                        + _incomplete_turn_error(state.stderr_lines)
+                    )
+            else:
+                state.turn_failed = True
+                state.fatal_error = (
+                    f"dsh exited with code {process.returncode}: "
+                    + _incomplete_turn_error(state.stderr_lines)
+                )
 
         if state.watchdog_terminated:
             state.turn_failed = True

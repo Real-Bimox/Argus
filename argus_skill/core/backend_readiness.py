@@ -30,7 +30,7 @@ SETUP_EXIT_NOT_READY = 3
 SETUP_EXIT_PERSISTENCE = 4
 
 _SUPPORTED_BACKENDS = frozenset(
-    {"codex", "copilot", "claude", "opencode", "pi", "grok"}
+    {"codex", "copilot", "claude", "opencode", "pi", "grok", "qoder", "dsh"}
 )
 _VERSION_RE = re.compile(
     r"(?<!\d)(\d+)\.(\d+)\.(\d+)(?:[-+]([0-9A-Za-z.-]+))?"
@@ -39,6 +39,12 @@ _AUTH_COMMANDS: dict[str, tuple[str, ...]] = {
     "codex": ("login", "status"),
     "claude": ("auth", "status"),
     "opencode": ("auth", "list"),
+    # qodercli exits non-zero from --list-models when unauthenticated, so it
+    # doubles as a read-only auth probe.
+    "qoder": ("--list-models",),
+    # dsh exposes no read-only auth-status command that does not cost a model
+    # call; the probe below short-circuits on DEEPSEEK_API_KEY instead.
+    "dsh": (),
 }
 _INSTALL_COMMANDS = {
     "codex": "npm install -g @openai/codex@latest",
@@ -47,6 +53,8 @@ _INSTALL_COMMANDS = {
     "opencode": "curl -fsSL https://opencode.ai/install | bash",
     "pi": "npm install -g --ignore-scripts @earendil-works/pi-coding-agent",
     "grok": "curl -fsSL https://x.ai/cli/install.sh | bash",
+    "qoder": "npm install -g @qoder-ai/qodercli",
+    "dsh": "npm install -g @deepseek-ai/dsh",
 }
 _LOGIN_COMMANDS = {
     "codex": "codex login",
@@ -55,6 +63,8 @@ _LOGIN_COMMANDS = {
     "opencode": "opencode auth login",
     "pi": "pi, then /login",
     "grok": "grok login",
+    "qoder": "qodercli login",
+    "dsh": "export DEEPSEEK_API_KEY=<key> in the launching environment (or set it on the dsh web Models page)",
 }
 
 
@@ -74,6 +84,8 @@ def backend_install_command(
         "pi": "npm.cmd install -g --ignore-scripts @earendil-works/pi-coding-agent",
         "opencode": "choose a Windows installer at https://opencode.ai/docs/#windows",
         "grok": "use the official Windows instructions at https://x.ai/cli",
+        "qoder": "npm.cmd install -g @qoder-ai/qodercli",
+        "dsh": "npm.cmd install -g @deepseek-ai/dsh",
     }
     return windows[backend]
 
@@ -263,12 +275,187 @@ def _probe_pi_catalog(
 
 
 #: Roles whose configured model Argus will hand to the backend verbatim.
-_PI_MODEL_ROLES: tuple[tuple[str, str], ...] = (
+_MODEL_ROLES: tuple[tuple[str, str], ...] = (
     ("manager", "ARGUS_SKILL_MANAGER_MODEL"),
     ("planner", "ARGUS_SKILL_PLAN_MODEL"),
     ("engineer", "ARGUS_SKILL_ENGINEER_MODEL"),
     ("reviewer", "ARGUS_SKILL_REVIEWER_MODEL"),
 )
+
+#: Model-id prefixes that identify the vendor catalog an id was minted for.
+#: Deliberately incomplete: an id matching nothing here is simply unknown, and
+#: an unknown id never raises a complaint (a private gateway may serve any
+#: name it likes). Only a POSITIVE match on the WRONG catalog is actionable.
+_MODEL_CATALOG_PREFIXES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("openai", ("gpt-", "gpt5", "o1-", "o3-", "o4-", "codex-")),
+    ("anthropic", ("claude-",)),
+    ("xai", ("grok-",)),
+    ("deepseek", ("deepseek-",)),
+)
+
+#: Backends whose CLI serves exactly ONE vendor catalog, so a model id from a
+#: different catalog cannot resolve. Deliberately excluded:
+#: ``copilot`` (GitHub resells several vendors, Anthropic ids included),
+#: ``qoder`` (its own catalog; read it with ``qodercli --list-models``),
+#: ``pi`` / ``opencode`` (provider-agnostic fronts — ``_check_pi_model_routing``
+#: judges Pi against its real authenticated catalog instead), and ``dsh``
+#: (Argus sends ``provider/model`` through the ``ARGUS_DSH_*`` overlay, so the
+#: bare id here is not the whole selector and judging it would misfire).
+_BACKEND_MODEL_CATALOG: dict[str, str] = {
+    "codex": "openai",
+    "claude": "anthropic",
+    "grok": "xai",
+}
+
+#: Model Argus adopts for a backend when the operator never chose one.
+#: Populated only where the id is verified against a real CLI; a backend absent
+#: from this table keeps the shared default and relies on
+#: :func:`_check_backend_model_catalog` to say so out loud.
+_BACKEND_DEFAULT_MODELS: dict[str, str] = {
+    "claude": "claude-opus-5",
+}
+
+
+def _model_catalog(model: str) -> str:
+    """Vendor catalog a model id belongs to, or ``""`` when unrecognized."""
+    lowered = str(model or "").strip().lower()
+    for catalog, prefixes in _MODEL_CATALOG_PREFIXES:
+        if lowered.startswith(prefixes):
+            return catalog
+    return ""
+
+
+def _explicit_model_selection(
+    role_env: str,
+    *,
+    env: Mapping[str, str],
+    persisted: Mapping[str, str],
+) -> str:
+    """The model id the OPERATOR chose for a role, or ``""`` when they never did.
+
+    Resolving with an empty default makes the distinction structural: only the
+    ``env`` and ``persisted`` layers can return a non-empty value, so anything
+    non-empty here was deliberately configured by a human.
+    """
+    from .knobs import resolve_knob
+
+    for name in (role_env, "ARGUS_SKILL_MODEL"):
+        if not name:
+            continue
+        chosen = resolve_knob(name, "", env=env, persisted=persisted).value.strip()
+        if chosen:
+            return chosen
+    return ""
+
+
+def default_model_for_backend(
+    backend: str,
+    *,
+    env: Mapping[str, str] | None = None,
+    persisted: Mapping[str, str] | None = None,
+) -> str:
+    """Model id setup should adopt for ``backend``, or ``""`` to leave it alone.
+
+    Returns a value only when BOTH hold: the backend has a verified default,
+    and the operator has not chosen a model themselves. An explicit choice is
+    never second-guessed, so re-running setup cannot silently retune a machine
+    that was already configured by hand.
+    """
+    normalized = normalize_runner_backend(backend)
+    adopted = _BACKEND_DEFAULT_MODELS.get(normalized, "")
+    if not adopted:
+        return ""
+    env_map = env if env is not None else os.environ
+    persisted_map = persisted if persisted is not None else read_persisted_knobs()
+    for _route, role_env in _MODEL_ROLES:
+        if _explicit_model_selection(role_env, env=env_map, persisted=persisted_map):
+            return ""
+    return adopted
+
+
+def _check_backend_model_catalog(
+    report: BackendReadiness,
+    *,
+    env: Mapping[str, str] | None = None,
+) -> None:
+    """Verify the model ids Argus will send belong to the backend's own catalog.
+
+    The gap this closes: readiness validated that the CLI existed, ran, and was
+    authenticated — never that the model selector was one that CLI could serve.
+    Argus's shared default (``gpt-5.5``) is an OpenAI-catalog id, so
+    ``argus --setup --backend claude`` produced a machine that passed every
+    check and then failed EVERY call with "There's an issue with the selected
+    model (gpt-5.5)". Worse, the Manager front door reports any non-zero
+    backend exit as "Manager could not classify this message", so the operator
+    never saw the model name at all.
+
+    Severity splits on WHO chose the id, matching the Pi precedent above. An
+    id nobody chose is a hard problem: it is Argus's own default landing on a
+    catalog that cannot serve it, and the failure is deterministic. An id the
+    operator set by hand is a warning: they may be pointing the CLI at a
+    private gateway that really does serve it, and a false red doctor is worse
+    than an unheeded warning.
+
+    中文：原先只校验 CLI 是否存在/已登录，从不校验下发的 model id 是否属于该
+    后端的目录。默认值 ``gpt-5.5`` 是 OpenAI 目录的 id，于是
+    ``--setup --backend claude`` 全绿通过、每次调用必失败。这里按「谁选的」
+    分级：默认值选错 = 硬失败；操作者显式设置 = 仅告警（可能接了私有网关）。
+    """
+    from .knobs import resolve_role_model
+
+    expected = _BACKEND_MODEL_CATALOG.get(report.profile.backend)
+    if expected is None:
+        return
+    env_map = env if env is not None else os.environ
+    persisted_map = read_persisted_knobs()
+    # Roles usually share one model id; speak once per distinct selector.
+    seen: set[str] = set()
+    for route, role_env in _MODEL_ROLES:
+        model = str(
+            resolve_role_model(route, role_env=role_env, env=env_map) or ""
+        ).strip()
+        if not model or model in seen:
+            continue
+        seen.add(model)
+        actual = _model_catalog(model)
+        if not actual or actual == expected:
+            continue
+        chosen = _explicit_model_selection(
+            role_env, env=env_map, persisted=persisted_map
+        )
+        if chosen:
+            report.warnings.append(
+                f"the {route} model {model!r} looks like an {actual} id but "
+                f"the {report.profile.backend} CLI serves the {expected} "
+                f"catalog; keep it only if that CLI is pointed at a gateway "
+                f"that carries it"
+            )
+            continue
+        adopted = _BACKEND_DEFAULT_MODELS.get(report.profile.backend, "")
+        fix = (
+            f"re-run `argus --setup --backend {report.profile.backend}` to "
+            f"adopt {adopted}, or set ARGUS_SKILL_MODEL to a model that CLI "
+            f"serves"
+            if adopted
+            else (
+                f"set ARGUS_SKILL_MODEL (or {role_env}) to a model the "
+                f"{report.profile.backend} CLI serves, then re-run "
+                f"`argus --doctor`"
+            )
+        )
+        report.problems.append(
+            ReadinessProblem(
+                "model selector",
+                (
+                    f"the {route} model resolves to {model!r}, an {actual} "
+                    f"catalog id, but {report.profile.backend} serves the "
+                    f"{expected} catalog; no model is configured, so this is "
+                    f"Argus's shared default and every call will fail"
+                ),
+                fix,
+            )
+        )
+        return
 
 
 def _check_pi_model_routing(
@@ -325,7 +512,7 @@ def _check_pi_model_routing(
     # Roles usually share one model id; warn once per distinct selector rather
     # than four times over.
     seen: set[str] = set()
-    for route, role_env in _PI_MODEL_ROLES:
+    for route, role_env in _MODEL_ROLES:
         model = str(
             resolve_role_model(route, role_env=role_env, env=env_map) or ""
         ).strip()
@@ -407,6 +594,37 @@ def _probe_cli_auth(
         return False, (
             "no XAI_API_KEY or cached Grok login was found; "
             "Grok Build does not expose a read-only auth-status command"
+        )
+    if backend == "qoder":
+        # A PAT is the headless path; otherwise fall through to the generic
+        # `qodercli --list-models` probe below, which reports login state.
+        if str(os.environ.get("QODER_PERSONAL_ACCESS_TOKEN") or "").strip():
+            return True, ""
+    if backend == "dsh":
+        # dsh has no read-only auth probe: the headless profile rejects an
+        # unauthenticated boot with MISSING_CREDENTIAL. Treat an exported
+        # key as ready and otherwise report the remediation directly. dsh's
+        # layered env loader (process > cwd .env > $DSH_HOME/.env) also
+        # admits DEEPSEEK_API_KEY from $DSH_HOME/.env, so scan that file too
+        # rather than misreporting a working deployment as unauthenticated.
+        if str(os.environ.get("DEEPSEEK_API_KEY") or "").strip():
+            return True, ""
+        dsh_home = Path(
+            str(os.environ.get("DSH_HOME") or Path.home() / ".dsh")
+        ).expanduser()
+        env_file = dsh_home / ".env"
+        try:
+            if env_file.is_file():
+                for line in env_file.read_text(encoding="utf-8").splitlines():
+                    name, sep, raw = line.strip().partition("=")
+                    if sep and name.strip() == "DEEPSEEK_API_KEY" and raw.strip():
+                        return True, ""
+        except OSError:
+            pass
+        return False, (
+            "no DEEPSEEK_API_KEY was found in the environment or "
+            f"{env_file}; export it or set it through the dsh credentials "
+            "service (the web Models page)"
         )
     suffix = _AUTH_COMMANDS.get(backend)
     if suffix is None:
@@ -509,7 +727,7 @@ def check_backend_readiness(
             ReadinessProblem(
                 "backend",
                 f"unsupported backend {profile.backend!r}",
-                "choose one of: codex, copilot, claude, opencode, pi",
+                "choose one of: codex, copilot, claude, opencode, pi, grok, qoder, dsh",
             )
         )
         return report
@@ -653,19 +871,39 @@ def check_backend_readiness(
             )
         elif pi_catalog:
             _check_pi_model_routing(report, pi_catalog, env=env_map)
+    if profile.auth_mode == AUTH_MODE_SUBSCRIPTION:
+        # Subscription mode only: under model_api the operator points Codex at
+        # an arbitrary OpenAI-compatible endpoint, so a foreign-looking id may
+        # be exactly right and the vault check above already judges the route.
+        _check_backend_model_catalog(report, env=env_map)
     return report
 
 
-def persist_validated_profile(report: BackendReadiness) -> bool:
+def persist_validated_profile(
+    report: BackendReadiness,
+    *,
+    model: str = "",
+) -> bool:
+    """Persist the validated backend profile, and the model chosen with it.
+
+    ``model`` carries the id setup adopted from
+    :func:`default_model_for_backend` (empty when the operator had already
+    chosen one, or when the backend has no verified default). Writing it here
+    is what stops a Codex-shaped shared default from silently becoming the
+    selector for a non-OpenAI backend — the Pi path has always persisted its
+    model this way; every other backend used to persist none.
+    """
     if not report.ok:
         return False
-    return write_persisted_knobs(
-        {
-            "ARGUS_SKILL_RUNNER_BACKEND": report.profile.backend,
-            AUTH_MODE_KNOB: report.profile.auth_mode,
-            "ARGUS_SKILL_BACKEND_VALIDATED_VERSION": report.version,
-        }
-    )
+    values = {
+        "ARGUS_SKILL_RUNNER_BACKEND": report.profile.backend,
+        AUTH_MODE_KNOB: report.profile.auth_mode,
+        "ARGUS_SKILL_BACKEND_VALIDATED_VERSION": report.version,
+    }
+    adopted = str(model or "").strip()
+    if adopted:
+        values["ARGUS_SKILL_MODEL"] = adopted
+    return write_persisted_knobs(values)
 
 
 def format_backend_readiness(report: BackendReadiness) -> str:

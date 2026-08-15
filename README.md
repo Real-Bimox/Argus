@@ -36,7 +36,7 @@ Most agents are optimized for one conversation or one coding turn. Argus is buil
 | **Four-role runtime** | Manager, Planner, Engineer, and Reviewer have distinct authority and responsibilities. |
 | **Real tool use** | Agents work through files, terminals, experiments, APIs, and inspectable artifacts. |
 | **Domain extensibility** | Verticals can define custom stages, tools, evidence requirements, and completion standards. |
-| **Multiple backends** | Run with GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, or Grok Build. |
+| **Multiple backends** | Run with GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, Grok Build, Qoder, or DeepSeek Harness. |
 
 ## Runtime model
 
@@ -49,7 +49,7 @@ Most agents are optimized for one conversation or one coding turn. Argus is buil
 
 A project can stop, resume, survive a runtime replacement, and continue from its latest verified position.
 
-**Native backends:** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
+**Native backends:** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build` · `Qoder` · `DeepSeek Harness`
 
 **Harbor evaluation:** Harbor Framework can invoke the complete bounded Argus
 Manager/Planner/Engineer/Reviewer runtime as a custom agent. See
@@ -58,49 +58,53 @@ Manager/Planner/Engineer/Reviewer runtime as a custom agent. See
 ## Quick Install
 
 Choose the section for your operating system. Do not mix commands between
-platforms.
+platforms. All platforms need Node.js **22.12+** from
+[nodejs.org](https://nodejs.org/en/download) and one authenticated Agent CLI.
+Reuse the CLI you already work in; Argus does not require a separate account.
 
-All platforms need:
-
-- one supported Agent CLI already installed;
-- that CLI authenticated through its official login flow;
-- Node.js 22+ for the terminal cockpit.
+| Agent CLI | Backend | Install | Authenticate |
+|---|---|---|---|
+| GitHub Copilot CLI | `copilot` | `npm install -g @github/copilot` | `copilot login` |
+| OpenAI Codex CLI | `codex` | `npm install -g @openai/codex@latest` | `codex login` |
+| Claude Code | `claude` | `npm install -g @anthropic-ai/claude-code` | Run `claude`, then `/login` |
+| Pi | `pi` | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent` | Run `pi`, then `/login` |
+| OpenCode | `opencode` | [Official install](https://opencode.ai/docs/) | `opencode auth login` |
+| Grok Build | `grok` | [Official install](https://x.ai/cli) | `grok login` |
+| Qoder CLI | `qoder` | `npm install -g @qoder-ai/qodercli` | `qodercli login` |
+| DeepSeek Harness | `dsh` | `npm install -g @deepseek-ai/dsh` | Configure `DEEPSEEK_API_KEY` or the dsh Models page |
 
 The public preview is installed directly from the current GitHub archive until
 the first PyPI release is published.
 
-### Windows 10/11 — direct pip install, no virtual environment
+### Windows 10/11 — direct pip, no virtual environment
 
 Install Python 3.11+ from [python.org](https://www.python.org/downloads/windows/)
 and select **Add Python to PATH** in the installer. Then open a new PowerShell:
 
 ```powershell
+py --version
+node --version
 py -m pip install --upgrade pip
-py -m pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
 $Scripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+$Argus = Join-Path $Scripts "argus.exe"
+if (-not (Test-Path $Argus)) { throw "Argus entry point not found at $Argus" }
 $env:Path = "$Scripts;$env:Path"
-argus --setup
-argus doctor --deep --advisor auto
-argus
+& $Argus --version
+& $Argus --setup
+& $Argus doctor --deep --advisor auto
+& $Argus --status
+& $Argus
 ```
 
-`argus --setup` does not report success after only finding the CLI. It performs
-backend/auth checks and one real tool-restricted Agent turn. If `argus` is not
-found in a later PowerShell window, confirm that the Python installer's Scripts
-directory is on PATH; the `$Scripts` lines above make it available immediately
-in the current window.
+Calling `$Argus` proves setup is not accidentally using another stale
+installation. `$env:Path` also makes plain `argus` available in the current
+PowerShell. The troubleshooting section covers persistent PATH repair.
 
 `argus doctor` is an active repair command. By default it launches an installed
 Agent CLI in the real Argus directories with tools enabled, lets the Agent
 inspect and fix the machine, then reruns deterministic checks. Use
-`argus doctor --advisor none` only when you want diagnostics without an Agent
-repair turn.
-
-Until the first versioned PyPI release, refresh the moving GitHub preview with:
-
-```powershell
-py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
-```
+`argus doctor --advisor none --verify` for a no-model verification.
 
 Windows currently supports installation, Manager chat, pairing, Web/TUI, and
 terminal-scoped daemon control. Detached subagents remain a POSIX/WSL2 feature;
@@ -110,43 +114,57 @@ The Windows Desktop installer is documented separately in
 
 ### macOS — managed command install, no manual virtual environment
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if needed,
+then:
 
 ```bash
-uv tool install --python 3.12 \
-  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
-argus --setup
-argus doctor --deep --advisor auto
-argus
-```
-
-Upgrade later with:
-
-```bash
+uv --version
+node --version
 uv tool install --force --python 3.12 \
   "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+ARGUS_BIN="$(uv tool dir --bin)/argus"
+test -x "$ARGUS_BIN"
+"$ARGUS_BIN" --version
+uv tool update-shell
+"$ARGUS_BIN" --setup
+"$ARGUS_BIN" doctor --deep --advisor auto
+"$ARGUS_BIN" --status
+"$ARGUS_BIN"
 ```
+
+`ARGUS_BIN` works immediately even when uv's tool directory was not previously
+on PATH. `uv tool update-shell` makes plain `argus` available in a new terminal.
+`uv tool` already owns the isolated environment; do not create another venv.
 
 ### Linux — isolated source venv
 
 Linux servers keep an explicit venv so Python, CUDA tooling, and long-running
-process ownership remain reproducible:
+process ownership remain reproducible. Install Python 3.11+, Git, Node.js
+22.12+, and your distribution's `python3-venv` package first:
 
 ```bash
-git clone https://github.com/lbx154/Argus.git
-cd Argus
+git clone https://github.com/lbx154/Argus.git "$HOME/Argus"
+cd "$HOME/Argus"
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
-.venv/bin/argus --setup
-.venv/bin/argus doctor --deep --advisor auto
-.venv/bin/argus
+ARGUS_BIN="$HOME/Argus/.venv/bin/argus"
+"$ARGUS_BIN" --version
+"$ARGUS_BIN" --setup
+"$ARGUS_BIN" doctor --deep --advisor auto
+"$ARGUS_BIN" --status
+"$ARGUS_BIN"
 ```
 
 Private-preview collaborators use
 `https://github.com/lbx154/argus-skill.git` in the Linux clone command. On
 Windows/macOS, install a private wheel or authenticated private archive rather
 than putting a GitHub token in shell history.
+
+Do not rely on a globally installed `argus` on Linux. In a new shell, use
+`$HOME/Argus/.venv/bin/argus` (or activate that venv explicitly). If venv
+creation reports that `ensurepip` is unavailable, install the distribution's
+`python3-venv` package and rerun the command.
 
 ### Agent-assisted installation
 
@@ -166,9 +184,10 @@ The agent follows the **[installation execution contract](docs/agent-install.md)
 
 ### Backend notes
 
-Use `copilot`, `pi`, `codex`, `claude`, `opencode`, or `grok` for `--backend`.
-When no model override is configured, Argus uses that CLI's native default
-model. It does not pass an OpenAI model id to Claude Code, Pi, OpenCode, or Grok.
+Use `copilot`, `pi`, `codex`, `claude`, `opencode`, `grok`, `qoder`, or `dsh`
+for `--backend`. Setup adopts a model from the selected CLI's own catalog when
+one is available; otherwise it keeps that CLI's native default. It does not
+inject an OpenAI model id into Claude Code, Pi, OpenCode, Grok, Qoder, or dsh.
 If you have an OpenAI-compatible endpoint, setup installs Pi when needed and
 configures it directly:
 
@@ -215,18 +234,26 @@ restarts once set there.
 configured provider is not one you hold a key for, or when a model id you
 selected is not on offer.
 
+Use `argus --config-help` to inspect each role's effective model and where it
+came from. Catalog commands are backend-specific, for example
+`pi --list-models`, `opencode auth list`, and `qodercli --list-models`.
+
 Full details, including the breaking change for Pi deployments that relied on
 the old implicit `github-copilot` prefix: **[backend providers](docs/backend-providers.md)**.
 
 ### Launch
+
+Windows and macOS can use `argus` after PATH setup. On Linux, replace `argus`
+below with `$HOME/Argus/.venv/bin/argus` unless the venv is active.
 
 ```bash
 argus
 ```
 
 ```bash
-argus --doctor   # verify the installation
-argus --status   # inspect the current runtime
+argus doctor                         # Agent-driven inspection and repair
+argus doctor --advisor none --verify # deterministic verification, no model call
+argus --status                       # inspect the current runtime
 ```
 
 ## Interfaces
@@ -358,7 +385,7 @@ A Vertical gives your field its own stages, Skills, datasets, tools, evidence ex
 
 GitHub Copilot, Pi, Codex, Claude Code, OpenCode, Grok Build, OpenClaw, or Hermes can be the environment from which you invoke Argus, inspect its state, operate its local CLI or Web/API surface, and continue improving the deployment.
 
-- **Native Argus backends:** GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, Grok Build
+- **Native Argus backends:** GitHub Copilot CLI, Pi, Codex CLI, Claude Code, OpenCode, Grok Build, Qoder, DeepSeek Harness
 - **External agent operators:** OpenClaw, Hermes, or any agent that can use a shell or HTTP API
 
 For durable missions, install or adapt the portable
@@ -381,25 +408,72 @@ The most capable setup is often an Argus instance deliberately adapted to your o
 Windows:
 
 ```powershell
-pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+$Argus = Join-Path (py -c "import sysconfig; print(sysconfig.get_path('scripts'))") "argus.exe"
+& $Argus --version
+& $Argus doctor --advisor none --verify
 ```
 
 macOS:
 
 ```bash
-uv tool upgrade argus-skill
+uv tool install --force --python 3.12 \
+  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+"$(uv tool dir --bin)/argus" --version
+"$(uv tool dir --bin)/argus" doctor --advisor none --verify
 ```
 
 Linux source checkout:
 
 ```bash
-argus update
+"$HOME/Argus/.venv/bin/argus" update
+"$HOME/Argus/.venv/bin/argus" --version
+"$HOME/Argus/.venv/bin/argus" doctor --advisor none --verify
 ```
 
-The Linux source command refuses dirty or detached checkouts, fast-forwards the configured
-upstream, and refreshes the editable installation when the revision changes.
-Run `argus` afterward; it detects stale local WebAPI and daemon processes and
-replaces them at a controlled task boundary.
+The Linux source command refuses dirty or detached checkouts, fast-forwards the
+configured upstream, and refreshes the editable installation when the revision
+changes. Argus detects stale local WebAPI and daemon processes and replaces them
+at a controlled task boundary. Update verification is deterministic and does
+not spend a model call.
+
+## Uninstall
+
+```powershell
+# Windows
+py -m pip uninstall argus-skill
+```
+
+```bash
+# macOS
+uv tool uninstall argus-skill
+```
+
+On Linux, stop Argus, preserve any work you need, then remove the
+`$HOME/Argus` checkout and its `.venv`. Package removal intentionally leaves
+runtime state under `$HOME/.argus-skill` untouched on every platform; delete
+that directory only when you also want to remove projects, configuration, and
+logs.
+
+## Installation troubleshooting
+
+- Confirm which executable the shell is using: `Get-Command argus -All` on
+  PowerShell, or `type -a argus` on macOS/Linux. Its `argus --version` release
+  id should change after an update.
+- On macOS, use `"$(uv tool dir --bin)/argus"` immediately. Run
+  `uv tool update-shell` once and open a new terminal for plain `argus`.
+- On Windows, recover the exact Scripts directory with
+  `$Scripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"`.
+  Add it to the current window with `$env:Path = "$Scripts;$env:Path"`. For new
+  windows, use the Python installer’s **Modify** action and enable
+  **Add Python to PATH** rather than creating a venv.
+- On Linux, use `$HOME/Argus/.venv/bin/argus`; a global `argus` may be an older
+  installation. Install `python3-venv` if `python3 -m venv` lacks `ensurepip`.
+- Use `argus doctor --advisor none --verify` for deterministic diagnostics.
+  Use `argus doctor` when you want an installed Agent to inspect and repair
+  Argus directly.
+- Use `argus --config-help` to check the effective backend/model before blaming
+  setup or authentication.
 
 ## WeChat community
 

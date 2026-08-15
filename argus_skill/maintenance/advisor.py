@@ -17,6 +17,8 @@ _SUPPORTED_ADVISORS = (
     "opencode",
     "pi",
     "grok",
+    "qoder",
+    "dsh",
 )
 
 

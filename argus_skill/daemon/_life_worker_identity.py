@@ -334,6 +334,8 @@ def _preflight_route_on_codex(route: str) -> bool:
         "opencode",
         "pi",
         "grok",
+        "qoder",
+        "dsh",
     }:
         return True
     role_bin = (

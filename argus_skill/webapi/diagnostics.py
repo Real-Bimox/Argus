@@ -276,15 +276,17 @@ def _check_backend_preflight(
         auth = "credentials listed; live token not checked"
     else:
         auth = "authentication checked" if report.auth_checked else "configuration checked"
-    return Check(
-        "backend preflight",
-        True,
-        (
-            f"{selected} {report.version} runnable at {report.executable} "
-            f"({report.profile.auth_mode}; {auth}; source={source})"
-        ),
-        "",
+    detail = (
+        f"{selected} {report.version} runnable at {report.executable} "
+        f"({report.profile.auth_mode}; {auth}; source={source})"
     )
+    # A passing report can still carry advisories (an ambiguous Pi model, a
+    # model id that looks foreign to the backend's catalog). The doctor used to
+    # drop them on the floor, which is how a merely-suspicious configuration
+    # stayed invisible until the first real call failed.
+    for warning in report.warnings:
+        detail += f"; warning: {warning}"
+    return Check("backend preflight", True, detail, "")
 
 
 def _continuous_objective(project_root: Path) -> str:

@@ -15,11 +15,12 @@ from ._sandbox_commands import (
 )
 from .copilot_home import apply_copilot_home
 from .runner_backend import (
-    BACKEND_CLAUDE,
     BACKEND_COPILOT,
+    BACKEND_DSH,
     BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
+    CLAUDE_FAMILY,
 )
 
 _OPENCODE_CONFIG_CONTENT_ENV = "OPENCODE_CONFIG_CONTENT"
@@ -141,7 +142,41 @@ class PromptDeliveryMixin:
         self,
         command: list[str],
         prompt: str,
+        *,
+        working_dir: str | None = None,
     ) -> tuple[list[str], str | None, Path | None]:
+        if self.backend == BACKEND_DSH:
+            # dsh's headless profile reads its one-shot task from the argv
+            # positional alone (`dsh --profile headless "<task>"`); it has no
+            # stdin or --prompt-file form. Keep the prompt in argv up to the
+            # same safety bound as claude's positional delivery; oversized
+            # prompts are written into the child's working directory (so the
+            # agent can read them) and the task becomes a short directive.
+            prepared = list(command)
+            if len(prompt.encode("utf-8")) <= _DSH_ARGV_PROMPT_LIMIT_BYTES:
+                prepared.append(prompt)
+                return prepared, None, None
+            target_dir = Path(working_dir) if working_dir else Path.cwd()
+            target_dir.mkdir(parents=True, exist_ok=True)
+            fd, raw_path = tempfile.mkstemp(
+                prefix=".argus-dsh-prompt-",
+                suffix=".md",
+                dir=str(target_dir),
+                text=True,
+            )
+            prompt_path = Path(raw_path)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8", newline="") as stream:
+                    stream.write(prompt)
+            except BaseException:
+                prompt_path.unlink(missing_ok=True)
+                raise
+            prepared.append(
+                "Execute the mission specified in the file "
+                f"{prompt_path} (absolute path, inside your workspace). "
+                "Act on it; do not just summarize it."
+            )
+            return prepared, None, prompt_path
         if self.backend == BACKEND_GROK:
             fd, raw_path = tempfile.mkstemp(
                 prefix="argus-grok-prompt-",
@@ -158,7 +193,7 @@ class PromptDeliveryMixin:
             prepared = list(command)
             prepared.extend(["--prompt-file", str(prompt_path)])
             return prepared, None, prompt_path
-        if self.backend != BACKEND_CLAUDE:
+        if self.backend not in CLAUDE_FAMILY:
             return command, prompt, None
         prepared = list(command)
         if "--bare" in prepared:
@@ -208,6 +243,10 @@ class PromptDeliveryMixin:
                 and (options.dangerous_yolo or options.full_auto)
             ):
                 return _opencode_full_access_env()
+            if self.backend == BACKEND_DSH:
+                return _apply_dsh_env(
+                    dict(os.environ), options, self.agent_bin
+                )
             return None
         if self.backend == BACKEND_OPENCODE and options.disable_tools:
             return _opencode_no_tools_env()
@@ -227,6 +266,8 @@ class PromptDeliveryMixin:
             apply_copilot_home(env)
         elif self.backend == BACKEND_PI:
             _apply_pi_automation_env(env)
+        if self.backend == BACKEND_DSH:
+            _apply_dsh_env(env, options, self.agent_bin)
         if options.isolate_workdir:
             secret_markers = (
                 "TOKEN",
@@ -262,3 +303,47 @@ class PromptDeliveryMixin:
                 Path(tempfile.gettempdir()) / "argus-no-gh-auth"
             )
         return env
+
+
+_DSH_ARGV_PROMPT_LIMIT_BYTES = 90_000
+
+
+def _apply_dsh_env(
+    env: dict[str, str],
+    options,
+    agent_bin: str,
+) -> dict[str, str]:
+    """Prepare the child environment for one dsh headless boot.
+
+    dsh resolves its model and access policy at load time from the env-driven
+    overlay (``agent_cli/_dsh_overlay.patch.yml``), so the per-role model and
+    sandbox mode ride in through environment variables rather than argv:
+
+    * ``options.model`` maps to ``ARGUS_DSH_PROVIDER`` / ``ARGUS_DSH_MODEL``
+      (a ``provider/model`` value splits; a bare id selects the provider the
+      overlay defaults to);
+    * ``sandbox_mode == "read-only"`` maps to ``DSH_PERMISSION_MODE=read-only``
+      (dsh's sandbox denies writes outright), everything else runs with
+      ``danger-full-access`` because an Argus turn has no approver to answer
+      an "ask" prompt;
+    * the directory holding the resolved dsh binary is prepended to PATH so
+      nvm-installed Node resolves the ``#!/usr/bin/env node`` shebang even
+      from a non-interactive daemon PATH.
+    """
+    model = str(getattr(options, "model", "") or "").strip()
+    provider, sep, model_id = model.partition("/")
+    if sep:
+        if provider and model_id:
+            env["ARGUS_DSH_PROVIDER"] = provider
+            env["ARGUS_DSH_MODEL"] = model_id
+    elif model:
+        env["ARGUS_DSH_MODEL"] = model
+    if getattr(options, "sandbox_mode", None) == "read-only":
+        env["DSH_PERMISSION_MODE"] = "read-only"
+    else:
+        env["DSH_PERMISSION_MODE"] = "danger-full-access"
+    agent_dir = str(Path(agent_bin).expanduser().resolve().parent)
+    existing = env.get("PATH", "")
+    if agent_dir and agent_dir not in existing.split(os.pathsep):
+        env["PATH"] = agent_dir + os.pathsep + existing
+    return env
