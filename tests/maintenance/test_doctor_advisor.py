@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from argus_skill.maintenance import advisor
+from argus_skill.maintenance import repair as repair_module  # noqa: F401
 from argus_skill.maintenance.doctor import DoctorContext
 from argus_skill.maintenance.models import DoctorFinding, DoctorReport
 
