@@ -47,7 +47,10 @@ def _software_grounding_required(workflow_mode: str) -> bool:
     raw = os.environ.get("ARGUS_SKILL_SOFTWARE_REQUIRE_GROUNDING", "").strip().lower()
     if raw:
         return raw in {"1", "true", "yes", "on"}
-    return workflow_mode != "direct"
+    # The grounded vertical decision already inspected the repository. Planner
+    # and Engineer own any further task-specific inspection, so a second fresh
+    # Manager inspection is opt-in rather than the staged-work default.
+    return False
 
 
 _CURRENT_OPERATOR_MARKER = "[CURRENT OPERATOR MESSAGE]"
@@ -81,6 +84,9 @@ class _VerticalDecisionMixin:
             "relevant grounding Skill on demand if one exists. The tool working "
             "directory is already the repository root: use relative paths, never "
             "guess another checkout path, and never search the filesystem root. "
+            "Use at most three targeted tool operations. Keep each result under "
+            "80 lines and the combined returned evidence under 16,000 characters; "
+            "do not repeat a listing/search already present in the task. "
             "Return only a compact human-readable grounding brief with: "
             "architecture/call path, closest unchanged analogue, affected "
             "callers and compatibility surfaces, exact build/test commands, "

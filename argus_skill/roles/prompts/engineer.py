@@ -14,20 +14,17 @@ from .types import RoleName, RolePromptRequest
 
 MISSION = "mission"
 OPERATIONS = frozenset({MISSION})
+_MANAGER_GROUNDING_HEADER = "\n\n## Manager project grounding (advisory evidence)\n"
 
 _POSIX_LONG_EXPERIMENT_RULE = (
-    "For commands expected to run over two minutes, use the bash tool to submit "
-    "through Argus's durable runner: `\"${ARGUS_SKILL_PYTHON:-python3}\" -m "
+    "For commands over two minutes, submit through Argus's durable runner: "
+    "`\"${ARGUS_SKILL_PYTHON:-python3}\" -m "
     "argus_skill.tools.subagent submit --task-id <id> --mode direct "
-    "--timeout <seconds> --command '<command>'`. Use `--mode supervised` only "
-    "when an experiment needs semantic monitoring. Never use the provider's native "
-    "`task(mode=\"background\")` tool or a session-owned background shell for "
-    "durable work. Before handoff, require a JSON receipt with `state=submitted`, "
-    "`task_id`, `run_id`, and `check_with`; record those in CHECKPOINT.md only "
-    "when another round must observe the run. For supervised runs, if status "
-    "returns `state=discussing`, read the concern and answer through its exact "
-    "`reply_with` command before relaunching. Then yield or do independent work; "
-    "do not poll in the foreground."
+    "--timeout <seconds> --command '<command>'`; use `--mode supervised` only for "
+    "semantic monitoring. Never use `task(mode=\"background\")` or session-owned "
+    "background shells. Require receipt fields `state=submitted`, `task_id`, `run_id`, "
+    "`check_with`; persist them only when a later round must observe the run. On "
+    "`state=discussing`, use its exact `reply_with`. Yield; do not poll in the foreground."
 )
 
 _WINDOWS_LONG_EXPERIMENT_RULE = (
@@ -84,6 +81,28 @@ def assemble_round_prompt(
     return sanitize_model_visible_text(prompt + "\n\n" + "\n\n".join(tail))
 
 
+def _deduplicated_original_request(original_request: str, task: str) -> str:
+    original = original_request.strip()
+    current = task.strip()
+    if not original or original == current:
+        return ""
+    if (
+        _MANAGER_GROUNDING_HEADER in original
+        and _MANAGER_GROUNDING_HEADER in current
+    ):
+        original_base, original_grounding = original.split(
+            _MANAGER_GROUNDING_HEADER,
+            1,
+        )
+        _current_base, current_grounding = current.split(
+            _MANAGER_GROUNDING_HEADER,
+            1,
+        )
+        if original_grounding.strip() == current_grounding.strip():
+            original = original_base.strip()
+    return "" if original == current else original
+
+
 def _post_task_learning_section(
     *,
     require_post_task_learning: bool,
@@ -134,11 +153,16 @@ def build_mission_prompt(
         sections.append("## Active vertical role\n" + role_banner.strip())
     if skill_text:
         sections.append(skill_text)
-    if original_request.strip():
+    unique_original_request = _deduplicated_original_request(
+        original_request,
+        task,
+    )
+    if unique_original_request:
         sections.append(
             "## Original operator request\n"
             "Higher-priority live operator instructions may update this; "
-            "lower-authority guidance may not silently change it.\n\n" + original_request.strip()
+            "lower-authority guidance may not silently change it.\n\n"
+            + unique_original_request
         )
     sections.append("## Current mission task\n" + task)
     # The Engineer is the role that can most easily satisfy a task while
@@ -177,6 +201,8 @@ def build_mission_prompt(
         "current directory; unless required, do not write planning/spec/brief "
         "documents, initialize Git, branch/worktree, commit, spawn subagents, or "
         "invoke meta-workflows.\n"
+        "Never repeat unchanged checks/reads; batch tools and cap results at 200 "
+        "lines. At 18 tool calls, synthesize or checkpoint/yield; never exceed 24.\n"
         "Wiki is context, not a boundary: independently inspect papers, upstream "
         "source, issues, and hardware/API docs when useful. When related attempts "
         "repeatedly fail, prioritize fresh investigation of primary papers, official "

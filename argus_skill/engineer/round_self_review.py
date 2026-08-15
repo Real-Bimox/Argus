@@ -20,10 +20,17 @@ if TYPE_CHECKING:
     from .runner import SupervisedConfig
 
 
+def _control_line(line: str) -> str:
+    text = str(line or "").strip()
+    if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
+        text = text[1:-1].strip()
+    return text
+
+
 def _engineer_operator_question(message: str) -> str:
     question = ""
     for line in str(message or "").splitlines():
-        key, separator, value = line.partition("=")
+        key, separator, value = _control_line(line).partition("=")
         if not separator or key.strip().casefold() != "operator_question":
             continue
         candidate = value.strip()
@@ -59,7 +66,7 @@ class RoundSelfReviewMixin:
         else:
             state.no_progress_streak += 1
         milestone_done = any(
-            line.strip().casefold() == "milestone_status=done"
+            _control_line(line).casefold() == "milestone_status=done"
             for line in outcome.engineer_message.splitlines()
         )
         operator_question = _engineer_operator_question(outcome.engineer_message)
