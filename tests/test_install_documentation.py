@@ -13,7 +13,7 @@ def test_readme_has_distinct_platform_install_contracts() -> None:
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     windows = _section(text, "### Windows 10/11", "### macOS")
     macos = _section(text, "### macOS", "### Linux")
-    linux = _section(text, "### Linux", "### Agent-assisted installation")
+    linux = _section(text, "### Linux", "### Backend notes")
 
     assert "pip install --upgrade" in windows
     assert "py -m pip install --upgrade" in windows
@@ -36,7 +36,7 @@ def test_chinese_readme_matches_platform_install_contracts() -> None:
     text = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
     windows = _section(text, "### Windows 10/11", "### macOS")
     macos = _section(text, "### macOS", "### Linux")
-    linux = _section(text, "### Linux", "### Agent 一键接入")
+    linux = _section(text, "### Linux", "### Backend 说明")
 
     assert "pip install --upgrade" in windows
     assert "py -m pip install --upgrade" in windows
@@ -106,3 +106,21 @@ def test_readmes_surface_the_wechat_qr_before_installation() -> None:
         assert text.count('src="docs/assets/argus-wechat-group.jpg"') == 1
         assert text.index(heading) < text.index("## Quick Install" if name == "README.md" else "## 快速安装")
         assert "Docker" in text
+
+
+def test_readmes_recommend_agent_assisted_installation_before_manual_steps() -> None:
+    english = (ROOT / "README.md").read_text(encoding="utf-8")
+    chinese = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+
+    assert "> [!TIP]" in english
+    assert "**Recommended: let the Code Agent" in english
+    assert english.index("### Recommended: Agent-assisted installation") < english.index(
+        "### Windows 10/11"
+    )
+    assert "> [!TIP]" in chinese
+    assert "**推荐：让你正在使用的 Code Agent" in chinese
+    assert chinese.index("### 推荐：使用 Agent 一键安装") < chinese.index(
+        "### Windows 10/11"
+    )
+    for text in (english, chinese):
+        assert "https://github.com/lbx154/Argus/blob/main/docs/agent-install.md" in text

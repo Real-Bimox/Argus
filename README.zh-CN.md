@@ -77,6 +77,11 @@ Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。
 普通 Argus 安装不需要 Docker；只有单独的 Harbor 评测集成可能把 Docker 作为可选
 环境依赖。
 
+> [!TIP]
+> **推荐：让你正在使用的 Code Agent 代为安装并验证 Argus。**
+> 复制下面“Agent 一键安装”中的 prompt 即可；希望逐步手工安装的用户仍可使用后面的
+> 三系统命令。
+
 | Agent CLI | Backend | 安装 | 鉴权 |
 |---|---|---|---|
 | GitHub Copilot CLI | `copilot` | `npm install -g @github/copilot` | `copilot login` |
@@ -89,6 +94,20 @@ Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。
 | DeepSeek Harness | `dsh` | `npm install -g @deepseek-ai/dsh` | 配置 `DEEPSEEK_API_KEY` 或 dsh Models 页面 |
 
 正式 PyPI 首发前，公共 Preview 直接从 GitHub archive 安装。
+
+### 推荐：使用 Agent 一键安装
+
+把下面整段发送给已安装的 Code Agent：
+
+```text
+请阅读 https://github.com/lbx154/Argus/blob/main/docs/agent-install.md，
+使用当前操作系统对应的方式安装 Argus。优先复用当前 Agent CLI 作为 backend。
+Windows 和 macOS 不创建手工 venv；Linux 保留文档中的 venv。必须让 setup 完成真实
+Agent turn 验收，再运行 argus doctor --deep --advisor auto。需要登录、sudo 或修改
+全局配置时先说明原因并等待确认。不要要求我在对话中粘贴密码、token 或 API Key。
+```
+
+Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
 
 ### Windows 10/11：直接 pip 安装，不创建虚拟环境
 
@@ -173,20 +192,6 @@ ARGUS_BIN="$HOME/Argus/.venv/bin/argus"
 Linux 新终端不要依赖全局 `argus`；请使用
 `$HOME/Argus/.venv/bin/argus`（或显式激活该 venv）。如果创建 venv 时提示缺少
 `ensurepip`，安装发行版的 `python3-venv` 包后重试。
-
-### Agent 一键接入
-
-把下面整段发送给已安装的 Code Agent：
-
-```text
-请阅读 https://github.com/lbx154/Argus/blob/main/docs/agent-install.md，
-使用当前操作系统对应的方式安装 Argus。优先复用当前 Agent CLI 作为 backend。
-Windows 和 macOS 不创建手工 venv；Linux 保留文档中的 venv。必须让 setup 完成真实
-Agent turn 验收，再运行 argus doctor --deep --advisor auto。需要登录、sudo 或修改
-全局配置时先说明原因并等待确认。不要要求我在对话中粘贴密码、token 或 API Key。
-```
-
-Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
 
 ### Backend 说明
 
