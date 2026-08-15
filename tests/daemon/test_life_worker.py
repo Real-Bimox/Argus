@@ -2369,7 +2369,7 @@ def test_daemon_manager_handoff_does_not_overwrite_newer_continuous_command(
     worker._install_signal_handlers = lambda: None  # type: ignore[method-assign]
 
     assert worker.run_forever() == 0
-    assert seen == {"continuous": False, "objective": "newer objective"}
+    assert seen == {"continuous": False, "objective": ""}
     assert commits == []
     assert read_continuous_state(tmp_path) == ContinuousConfigState(
         enabled=False,
@@ -2480,6 +2480,10 @@ def test_daemon_suppresses_rejected_objective_when_handoff_write_fails(
             self.config: Any = kwargs["config"]
 
         def run(self) -> dict[str, Any]:
+            seen["initial"] = (
+                self.config.continuous,
+                self.config.continuous_objective,
+            )
             enabled, objective, open_ended = self.config.continuous_config_provider()
             seen.update(
                 enabled=enabled,
@@ -2502,8 +2506,9 @@ def test_daemon_suppresses_rejected_objective_when_handoff_write_fails(
 
     assert worker.run_forever() == 0
     assert seen == {
+        "initial": (False, ""),
         "enabled": False,
-        "objective": raw,
+        "objective": "",
         "open_ended": True,
     }
     assert read_continuous_state(tmp_path).enabled is True
@@ -2553,7 +2558,7 @@ def test_daemon_manager_decision_failure_preserves_persisted_campaign(
     caplog.set_level("INFO")
     assert worker.run_forever() == 0
     after = read_continuous_state(tmp_path)
-    assert seen == {"enabled": False, "objective": raw}
+    assert seen == {"enabled": False, "objective": ""}
     assert after.enabled is True
     assert after.objective == raw
     assert after.generation == before.generation
@@ -2588,12 +2593,21 @@ def test_daemon_boot_leaves_paused_objective_untouched(
             AssertionError("paused objective must not be processed at boot")
         ),
     )
+    seen: dict[str, object] = {}
 
     class FakeSupervisor:
         def __init__(self, *args: object, **kwargs: object) -> None:
             self.config: Any = kwargs["config"]
 
         def run(self) -> dict[str, Any]:
+            seen["initial"] = (
+                self.config.continuous,
+                self.config.continuous_objective,
+            )
+            provider = self.config.continuous_config_provider
+            assert provider is not None
+            enabled, objective, open_ended = provider()
+            seen["provider"] = (enabled, objective, open_ended)
             self.config.stop_event.set()
             return {"stopped_by": "backlog_empty"}
 
@@ -2613,6 +2627,83 @@ def test_daemon_boot_leaves_paused_objective_untouched(
     assert after.enabled is False
     assert after.objective == "paused objective"
     assert after.generation == before.generation
+    assert seen == {
+        "initial": (False, ""),
+        "provider": (False, "", True),
+    }
+
+
+def test_concluded_handoff_resume_does_not_repeat_disabled_objective(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    LifeMemory.open(tmp_path).init()
+    write_continuous_config(
+        tmp_path,
+        enabled=False,
+        objective="already concluded mission",
+        done_reason="planner declared project done",
+    )
+    before = read_continuous_state(tmp_path)
+    from argus_skill.skills.vertical_select import persist_vertical
+
+    persist_vertical(tmp_path, "argus_maintenance")
+    life_worker_mod._write_manager_handoff_identity(
+        tmp_path,
+        objective="already concluded mission",
+        vertical="argus_maintenance",
+        domain="",
+        continuous_generation=before.generation,
+        intent_id="intent-concluded-mission",
+    )
+    monkeypatch.setenv("ARGUS_SKILL_DAEMON_TEST_ALLOW_MEMORY_CONTINUOUS", "1")
+    monkeypatch.delenv("ARGUS_SKILL_TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("ARGUS_SKILL_TELEGRAM_CHAT_ID", raising=False)
+    monkeypatch.setattr(
+        "argus_skill.manager.Manager.decide_vertical",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("concluded objective must not be processed at boot")
+        ),
+    )
+    seen: dict[str, object] = {}
+
+    class FakeSupervisor:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.config: Any = kwargs["config"]
+
+        def run(self) -> dict[str, Any]:
+            seen["initial"] = (
+                self.config.continuous,
+                self.config.continuous_objective,
+            )
+            provider = self.config.continuous_config_provider
+            assert provider is not None
+            enabled, objective, open_ended = provider()
+            seen["provider"] = (enabled, objective, open_ended)
+            self.config.stop_event.set()
+            return {"stopped_by": "backlog_empty"}
+
+    monkeypatch.setattr("argus_skill.daemon.life_worker.LifeSupervisor", FakeSupervisor)
+    worker = LifeWorker(
+        LifeWorkerConfig(
+            life_dir=tmp_path,
+            backend="memory",
+            poll_interval=0.01,
+            resume_continuous=True,
+        )
+    )
+    worker._install_signal_handlers = lambda: None  # type: ignore[method-assign]
+
+    assert worker.run_forever() == 0
+    after = read_continuous_state(tmp_path)
+    assert after.enabled is False
+    assert after.objective == "already concluded mission"
+    assert after.done_reason == "planner declared project done"
+    assert after.generation == before.generation
+    assert seen == {
+        "initial": (False, ""),
+        "provider": (False, "", True),
+    }
 
 
 def test_project_done_does_not_disable_newer_same_value_rearm(

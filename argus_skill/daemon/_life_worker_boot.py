@@ -248,10 +248,14 @@ class LifeWorkerBootMixin:
                         enabled=False,
                         objective=objective,
                     )
-                return False, objective, current.open_ended
+                return False, "", current.open_ended
             if not self._operator_stop_requested:
                 self._adopted_continuous_generation = current.generation if enabled else None
-            return enabled, objective, current.open_ended
+            # A disabled record keeps its objective on disk so the operator can
+            # inspect or explicitly re-arm it later. It must not seed the live
+            # supervisor, or a paused/completed handoff can be treated as the
+            # next continuous objective during daemon resume.
+            return enabled, (objective if enabled else ""), current.open_ended
 
         rf_state.continuous_provider = _continuous_provider
 
@@ -522,7 +526,7 @@ class LifeWorkerBootMixin:
                 current_state = read_continuous_state(rf_state.runtime_root)
                 if current_state.generation == expected_state.generation:
                     rf_state.init_continuous = False
-                    rf_state.init_objective = current_state.objective
+                    rf_state.init_objective = ""
                     if current_state.enabled:
                         rf_state.suppress.update(
                             {
