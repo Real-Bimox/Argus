@@ -260,11 +260,21 @@ def test_grounded_vertical_prompt_has_bounded_inspection_and_no_rendering_work()
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "one focused batch, at most four file/search operations" in prompt
-    assert "choose Live View content" in prompt
-    assert "perform the task" in prompt
+    assert "at most 3 targeted operations" in prompt
+    assert "<16k characters total" in prompt
+    assert "no task work or Live View" in prompt
     assert "presentations" not in prompt
     assert "EXECUTION_TASK=<complete standalone objective>" in prompt
+
+
+def test_read_only_repository_audit_avoids_maintenance_meta_review() -> None:
+    prompt = build_vertical_decision_prompt(
+        "Audit this repository and produce one report without changing runtime code.",
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+
+    assert "`software`/`direct`, not `argus_maintenance`" in prompt
+    assert "no meta-review unless explicitly requested" in prompt
 
 
 def test_vertical_prompts_prefer_matching_formal_project_domain() -> None:

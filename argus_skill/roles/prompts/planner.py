@@ -51,8 +51,6 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   high-impact work left. Empty backlog or one failed thesis is evidence, not a routing command
   or completion. Integrity and reproducibility are admission constraints, not
   completion; `replan_requested` requires replacement.
-  Integrity and reproducibility are admission constraints, not completion;
-  `replan_requested` requires replacement.
 - Follow the operator's requested actions and order before autonomously derived
   hardening. Existing artifacts, unfinished cleanup, a dirty worktree, or a usable
   alternative do not replace the first unmet requested action. Do not delegate

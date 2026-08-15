@@ -84,7 +84,7 @@ def test_low_risk_task_can_finish_with_engineer_self_review(tmp_path: Path) -> N
         CannedResponse(
             message=(
                 "Implemented the bounded fix.\n## Verification\n3 tests passed\n"
-                "MILESTONE_STATUS=done"
+                "`MILESTONE_STATUS=done`"
             ),
             thread_id="t1",
         ),
@@ -156,9 +156,9 @@ def test_engineer_operator_question_parks_without_reviewer(tmp_path: Path) -> No
             message=(
                 "The required choice belongs to the operator.\n"
                 "MILESTONE_STATUS=continue\n"
-                "OPERATOR_QUESTION=请选择 A 或 B\n"
-                "OPERATOR_OPTIONS=route-a :: 选择 A :: 使用 A 路线继续。; "
-                "route-b :: 选择 B :: 使用 B 路线继续。"
+                "`OPERATOR_QUESTION=请选择 A 或 B`\n"
+                "`OPERATOR_OPTIONS=route-a :: 选择 A :: 使用 A 路线继续。; "
+                "route-b :: 选择 B :: 使用 B 路线继续。`"
             ),
             thread_id="t1",
         ),

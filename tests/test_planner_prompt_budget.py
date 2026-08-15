@@ -76,7 +76,9 @@ def test_math_scope_prompt_is_compact_and_deduplicated(
     assert "waiting_contract" not in prompt
     assert prompt.count("PROJECT_DONE=false") == 1
     assert "not a routing command" in prompt
-    assert "Integrity and reproducibility are admission constraints" in prompt
+    assert prompt.count(
+        "Integrity and reproducibility are admission constraints"
+    ) == 1
     assert "delegate implementation to Engineer" in prompt
     assert "JSON matching the provided schema" not in prompt
 

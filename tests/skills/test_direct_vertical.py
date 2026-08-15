@@ -73,7 +73,7 @@ def test_manager_prompt_separates_capability_from_execution_mode() -> None:
 
     assert "capability VERTICAL and independent execution WORKFLOW" in prompt
     assert "`direct` for one coherent Engineer work package" in prompt
-    assert "perform the task" in prompt
+    assert "no task work or Live View" in prompt
     assert "EXECUTION_TASK=" in prompt
 
 

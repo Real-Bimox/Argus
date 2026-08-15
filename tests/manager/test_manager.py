@@ -578,10 +578,14 @@ def test_software_planner_requirement_overrides_direct_route(
 
     assert decision.vertical == "software"
     assert decision.workflow_mode == "staged"
-    assert "workflow_mode=staged" in runner.calls[-1]["prompt"]
+    assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-grounded"
+    ]
 
 
-def test_argus_maintenance_uses_provider_declared_grounding(tmp_path) -> None:
+def test_argus_maintenance_skips_duplicate_manager_grounding_by_default(
+    tmp_path,
+) -> None:
     runner = _existing("argus_maintenance")
 
     decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
@@ -589,8 +593,10 @@ def test_argus_maintenance_uses_provider_declared_grounding(tmp_path) -> None:
     )
 
     assert decision.vertical == "argus_maintenance"
-    assert "## Manager project grounding" in decision.execution_task
-    assert runner.calls[-1]["run_label"] == "manager-project-grounding"
+    assert "## Manager project grounding" not in decision.execution_task
+    assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-grounded"
+    ]
 
 
 def test_vertical_decision_always_uses_repository_grounded_route(
@@ -633,8 +639,8 @@ def test_vertical_decision_always_uses_repository_grounded_route(
     assert runner.calls[0]["options"].sandbox_mode is None
     assert runner.calls[0]["options"].dangerous_yolo is True
     assert "--available-tools=" not in runner.calls[0]["options"].extra_args
-    assert "First inspect only the repository evidence needed" in runner.calls[0]["prompt"]
-    assert "one focused batch, at most four file/search operations" in runner.calls[0]["prompt"]
+    assert "Inspect routing evidence" in runner.calls[0]["prompt"]
+    assert "at most 3 targeted operations" in runner.calls[0]["prompt"]
 
 
 def test_fast_route_environment_cannot_restore_tool_free_shortcut(
