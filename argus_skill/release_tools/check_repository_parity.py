@@ -15,6 +15,7 @@ PRIVATE_ONLY_PATTERNS = (
     "docs/RESEARCH_AGENCY_AND_VERIFICATION_TODO.md",
     "docs/evaluations/**",
     "technical_report/**",
+    "tests/test_operator_output_examples.py",
 )
 
 
