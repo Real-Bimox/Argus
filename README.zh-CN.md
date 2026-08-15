@@ -58,11 +58,24 @@ Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。
 **Code Agent 插件：** 可通过打包的 MCP bridge 和宿主 Skills 使用 Argus，不修改
 核心 runtime。参见 **[插件快速入门](docs/plugin.md)**。
 
+## 微信群
+
+扫码加入 Argus 交流群；点击图片可以查看原图。二维码有效期以图片中的提示为准；
+如果已经过期，请在 Issue 中联系维护者更新。
+
+<p align="center">
+  <a href="docs/assets/argus-wechat-group.jpg">
+    <img src="docs/assets/argus-wechat-group.jpg" width="360" alt="Argus 微信交流群二维码">
+  </a>
+</p>
+
 ## 快速安装
 
 请只使用当前操作系统对应的一组命令，不要混用。所有平台都需要从
 [nodejs.org](https://nodejs.org/en/download) 安装 Node.js **22.12+**，并准备一个
 已完成鉴权的 Agent CLI。直接复用你日常使用的 CLI；Argus 没有单独账户。
+普通 Argus 安装不需要 Docker；只有单独的 Harbor 评测集成可能把 Docker 作为可选
+环境依赖。
 
 | Agent CLI | Backend | 安装 | 鉴权 |
 |---|---|---|---|
@@ -448,11 +461,3 @@ Linux 请先停止 Argus、保留所需工作，再删除 `$HOME/Argus` checkout
 - `argus doctor --advisor none --verify` 只做确定性诊断；需要本机 Agent 直接检查和
   修复 Argus 时使用 `argus doctor`。
 - 用 `argus --config-help` 检查实际 backend/model，再判断 setup 或鉴权是否失败。
-
-## 微信群
-
-扫码加入 Argus 交流群。二维码有效期以图片中的提示为准；如果已经过期，请在 Issue 中联系维护者更新。
-
-<p align="center">
-  <img src="docs/assets/argus-wechat-group.jpg" width="360" alt="Argus 微信交流群二维码">
-</p>

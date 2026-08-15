@@ -58,12 +58,26 @@ Manager/Planner/Engineer/Reviewer runtime as a custom agent. See
 **Coding-agent plugin:** use the packaged MCP bridge and host-specific Skills
 without changing the core runtime. See **[Plugin quick start](docs/plugin.md)**.
 
+## WeChat community
+
+Scan the QR code to join the Argus community. Click the image to open it at full
+size. If the printed expiry date has passed, open an Issue and ask the
+maintainers for the latest code.
+
+<p align="center">
+  <a href="docs/assets/argus-wechat-group.jpg">
+    <img src="docs/assets/argus-wechat-group.jpg" width="360" alt="Argus WeChat community QR code">
+  </a>
+</p>
+
 ## Quick Install
 
 Choose the section for your operating system. Do not mix commands between
 platforms. All platforms need Node.js **22.12+** from
 [nodejs.org](https://nodejs.org/en/download) and one authenticated Agent CLI.
 Reuse the CLI you already work in; Argus does not require a separate account.
+Docker is not required for a normal Argus installation; it is only an optional
+prerequisite for the separate Harbor evaluation integration.
 
 | Agent CLI | Backend | Install | Authenticate |
 |---|---|---|---|
@@ -479,11 +493,3 @@ logs.
   Argus directly.
 - Use `argus --config-help` to check the effective backend/model before blaming
   setup or authentication.
-
-## WeChat community
-
-Scan the QR code below to join the Argus community. The expiry date is printed in the image; if it has expired, open an Issue and ask the maintainers for the latest code.
-
-<p align="center">
-  <img src="docs/assets/argus-wechat-group.jpg" width="360" alt="Argus WeChat community QR code">
-</p>
