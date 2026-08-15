@@ -19,7 +19,9 @@ PRIVATE_ONLY_PATTERNS = (
 
 
 def is_private_only(path: str, patterns: Iterable[str] = PRIVATE_ONLY_PATTERNS) -> bool:
-    normalized = path.replace("\\", "/").lstrip("./")
+    normalized = path.replace("\\", "/")
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
     return any(fnmatch.fnmatchcase(normalized, pattern) for pattern in patterns)
 
 

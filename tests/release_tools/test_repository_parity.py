@@ -10,6 +10,8 @@ def test_private_only_allowlist_is_narrow() -> None:
     assert is_private_only("technical_report/sections/01_introduction.tex")
     assert is_private_only("docs/evaluations/run.md")
     assert is_private_only("PRIVATE_TODO.md")
+    assert is_private_only(".github/workflows/private-public-parity.yml")
+    assert is_private_only("./.github/workflows/private-public-parity.yml")
     assert not is_private_only("argus_skill/roles/prompts/manager.py")
     assert not is_private_only("README.md")
     assert not is_private_only("docs/FEATURES.md")
