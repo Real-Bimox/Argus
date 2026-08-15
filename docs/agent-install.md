@@ -129,6 +129,8 @@ make plain `argus` available in new terminals.
 Doctor is not advisory-only: it runs the installed Agent with tools enabled,
 applies Argus-scoped repairs, and then reruns deterministic verification. Use
 `--advisor none --verify` only for a non-Agent verification run.
+Allow several minutes for the active repair because it performs a real Agent
+turn and may repair dependencies.
 
 ## Linux
 

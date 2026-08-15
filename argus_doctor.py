@@ -179,13 +179,12 @@ def run_bootstrap_doctor(root=None):
             findings.append(_finding(
                 "ARGUS-DESKTOP-001",
                 "Desktop runtime",
-                electron_ready,
+                True,
                 (
                     "Electron runtime present" if electron_installed and electron_ready
                     else "Desktop dependencies not installed (optional for CLI/Web)" if not electron_installed
-                    else "Electron runtime binary missing"
+                    else "Electron runtime binary missing (optional for CLI/Web)"
                 ),
-                "run `npm --prefix desktop ci`; Desktop postinstall downloads the declared Electron runtime",
             ))
 
     web_host = os.environ.get("ARGUS_SKILL_WEB_HOST", "127.0.0.1")

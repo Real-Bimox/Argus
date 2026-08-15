@@ -582,12 +582,14 @@ class RunExecMixin:
             (process.stderr, stderr_thread),
         )
         for pipe, reader in pipe_readers:
-            if reader.is_alive() and pipe is not None:
+            if os.name != "posix" and reader.is_alive() and pipe is not None:
                 try:
                     os.close(pipe.fileno())
                 except (AttributeError, OSError, ValueError):
                     pass
         for pipe, reader in pipe_readers:
+            if os.name == "posix" and reader.is_alive():
+                continue
             reader.join(timeout=2.0)
             if not reader.is_alive() and pipe is not None:
                 close = getattr(pipe, "close", None)

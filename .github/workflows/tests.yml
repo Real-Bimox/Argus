@@ -229,4 +229,4 @@ jobs:
           npm --prefix desktop run build
       - name: Validate unsigned Windows package layout
         working-directory: desktop
-        run: npx electron-builder --win --dir --publish never --config.win.signExecutable=false
+        run: npx electron-builder --win --dir --publish never --config.win.signAndEditExecutable=false
