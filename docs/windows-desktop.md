@@ -28,9 +28,12 @@ main README for the currently supported Windows surface.
 
 ## End-user installation
 
-Download `Argus-<version>-setup.exe` from the matching GitHub Release and run it.
-The installer contains the frozen Argus backend; end users do not install
-Python, Node.js, or a virtual environment for the Desktop application.
+When a GitHub Release includes `Argus-<version>-setup.exe`, download that asset
+and run it. The installer contains the frozen Argus backend; end users do not
+install Python, Node.js, or a virtual environment for the Desktop application.
+If the Releases page has no matching installer asset, use the Windows pip
+instructions in the main README. Do not treat contributor build commands or CI
+artifacts as an available end-user release.
 
 The first-run screen selects an installed Agent CLI and starts the bundled
 backend. Installation is usable only after the backend reaches the ready screen.
@@ -98,8 +101,8 @@ For source development and packaging:
 - one supported Agent CLI installed and authenticated if agent work will run.
 
 The first-run UI supports Codex CLI, Claude Code, GitHub Copilot CLI, Pi,
-OpenCode, and Grok Build. Auto-detection is only a convenience; the operator can
-select the executable explicitly.
+OpenCode, Grok Build, Qoder CLI, and DeepSeek Harness. Auto-detection is only a
+convenience; the operator can select the executable explicitly.
 
 ## Contributor-only development setup
 

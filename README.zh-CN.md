@@ -49,7 +49,7 @@
 
 项目可以停止、恢复、跨运行时替换，并从最近一次已验证位置继续推进。
 
-**原生 Backend：** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build`
+**原生 Backend：** `GitHub Copilot CLI` · `Pi` · `OpenAI Codex CLI` · `Claude Code` · `OpenCode` · `Grok Build` · `Qoder` · `DeepSeek Harness`
 
 **Harbor 评测：** Harbor Framework 可以把完整的有界 Argus
 Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。配置和边界见
@@ -57,13 +57,20 @@ Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。
 
 ## 快速安装
 
-请只使用当前操作系统对应的一组命令，不要混用。
+请只使用当前操作系统对应的一组命令，不要混用。所有平台都需要从
+[nodejs.org](https://nodejs.org/en/download) 安装 Node.js **22.12+**，并准备一个
+已完成鉴权的 Agent CLI。直接复用你日常使用的 CLI；Argus 没有单独账户。
 
-所有平台都需要：
-
-- 已按官方方式安装的 Agent CLI；
-- 该 CLI 已完成官方登录鉴权；
-- Node.js 22+（终端 cockpit 需要）。
+| Agent CLI | Backend | 安装 | 鉴权 |
+|---|---|---|---|
+| GitHub Copilot CLI | `copilot` | `npm install -g @github/copilot` | `copilot login` |
+| OpenAI Codex CLI | `codex` | `npm install -g @openai/codex@latest` | `codex login` |
+| Claude Code | `claude` | `npm install -g @anthropic-ai/claude-code` | 运行 `claude`，再执行 `/login` |
+| Pi | `pi` | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent` | 运行 `pi`，再执行 `/login` |
+| OpenCode | `opencode` | [官方安装说明](https://opencode.ai/docs/) | `opencode auth login` |
+| Grok Build | `grok` | [官方安装说明](https://x.ai/cli) | `grok login` |
+| Qoder CLI | `qoder` | `npm install -g @qoder-ai/qodercli` | `qodercli login` |
+| DeepSeek Harness | `dsh` | `npm install -g @deepseek-ai/dsh` | 配置 `DEEPSEEK_API_KEY` 或 dsh Models 页面 |
 
 正式 PyPI 首发前，公共 Preview 直接从 GitHub archive 安装。
 
@@ -73,28 +80,28 @@ Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。
 并勾选 **Add Python to PATH**。重新打开 PowerShell 后执行：
 
 ```powershell
+py --version
+node --version
 py -m pip install --upgrade pip
-py -m pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
 $Scripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+$Argus = Join-Path $Scripts "argus.exe"
+if (-not (Test-Path $Argus)) { throw "Argus entry point not found at $Argus" }
 $env:Path = "$Scripts;$env:Path"
-argus --setup
-argus doctor --deep --advisor auto
-argus
+& $Argus --version
+& $Argus --setup
+& $Argus doctor --deep --advisor auto
+& $Argus --status
+& $Argus
 ```
 
-`argus --setup` 不会只检查到 CLI 就宣称完成：它会检查 backend/鉴权，并实际执行
-一次禁止工具调用的 Agent turn。上面的 `$Scripts` 命令会让当前 PowerShell 立即找到
-`argus`；如果新窗口仍找不到，再确认 Python 安装器的 Scripts 目录已加入 PATH。
+使用 `$Argus` 绝对路径可以证明 setup 没有误调用旧安装。`$env:Path` 会让当前
+PowerShell 同时支持普通 `argus` 命令；新窗口的持久 PATH 修复见后面的排障章节。
 
 `argus doctor` 是主动修复命令：默认会在真实 Argus 目录中启动用户电脑上已安装的
 Agent CLI，开放工具让 Agent 直接检查并修复机器，然后重新运行确定性检查验收。
-只有需要“纯诊断、不启动 Agent 修复”时才使用 `argus doctor --advisor none`。
-
-正式 PyPI 版本发布前，用下面的命令刷新持续更新的 GitHub Preview：
-
-```powershell
-py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
-```
+只有需要“不调用模型的确定性验证”时才使用
+`argus doctor --advisor none --verify`。
 
 Windows 当前支持安装、Manager 对话、配对、Web/TUI 和终端作用域 daemon 控制。
 detached subagent 仍属于 POSIX/WSL2 能力；native Windows 会明确失败，不会伪报任务
@@ -102,41 +109,53 @@ detached subagent 仍属于 POSIX/WSL2 能力；native Windows 会明确失败�
 
 ### macOS：uv tool 管理安装，不手工创建虚拟环境
 
-安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后执行：
+按需安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 后执行：
 
 ```bash
-uv tool install --python 3.12 \
-  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
-argus --setup
-argus doctor --deep --advisor auto
-argus
-```
-
-以后更新：
-
-```bash
+uv --version
+node --version
 uv tool install --force --python 3.12 \
   "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+ARGUS_BIN="$(uv tool dir --bin)/argus"
+test -x "$ARGUS_BIN"
+"$ARGUS_BIN" --version
+uv tool update-shell
+"$ARGUS_BIN" --setup
+"$ARGUS_BIN" doctor --deep --advisor auto
+"$ARGUS_BIN" --status
+"$ARGUS_BIN"
 ```
+
+即使 uv 的 tool bin 尚未加入 PATH，`ARGUS_BIN` 也能立即工作。
+`uv tool update-shell` 会让新终端可以直接使用 `argus`。隔离环境已经由 uv 管理，
+不要再套一层 venv。
 
 ### Linux：保留隔离源码 venv
 
-Linux 服务器继续显式使用 venv，保证 Python、CUDA 工具链和长任务进程环境可复现：
+Linux 服务器继续显式使用 venv，保证 Python、CUDA 工具链和长任务进程环境可复现。
+先安装 Python 3.11+、Git、Node.js 22.12+ 和发行版的 `python3-venv` 包：
 
 ```bash
-git clone https://github.com/lbx154/Argus.git
-cd Argus
+git clone https://github.com/lbx154/Argus.git "$HOME/Argus"
+cd "$HOME/Argus"
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
-.venv/bin/argus --setup
-.venv/bin/argus doctor --deep --advisor auto
-.venv/bin/argus
+ARGUS_BIN="$HOME/Argus/.venv/bin/argus"
+"$ARGUS_BIN" --version
+"$ARGUS_BIN" --setup
+"$ARGUS_BIN" doctor --deep --advisor auto
+"$ARGUS_BIN" --status
+"$ARGUS_BIN"
 ```
 
 私有 Preview 协作者在 Linux clone 命令中改用
 `https://github.com/lbx154/argus-skill.git`。Windows/macOS 应安装私有 wheel
 或经过认证的私有 archive，不要把 GitHub token 写进 shell history。
+
+Linux 新终端不要依赖全局 `argus`；请使用
+`$HOME/Argus/.venv/bin/argus`（或显式激活该 venv）。如果创建 venv 时提示缺少
+`ensurepip`，安装发行版的 `python3-venv` 包后重试。
 
 ### Agent 一键接入
 
@@ -155,9 +174,9 @@ Agent 将遵循 **[安装执行规范](docs/agent-install.md)**。
 ### Backend 说明
 
 `--backend` 可使用 `copilot`、`pi`、`codex`、`claude`、`opencode`、`grok`、
-`qoder` 或 `dsh`。
-未显式配置 model 时，Argus 使用所选 CLI 的原生默认模型，不会把 OpenAI 模型 id
-传给 Claude Code、Pi、OpenCode 或 Grok。
+`qoder` 或 `dsh`。setup 会优先采用所选 CLI 自己目录中的模型；无法确定时保留
+该 CLI 的原生默认值，不会把 OpenAI 模型 id 注入 Claude Code、Pi、OpenCode、
+Grok、Qoder 或 dsh。
 如果已有 OpenAI-compatible URL，setup 会在需要时自动安装 Pi 并完成配置：
 
 ```bash
@@ -199,18 +218,26 @@ export ARGUS_SKILL_OPENCODE_PROVIDER=deepseek
 `argus --doctor` 会读取 CLI 的已认证目录：配置的 provider 你并没有 key，或选定的
 model 不在目录中时，会直接告诉你。
 
+用 `argus --config-help` 查看每个角色最终使用的模型及配置来源。模型目录查询命令
+因 backend 而异，例如 `pi --list-models`、`opencode auth list` 和
+`qodercli --list-models`。
+
 完整说明（含对依赖旧的隐式 `github-copilot` 前缀的 Pi 部署的不兼容变更）：
 **[后端 provider 说明](docs/backend-providers.md)**。
 
 ### 启动
+
+Windows 和 macOS 配好 PATH 后可直接使用 `argus`。Linux 如果没有激活 venv，
+请把下面的 `argus` 替换成 `$HOME/Argus/.venv/bin/argus`。
 
 ```bash
 argus
 ```
 
 ```bash
-argus --doctor   # 检查安装与后端
-argus --status   # 查看当前运行状态
+argus doctor                         # 调用 Agent 检查并修复
+argus doctor --advisor none --verify # 不调用模型的确定性验证
+argus --status                       # 查看当前运行状态
 ```
 
 ## 交互界面
@@ -334,7 +361,7 @@ Vertical 可以为你的领域提供专属阶段、Skill、数据集、工具、
 
 你可以通过 GitHub Copilot、Pi、Codex、Claude Code、OpenCode、Grok Build、OpenClaw 或 Hermes 调用 Argus、检查状态、操作本地 CLI 或 Web/API，并继续迭代自己的部署。
 
-- **Argus 原生 Backend：** GitHub Copilot CLI、Pi、Codex CLI、Claude Code、OpenCode、Grok Build
+- **Argus 原生 Backend：** GitHub Copilot CLI、Pi、Codex CLI、Claude Code、OpenCode、Grok Build、Qoder、DeepSeek Harness
 - **外层 Agent：** OpenClaw、Hermes，或任何能够使用 Shell / HTTP API 的 Agent
 
 如需运行持久任务，可安装或适配可移植的
@@ -357,23 +384,66 @@ argus --web
 Windows：
 
 ```powershell
-pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+$Argus = Join-Path (py -c "import sysconfig; print(sysconfig.get_path('scripts'))") "argus.exe"
+& $Argus --version
+& $Argus doctor --advisor none --verify
 ```
 
 macOS：
 
 ```bash
-uv tool upgrade argus-skill
+uv tool install --force --python 3.12 \
+  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+"$(uv tool dir --bin)/argus" --version
+"$(uv tool dir --bin)/argus" doctor --advisor none --verify
 ```
 
 Linux 源码 checkout：
 
 ```bash
-argus update
+"$HOME/Argus/.venv/bin/argus" update
+"$HOME/Argus/.venv/bin/argus" --version
+"$HOME/Argus/.venv/bin/argus" doctor --advisor none --verify
 ```
 
 Linux 源码更新会拒绝 dirty/detached checkout，只做 fast-forward 并刷新 editable
 安装。更新后 Argus 会识别过期的本地 WebAPI 与 daemon，并在受控任务边界完成替换。
+这里的更新验收是确定性的，不消耗模型调用。
+
+## 卸载
+
+```powershell
+# Windows
+py -m pip uninstall argus-skill
+```
+
+```bash
+# macOS
+uv tool uninstall argus-skill
+```
+
+Linux 请先停止 Argus、保留所需工作，再删除 `$HOME/Argus` checkout 及其中的
+`.venv`。所有平台卸载 package 时都会保留 `$HOME/.argus-skill` 运行状态；只有在
+确定项目、配置和日志也不再需要时才删除该目录。
+
+## 安装排障
+
+- PowerShell 用 `Get-Command argus -All`，macOS/Linux 用 `type -a argus`
+  确认 shell 实际调用哪个 executable；更新后 `argus --version` 的 release id
+  应发生变化。
+- macOS 可立即使用 `"$(uv tool dir --bin)/argus"`；执行一次
+  `uv tool update-shell` 并重新打开终端后才能稳定使用普通 `argus`。
+- Windows 用
+  `$Scripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"`
+  找回准确 Scripts 目录，再用 `$env:Path = "$Scripts;$env:Path"` 修复当前窗口。
+  新窗口请在 Python 安装器的 **Modify** 中启用 **Add Python to PATH**，不要为此
+  创建 venv。
+- Linux 使用 `$HOME/Argus/.venv/bin/argus`；全局 `argus` 可能属于旧安装。
+  `python3 -m venv` 缺少 `ensurepip` 时先安装 `python3-venv`。
+- `argus doctor --advisor none --verify` 只做确定性诊断；需要本机 Agent 直接检查和
+  修复 Argus 时使用 `argus doctor`。
+- 用 `argus --config-help` 检查实际 backend/model，再判断 setup 或鉴权是否失败。
 
 ## 微信群
 

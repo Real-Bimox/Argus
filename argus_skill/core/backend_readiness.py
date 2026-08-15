@@ -84,6 +84,8 @@ def backend_install_command(
         "pi": "npm.cmd install -g --ignore-scripts @earendil-works/pi-coding-agent",
         "opencode": "choose a Windows installer at https://opencode.ai/docs/#windows",
         "grok": "use the official Windows instructions at https://x.ai/cli",
+        "qoder": "npm.cmd install -g @qoder-ai/qodercli",
+        "dsh": "npm.cmd install -g @deepseek-ai/dsh",
     }
     return windows[backend]
 

@@ -57,7 +57,7 @@ def test_launcher_execs_node_with_bundled_ink(monkeypatch, tmp_path: Path) -> No
     monkeypatch.delenv("ARGUS_TUI_LOCAL_RELEASE_ID", raising=False)
     monkeypatch.delenv("ARGUS_TUI_LOCAL_SOURCE_DIGEST", raising=False)
     monkeypatch.setattr(tui_launcher.shutil, "which", lambda name: "/usr/bin/node")
-    monkeypatch.setattr(tui_launcher, "_node_major", lambda node: 20)
+    monkeypatch.setattr(tui_launcher, "_node_version", lambda node: (22, 12, 0))
     monkeypatch.setattr(tui_launcher, "_needs_foreground_spawn", lambda: False)
     monkeypatch.setattr(
         tui_launcher.os,
@@ -102,7 +102,7 @@ def test_binary_launcher_points_tui_at_real_frozen_backend(
     monkeypatch.setattr(tui_launcher.sys, "executable", "/opt/argus/argus-core")
     monkeypatch.setattr(tui_launcher, "_bundle_path", lambda: bundle)
     monkeypatch.setattr(tui_launcher.shutil, "which", lambda name: "/usr/bin/node")
-    monkeypatch.setattr(tui_launcher, "_node_major", lambda node: 22)
+    monkeypatch.setattr(tui_launcher, "_node_version", lambda node: (22, 12, 0))
     monkeypatch.setattr(tui_launcher, "_needs_foreground_spawn", lambda: False)
     monkeypatch.setattr(
         tui_launcher.os,
@@ -142,10 +142,10 @@ def test_launcher_rejects_unsupported_node(monkeypatch, tmp_path: Path, capsys) 
     bundle.write_text("// bundle", encoding="utf-8")
     monkeypatch.setattr(tui_launcher, "_bundle_path", lambda: bundle)
     monkeypatch.setattr(tui_launcher.shutil, "which", lambda name: "/usr/bin/node")
-    monkeypatch.setattr(tui_launcher, "_node_major", lambda node: 16)
+    monkeypatch.setattr(tui_launcher, "_node_version", lambda node: (22, 11, 0))
 
     assert tui_launcher.main([]) == 2
-    assert "found 16" in capsys.readouterr().err
+    assert "found 22.11.0" in capsys.readouterr().err
 
 
 def test_public_admin_flags_stay_on_python_admin_path(monkeypatch) -> None:
@@ -179,7 +179,7 @@ def test_web_launch_uses_tui_unless_raw_backend_options_are_requested(
     admin = []
     monkeypatch.setattr(tui_launcher, "_bundle_path", lambda: bundle)
     monkeypatch.setattr(tui_launcher.shutil, "which", lambda name: "/usr/bin/node")
-    monkeypatch.setattr(tui_launcher, "_node_major", lambda node: 20)
+    monkeypatch.setattr(tui_launcher, "_node_version", lambda node: (22, 12, 0))
     monkeypatch.setattr(tui_launcher, "_needs_foreground_spawn", lambda: False)
     monkeypatch.setattr(
         tui_launcher.os,
@@ -274,7 +274,7 @@ def test_interactive_life_dir_configures_tui_state_root(
     monkeypatch.delenv("ARGUS_SKILL_HOME", raising=False)
     monkeypatch.setattr(tui_launcher, "_bundle_path", lambda: bundle)
     monkeypatch.setattr(tui_launcher.shutil, "which", lambda name: "/usr/bin/node")
-    monkeypatch.setattr(tui_launcher, "_node_major", lambda node: 20)
+    monkeypatch.setattr(tui_launcher, "_node_version", lambda node: (22, 12, 0))
     monkeypatch.setattr(tui_launcher, "_needs_foreground_spawn", lambda: False)
     monkeypatch.setattr(
         tui_launcher.os,

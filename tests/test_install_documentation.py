@@ -20,11 +20,16 @@ def test_readme_has_distinct_platform_install_contracts() -> None:
     assert "--force-reinstall" in windows
     assert "py -3.11" not in windows
     assert "-m venv" not in windows
-    assert "argus --setup" in windows
+    assert "$Argus --setup" in windows
+    assert 'Join-Path $Scripts "argus.exe"' in windows
     assert "uv tool install" in macos
+    assert "uv tool dir --bin" in macos
+    assert "uv tool update-shell" in macos
     assert "uv venv" not in macos
     assert "python3 -m venv .venv" in linux
-    assert ".venv/bin/argus --setup" in linux
+    assert 'ARGUS_BIN="$HOME/Argus/.venv/bin/argus"' in linux
+    assert '"$ARGUS_BIN" --setup' in linux
+    assert "Node.js **22.12+**" in text
 
 
 def test_chinese_readme_matches_platform_install_contracts() -> None:
@@ -39,7 +44,10 @@ def test_chinese_readme_matches_platform_install_contracts() -> None:
     assert "py -3.11" not in windows
     assert "不创建虚拟环境" in windows
     assert "uv tool install" in macos
+    assert "uv tool dir --bin" in macos
     assert "python3 -m venv .venv" in linux
+    assert 'ARGUS_BIN="$HOME/Argus/.venv/bin/argus"' in linux
+    assert "Node.js **22.12+**" in text
 
 
 def test_agent_install_uses_os_specific_executables() -> None:
@@ -53,7 +61,32 @@ def test_agent_install_uses_os_specific_executables() -> None:
     assert "--force-reinstall" in windows
     assert "py -3.11" not in windows
     assert "-m venv" not in windows
+    assert "& $Argus --setup" in windows
     assert "uv tool install" in macos
     assert "uv tool install --force" in macos
-    assert ".venv/bin/argus doctor --deep --advisor auto" in linux
+    assert "uv tool dir --bin" in macos
+    assert '"$ARGUS_BIN" doctor --deep --advisor auto' in linux
     assert "real Agent-turn smoke" in text
+    assert "Node.js 22.12+" in text
+
+
+def test_install_guides_cover_updates_paths_models_and_doctor_semantics() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    chinese = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+    agent = (ROOT / "docs" / "agent-install.md").read_text(encoding="utf-8")
+    desktop = (ROOT / "docs" / "windows-desktop.md").read_text(encoding="utf-8")
+
+    for text in (readme, chinese, agent):
+        assert "`qoder`" in text
+        assert "`dsh`" in text
+        assert "--config-help" in text
+        assert "--advisor none --verify" in text
+
+    update = _section(readme, "## Update", "## Uninstall")
+    assert 'py -m pip install --upgrade --force-reinstall' in update
+    assert "uv tool install --force" in update
+    assert '"$HOME/Argus/.venv/bin/argus" update' in update
+    assert "uv tool upgrade argus-skill" not in update
+    assert "\npip install " not in update
+
+    assert "If the Releases page has no matching installer asset" in desktop

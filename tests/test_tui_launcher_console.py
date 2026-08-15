@@ -27,7 +27,11 @@ def launcher(monkeypatch, tmp_path):
     bundle.write_text("// bundle", encoding="utf-8")
     monkeypatch.setattr(tui_launcher, "_bundle_path", lambda: bundle)
     monkeypatch.setattr(tui_launcher.shutil, "which", lambda _name: "/usr/bin/node")
-    monkeypatch.setattr(tui_launcher, "_node_major", lambda _node: 22)
+    monkeypatch.setattr(
+        tui_launcher,
+        "_node_version",
+        lambda _node: (22, 12, 0),
+    )
     monkeypatch.setattr(tui_launcher, "_configure_tui_backend_bin", lambda: None)
     monkeypatch.setattr(tui_launcher, "_export_tui_local_identity", lambda: None)
     monkeypatch.setattr(

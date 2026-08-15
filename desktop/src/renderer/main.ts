@@ -2,7 +2,15 @@ import './style.css';
 import { captureIpc } from './ipcRecovery';
 
 type LaunchState = 'idle' | 'starting' | 'ready' | 'error' | 'stopped';
-type RunnerKind = 'codex' | 'claude' | 'copilot' | 'pi' | 'opencode' | 'grok';
+type RunnerKind =
+  | 'codex'
+  | 'claude'
+  | 'copilot'
+  | 'pi'
+  | 'opencode'
+  | 'grok'
+  | 'qoder'
+  | 'dsh';
 type AppearanceTheme = 'system' | 'light' | 'dark';
 
 const RUNNER_LABELS: Record<RunnerKind, string> = {
@@ -11,11 +19,13 @@ const RUNNER_LABELS: Record<RunnerKind, string> = {
   copilot: 'Copilot CLI',
   pi: 'Pi（跟随用户模型）',
   opencode: 'OpenCode',
-  grok: 'Grok Build'
+  grok: 'Grok Build',
+  qoder: 'Qoder CLI',
+  dsh: 'DeepSeek Harness'
 };
 
 function isRunnerKind(value: string | undefined): value is RunnerKind {
-  return value === 'codex' || value === 'claude' || value === 'copilot' || value === 'pi' || value === 'opencode' || value === 'grok';
+  return value !== undefined && Object.hasOwn(RUNNER_LABELS, value);
 }
 
 interface DesktopStatus {

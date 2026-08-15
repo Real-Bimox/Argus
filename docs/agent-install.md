@@ -31,9 +31,10 @@ Supported backend values:
 | Qoder CLI | `qoder` |
 | DeepSeek Harness | `dsh` |
 
-Setup uses the selected CLI's native default model unless the operator already
-configured a model. Never assign an OpenAI model id to Claude Code, Pi, OpenCode,
-or Grok merely because it is Argus's historical default.
+Setup adopts a model from the selected CLI's own catalog when available and
+otherwise keeps its native default. Never assign an OpenAI model id to Claude
+Code, Pi, OpenCode, Grok, Qoder, or dsh merely because it is Argus's historical
+default.
 
 ## Windows 10/11
 
@@ -49,35 +50,39 @@ Get-Command copilot,codex,claude,pi,opencode,grok,qodercli,dsh -ErrorAction Sile
 ```
 
 Require Python 3.11+ from python.org with **Add Python to PATH** selected,
-Node.js 22+, and one authenticated Agent CLI.
+Node.js 22.12+, and one authenticated Agent CLI.
 
 ### Install — no virtual environment
 
 ```powershell
 py -m pip install --upgrade pip
-py -m pip install --upgrade "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+py -m pip install --upgrade --force-reinstall "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
 $Scripts = py -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+$Argus = Join-Path $Scripts "argus.exe"
+if (-not (Test-Path $Argus)) { throw "Argus entry point not found at $Argus" }
 $env:Path = "$Scripts;$env:Path"
+& $Argus --version
 ```
 
 Do not ask the user to create or activate a venv on Windows. A packaged Desktop
 installer may be used instead when a release provides one.
 
-For an existing moving-preview install, add `--force-reinstall` to the direct
-pip command so the unchanged preview package version cannot leave stale code.
+Always retain `--force-reinstall` while installing the moving preview: its
+package version may stay unchanged when the archive contents change.
 
 ### Configure and verify
 
 ```powershell
-argus --setup --non-interactive --backend <copilot|codex|claude|pi|opencode|grok|qoder|dsh>
-argus doctor --deep --advisor auto
-argus --status
+& $Argus --setup --non-interactive --backend <copilot|codex|claude|pi|opencode|grok|qoder|dsh>
+& $Argus doctor --deep --advisor auto
+& $Argus --status
 ```
 
 `argus --setup` must finish its real Agent-turn smoke test. A package install or
-version command alone is not success. The `$Scripts` lines make the entry points
-available in the current PowerShell. If a later window cannot find `argus`, fix
-the Python Scripts PATH; do not create a venv as a workaround.
+version command alone is not success. Using `$Argus` proves the newly installed
+entry point was tested instead of another copy earlier on PATH. If a later
+window cannot find plain `argus`, report `$Scripts` and ask before changing the
+user PATH; do not create a venv as a workaround.
 
 Windows supports Manager chat, pairing, Web/TUI, and terminal-scoped daemon
 control. Detached subagents remain POSIX/WSL2-only and must fail explicitly on
@@ -95,37 +100,35 @@ node --version
 for cli in copilot codex claude pi opencode grok qodercli dsh; do command -v "$cli" || true; done
 ```
 
-Require Node.js 22+, one authenticated Agent CLI, and uv. Install uv only with
+Require Node.js 22.12+, one authenticated Agent CLI, and uv. Install uv only with
 the user's approval and its official installer.
 
 ### Install — uv-managed command, no manual venv
 
 ```bash
-uv tool install --python 3.12 \
-  "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
-```
-
-Upgrade with:
-
-```bash
 uv tool install --force --python 3.12 \
   "argus-skill @ https://github.com/lbx154/Argus/archive/refs/heads/main.zip"
+ARGUS_BIN="$(uv tool dir --bin)/argus"
+test -x "$ARGUS_BIN"
+"$ARGUS_BIN" --version
 ```
 
 ### Configure and verify
 
 ```bash
-argus --setup --non-interactive \
+"$ARGUS_BIN" --setup --non-interactive \
   --backend <copilot|codex|claude|pi|opencode|grok|qoder|dsh>
-argus doctor --deep --advisor auto
-argus --status
+"$ARGUS_BIN" doctor --deep --advisor auto
+"$ARGUS_BIN" --status
 ```
 
-Setup is complete only after the real Agent-turn smoke succeeds.
+Setup is complete only after the real Agent-turn smoke succeeds. Keep using
+`$ARGUS_BIN` in the current shell. With approval, run `uv tool update-shell` to
+make plain `argus` available in new terminals.
 
 Doctor is not advisory-only: it runs the installed Agent with tools enabled,
 applies Argus-scoped repairs, and then reruns deterministic verification. Use
-`--advisor none` only for a non-Agent verification run.
+`--advisor none --verify` only for a non-Agent verification run.
 
 ## Linux
 
@@ -139,7 +142,8 @@ git --version
 for cli in copilot codex claude pi opencode grok qodercli dsh; do command -v "$cli" || true; done
 ```
 
-Require Python 3.11+, Node.js 22+, Git, and one authenticated Agent CLI.
+Require Python 3.11+, Node.js 22.12+, Git, the distribution's `python3-venv`
+package, and one authenticated Agent CLI.
 
 ### Install — persistent source venv
 
@@ -152,6 +156,8 @@ cd "$HOME/Argus"
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -e .
+ARGUS_BIN="$HOME/Argus/.venv/bin/argus"
+"$ARGUS_BIN" --version
 ```
 
 Private-preview collaborators may use the authorized private repository instead.
@@ -162,19 +168,22 @@ with `git pull --ff-only`, then refresh the editable install.
 
 ```bash
 cd "$HOME/Argus"
-.venv/bin/argus --setup --non-interactive \
+"$ARGUS_BIN" --setup --non-interactive \
   --backend <copilot|codex|claude|pi|opencode|grok|qoder|dsh>
-.venv/bin/argus doctor --deep --advisor auto
-.venv/bin/argus --status
+"$ARGUS_BIN" doctor --deep --advisor auto
+"$ARGUS_BIN" --status
 ```
 
 Linux keeps the explicit venv because server Python/CUDA dependencies and
-long-running process ownership must remain reproducible.
+long-running process ownership must remain reproducible. Never substitute a
+global `argus`; it may be stale. If venv creation reports missing `ensurepip`,
+install the distribution's `python3-venv` package and retry.
 
 ## Confirm the backend model selector
 
 Setup validates the model it will send before reporting success. Also run
-`argus --config-help` and inspect each role's effective value and source.
+`<exact-argus-executable> --config-help` and inspect each role's effective value
+and source.
 Backend catalog commands include `pi --list-models`, `opencode auth list`, and
 `qodercli --list-models`. If the selected id is not in that account's catalog,
 set `ARGUS_SKILL_MODEL` or a role-specific model knob before rerunning setup.
@@ -191,7 +200,17 @@ ARGUS_SETUP_API_KEY=... argus --setup --non-interactive \
 ```
 
 On Windows use a PowerShell environment variable and backtick continuation.
+On macOS/Linux replace `argus` with the exact executable established above.
 Never paste the key into chat or commit it.
+
+## Upgrade and deterministic verification
+
+Use the same install command again on Windows/macOS, including
+`--force-reinstall`/`--force`, then run the exact executable with
+`doctor --advisor none --verify`. On Linux run
+`"$HOME/Argus/.venv/bin/argus" update`, followed by the same deterministic
+verification. Do not invoke a second Agent repair turn merely to prove an
+unchanged installation.
 
 ## Completion report
 
@@ -200,6 +219,7 @@ Report:
 - operating system and installation method;
 - exact executable used for Argus;
 - selected Agent CLI/backend;
+- effective model and configuration source for each role;
 - whether setup's real Agent turn passed;
 - whether `argus doctor --deep --advisor auto` passed;
 - exact launch command;

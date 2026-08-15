@@ -44,6 +44,14 @@ def test_windows_install_commands_are_powershell_safe() -> None:
         "opencode",
         platform_name="nt",
     )
+    assert readiness.backend_install_command(
+        "qoder",
+        platform_name="nt",
+    ) == "npm.cmd install -g @qoder-ai/qodercli"
+    assert readiness.backend_install_command(
+        "dsh",
+        platform_name="nt",
+    ) == "npm.cmd install -g @deepseek-ai/dsh"
 
 
 def test_default_timeout_allows_slow_cli_cold_start(monkeypatch) -> None:
