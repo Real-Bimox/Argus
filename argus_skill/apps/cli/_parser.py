@@ -474,7 +474,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
     doctor_parser = subparsers.add_parser(
         "doctor",
-        help="Run read-only Argus diagnostics",
+        help="Diagnose and repair Argus with an installed Code Agent",
     )
     doctor_parser.add_argument(
         "--json",
@@ -500,7 +500,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--advisor",
         choices=("auto", "none", "copilot", "codex", "claude", "opencode", "pi", "grok"),
         default="auto",
-        help="ask an installed Code Agent to interpret sanitized findings (default: auto)",
+        help="ask an installed Code Agent to inspect and repair Argus (default: auto)",
     )
     repair_parser = subparsers.add_parser(
         "repair",

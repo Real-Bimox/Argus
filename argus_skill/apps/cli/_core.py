@@ -784,16 +784,43 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
             include_backend=True,
             probe_auth=bool(getattr(args, "deep", False)),
         )
-    payload = report.to_jsonable()
-    payload["verification"] = bool(getattr(args, "verify", False))
-    if repair_payload is not None:
-        payload["repair"] = repair_payload
     from ...maintenance.advisor import run_doctor_advisor
 
     advisor = run_doctor_advisor(
         report,
+        context,
         requested=str(getattr(args, "advisor", "auto") or "auto"),
+        probe_auth=bool(getattr(args, "deep", False)),
     )
+    if advisor.get("attempts"):
+        report = run_full_doctor(
+            context,
+            include_backend=True,
+            probe_auth=bool(getattr(args, "deep", False)),
+        )
+    repaired_with_tools = any(
+        bool(item.get("tool_activity_observed"))
+        for item in advisor.get("attempts", ())
+    )
+    if report.ok and repaired_with_tools and advisor["status"] == "failed":
+        advisor["status"] = "completed"
+        advisor["error"] = ""
+        advisor["analysis"] = (
+            advisor.get("analysis")
+            or "Agent repairs passed final deterministic verification."
+        )
+        advisor["recovered_by_final_verification"] = True
+    advisor["verified"] = report.ok
+    advisor["remaining_findings"] = [
+        item.code for item in report.findings if not item.ok
+    ]
+    payload = report.to_jsonable()
+    payload["verification"] = bool(getattr(args, "verify", False))
+    if repair_payload is not None:
+        payload["repair"] = repair_payload
+    agent_ok = advisor["status"] in {"completed", "disabled"}
+    payload["deterministic_ok"] = report.ok
+    payload["ok"] = report.ok and agent_ok
     payload["advisor"] = advisor
     if bool(getattr(args, "json", False)):
         sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
@@ -801,17 +828,19 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
         sys.stdout.write(render_full_report(report) + "\n")
         if advisor["status"] == "completed":
             sys.stdout.write(
-                f"\nCode Agent analysis ({advisor['backend']}):\n"
+                f"\nCode Agent repair ({advisor['backend']}):\n"
                 f"{advisor['analysis'].strip()}\n"
             )
         elif advisor["status"] == "failed":
             sys.stdout.write(
-                f"\nCode Agent analysis failed ({advisor['backend']}): "
+                f"\nCode Agent repair failed ({advisor['backend']}): "
                 f"{advisor['error']}\n"
             )
+            if advisor.get("analysis"):
+                sys.stdout.write(f"{advisor['analysis'].strip()}\n")
         elif advisor["status"] == "unavailable":
             sys.stdout.write(
-                "\nCode Agent analysis unavailable: no supported Agent CLI was "
+                "\nCode Agent repair unavailable: no supported Agent CLI was "
                 "found on PATH. Deterministic findings above are still valid.\n"
             )
         if repair_payload is not None:
@@ -819,7 +848,7 @@ def _cmd_doctor(args: argparse.Namespace) -> int:
                 f"safe repair plan {repair_payload['plan_id']}: "
                 f"{repair_payload['status']}\n"
             )
-    return 0 if report.ok else 3
+    return 0 if report.ok and agent_ok else 3
 
 
 def _cmd_repair(args: argparse.Namespace) -> int:

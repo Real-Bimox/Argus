@@ -14,6 +14,9 @@ Complete the installation; do not merely print commands.
 - Prefer the Agent CLI already running this conversation.
 - Do not replace a dirty checkout or silently switch providers after a failure.
 - Use only the section for the detected operating system.
+- Running `argus doctor` authorizes the selected installed Agent to inspect and
+  repair Argus files, configuration, runtime state, and required dependencies.
+  Login or administrator blockers must be reported rather than guessed.
 
 Supported backend values:
 
@@ -117,6 +120,10 @@ argus --status
 ```
 
 Setup is complete only after the real Agent-turn smoke succeeds.
+
+Doctor is not advisory-only: it runs the installed Agent with tools enabled,
+applies Argus-scoped repairs, and then reruns deterministic verification. Use
+`--advisor none` only for a non-Agent verification run.
 
 ## Linux
 
