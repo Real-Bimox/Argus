@@ -15,6 +15,21 @@ CHECKLIST_STAGE_ORDER = STAGE_ORDER
 WORKFLOW_MODE = "proportional"
 RESEARCH_TARGET_LEVELS = ("exploratory", "publishable", "doctoral")
 
+# A proof is the one deliverable whose author cannot certify it. Every sibling
+# research vertical already declares this (``research``, ``materials``,
+# ``chip_design``); math was the omission, and defaulting to ``False`` is what
+# let a testbed run close an open conjecture on the Engineer's own verdict:
+# "Engineer reported the requested milestone complete; independent review was
+# not required for this mission." One round, no Reviewer, no artifact, no proof
+# graph — and the claim was simply believed.
+#
+# Deliberately declared here rather than argued per mission: unlike the paper /
+# completion-gate checks, ``_independent_review_required_for_project_root``
+# reads this contract with no ``workflow_mode == "direct"`` exemption, so a
+# Manager that collapses a proof to a single direct work package still cannot
+# collapse away its verification.
+REQUIRE_INDEPENDENT_REVIEW = True
+
 # Math has no ``research`` stage, so the framework's default live-search stage
 # never fires here: without this declaration the Engineer would do literature
 # work from recall alone. ``scope`` needs the literature to state the problem
@@ -412,6 +427,7 @@ __all__ = [
     "COMPLETION_CONTRACT_VERSION",
     "ENGINEER_LIVE_SEARCH_STAGES",
     "PROTECTED_ITEM_IDS",
+    "REQUIRE_INDEPENDENT_REVIEW",
     "REVIEWER_CHECKLISTS",
     "RESEARCH_TARGET_LEVELS",
     "STAGE_CHECKS",

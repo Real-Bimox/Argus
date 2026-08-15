@@ -4,6 +4,7 @@ from __future__ import annotations
 from .stages import (
     CHECKLIST_ITEMS,
     CHECKLIST_STAGE_ORDER,
+    REQUIRE_INDEPENDENT_REVIEW,
     RESEARCH_TARGET_LEVELS,
     REVIEWER_CHECKLISTS,
     STAGE_CHECKS,
@@ -16,6 +17,7 @@ from .stages import (
 __all__ = [
     "CHECKLIST_ITEMS",
     "CHECKLIST_STAGE_ORDER",
+    "REQUIRE_INDEPENDENT_REVIEW",
     "REVIEWER_CHECKLISTS",
     "RESEARCH_TARGET_LEVELS",
     "STAGE_CHECKS",

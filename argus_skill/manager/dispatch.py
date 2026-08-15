@@ -268,10 +268,41 @@ def enqueue_mission(
                 priority=min(head_priority - 1, -1),
                 tags=[
                     "manager",
-                    "planner",
+                    # Deliberately NOT "planner": that tag is a claim of Planner
+                    # authorship, and the mission runtime reads it as exactly
+                    # that — ``preplanned = "planner" in tags`` — to skip the
+                    # advisory planning pass on the ground that a Planner has
+                    # already decomposed the work. This item is a raw operator
+                    # message the Manager routed; nothing decomposed it. Tagging
+                    # it here suppressed the Planner for the one case
+                    # ``_maybe_draft_plan`` documents as needing it ("user-
+                    # authored bounded work now follows the full team chain:
+                    # Manager → Planner → Engineer → Reviewer"), sending the
+                    # objective straight to a single Engineer. The Planner-
+                    # authored path below keeps the tag, alongside the
+                    # ``bounded_dag_node`` that shows where its plan came from.
                     "operator",
                     "operator_priority",
                     "scope:bounded",
+                    # Paired with "stage_transition:skip" on purpose. Twenty
+                    # lines below, ``_prepare_persist`` REJECTS a Planner node
+                    # that sets ``skip_stage_transition`` without
+                    # ``require_independent_review`` as "an invalid review-only
+                    # stage transition contract" — and this item was setting
+                    # exactly that combination, so the Manager was exempting
+                    # itself from the contract it enforces on the Planner.
+                    #
+                    # Untagged, ``round_self_review`` closes the mission the
+                    # first time the Engineer writes MILESTONE_STATUS=DONE, with
+                    # no second pair of eyes; the observed run settled a claimed
+                    # proof of an open conjecture that way, in one round. It
+                    # also inverted the skip: ``_should_run_stage_transition``
+                    # only honors ``skip_stage_transition`` alongside
+                    # ``require_independent_review`` on a bounded scope, so
+                    # without this tag the mission fell through to the
+                    # ``review_source == "engineer_self_review"`` arm and ran
+                    # the stage transition the tag exists to prevent.
+                    "review:required",
                     "stage_transition:skip",
                 ],
                 iterate=False,

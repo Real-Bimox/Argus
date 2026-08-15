@@ -366,6 +366,7 @@ class SkillLoopExecuteMixin:
         require_independent_review: bool = False,
         skip_stage_transition: bool = False,
         stage_closing: bool = False,
+        holds_stage_authority: bool = True,
         working_dir_override: str = "",
         maintenance_mission: bool = False,
         allow_skill_changes: bool = False,
@@ -426,6 +427,7 @@ class SkillLoopExecuteMixin:
             skip_stage_transition=skip_stage_transition,
             preplanned=preplanned,
             stage_closing=stage_closing,
+            holds_stage_authority=holds_stage_authority,
         )
         return self._build_execute_outcome(ex_state)
 
@@ -520,6 +522,22 @@ class SkillLoopExecuteMixin:
                 else _independent_review_required_for_project_root(_proot)
             )
         )
+        if not effective_require_independent_review and not maintenance_mission:
+            # Bug #42: 14 consecutive missions closed on the Engineer's own
+            # say-so and the only trace of it was a reason string inside each
+            # review record. Dropping the Reviewer is a policy decision; say so
+            # once, out loud, with the inputs that produced it. The framework
+            # path is the one that mattered — the daemon had rolled back to a
+            # source root whose math vertical predated the review requirement.
+            from ..skills.stage_machine import framework_source_root
+
+            log.warning(
+                "independent review NOT required for this mission: "
+                "project_root=%s vertical=%s framework=%s",
+                _proot,
+                active_vertical or "<persisted>",
+                framework_source_root(),
+            )
         # 7×24 product: default to dangerous_yolo (no bwrap sandbox).
         # The operator runs the daemon on their own box and explicitly
         # consents to autonomous execution; the sandbox only fights us
@@ -1162,6 +1180,7 @@ class SkillLoopExecuteMixin:
         skip_stage_transition: bool,
         preplanned: bool,
         stage_closing: bool,
+        holds_stage_authority: bool = True,
     ) -> None:
         """Hand this round's structured completion verdict to the Manager's
         stage authority when this round is eligible to move the pipeline stage.
@@ -1209,6 +1228,7 @@ class SkillLoopExecuteMixin:
                 skip_stage_transition=effective_skip_stage_transition,
                 preplanned=preplanned,
                 stage_closing=stage_closing,
+                holds_stage_authority=holds_stage_authority,
             )
         ):
             self._current_sink = sink
@@ -1236,6 +1256,7 @@ class SkillLoopExecuteMixin:
         ex_state.stage_transition_skipped = bool(
             workflow_skips_stage_transition
             or planned_node_holds_stage
+            or not holds_stage_authority
             or (
                 effective_skip_stage_transition
                 and ex_state.effective_require_independent_review

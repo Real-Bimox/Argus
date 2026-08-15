@@ -142,7 +142,32 @@ def run_one_engineer_mission(objective: str, *, cwd: str, life_dir: Path,
             runner = _SkillLoopRunner(ns)
             sink = JsonlEventSink(LifeStderrSink(quiet=False), life_dir=life_dir)
             outcome = runner.execute(
-                objective=objective, sink=sink, prelude_context=prelude_context)
+                objective=objective, sink=sink, prelude_context=prelude_context,
+                # A teammate is not the project's stage authority. Left at the
+                # default, ``execute`` runs the Manager's stage-transition pass
+                # and that pass WRITES ``<cwd>/research/PIPELINE_STATE.json``
+                # — and a teammate's ``cwd`` is the project root, because that
+                # is what keeps it reading the one shared ledger instead of a
+                # private one nobody reads. So the two facts compose into N
+                # concurrent workers with write authority over the campaign's
+                # stage, each judging the pipeline from the single task it was
+                # handed and none of them holding the campaign's own review.
+                #
+                # Stage authority belongs to the Manager running the mission
+                # that dispatched this pool, which decides once against the
+                # whole round rather than once per teammate. What is dropped
+                # here is only that write: the mission still runs, still
+                # reviews, and still reports its verdict back through the board
+                # and its result shard, which is what the dispatching Engineer
+                # consumes.
+                #
+                # Not ``skip_stage_transition``: that flag is half of the
+                # Planner's review-only node contract and is only honored
+                # alongside ``require_independent_review`` on a bounded scope,
+                # neither of which a teammate has — so setting it here reads as
+                # a fix and silently does nothing.
+                holds_stage_authority=False,
+            )
         except SystemExit as exc:  # codex extra missing, etc.
             sys.stderr.write(f"teammate_entry: runner unavailable: {exc}\n")
             return False

@@ -212,6 +212,11 @@ def _sync_status_stage(project_root: Path | str, stage: str) -> bool:
         return False
 
 
+def framework_source_root() -> Path:
+    """The ``argus_skill`` package directory that is actually executing."""
+    return Path(__file__).resolve().parent.parent
+
+
 def _set_stage(
     project_root: Path | str,
     *,
@@ -313,6 +318,11 @@ def _set_stage(
         if completion_contract_version > 0 and completion_contract_sha256:
             prev_record["completion_contract_version"] = completion_contract_version
             prev_record["completion_contract_sha256"] = completion_contract_sha256
+            # Which framework computed that hash. When a reader cannot reproduce
+            # it, the first question is always "was this written by the same
+            # code I am running?" — record the answer instead of making the next
+            # operator reconstruct it from process archaeology.
+            prev_record["completion_contract_source"] = str(framework_source_root())
 
     skipped_stages: list[str] = []
     if direction in {"advance", "complete"}:

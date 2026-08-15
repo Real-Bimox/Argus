@@ -290,3 +290,44 @@ def test_the_injected_block_is_shorter_than_what_it_replaced() -> None:
     )
 
     assert len(block) < 386
+
+
+def test_math_stages_each_resolve_to_a_declared_profile(tmp_path) -> None:
+    """Math was absent from ``STAGE_PROFILES`` and fell to the unresolved
+    fallback: profile ``develop`` with ``resolved=False``. ``solve`` came out
+    right by accident; ``review`` was certifying under a develop-grade policy
+    while reporting it had no policy at all."""
+    from argus_skill.core.verification_policy import resolve_policy
+
+    expected = {"scope": "explore", "solve": "develop", "review": "certify"}
+    for stage, profile in expected.items():
+        policy = resolve_policy(tmp_path, stage=stage, vertical="math")
+        assert policy.resolved, f"math/{stage} still unresolved"
+        assert policy.source == "stage"
+        assert policy.profile == profile
+
+
+def test_math_review_stage_requires_the_proof_graph() -> None:
+    """The consequence the mapping exists for: ``review`` is the delivery point,
+    so a targeted project must have the graph its claim is discharged through."""
+    from argus_skill.verticals.math.proof_graph import graph_required_for
+
+    assert graph_required_for("certify", "targeted")
+    assert graph_required_for("develop", "targeted")
+    assert not graph_required_for("explore", "targeted")
+    assert not graph_required_for("certify", "exploratory")
+
+
+def test_every_vertical_stage_order_is_covered_by_its_profile_table() -> None:
+    """The defect was a missing table, not a wrong entry — so assert coverage
+    rather than the one vertical that happened to be caught."""
+    from argus_skill.core.verification_policy import STAGE_PROFILES, VERIFICATION_PROFILES
+    from argus_skill.verticals._base import load_vertical
+
+    for vertical, table in STAGE_PROFILES.items():
+        order = getattr(load_vertical(vertical), "STAGE_ORDER", None)
+        if order is None:
+            continue
+        missing = [s for s in order if s not in table]
+        assert not missing, f"{vertical} stages absent from STAGE_PROFILES: {missing}"
+        assert set(table.values()) <= set(VERIFICATION_PROFILES)

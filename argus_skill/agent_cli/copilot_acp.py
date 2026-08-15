@@ -40,6 +40,11 @@ _DEFAULT_MANAGER_TIMEOUT_S = 300.0
 _CANCEL_GRACE_S = 5.0
 _DEFAULT_SESSION_RECYCLE = 12
 _FRONT_DOOR_LABEL = "manager-frontdoor-classify"
+# Passed as the whole ``--available-tools`` allowlist for lean classifier
+# processes, so the allowlist matches nothing. Spelled to be unmistakable in a
+# process listing and impossible to collide with a real tool name. See
+# ``CopilotAcpClient._spawn`` for why an empty value does not work.
+_NO_TOOLS_SENTINEL = "__argus_no_tools__"
 _TRANSPORT_CANCEL_NOTICE = "Info: Operation cancelled by user"
 _CONTENT_FILTER_NOTICE = (
     "The model returned no content because the response was blocked by content filtering."
@@ -203,10 +208,28 @@ class CopilotAcpClient:
         if self._lean:
             # Classifier prompts are self-contained and tool-free. Repository
             # instructions and built-in MCPs only inflate their input context.
+            #
+            # The value below is deliberately a name no tool will ever have.
+            # ``--available-tools=`` with an EMPTY value reads like "no tools"
+            # and is a no-op in Copilot CLI 1.0.80: the classifier kept the full
+            # 18-tool surface — bash, create, edit, web_fetch, task — costing
+            # ~20k of tool schemas per call and, worse, letting a triage call
+            # act. That is how a front-door classify ran 270s, burned 14.2k
+            # reasoning tokens, issued a tool_call, and was killed by the 60s
+            # idle watchdog. An unknown name empties the allowlist for real
+            # (24.0k -> 3.5k input tokens, measured) at the cost of one
+            # "Unknown tool name in the tool allowlist" notice on the CLI's own
+            # output, which ACP does not surface.
+            #
+            # An allowlist, not ``--excluded-tools``: a denylist has to
+            # enumerate today's tools, so the next tool Copilot ships silently
+            # re-arms the classifier. This fails closed instead — if a future
+            # CLI rejects unknown names outright the classify call fails loudly,
+            # and the operator is told why (``_frontdoor_failure``).
             cmd += [
                 "--no-custom-instructions",
                 "--disable-builtin-mcps",
-                "--available-tools=",
+                f"--available-tools={_NO_TOOLS_SENTINEL}",
             ]
         elif self._read_only:
             # Manager SELF is deliberately read-only. Keep it on the warm ACP

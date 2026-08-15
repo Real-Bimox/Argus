@@ -315,8 +315,31 @@ def render_reviewer_prompt(
             _proot,
             scope=scope_normalized,
             vertical=routed_vertical,
+            # Suppressed only when this project has no pipeline state to read a
+            # stage from — not merely because the caller named the vertical.
+            #
+            # The two used to be the same condition, on the reasoning that a
+            # caller passing ``vertical`` explicitly is one running outside a
+            # project (``argus_maintenance`` in a bare directory), where asking
+            # for a stage checklist is actively harmful: ``current_stage``
+            # returns the vertical's first stage as a FALLBACK rather than
+            # reporting that it found nothing, and an unresolved stage renders
+            # as "Configuration error: this required checklist is not loaded.
+            # Do not mark the stage complete" — a blocker manufactured out of a
+            # missing file.
+            #
+            # But the daemon passes ``vertical_override`` for a real campaign
+            # that does have pipeline state, so the proxy misfires there and the
+            # Reviewer silently loses its stage checklist: for a math project in
+            # ``solve`` that is ~2k characters of the acceptance criteria it is
+            # supposed to be judging against, while the Engineer's own prompt
+            # still carries them. ``_persisted`` is non-None exactly when
+            # ``research/PIPELINE_STATE.json`` records a vertical, which is the
+            # condition actually being asked about.
             checklist_mode=(
-                ChecklistMode.NONE if explicit_vertical else ChecklistMode.AUTO
+                ChecklistMode.NONE
+                if explicit_vertical and not _persisted
+                else ChecklistMode.AUTO
             ),
         )
     )

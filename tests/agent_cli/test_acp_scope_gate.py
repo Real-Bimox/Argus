@@ -152,7 +152,7 @@ def test_front_door_label_takes_acp_and_never_spawns_cli(monkeypatch) -> None:
             "--acp",
             "--no-custom-instructions",
             "--disable-builtin-mcps",
-            "--available-tools=",
+            "--available-tools=__argus_no_tools__",
         ]
     ]
     assert any(w.get("method") == "session/prompt" for w in acp_proc.written)
@@ -193,7 +193,7 @@ def test_lean_acp_failure_does_not_fall_back_to_full_context_cli(
         "--acp",
         "--no-custom-instructions",
         "--disable-builtin-mcps",
-        "--available-tools=",
+        "--available-tools=__argus_no_tools__",
     ]]
 
 
@@ -228,7 +228,7 @@ def test_manager_fast_route_takes_lean_acp_and_never_spawns_cli(monkeypatch) -> 
         "low",
         "--no-custom-instructions",
         "--disable-builtin-mcps",
-        "--available-tools=",
+        "--available-tools=__argus_no_tools__",
     ]]
 
 

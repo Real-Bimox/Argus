@@ -91,15 +91,22 @@ def test_run_one_mission_has_no_hard_self_sigkill_timer(tmp_path: Path, monkeypa
         def __init__(self, ns):
             pass
 
-        def execute(self, *, objective, sink, prelude_context=""):
+        def execute(self, *, objective, sink, prelude_context="", **kwargs):
+            seen_kwargs.update(kwargs)
             return _Outcome()
 
+    seen_kwargs: dict = {}
     monkeypatch.setattr(rt, "_SkillLoopRunner", _Runner)
 
     ok = te.run_one_engineer_mission("obj", cwd=str(tmp_path), life_dir=tmp_path / "life",
                                      max_rounds=1, timeout_s=10.0)
     assert ok is True
     assert intervals == [10.0]  # ONLY the soft watchdog; no hard self-kill timer
+    # A teammate's cwd is the project root, so the Manager's stage-transition
+    # pass would write the campaign's research/PIPELINE_STATE.json from a worker
+    # holding one task. ``**kwargs`` above so this stub does not have to track
+    # every future execute() keyword, but the one that matters is asserted.
+    assert seen_kwargs.get("holds_stage_authority") is False
 
 
 def test_teammate_forces_checkpoint_persist_off(tmp_path: Path, monkeypatch) -> None:
@@ -120,7 +127,7 @@ def test_teammate_forces_checkpoint_persist_off(tmp_path: Path, monkeypatch) -> 
         def __init__(self, ns):
             pass
 
-        def execute(self, *, objective, sink, prelude_context=""):
+        def execute(self, *, objective, sink, prelude_context="", **kwargs):
             return _Outcome()
 
     monkeypatch.setattr(rt, "_SkillLoopRunner", _Runner)

@@ -351,3 +351,87 @@ def test_engineer_permits_the_graph_once_the_route_is_settled() -> None:
     assert "planning, ledger, graph, audit" not in text
     assert "PROOF_GRAPH.json" in text
     assert "Under `explore` neither is required" in text
+
+
+# ---------------------------------------------------------------------------
+# The operator channel
+#
+# ``set_objective`` had no production caller and no command line: every math
+# stage refuses to complete until the mode is chosen — ``scope`` included,
+# because the objective gate runs ahead of the stage dispatch — so the vertical
+# could not be started at all. These cover the channel that clears it.
+# ---------------------------------------------------------------------------
+
+
+def test_unset_objective_blocks_every_stage_including_scope(tmp_path: Path) -> None:
+    """The reason this needed a channel at all, asserted rather than assumed."""
+    from argus_skill.verticals.math.stages import STAGE_ORDER, stage_completion_issues
+
+    for stage in STAGE_ORDER:
+        issues = stage_completion_issues(stage, project_root=tmp_path)
+        assert issues, f"{stage} completed under an unchosen completion bar"
+        assert "no math objective mode selected" in issues[0]
+
+
+def test_cli_set_then_show_round_trips_through_pipeline_state(tmp_path: Path) -> None:
+    from argus_skill.verticals.math.objective_mode import main
+
+    goal = "every finite group of odd order is solvable"
+    assert main(["--project-root", str(tmp_path), "set",
+                 "--mode", "targeted", "--goal", goal]) == 0
+    payload = json.loads(
+        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+    )
+    assert payload["math_objective_mode"] == "targeted"
+    assert payload["math_goal"] == goal
+    assert main(["--project-root", str(tmp_path), "show"]) == 0
+    assert resolve_objective(tmp_path).goal == goal
+
+
+def test_cli_reports_an_unchosen_objective_as_a_nonzero_exit(tmp_path: Path) -> None:
+    """A setup script tests the status instead of parsing the note out of stdout."""
+    from argus_skill.verticals.math.objective_mode import main
+
+    assert main(["--project-root", str(tmp_path), "show"]) == 1
+
+
+def test_cli_refuses_targeted_without_the_goal_it_must_close(tmp_path: Path) -> None:
+    from argus_skill.verticals.math.objective_mode import main
+
+    assert main(["--project-root", str(tmp_path), "set", "--mode", "targeted"]) == 1
+    assert not (tmp_path / "research" / "PIPELINE_STATE.json").exists()
+
+
+def test_setting_the_objective_preserves_the_managers_other_state(tmp_path: Path) -> None:
+    """Same file the Manager owns; a read-modify-write that dropped ``vertical``
+    or ``current_stage`` would strand the campaign it just configured."""
+    state = tmp_path / "research" / "PIPELINE_STATE.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({"vertical": "math", "current_stage": "solve"}))
+
+    set_objective(tmp_path, mode="exploratory")
+
+    payload = json.loads(state.read_text(encoding="utf-8"))
+    assert payload["vertical"] == "math"
+    assert payload["current_stage"] == "solve"
+    assert payload["math_objective_mode"] == "exploratory"
+
+
+def test_objective_write_leaves_no_torn_file_for_a_concurrent_reader(
+    tmp_path: Path,
+) -> None:
+    """Written temp-file-plus-replace: ``resolve_vertical`` and ``current_stage``
+    read this same path, and two of the readers raise on invalid JSON rather
+    than falling back, so a truncated window takes down a completion gate."""
+    set_objective(tmp_path, mode="targeted", goal="G")
+    state = tmp_path / "research" / "PIPELINE_STATE.json"
+    assert json.loads(state.read_text(encoding="utf-8"))["math_goal"] == "G"
+    assert not list(state.parent.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("mode", MATH_OBJECTIVE_MODES)
+def test_every_declared_mode_is_settable_and_resolves(tmp_path: Path, mode: str) -> None:
+    root = tmp_path / mode
+    objective = set_objective(root, mode=mode, goal="G" if mode == "targeted" else "")
+    assert objective.resolved and objective.mode == mode
+    assert normalize_mode(mode) == mode

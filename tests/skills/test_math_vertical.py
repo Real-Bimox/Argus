@@ -624,3 +624,90 @@ def test_research_target_persists_and_non_target_vertical_clears_it(tmp_path) ->
     state = json.loads(state_path.read_text(encoding="utf-8"))
     assert "research_target_level" not in state
     assert "research_target_set_at" not in state
+
+
+def test_reviewer_keeps_its_stage_checklist_when_the_daemon_names_the_vertical(
+    tmp_path: Path,
+) -> None:
+    """The daemon passes ``vertical_override`` for a real campaign.
+
+    That used to route the Reviewer down the same branch as a vertical named
+    for a directory with no pipeline state, which suppresses the checklist —
+    so a math Reviewer in ``solve`` was judging without the ~2k characters of
+    acceptance criteria the Engineer's own prompt still carried.
+    """
+    import json
+
+    from argus_skill import SkillLoop, SkillLoopConfig
+    from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
+    from argus_skill.verticals.math.objective_mode import set_objective
+
+    skills = tmp_path / "skills"
+    skills.mkdir()
+    (tmp_path / "research").mkdir(exist_ok=True)
+    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+        json.dumps({"vertical": "math", "current_stage": "solve"}), encoding="utf-8"
+    )
+    set_objective(tmp_path, mode="targeted", goal="G")
+
+    backend = MemoryBackend()
+    backend.queue("engineer-r1", CannedResponse(message="Worked the route."))
+    backend.queue("reviewer", CannedResponse(message=json.dumps({
+        "status": "done",
+        "reason": "Verified.",
+        "next_action": "None.",
+        "round_summary_markdown": "# Review\n\n- verified\n",
+        "completion_summary_markdown": "Verified.",
+    })))
+    loop = SkillLoop(
+        skills_dir=skills,
+        engineer_runner=backend,
+        reviewer_runner=backend,
+        config=SkillLoopConfig(
+            max_rounds=1, workflow_mode="direct", active_vertical="math",
+        ),
+    )
+    loop.run("Prove G.", workdir=tmp_path, scope="bounded")
+
+    reviewer_prompt = next(
+        prompt for label, prompt, _options in backend.history if label == "reviewer"
+    )
+    assert "Stage checklist (solve)" in reviewer_prompt
+    assert "solve.substantive-result" in reviewer_prompt
+    # The failure this replaced: a stage the checklist loader could not resolve
+    # renders as a manufactured blocker rather than as nothing.
+    assert "Configuration error" not in reviewer_prompt
+
+
+def test_math_never_certifies_its_own_proof() -> None:
+    """A proof is the one deliverable whose author cannot certify it.
+
+    Without this declaration the contract defaults to ``False``, and a testbed
+    run closed an open conjecture in a single round on the Engineer's own
+    verdict — "independent review was not required for this mission" — with no
+    Reviewer, no artifact and no proof graph. Every sibling research vertical
+    already declares it; math was the omission.
+    """
+    from argus_skill.verticals._base import (
+        load_vertical,
+        vertical_requires_independent_review,
+    )
+
+    assert vertical_requires_independent_review(load_vertical("math")) is True
+
+
+def test_math_review_survives_a_direct_workflow_decision(tmp_path: Path) -> None:
+    """The guard has to hold on the path that actually broke.
+
+    ``_independent_review_required_for_project_root`` reads the vertical
+    contract with no ``workflow_mode == "direct"`` exemption — unlike the paper
+    and completion-gate checks beside it. A Manager that collapses a proof into
+    one direct work package must still not collapse away its verification.
+    """
+    from argus_skill.apps._runtime_supervisor import (
+        _independent_review_required_for_project_root,
+    )
+
+    persist_vertical(tmp_path, "math", workflow_mode="direct")
+
+    assert _independent_review_required_for_project_root(tmp_path) is True

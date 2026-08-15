@@ -1367,6 +1367,29 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
                 error=f"{type(exc).__name__}: {exc}"[:2000],
             )
             return None
+        regression = ""
+        try:
+            regression = self._handoff_regression(commit)
+        except (OSError, subprocess.SubprocessError):
+            regression = ""
+        if regression:
+            self._write_state(
+                phase="handoff_declined",
+                canary_kind="repair",
+                commit=commit,
+                old_source_root=str(self.framework_root),
+                canary_source_root=str(worktree),
+                error=f"handoff declined: {regression}",
+            )
+            self._emit({
+                "type": "manager.self_maintenance.handoff_declined",
+                "incident_id": incident_id,
+                "commit": commit,
+                "worktree": str(worktree),
+                "reason": regression,
+                "agent_layer": "manager",
+            })
+            return None
         self._write_state(
             phase="handoff_requested",
             canary_kind="repair",
@@ -1378,6 +1401,69 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             error="",
         )
         return worktree
+
+    def _handoff_regression(self, commit: str) -> str:
+        """Why the running framework must not be replaced by ``commit``, if it must not.
+
+        Bug #42. A repair worktree is branched from ``main`` (see
+        ``_prepare_worktree``), and ``git worktree add`` materializes *committed*
+        content only. When the operator is running a framework with unmerged
+        commits or uncommitted edits — the normal state here, since agents leave
+        work uncommitted for the operator to commit — handing the live daemon to
+        that worktree silently reverts every one of those changes.
+
+        That is not hypothetical. On 2026-08-15 at 01:05:37 this daemon handed
+        itself to a canary 36 commits behind main. The math vertical's
+        ``REQUIRE_INDEPENDENT_REVIEW = True`` was an uncommitted edit, so the
+        canary's contract simply lacked the attribute, ``getattr(..., False)``
+        answered False, and the next 14 missions closed on the Engineer's own
+        say-so with no Reviewer. The same rollback shipped an older stage
+        checklist, which stamped a completion fingerprint the operator's
+        framework could not reproduce and deadlocked the Goal Gate for the rest
+        of the run (#41).
+
+        A repair is still authored, reviewed, committed and publishable. Only the
+        live takeover is refused, because a canary that is not a superset of the
+        running framework cannot validate it.
+        """
+        root = self.framework_root
+        head = _run(
+            ["git", "rev-parse", "HEAD"], cwd=root, check=False
+        )
+        if head.returncode != 0:
+            # Not a git checkout (an installed deployment). Nothing to lose.
+            return ""
+        dirty = _run(
+            ["git", "status", "--porcelain", "--untracked-files=no"],
+            cwd=root,
+            check=False,
+        )
+        if dirty.returncode == 0 and dirty.stdout.strip():
+            changed = [
+                parts[1]
+                for line in dirty.stdout.splitlines()
+                if (parts := line.strip().split(maxsplit=1)) and len(parts) == 2
+            ]
+            preview = ", ".join(changed[:5])
+            if len(changed) > 5:
+                preview += f", and {len(changed) - 5} more"
+            return (
+                f"the running framework at {root} has {len(changed)} uncommitted "
+                f"file(s) ({preview}) that a worktree checkout cannot contain"
+            )
+        if commit:
+            ahead = _run(
+                ["git", "rev-list", "--count", f"{commit}..HEAD"],
+                cwd=root,
+                check=False,
+            )
+            if ahead.returncode == 0 and (ahead.stdout.strip() or "0") != "0":
+                return (
+                    f"the running framework at {root} is "
+                    f"{ahead.stdout.strip()} commit(s) ahead of the reviewed "
+                    f"canary {commit[:12]}"
+                )
+        return ""
 
     def mark_canary_started(self, *, loaded_source_root: Path, revision: str) -> bool:
         state = self._state()
@@ -1440,6 +1526,28 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         if candidate == loaded_source_root.resolve():
             if str(state.get("handoff_error") or "").strip():
                 self._write_state(handoff_error="", error="")
+            return None
+        # Last gate before the live process is replaced. The repair path checks
+        # this too, but a handoff can also have been requested by an earlier
+        # daemon (or by the adoption path), and the running framework may have
+        # moved since. Never re-exec into a source root that does not contain
+        # what is running now — see ``_handoff_regression``.
+        try:
+            regression = self._handoff_regression(str(state.get("commit") or ""))
+        except (OSError, subprocess.SubprocessError):
+            regression = ""
+        if regression:
+            self._write_state(
+                phase="handoff_declined",
+                error=f"handoff declined: {regression}",
+            )
+            self._emit({
+                "type": "manager.self_maintenance.handoff_declined",
+                "commit": str(state.get("commit") or ""),
+                "worktree": str(candidate),
+                "reason": regression,
+                "agent_layer": "manager",
+            })
             return None
         return candidate
 

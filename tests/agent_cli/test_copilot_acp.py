@@ -400,9 +400,60 @@ def test_prewarm_starts_lean_process_and_session_without_model_turn(
             "low",
             "--no-custom-instructions",
             "--disable-builtin-mcps",
-            "--available-tools=",
+            "--available-tools=__argus_no_tools__",
         ]
     ]
+
+
+def test_the_lean_allowlist_names_something_rather_than_nothing(monkeypatch) -> None:
+    """The lean flag's whole promise is that a classifier cannot act.
+
+    ``--available-tools=`` reads like "no tools" and is a no-op: Copilot CLI
+    1.0.80 kept the full surface — bash, create, edit, task — so a triage call
+    shipped ~20k of tool schemas and could issue tool calls (one did, and hung
+    past the 60s idle watchdog). Only a non-empty allowlist actually empties it.
+    """
+    proc = _FakeAcpProc(_happy_script)
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(
+        copilot_acp.subprocess,
+        "Popen",
+        lambda cmd, *a, **k: (commands.append(cmd), proc)[1],
+    )
+
+    CopilotAcpClient("copilot-bin", "fast-model", "low", lean=True).prewarm("/workspace")
+
+    allowlists = [
+        arg.split("=", 1)[1]
+        for arg in commands[0]
+        if arg.startswith("--available-tools=")
+    ]
+    assert allowlists, "lean spawn must restrict the model's tools at all"
+    assert all(value.strip() for value in allowlists), (
+        "an empty --available-tools value grants every tool instead of none"
+    )
+
+
+def test_a_tool_capable_spawn_is_never_lean(monkeypatch) -> None:
+    """The read-only Manager SELF keeps view/grep/glob; only lean is tool-free.
+
+    Guards the inverse mistake of the fix above — clamping the allowlist shut
+    for every ACP process would silently lobotomise Manager SELF instead.
+    """
+    proc = _FakeAcpProc(_happy_script)
+    commands: list[list[str]] = []
+
+    monkeypatch.setattr(
+        copilot_acp.subprocess,
+        "Popen",
+        lambda cmd, *a, **k: (commands.append(cmd), proc)[1],
+    )
+
+    CopilotAcpClient("copilot-bin", "m", "low", read_only=True).prewarm("/workspace")
+
+    assert copilot_acp._NO_TOOLS_SENTINEL not in " ".join(commands[0])
+    assert "view,grep,glob" in commands[0]
 
 
 def test_new_session_rejects_a_different_selected_model(monkeypatch) -> None:

@@ -611,3 +611,105 @@ def test_failed_continuous_handoff_rolls_back_auto_promotion(memory, monkeypatch
 
     assert state["config"]["continuous"] is False
     assert state["continuous_objective"] == ""
+
+
+def test_the_operator_item_does_not_claim_planner_authorship(memory):
+    """``preplanned`` is computed as ``"planner" in item.tags``, and it skips
+    the advisory planning pass on the ground that a Planner already decomposed
+    the work. A raw operator message has not been decomposed by anyone, so the
+    tag sent it straight to a single Engineer — the opposite of the chain
+    ``_maybe_draft_plan`` documents for user-authored bounded work.
+    """
+    item, _, _ = dispatch.enqueue_mission(
+        memory,
+        "operator request",
+        {"backend": "codex", "config": {"continuous": True}},
+    )
+
+    assert item is not None
+    assert "planner" not in item.tags
+    # Still the operator's priority work, still bounded: only the authorship
+    # claim is dropped.
+    assert "operator_priority" in item.tags
+    assert "scope:bounded" in item.tags
+
+
+def test_the_operator_item_is_not_treated_as_preplanned(memory):
+    """Asserted through the reader rather than the tag, so this keeps holding
+    if the discriminator moves."""
+    item, _, _ = dispatch.enqueue_mission(
+        memory,
+        "operator request",
+        {"backend": "codex", "config": {"continuous": True}},
+    )
+
+    preplanned = any(
+        str(tag).strip().lower() == "planner" for tag in getattr(item, "tags", [])
+    )
+
+    assert preplanned is False
+
+
+def test_the_operator_item_satisfies_the_review_only_contract(memory):
+    """``_prepare_persist`` rejects a Planner node that skips the stage
+    transition without requiring independent review. The Manager's own operator
+    item set exactly that pair, exempting itself from the contract it enforces.
+    """
+    item, _, _ = dispatch.enqueue_mission(
+        memory,
+        "operator request",
+        {"backend": "codex", "config": {"continuous": True}},
+    )
+
+    assert item is not None
+    assert "stage_transition:skip" in item.tags
+    assert "review:required" in item.tags
+
+
+def test_the_operator_mission_gets_an_independent_reviewer(memory):
+    """Read through the same helper the mission runtime uses. Without the tag,
+    ``round_self_review`` settles the mission on the Engineer's own
+    MILESTONE_STATUS=DONE and no Reviewer ever runs.
+    """
+    from argus_skill.life.supervisor._planning_context import PlanningContextMixin
+
+    item, _, _ = dispatch.enqueue_mission(
+        memory,
+        "operator request",
+        {"backend": "codex", "config": {"continuous": True}},
+    )
+
+    assert PlanningContextMixin._item_requires_independent_review(item) is True
+    assert PlanningContextMixin._item_skips_stage_transition(item) is True
+
+
+def test_the_operator_item_keeps_stage_authority_with_the_manager(memory):
+    """The two tags together are what makes the skip real: the runtime honors
+    ``skip_stage_transition`` only alongside ``require_independent_review`` on a
+    bounded scope, and otherwise falls through to the self-review arm and moves
+    the stage anyway."""
+    from argus_skill.apps._runtime_helpers import _should_run_stage_transition
+
+    item, _, _ = dispatch.enqueue_mission(
+        memory,
+        "operator request",
+        {"backend": "codex", "config": {"continuous": True}},
+    )
+    assert item is not None
+
+    assert _should_run_stage_transition(
+        "done",
+        mission_scope="bounded",
+        skip_stage_transition=True,
+        require_independent_review=True,
+        review_source="reviewer",
+    ) is False
+    # What the untagged item actually did: the skip is not honored on its own,
+    # so the self-review arm moved the stage the tag exists to hold still.
+    assert _should_run_stage_transition(
+        "done",
+        mission_scope="bounded",
+        skip_stage_transition=True,
+        require_independent_review=False,
+        review_source="engineer_self_review",
+    ) is True

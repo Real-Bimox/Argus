@@ -101,7 +101,11 @@ def _front_door_classify(
         runner = (ensure_runner or _ensure_manager_runner)(chat_state, mem)
         mgr = getattr(runner, "manager", None) if runner is not None else None
         if mgr is None or not hasattr(mgr, "classify_front_door"):
-            chat_state["_frontdoor_failure"] = "classifier unavailable"
+            reason = str(chat_state.pop("manager_runner_error", "") or "").strip()
+            chat_state["_frontdoor_failure"] = (
+                f"classifier unavailable: {reason}" if reason
+                else "classifier unavailable"
+            )
             return None, None, "complex"
         accepts = accepts_parameter or _accepts_parameter
         kwargs: dict[str, Any] = {}

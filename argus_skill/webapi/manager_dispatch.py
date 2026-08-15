@@ -972,9 +972,14 @@ def _run_triage_and_fallbacks(
         reply = _NO_DISPATCH_FALLBACK
         return emitter.respond(reply, {"kind": "chat"})
     if frontdoor_failure:
+        # The reason is carried, not summarized away: the classifier is
+        # unavailable for both transient causes (a backend hiccup, where
+        # retrying is the right advice) and permanent ones (unresolvable
+        # project state, where retrying can only fail again), and the operator
+        # cannot tell which without being told.
         reply = (
-            "[not dispatched] Manager could not classify this message. "
-            "No task was queued; please retry."
+            "[not dispatched] Manager could not classify this message "
+            f"({frontdoor_failure}). No task was queued; please retry."
         )
         return emitter.respond(reply, {"kind": "chat"})
     return None

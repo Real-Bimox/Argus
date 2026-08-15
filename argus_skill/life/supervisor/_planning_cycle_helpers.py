@@ -127,12 +127,11 @@ def _staged_goal_completion_issue(project_root: object) -> str:
     from ...skills.stage_machine import current_stage
     from ...skills.vertical_select import (
         resolve_vertical,
-        vertical_has_current_completion_certificate,
+        vertical_completion_certificate_status,
     )
     from ...verticals._base import (
         load_vertical,
         vertical_checklist_stage_order,
-        vertical_completion_contract_version,
         vertical_completion_gate,
     )
 
@@ -142,25 +141,39 @@ def _staged_goal_completion_issue(project_root: object) -> str:
         if vertical_completion_gate(module) != "none":
             return ""
         stages = vertical_checklist_stage_order(module)
-        if not stages or vertical_has_current_completion_certificate(
-            project_root,
-            vertical,
-        ):
+        status = vertical_completion_certificate_status(project_root, vertical)
+        if not stages or status.get("ok"):
             return ""
-        contract_version = vertical_completion_contract_version(module)
-        contract_suffix = ""
-        if contract_version > 0:
-            from ...skills.stage_machine import completion_contract_fingerprint
-
-            contract_sha256 = completion_contract_fingerprint(
-                project_root,
-                stages[-1],
-                version=contract_version,
+        # Name the stage that actually holds the disputed record and BOTH
+        # fingerprints. Bug #41: this used to advertise a fresh hash of the
+        # FINAL stage while the comparison that failed was on whichever stage
+        # was certified — so the Planner was handed a number that appears
+        # nowhere in the ledger, and every attempt to reconcile it chased a
+        # stage that had never been completed.
+        detail = f"current_stage={current_stage(project_root)}"
+        stage = str(status.get("stage") or "")
+        if stage:
+            detail += f", certified_stage={stage}"
+        persisted = str(status.get("persisted") or "")
+        expected = str(status.get("expected") or "")
+        if expected:
+            detail += f", contract=v{status.get('version')}:{expected}"
+        if persisted and persisted != expected:
+            detail += f", persisted=v{status.get('persisted_version')}:{persisted}"
+        source = str(status.get("source") or "")
+        if source:
+            detail += f", certified_by={source}"
+        reason = str(status.get("reason") or "")
+        remedy = ""
+        if persisted and expected and persisted != expected:
+            remedy = (
+                " — the stored certificate was computed against a different "
+                "checklist; re-certify the stage through the running framework "
+                "to restamp it"
             )
-            contract_suffix = f", contract=v{contract_version}:{contract_sha256}"
         return (
             f"{vertical} final-stage Goal Gate is not Reviewer-certified "
-            f"(current_stage={current_stage(project_root)}{contract_suffix})"
+            f"({detail}{f'; {reason}' if reason else ''}){remedy}"
         )
     except Exception:  # noqa: BLE001
         return "staged Goal Gate could not be resolved"
