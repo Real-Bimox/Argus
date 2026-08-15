@@ -16,20 +16,21 @@ from argus_skill.agent_cli.runner_backend import (
 )
 
 
-def _same_path(actual: str | None, expected: Path) -> bool:
-    return bool(actual) and os.path.normcase(str(Path(actual).resolve())) == os.path.normcase(
+def _write_runner_executable(path: Path, *, exit_code: int = 0) -> Path:
+    if os.name == "nt":
+        path = path.with_name(f"{path.name}.cmd")
+        path.write_text(f"@echo off\r\nexit /b {exit_code}\r\n", encoding="utf-8")
+        return path
+    path.write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def _assert_same_path(actual: str | None, expected: Path) -> None:
+    assert actual is not None
+    assert os.path.normcase(str(Path(actual).resolve())) == os.path.normcase(
         str(expected.resolve())
     )
-
-
-def _fake_executable(path: Path, *, exit_code: int = 0) -> Path:
-    if os.name == "nt":
-        path = path.with_suffix(".cmd")
-        path.write_text(f"@exit /b {exit_code}\n", encoding="ascii")
-    else:
-        path.write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
-        path.chmod(0o755)
-    return path
 
 
 def test_runner_resolves_user_local_bin_when_service_path_omits_it(
@@ -38,46 +39,45 @@ def test_runner_resolves_user_local_bin_when_service_path_omits_it(
 ) -> None:
     executable = tmp_path / ".local" / "bin" / "copilot"
     executable.parent.mkdir(parents=True)
-    executable = _fake_executable(executable)
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    executable = _write_runner_executable(executable)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path / "service-bin"))
 
-    assert _same_path(resolve_runner_bin(BACKEND_COPILOT), executable)
-    assert _same_path(AgentCliRunner(backend=BACKEND_COPILOT).agent_bin, executable)
+    _assert_same_path(resolve_runner_bin(BACKEND_COPILOT), executable)
+    _assert_same_path(AgentCliRunner(backend=BACKEND_COPILOT).agent_bin, executable)
 
 
 def test_opencode_runner_uses_opencode_binary(tmp_path: Path, monkeypatch) -> None:
-    executable = _fake_executable(tmp_path / "opencode")
+    executable = _write_runner_executable(tmp_path / "opencode")
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert _same_path(resolve_runner_bin(BACKEND_OPENCODE), executable)
-    assert _same_path(AgentCliRunner(backend=BACKEND_OPENCODE).agent_bin, executable)
+    _assert_same_path(resolve_runner_bin(BACKEND_OPENCODE), executable)
+    _assert_same_path(AgentCliRunner(backend=BACKEND_OPENCODE).agent_bin, executable)
 
 
 def test_pi_runner_uses_pi_binary(tmp_path: Path, monkeypatch) -> None:
-    executable = _fake_executable(tmp_path / "pi")
+    executable = _write_runner_executable(tmp_path / "pi")
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert _same_path(resolve_runner_bin(BACKEND_PI), executable)
-    assert _same_path(AgentCliRunner(backend=BACKEND_PI).agent_bin, executable)
+    _assert_same_path(resolve_runner_bin(BACKEND_PI), executable)
+    _assert_same_path(AgentCliRunner(backend=BACKEND_PI).agent_bin, executable)
 
 
 def test_grok_runner_uses_grok_binary(tmp_path: Path, monkeypatch) -> None:
-    executable = _fake_executable(tmp_path / "grok")
+    executable = _write_runner_executable(tmp_path / "grok")
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert _same_path(resolve_runner_bin(BACKEND_GROK), executable)
-    assert _same_path(AgentCliRunner(backend=BACKEND_GROK).agent_bin, executable)
+    _assert_same_path(resolve_runner_bin(BACKEND_GROK), executable)
+    _assert_same_path(AgentCliRunner(backend=BACKEND_GROK).agent_bin, executable)
 
 
 def test_qoder_runner_uses_qodercli_binary(tmp_path: Path, monkeypatch) -> None:
-    executable = tmp_path / "qodercli"
-    executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    executable.chmod(0o755)
+    executable = _write_runner_executable(tmp_path / "qodercli")
     monkeypatch.setenv("PATH", str(tmp_path))
 
-    assert resolve_runner_bin(BACKEND_QODER) == str(executable)
-    assert AgentCliRunner(backend=BACKEND_QODER).agent_bin == str(executable)
+    _assert_same_path(resolve_runner_bin(BACKEND_QODER), executable)
+    _assert_same_path(AgentCliRunner(backend=BACKEND_QODER).agent_bin, executable)
 
 
 def test_opencode_runner_resolves_standard_install_directory(
@@ -86,12 +86,13 @@ def test_opencode_runner_resolves_standard_install_directory(
 ) -> None:
     executable = tmp_path / ".opencode" / "bin" / "opencode"
     executable.parent.mkdir(parents=True)
-    executable = _fake_executable(executable)
-    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    executable = _write_runner_executable(executable)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path / "service-bin"))
 
-    assert _same_path(resolve_runner_bin(BACKEND_OPENCODE), executable)
-    assert _same_path(AgentCliRunner(backend=BACKEND_OPENCODE).agent_bin, executable)
+    _assert_same_path(resolve_runner_bin(BACKEND_OPENCODE), executable)
+    _assert_same_path(AgentCliRunner(backend=BACKEND_OPENCODE).agent_bin, executable)
 
 
 def test_missing_codex_falls_back_to_available_copilot(
@@ -100,13 +101,14 @@ def test_missing_codex_falls_back_to_available_copilot(
 ) -> None:
     copilot = tmp_path / "bin" / "copilot"
     copilot.parent.mkdir()
-    copilot = _fake_executable(copilot)
+    copilot = _write_runner_executable(copilot)
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("PATH", str(copilot.parent))
 
-    backend, resolved = resolve_available_runner(BACKEND_CODEX)
+    backend, runner_bin = resolve_available_runner(BACKEND_CODEX)
     assert backend == BACKEND_COPILOT
-    assert _same_path(resolved, copilot)
+    _assert_same_path(runner_bin, copilot)
 
 
 def test_existing_codex_never_falls_back_on_runtime_failure(
@@ -115,22 +117,24 @@ def test_existing_codex_never_falls_back_on_runtime_failure(
 ) -> None:
     bindir = tmp_path / "bin"
     bindir.mkdir()
-    codex = _fake_executable(bindir / "codex", exit_code=1)
-    _fake_executable(bindir / "copilot")
+    codex = _write_runner_executable(bindir / "codex", exit_code=1)
+    _write_runner_executable(bindir / "copilot")
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("PATH", str(bindir))
 
-    backend, resolved = resolve_available_runner(BACKEND_CODEX)
+    backend, runner_bin = resolve_available_runner(BACKEND_CODEX)
     assert backend == BACKEND_CODEX
-    assert _same_path(resolved, codex)
+    _assert_same_path(runner_bin, codex)
 
 
 def test_unknown_backend_typo_does_not_fall_back(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    _fake_executable(tmp_path / "copilot")
+    _write_runner_executable(tmp_path / "copilot")
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))
 
     assert resolve_available_runner("codexx") == (BACKEND_CODEX, "codex")

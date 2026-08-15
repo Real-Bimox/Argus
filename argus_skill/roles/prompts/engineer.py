@@ -28,11 +28,18 @@ _POSIX_LONG_EXPERIMENT_RULE = (
 )
 
 _WINDOWS_LONG_EXPERIMENT_RULE = (
-    "Native Windows preview cannot detach Argus subagents. Do not call "
-    "`argus_skill.tools.subagent submit`, provider-native background tasks, or "
-    "session-owned background shells for durable work. Run the command in the "
-    "foreground only when it fits this turn; otherwise use WSL2/an approved "
-    "durable runner or report a blocker. Never claim a detached run was submitted."
+    "For commands expected to run over two minutes on native Windows, use "
+    "Windows PowerShell 5.1 syntax to submit through Argus's durable runner: "
+    "`& '.\\.venv\\Scripts\\python.exe' -m argus_skill.tools.subagent submit "
+    "--task-id '<id>' --mode direct --timeout '<seconds>' --command '<command>'`. "
+    "Use `--mode supervised` only when an experiment needs semantic monitoring. "
+    "Never use the provider's native `task(mode=\"background\")` tool or a "
+    "session-owned background shell for durable work. Before handoff, require a "
+    "JSON receipt with `state=submitted`, `task_id`, `run_id`, and `check_with`; "
+    "record those in CHECKPOINT.md only when another round must observe the run. "
+    "For supervised runs, if status returns `state=discussing`, read the concern "
+    "and answer through its exact `reply_with` command before relaunching. Then "
+    "yield or do independent work; do not poll in the foreground."
 )
 
 

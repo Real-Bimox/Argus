@@ -53,6 +53,48 @@ _CLAIMS_LOCK = threading.Lock()
 _HELD_CLAIMS: dict[tuple[str, str], Any] = {}
 
 
+def _shell_command_available(executable: str) -> bool:
+    if shutil.which(executable) is not None:
+        return True
+    if os.name == "nt":
+        escaped = executable.replace("'", "''")
+        script = (
+            f"$name = '{escaped}'; "
+            "if (Get-Command -Name $name -ErrorAction SilentlyContinue) "
+            "{ exit 0 } else { exit 1 }"
+        )
+        try:
+            return (
+                subprocess.run(
+                    [
+                        "powershell.exe",
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        script,
+                    ],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                ).returncode
+                == 0
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return (
+        subprocess.run(
+            ["bash", "-lc", f"command -v -- {shlex.quote(executable)}"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).returncode
+        == 0
+    )
+
+
 def _atomic_json(path: Path, payload: dict[str, Any]) -> None:
     fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
@@ -325,16 +367,8 @@ def experiment_launch_preflight(
             candidate = candidate if candidate.is_absolute() else base / candidate
             if not candidate.exists():
                 return True, f"launch executable does not exist: {candidate}"
-        elif shutil.which(executable) is None:
-            available = subprocess.run(
-                ["bash", "-lc", f"command -v -- {shlex.quote(executable)}"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            ).returncode == 0
-            if not available:
-                return True, f"launch executable is not available on PATH: {executable}"
+        elif not _shell_command_available(executable):
+            return True, f"launch executable is not available on PATH: {executable}"
 
     if _can_resolve_inputs_against_cwd(command):
         for name, value in _flags(command).items():

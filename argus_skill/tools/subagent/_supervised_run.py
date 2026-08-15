@@ -38,7 +38,6 @@ from ._llm import _run_supervisor_with_usage
 from ._normalize import _clean_concern, _norm_decision, _norm_health
 from ._registry import (
     _ZERO_USAGE_TUPLE,
-    REGISTRY_DIR,
     SUPERVISOR_INTERVAL_CAP,
     SUPERVISOR_THREAD_MAX_CHECKS,
     _add_usage_totals,
@@ -47,6 +46,7 @@ from ._registry import (
     _launch_durable_command,
     _persist_experiment_record,
     _read_task,
+    _task_log_dir,
     _write_task,
 )
 from ._reporting import _alert_engineer
@@ -484,7 +484,7 @@ def _run_supervised(
     preflight: bool = True,
 ) -> None:
     """Run command with periodic LLM supervisor checks."""
-    log_dir = REGISTRY_DIR / f"{task_id}_logs"
+    log_dir = _task_log_dir(task_id)
     log_dir.mkdir(parents=True, exist_ok=True)
     stdout_path = log_dir / "stdout.log"
     stderr_path = log_dir / "stderr.log"

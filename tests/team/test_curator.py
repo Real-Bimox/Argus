@@ -25,6 +25,14 @@ def _sleeping_proc(*_args, **_kwargs):
     )
 
 
+def _allow_fake_windows_adoption_handle(monkeypatch) -> None:
+    if os.name != "nt":
+        return
+    monkeypatch.setattr(cur, "_open_windows_process_handle", lambda _pid: 77)
+    monkeypatch.setattr(cur, "_windows_process_handle_alive", lambda _handle: True)
+    monkeypatch.setattr(cur, "_close_windows_process_handle", lambda _handle: None)
+
+
 # --- restart durability: adopt orphans the prior daemon left running --------
 def test_pid_is_teammate_verifies_real_cmdline(tmp_path: Path) -> None:
     import subprocess
@@ -63,6 +71,7 @@ def test_adopt_reclaims_running_roster_orphan_once(tmp_path: Path, monkeypatch) 
         "_pid_is_teammate",
         lambda pid, mid, root=None: pid == 4242,
     )
+    _allow_fake_windows_adoption_handle(monkeypatch)
     c = _fake_curator(tmp_path)
     assert c._adopt_orphans(root, now=100.0) == ["w1"]
     assert {child.member_id for child in c._children.values()} == {"w1"}
@@ -129,6 +138,62 @@ def test_windows_adoption_opens_handle_before_identity_check(
     assert order == ["open", "verify"]
 
 
+def test_windows_terminate_tree_guard_uses_popen_liveness_and_pid(
+    monkeypatch,
+) -> None:
+    from argus_skill.daemon import state as daemon_state
+
+    class Proc:
+        pid = 5151
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+    proc = Proc()
+    checks: list[bool] = []
+
+    def terminate_tree(pid: int, *, identity_check) -> bool:
+        assert pid == 5151
+        checks.append(identity_check())
+        proc.pid = 6161
+        checks.append(identity_check())
+        proc.pid = 5151
+        proc.returncode = 0
+        checks.append(identity_check())
+        return True
+
+    monkeypatch.setattr(
+        daemon_state,
+        "_terminate_windows_process_tree",
+        terminate_tree,
+    )
+
+    assert cur._terminate_windows_tree(proc) is True
+    assert checks == [True, False, False]
+
+
+def test_windows_adopted_terminate_routes_self_to_tree(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(cur, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(cur, "_windows_process_handle_alive", lambda _handle: True)
+    monkeypatch.setattr(cur, "_close_windows_process_handle", lambda _handle: None)
+    seen: list[object] = []
+    proc = cur._AdoptedProc(4242, "w1", tmp_path, windows_handle=77)
+
+    monkeypatch.setattr(
+        cur,
+        "_terminate_windows_tree",
+        lambda candidate: seen.append(candidate) or True,
+    )
+
+    proc.terminate()
+
+    assert seen == [proc]
+
+
 def test_adopt_then_stop_kills_real_orphan(tmp_path: Path) -> None:
     import subprocess
     import sys
@@ -187,6 +252,7 @@ def test_tick_adopts_orphans_so_no_duplicate_spawn(tmp_path: Path, monkeypatch) 
         "_pid_is_teammate",
         lambda pid, mid, root=None: pid == 4242,
     )
+    _allow_fake_windows_adoption_handle(monkeypatch)
     c = _fake_curator(tmp_path)
     c._tick(now=500.0)  # past ttl: would reassign+respawn if orphan were invisible
     assert c.live_owner_ids(root) == {"w1"}

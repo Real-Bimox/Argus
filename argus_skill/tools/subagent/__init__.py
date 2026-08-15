@@ -15,6 +15,7 @@ from ._cli import (
     cmd_status,
     cmd_submit,
     cmd_wait,
+    cmd_worker,
     main,
 )
 from ._cpu_admission import (
@@ -98,6 +99,7 @@ from ._registry import (
     _read_task,
     _registry_path,
     _run_dir_from_command,
+    _task_log_dir,
     _write_task,
 )
 from ._reporting import (
@@ -176,6 +178,7 @@ __all__ = [
     "_queue_to_inbox",
     "_alert_engineer",
     "_registry_path",
+    "_task_log_dir",
     "_write_task",
     "_read_task",
     "_list_tasks",
@@ -204,6 +207,7 @@ __all__ = [
     "_read_summary_tsv",
     "_progress_summary",
     "cmd_submit",
+    "cmd_worker",
     "_OK_STATES",
     "_FAILED_STATES",
     "cmd_status",

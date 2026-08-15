@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import shlex
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -30,6 +31,7 @@ from ._registry import (
     _progress_summary,
     _read_task,
     _run_dir_from_command,
+    _task_log_dir,
     _unlink_task_records,
     _write_task,
     reconcile_terminal_task,
@@ -75,6 +77,196 @@ def _busy_owner_pid(task: dict) -> int:
     return live_pids[0] if age < DISCUSSION_STALE_AFTER_S else 0
 
 
+def _worker_cpu_ids_arg(cpu_ids: tuple[int, ...]) -> str:
+    return ",".join(str(cpu_id) for cpu_id in cpu_ids)
+
+
+def _parse_worker_cpu_ids(value: str | None) -> tuple[int, ...]:
+    if not value:
+        return ()
+    return tuple(int(part.strip()) for part in value.split(",") if part.strip())
+
+
+def _windows_worker_command(
+    *,
+    task_id: str,
+    description: str,
+    command: str,
+    mode: str,
+    timeout: int,
+    monitor_interval: int,
+    model: str | None,
+    cwd: str,
+    run_dir: str | None,
+    preflight: bool,
+    cpu_ids: tuple[int, ...],
+) -> list[str]:
+    argv = [
+        sys.executable,
+        "-m",
+        "argus_skill.tools.subagent",
+        "_worker",
+        "--task-id",
+        task_id,
+        "--description",
+        description,
+        "--command",
+        command,
+        "--mode",
+        mode,
+        "--timeout",
+        str(int(timeout)),
+        "--monitor-interval",
+        str(int(monitor_interval)),
+        "--cwd",
+        cwd,
+    ]
+    if model:
+        argv.extend(["--model", model])
+    if run_dir:
+        argv.extend(["--run-dir", run_dir])
+    if not preflight:
+        argv.append("--no-preflight")
+    if cpu_ids:
+        argv.extend(["--cpu-ids", _worker_cpu_ids_arg(cpu_ids)])
+    return argv
+
+
+def _spawn_windows_worker(
+    *,
+    task_id: str,
+    description: str,
+    command: str,
+    mode: str,
+    timeout: int,
+    monitor_interval: int,
+    model: str | None,
+    cwd: str,
+    run_dir: str | None,
+    preflight: bool,
+    cpu_ids: tuple[int, ...],
+    registry_cwd: str | None = None,
+) -> subprocess.Popen[bytes]:
+    worker_cwd = str(Path(registry_cwd or os.getcwd()).resolve())
+    log_dir = Path(worker_cwd) / _task_log_dir(task_id)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    creationflags = (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    )
+    with (log_dir / "worker.log").open("ab") as worker_log:
+        return subprocess.Popen(
+            _windows_worker_command(
+                task_id=task_id,
+                description=description,
+                command=command,
+                mode=mode,
+                timeout=timeout,
+                monitor_interval=monitor_interval,
+                model=model,
+                cwd=cwd,
+                run_dir=run_dir,
+                preflight=preflight,
+                cpu_ids=cpu_ids,
+            ),
+            cwd=worker_cwd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=worker_log,
+            stderr=subprocess.STDOUT,
+            close_fds=True,
+            creationflags=creationflags,
+        )
+
+
+def _write_worker_start_error(
+    *,
+    task_id: str,
+    run_id: str,
+    description: str,
+    command: str,
+    mode: str,
+    run_dir: str | None,
+    error: str,
+) -> None:
+    task = _read_task(task_id) or {}
+    task.update({
+        "state": "error",
+        "task_id": task_id,
+        "run_id": run_id,
+        "description": description,
+        "command": command,
+        "mode": mode,
+        "run_dir": run_dir,
+        "error": error,
+        "completed_at": time.time(),
+        "worker_pid": os.getpid(),
+    })
+    _write_task(task_id, task)
+
+
+def cmd_worker(args: argparse.Namespace) -> int:
+    """Run one submitted task in a Windows worker subprocess."""
+    task_id = args.task_id
+    run_id = str((_read_task(task_id) or {}).get("run_id") or f"{task_id}-{time.time_ns()}")
+    mode = getattr(args, "mode", "direct") or "direct"
+    run_dir = getattr(args, "run_dir", None)
+    worker_task = _read_task(task_id) or {
+        "state": "starting",
+        "task_id": task_id,
+        "run_id": run_id,
+        "description": args.description,
+        "command": args.command,
+        "mode": mode,
+        "run_dir": run_dir,
+        "cwd": str(Path(args.cwd or os.getcwd()).resolve()),
+    }
+    worker_task["worker_pid"] = os.getpid()
+    worker_task.setdefault("pid", os.getpid())
+    _write_task(task_id, worker_task)
+    try:
+        _cpu_admission.apply_current_process_affinity(
+            _parse_worker_cpu_ids(getattr(args, "cpu_ids", None))
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        _write_worker_start_error(
+            task_id=task_id,
+            run_id=run_id,
+            description=args.description,
+            command=args.command,
+            mode=mode,
+            run_dir=run_dir,
+            error=f"CPU affinity setup failed: {exc}",
+        )
+        return 1
+
+    if mode == "supervised":
+        _run_supervised(
+            task_id=task_id,
+            command=args.command,
+            description=args.description,
+            timeout=args.timeout,
+            monitor_interval=getattr(args, "monitor_interval", 120) or 120,
+            model=getattr(args, "model", None) or resolve_supervisor_model(),
+            cwd=args.cwd,
+            run_dir=run_dir,
+            preflight=not getattr(args, "no_preflight", False),
+        )
+    else:
+        _run_direct(
+            task_id=task_id,
+            command=args.command,
+            description=args.description,
+            timeout=args.timeout,
+            cwd=args.cwd,
+            run_dir=run_dir,
+        )
+    return 0
+
+
 def cmd_submit(args: argparse.Namespace) -> int:
     """Submit a task. Returns immediately."""
     task_id = args.task_id
@@ -90,6 +282,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
         return 1
 
     cwd = str(Path(args.cwd or os.getcwd()).expanduser().resolve())
+    registry_cwd = str(Path.cwd().resolve())
     mode = getattr(args, "mode", "direct") or "direct"
     run_id = f"{task_id}-{time.time_ns()}"
 
@@ -162,13 +355,6 @@ def cmd_submit(args: argparse.Namespace) -> int:
                 }))
                 return 1
 
-    if os.name == "nt":
-        print(json.dumps({
-            "error": "background subagent detach is unavailable in the Windows terminal preview",
-            "hint": "run this workload in the foreground or use WSL2 for detached subagents",
-        }))
-        return 2
-
     # Admit and reserve CPUs before creating the first task/log/run artifact.
     # The starting record is the lease placeholder during the short fork window.
     try:
@@ -217,6 +403,54 @@ def cmd_submit(args: argparse.Namespace) -> int:
             "task_id": task_id,
         }))
         return 1
+
+    if os.name == "nt":
+        try:
+            worker = _spawn_windows_worker(
+                task_id=task_id,
+                description=args.description,
+                command=args.command,
+                mode=mode,
+                timeout=args.timeout,
+                monitor_interval=getattr(args, "monitor_interval", 120) or 120,
+                model=getattr(args, "model", None),
+                cwd=cwd,
+                run_dir=run_dir,
+                preflight=not getattr(args, "no_preflight", False),
+                cpu_ids=selected_cpu_ids,
+                registry_cwd=registry_cwd,
+            )
+        except OSError as exc:
+            with _cpu_admission.cpu_admission_lock(Path.cwd()):
+                _unlink_task_records(task_id)
+            print(json.dumps({
+                "error": f"failed to spawn Windows subagent worker: {exc}",
+                "task_id": task_id,
+            }))
+            return 2
+        rec = _read_task(task_id) or initial_task
+        rec.setdefault("worker_pid", worker.pid)
+        rec.setdefault("pid", worker.pid)
+        _write_task(task_id, rec)
+        print(json.dumps({
+            "state": "submitted",
+            "task_id": task_id,
+            "run_id": run_id,
+            "pid": worker.pid,
+            "mode": mode,
+            "run_dir": run_dir,
+            "description": args.description,
+            "cpu_ids": list(selected_cpu_ids),
+            "check_with": shlex.join([
+                sys.executable,
+                "-m",
+                "argus_skill.tools.subagent",
+                "status",
+                "--task-id",
+                task_id,
+            ]),
+        }))
+        return 0
 
     # Fork: parent returns immediately
     try:
@@ -565,6 +799,19 @@ def main() -> int:
         ),
     )
 
+    p_worker = sub.add_parser("_worker", help=argparse.SUPPRESS)
+    p_worker.add_argument("--task-id", required=True)
+    p_worker.add_argument("--description", default="background task")
+    p_worker.add_argument("--command", required=True)
+    p_worker.add_argument("--mode", choices=["direct", "supervised"], default="direct")
+    p_worker.add_argument("--timeout", type=int, default=7200)
+    p_worker.add_argument("--monitor-interval", type=int, default=120)
+    p_worker.add_argument("--model", default=None)
+    p_worker.add_argument("--run-dir", default=None)
+    p_worker.add_argument("--cwd", required=True)
+    p_worker.add_argument("--no-preflight", action="store_true")
+    p_worker.add_argument("--cpu-ids", default=None)
+
     p_status = sub.add_parser("status", help="Show task status")
     p_status.add_argument("--task-id", required=True)
 
@@ -591,6 +838,7 @@ def main() -> int:
     args = parser.parse_args()
     handlers = {
         "submit": cmd_submit,
+        "_worker": cmd_worker,
         "status": cmd_status,
         "list": cmd_list,
         "wait": cmd_wait,

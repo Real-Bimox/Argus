@@ -20,6 +20,7 @@ from ._registry import (
     _progress_summary,
     _read_task,
     _registry_path,
+    _task_log_dir,
     _write_task_if_run_id,
 )
 from ._text import (
@@ -97,7 +98,7 @@ def _supervisor_summarize_report(task_id: str, event: str, task_data: dict[str, 
     if stderr_tail and event != "COMPLETED":
         prompt += f"\n=== stderr (last 1000 chars) ===\n{stderr_tail}\n"
 
-    log_dir = REGISTRY_DIR / f"{task_id}_logs"
+    log_dir = _task_log_dir(task_id)
     prompt += (
         f"\nArtifact paths:\n"
         f"- stdout: {task_data.get('stdout_log', str(log_dir / 'stdout.log'))}\n"
@@ -302,7 +303,7 @@ def _build_report(task_id: str, event: str, task_data: dict[str, Any]) -> str:
     # Paths for engineer to inspect
     lines.append("")
     lines.append("**Artifact paths**:")
-    log_dir = REGISTRY_DIR / f"{task_id}_logs"
+    log_dir = _task_log_dir(task_id)
     stdout_log = task_data.get("stdout_log", str(log_dir / "stdout.log"))
     stderr_log = task_data.get("stderr_log", str(log_dir / "stderr.log"))
     lines.append(f"- stdout: `{stdout_log}`")

@@ -93,6 +93,10 @@ def _exit_status_path(task_id: str, run_id: str | None = None) -> Path:
     return REGISTRY_DIR / f"{_task_file_component(task_id)}_logs" / name
 
 
+def _task_log_dir(task_id: str) -> Path:
+    return REGISTRY_DIR / f"{_task_file_component(task_id)}_logs"
+
+
 def _legacy_exit_status_paths(
     task_id: str,
     run_id: str | None = None,
@@ -144,7 +148,56 @@ def _launch_durable_command(
 ) -> "subprocess.Popen[Any]":
     """Launch a command whose exit status survives loss of its Python owner."""
     exit_path = _exit_status_path(task_id, run_id).resolve()
+    exit_path.parent.mkdir(parents=True, exist_ok=True)
     temporary = exit_path.with_name(exit_path.name + ".tmp")
+    if os.name == "nt":
+        wrapper = (
+            "$__command = [Environment]::GetEnvironmentVariable('ARGUS_DURABLE_COMMAND', 'Process')\n"
+            "$__tmp = [Environment]::GetEnvironmentVariable('ARGUS_DURABLE_TMP', 'Process')\n"
+            "$__exit = [Environment]::GetEnvironmentVariable('ARGUS_DURABLE_EXIT', 'Process')\n"
+            "$__rc = 1\n"
+            "try {\n"
+            "  & powershell.exe -NoProfile -NonInteractive "
+            "-Command $__command\n"
+            "  if ($null -ne $global:LASTEXITCODE) {\n"
+            "    $__rc = [int]$global:LASTEXITCODE\n"
+            "  } elseif ($?) {\n"
+            "    $__rc = 0\n"
+            "  } else {\n"
+            "    $__rc = 1\n"
+            "  }\n"
+            "} catch {\n"
+            "  Write-Error $_\n"
+            "  $__rc = 1\n"
+            "}\n"
+            "[IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($__exit)) | Out-Null\n"
+            "[IO.File]::WriteAllText($__tmp, ([string]$__rc + [Environment]::NewLine), [Text.Encoding]::ASCII)\n"
+            "Move-Item -LiteralPath $__tmp -Destination $__exit -Force\n"
+            "exit $__rc\n"
+        )
+        env = _child_env()
+        env.setdefault("PYTHONUTF8", "1")
+        env.setdefault("PYTHONIOENCODING", "utf-8")
+        env["ARGUS_DURABLE_COMMAND"] = command
+        env["ARGUS_DURABLE_TMP"] = str(temporary)
+        env["ARGUS_DURABLE_EXIT"] = str(exit_path)
+        return subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                wrapper,
+            ],
+            stdout=stdout,
+            stderr=stderr,
+            cwd=cwd,
+            env=env,
+            creationflags=(
+                getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            ),
+        )
     wrapper = (
         'set +e\n'
         'bash -lc "$1"\n'
@@ -701,6 +754,6 @@ def _persist_experiment_record(
                   f"Resolution: {record['discussion_resolution'] or 'n/a'}\n"
                   f"Headline: {headline or 'n/a'}")
         (rp / "SUPERVISOR_VERDICT.md").write_text(
-            f"# Supervisor verdict — {task_id} [{event}]\n\n{vt}\n", encoding="utf-8")
+            f"# Supervisor verdict - {task_id} [{event}]\n\n{vt}\n", encoding="utf-8")
     except OSError:
         pass

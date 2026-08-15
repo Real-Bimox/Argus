@@ -68,9 +68,13 @@ def _windows_process_command_line(pid: int) -> str:
 def _terminate_windows_tree(proc: Any) -> bool:
     from ..daemon.state import _terminate_windows_process_tree
 
+    pid = int(getattr(proc, "pid", 0) or 0)
+    if pid <= 0:
+        return False
     return _terminate_windows_process_tree(
-        int(proc.pid),
-        identity_check=lambda: proc.poll() is None,
+        pid,
+        identity_check=lambda: int(getattr(proc, "pid", 0) or 0) == pid
+        and proc.poll() is None,
     )
 
 
@@ -215,7 +219,7 @@ class _AdoptedProc:
 
     def terminate(self) -> None:
         if os.name == "nt" and self.poll() is None:
-            _terminate_windows_tree(self.pid)
+            _terminate_windows_tree(self)
         elif self.poll() is None:
             os.kill(self.pid, signal.SIGTERM)
 

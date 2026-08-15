@@ -1021,7 +1021,7 @@ def test_run_supervised_persists_supervisor_usage_totals(monkeypatch, tmp_path) 
 
     _sub._run_supervised(
         "train-1",
-        "echo hi",
+        "python -c pass",
         "demo",
         timeout=999,
         monitor_interval=1,
@@ -1069,11 +1069,18 @@ def test_cmd_submit_rejects_new_oversized_task_id(
     capsys,
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(
-        _sub._cli.os,
-        "fork",
-        lambda: (_ for _ in ()).throw(AssertionError("forked")),
-    )
+    if hasattr(_sub._cli.os, "fork"):
+        monkeypatch.setattr(
+            _sub._cli.os,
+            "fork",
+            lambda: (_ for _ in ()).throw(AssertionError("forked")),
+        )
+    else:
+        monkeypatch.setattr(
+            _sub._cli,
+            "_spawn_windows_worker",
+            lambda **_kwargs: (_ for _ in ()).throw(AssertionError("spawned")),
+        )
 
     rc = _sub.cmd_submit(_submit_args(task_id="x" * 121))
     output = json.loads(capsys.readouterr().out)
@@ -1295,6 +1302,46 @@ def test_cmd_submit_reserves_disjoint_cpus_before_fork(
     assert record["cpu_count"] == 2
 
 
+def test_cmd_submit_spawns_windows_worker(monkeypatch, tmp_path, capsys) -> None:
+    from argus_skill.tools.subagent import _cli
+
+    monkeypatch.chdir(tmp_path)
+    workload = tmp_path / "workload"
+    workload.mkdir()
+    spawned: list[dict] = []
+
+    class _Worker:
+        pid = 9876
+
+    def fake_spawn_windows_worker(**kwargs):
+        spawned.append(kwargs)
+        return _Worker()
+
+    monkeypatch.setattr(_cli.os, "name", "nt")
+    monkeypatch.setattr(_cli, "_spawn_windows_worker", fake_spawn_windows_worker)
+
+    rc = _sub.cmd_submit(
+        _submit_args(
+            task_id="win-task",
+            command="Write-Output hi",
+            cwd=str(workload),
+        )
+    )
+    out = json.loads(capsys.readouterr().out)
+    record = _sub._read_task("win-task")
+
+    assert rc == 0
+    assert out["state"] == "submitted"
+    assert out["pid"] == 9876
+    assert spawned[0]["command"] == "Write-Output hi"
+    assert spawned[0]["cwd"] == str(workload)
+    assert spawned[0]["registry_cwd"] == str(tmp_path)
+    assert record is not None
+    assert record["state"] == "starting"
+    assert record["cwd"] == str(workload)
+    assert record["worker_pid"] == 9876
+
+
 @requires_fork
 def test_cmd_submit_normalizes_relative_cwd_and_run_dir(
     monkeypatch,
@@ -1320,6 +1367,97 @@ def test_cmd_submit_normalizes_relative_cwd_and_run_dir(
     assert record is not None
     assert record["cwd"] == str(project)
     assert record["run_dir"] == str(project / "experiments" / "run-1")
+
+
+def test_launch_durable_command_uses_native_powershell_on_windows(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from argus_skill.tools.subagent import _registry
+
+    monkeypatch.chdir(tmp_path)
+    captured: dict[str, object] = {}
+
+    class _Proc:
+        pid = 4242
+
+    def fake_popen(args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return _Proc()
+
+    monkeypatch.setattr(_registry.os, "name", "nt")
+    monkeypatch.setattr(_registry.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(_registry, "_child_env", lambda: {})
+
+    stdout = tmp_path / "stdout.log"
+    stderr = tmp_path / "stderr.log"
+    with stdout.open("w") as out, stderr.open("w") as err:
+        proc = _registry._launch_durable_command(
+            task_id="team::windows",
+            run_id="run-1",
+            command="Write-Output ok",
+            cwd=str(tmp_path),
+            stdout=out,
+            stderr=err,
+        )
+
+    args = captured["args"]
+    kwargs = captured["kwargs"]
+    assert proc.pid == 4242
+    assert isinstance(args, list)
+    assert args[0] == "powershell.exe"
+    assert "bash" not in args
+    assert isinstance(kwargs, dict)
+    assert kwargs["cwd"] == str(tmp_path)
+    env = kwargs["env"]
+    assert env["ARGUS_DURABLE_COMMAND"] == "Write-Output ok"
+    exit_path = _registry._exit_status_path("team::windows", "run-1").resolve()
+    assert env["ARGUS_DURABLE_TMP"] == str(
+        exit_path.with_name("exit_code.run-1.tmp")
+    )
+    assert env["ARGUS_DURABLE_EXIT"] == str(exit_path)
+    assert _registry._exit_status_path("team::windows", "run-1").parent.exists()
+
+
+def test_terminate_proc_uses_windows_tree_before_root_fallback(monkeypatch) -> None:
+    from argus_skill.tools.subagent import _direct_run
+
+    calls: list[int] = []
+
+    class _Proc:
+        pid = 6161
+        returncode = None
+        terminated = False
+
+        def poll(self):
+            return self.returncode
+
+        def wait(self, timeout=None):
+            self.returncode = 1
+            return self.returncode
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            raise AssertionError("tree termination succeeded; kill is unnecessary")
+
+    proc = _Proc()
+
+    def terminate_tree(pid: int, *, identity_check) -> bool:
+        assert identity_check() is True
+        calls.append(pid)
+        proc.returncode = 1
+        return True
+
+    monkeypatch.setattr(_direct_run.os, "name", "nt")
+    monkeypatch.setattr(_direct_run, "terminate_windows_process_tree", terminate_tree)
+
+    _direct_run._terminate_proc(proc)
+
+    assert calls == [6161]
+    assert proc.terminated is False
 
 
 def test_persist_experiment_record_writes_artifacts_and_dedups(monkeypatch, tmp_path) -> None:
