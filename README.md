@@ -79,6 +79,11 @@ Reuse the CLI you already work in; Argus does not require a separate account.
 Docker is not required for a normal Argus installation; it is only an optional
 prerequisite for the separate Harbor evaluation integration.
 
+> [!TIP]
+> **Recommended: let the Code Agent you already use install and verify Argus.**
+> Copy the prompt in the Agent-assisted section below. The manual commands remain
+> available for users who prefer to install each step themselves.
+
 | Agent CLI | Backend | Install | Authenticate |
 |---|---|---|---|
 | GitHub Copilot CLI | `copilot` | `npm install -g @github/copilot` | `copilot login` |
@@ -92,6 +97,22 @@ prerequisite for the separate Harbor evaluation integration.
 
 The public preview is installed directly from the current GitHub archive until
 the first PyPI release is published.
+
+### Recommended: Agent-assisted installation
+
+Send this prompt to an already installed Code Agent:
+
+```text
+Read https://github.com/lbx154/Argus/blob/main/docs/agent-install.md and install
+Argus using the section for this operating system. Prefer the Agent CLI running
+this conversation as the Argus backend. Do not create a venv on Windows or
+macOS; keep the documented venv on Linux. Run setup through its real Agent-turn
+smoke test, then run `argus doctor --deep --advisor auto`. Before account login,
+sudo, or global configuration changes, explain why and wait for approval. Never
+ask me to paste a password, token, or API key into the conversation.
+```
+
+The agent follows the **[installation execution contract](docs/agent-install.md)**.
 
 ### Windows 10/11 — direct pip, no virtual environment
 
@@ -184,22 +205,6 @@ Do not rely on a globally installed `argus` on Linux. In a new shell, use
 `$HOME/Argus/.venv/bin/argus` (or activate that venv explicitly). If venv
 creation reports that `ensurepip` is unavailable, install the distribution's
 `python3-venv` package and rerun the command.
-
-### Agent-assisted installation
-
-Send this prompt to an already installed Code Agent:
-
-```text
-Read https://github.com/lbx154/Argus/blob/main/docs/agent-install.md and install
-Argus using the section for this operating system. Prefer the Agent CLI running
-this conversation as the Argus backend. Do not create a venv on Windows or
-macOS; keep the documented venv on Linux. Run setup through its real Agent-turn
-smoke test, then run `argus doctor --deep --advisor auto`. Before account login,
-sudo, or global configuration changes, explain why and wait for approval. Never
-ask me to paste a password, token, or API key into the conversation.
-```
-
-The agent follows the **[installation execution contract](docs/agent-install.md)**.
 
 ### Backend notes
 

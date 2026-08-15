@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +16,28 @@ from argus_skill.core.backend_readiness import (
     ReadinessProblem,
 )
 from argus_skill.tools import setup
+
+
+def test_setup_banner_highlights_agent_assisted_installation(capsys) -> None:
+    setup._banner()
+
+    output = capsys.readouterr().out
+    assert "★ Recommended / 推荐" in output
+    assert "current Code Agent" in output
+    assert "https://github.com/lbx154/Argus/blob/main/docs/agent-install.md" in output
+
+
+def test_setup_banner_uses_bold_yellow_highlight_on_tty(monkeypatch) -> None:
+    class TtyBuffer(io.StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    output = TtyBuffer()
+    monkeypatch.setattr(setup.sys, "stdout", output)
+
+    setup._banner()
+
+    assert "\033[1;33m★ Recommended / 推荐:" in output.getvalue()
 
 
 def test_noninteractive_setup_requires_explicit_backend(capsys) -> None:

@@ -70,6 +70,19 @@ def _banner() -> None:
     print()
     print(_bold("Argus setup"))
     print(_dim("Configure one agent backend. Press Enter to keep the default."))
+    print(
+        _color(
+            "★ Recommended / 推荐: let your current Code Agent complete setup "
+            "and verification.",
+            "1;33",
+        )
+    )
+    print(
+        _dim(
+            "  Guide / 指引: "
+            "https://github.com/lbx154/Argus/blob/main/docs/agent-install.md"
+        )
+    )
     print()
 
 
