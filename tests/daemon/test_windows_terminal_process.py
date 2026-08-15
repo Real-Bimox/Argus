@@ -313,6 +313,11 @@ def test_windows_background_worker_rejects_foreign_status_and_reaps_spawn(
         def poll(self):
             return None
 
+    monkeypatch.setattr(
+        process,
+        "_windows_runtime_belongs_to_launcher",
+        lambda _launcher_pid, _runtime_pid: False,
+    )
     monkeypatch.setattr(process.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
     monkeypatch.setattr(
         process,

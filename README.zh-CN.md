@@ -55,6 +55,9 @@
 Manager/Planner/Engineer/Reviewer 运行时作为自定义 Agent 直接调用。配置和边界见
 **[Harbor 接入说明](docs/harbor.md)**。
 
+**Code Agent 插件：** 可通过打包的 MCP bridge 和宿主 Skills 使用 Argus，不修改
+核心 runtime。参见 **[插件快速入门](docs/plugin.md)**。
+
 ## 快速安装
 
 请只使用当前操作系统对应的一组命令，不要混用。所有平台都需要从
@@ -102,6 +105,7 @@ PowerShell 同时支持普通 `argus` 命令；新窗口的持久 PATH 修复见
 Agent CLI，开放工具让 Agent 直接检查并修复机器，然后重新运行确定性检查验收。
 只有需要“不调用模型的确定性验证”时才使用
 `argus doctor --advisor none --verify`。
+主动修复会执行一次真实 Agent turn，可能需要几分钟；它不是快速版本检查。
 
 Windows 当前支持安装、Manager 对话、配对、Web/TUI 和终端作用域 daemon 控制。
 detached subagent 仍属于 POSIX/WSL2 能力；native Windows 会明确失败，不会伪报任务

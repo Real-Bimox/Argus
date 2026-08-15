@@ -62,14 +62,21 @@ def test_qoder_flag_dialect_differs_from_claude() -> None:
             resume_thread_id=None, options=RunnerOptions(**opts)
         )
 
-    qoder = build("qoder", model="m", reasoning_effort="high", full_auto=True)
+    qoder = build("qoder", model="m", reasoning_effort="xhigh", full_auto=True)
     assert "--verbose" not in qoder
     assert "--reasoning-effort" in qoder and "--effort" not in qoder
+    assert qoder[qoder.index("--reasoning-effort") + 1] == "xhigh"
     assert "accept_edits" in qoder and "acceptEdits" not in qoder
 
-    claude = build(BACKEND_CLAUDE, model="m", reasoning_effort="high", dangerous_yolo=True)
+    claude = build(
+        BACKEND_CLAUDE,
+        model="m",
+        reasoning_effort="xhigh",
+        dangerous_yolo=True,
+    )
     assert "--verbose" in claude
     assert "--effort" in claude and "--reasoning-effort" not in claude
+    assert claude[claude.index("--effort") + 1] == "xhigh"
     assert "bypassPermissions" in claude
 
 

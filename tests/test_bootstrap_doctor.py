@@ -52,6 +52,28 @@ def test_bootstrap_accepts_current_editable_python_without_checkout_venv(
     assert core["ok"] is True
 
 
+def test_bootstrap_desktop_runtime_is_advisory_for_cli_web(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "Argus"
+    (root / "argus_skill").mkdir(parents=True)
+    (root / "pyproject.toml").write_text(
+        "[project]\nname='argus-skill'\n",
+        encoding="utf-8",
+    )
+    electron = root / "desktop" / "node_modules" / "electron"
+    electron.mkdir(parents=True)
+    (root / "desktop" / "package.json").write_text("{}\n", encoding="utf-8")
+
+    report = argus_doctor.run_bootstrap_doctor(root)
+
+    desktop = next(
+        item for item in report["findings"] if item["code"] == "ARGUS-DESKTOP-001"
+    )
+    assert desktop["ok"] is True
+    assert "optional for CLI/Web" in desktop["detail"]
+
+
 def test_bootstrap_repair_requires_explicit_yes(capsys) -> None:
     rc = argus_doctor.main(["--repair-install"])
 

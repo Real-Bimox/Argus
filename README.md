@@ -55,6 +55,9 @@ A project can stop, resume, survive a runtime replacement, and continue from its
 Manager/Planner/Engineer/Reviewer runtime as a custom agent. See
 **[Harbor integration](docs/harbor.md)**.
 
+**Coding-agent plugin:** use the packaged MCP bridge and host-specific Skills
+without changing the core runtime. See **[Plugin quick start](docs/plugin.md)**.
+
 ## Quick Install
 
 Choose the section for your operating system. Do not mix commands between
@@ -105,6 +108,8 @@ PowerShell. The troubleshooting section covers persistent PATH repair.
 Agent CLI in the real Argus directories with tools enabled, lets the Agent
 inspect and fix the machine, then reruns deterministic checks. Use
 `argus doctor --advisor none --verify` for a no-model verification.
+The active repair may take several minutes because it performs a real Agent
+turn; it is not a quick version check.
 
 Windows currently supports installation, Manager chat, pairing, Web/TUI, and
 terminal-scoped daemon control. Detached subagents remain a POSIX/WSL2 feature;

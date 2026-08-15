@@ -61,7 +61,7 @@ log = logging.getLogger(__name__)
 #:   kernelbench      — Task 3: maximize SOL score (B200 kernels)
 VERTICALS: tuple[str, ...] = (
     "software", "argus_maintenance", "digital_circuit", "digital_circuit_benchmark", "chip_design",
-    "research", "math", "math_synth", "physics", "materials", "quant", "speedrun",
+    "research", "medical", "math", "math_synth", "physics", "materials", "quant", "speedrun",
     "kernel_engineering", "nanochat", "nanogpt_speedrun", "kernelbench",
     "learning", "ale_last_exam", "fiction_writing", "classical_poetry",
     "modern_poetry", "prose", "literary_editor",
@@ -84,6 +84,10 @@ VERTICAL_PURPOSES: dict[str, str] = {
     "microarchitecture through RTL, physical implementation, and sign-off",
     "research": "substantial scholarly survey or original research paper: literature, "
     "optional experiments, synthesis, drafting, and review; submission is optional",
+    "medical": "biomedical and pharmaceutical evidence execution: target-disease "
+    "mechanisms, human genetics, preclinical translation, clinical trials, safety, "
+    "failed programs, competitive pipelines, and auditable non-diagnostic decision "
+    "dossiers with independent review; not a generic paper pipeline",
     "math": "mathematical conjectures, proofs, and open problems using literature, "
     "computation, natural-language proof, or Lean as needed",
     "math_synth": "math-reasoning data synthesis: maximize pass@4-minus-pass@1 while "

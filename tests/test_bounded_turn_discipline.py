@@ -64,10 +64,12 @@ def test_long_experiment_protocol_is_in_every_engineer_turn():
     )
 
     for out in (full, compact):
-        assert "launch a supervised subagent" in out
-        assert "supervised subagent" in out.lower()
-        assert "foreground shell execution" in out.lower()
-        assert "polling" in out.lower()
+        assert "argus_skill.tools.subagent submit" in out
+        assert "--mode direct" in out
+        assert "--mode supervised" in out
+        assert "launch a supervised subagent" not in out
+        assert "session-owned background shell" in out.lower()
+        assert "do not poll in the foreground" in out.lower()
 
 
 def test_engineer_must_not_spawn_a_subagent_to_impersonate_reviewer():
@@ -107,4 +109,4 @@ def test_engineer_surfaces_operator_only_blockers_to_host():
 
 
 def test_engineer_fixed_prompt_stays_token_efficient():
-    assert len(_prompt("Refactor the data loader and add unit tests.")) < 2_300
+    assert len(_prompt("Refactor the data loader and add unit tests.")) < 3_000

@@ -402,14 +402,10 @@ class CommandBuilderMixin:
         if options.model:
             command.extend(["--model", options.model])
         if options.reasoning_effort:
-            effort = (
-                options.reasoning_effort
-                if is_qoder or options.reasoning_effort != "xhigh"
-                else "high"
-            )
+            # Both Claude and Qoder accept the full configured effort range.
             command.extend(
                 ["--reasoning-effort" if is_qoder else "--effort",
-                 effort]
+                 options.reasoning_effort]
             )
         if options.disable_tools:
             command.extend(["--tools", ""])
