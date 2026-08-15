@@ -31,6 +31,9 @@ class DoctorContext:
     web_port: int = 8799
     desktop_user_data: Path | None = None
     install_mode: str = "source"
+    backend: str | None = None
+    auth_mode: str | None = None
+    allow_prerelease: bool = False
 
     def fingerprint_payload(self) -> dict[str, str | int]:
         return {
@@ -466,7 +469,10 @@ def run_full_doctor(
             legacy = run_diagnostics(
                 context.project_root,
                 global_root=context.global_root,
+                backend=context.backend,
+                auth_mode=context.auth_mode,
                 probe_auth=probe_auth,
+                allow_prerelease=context.allow_prerelease,
             )
             for check in legacy:
                 if check.name not in {"daemon", "lock sanity", "empty session"}:
