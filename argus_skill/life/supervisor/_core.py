@@ -983,22 +983,23 @@ class LifeSupervisor(
     ) -> dict[str, Any] | None:
         """Retire stale paper-final tasks when the active vertical is bounded.
 
-        ``scope:final_submission`` only has meaning when the active vertical's
-        completion gate requires final certification. If a stale default ``research`` state
-        caused the planner to enqueue a final-submission proof for a
-        Manager-authored bounded domain (for example ``perf_tuning``), do not
-        spend another engineer/reviewer round proving the paper pipeline is
-        missing. Mark the planner artifact ``skipped`` and let the bounded
-        project reach its own terminal planner verdict.
+        ``scope:final_submission`` only has meaning when the active vertical has
+        a terminal gate that consumes it — either a certified completion gate or
+        a required research target. If a stale default ``research`` state caused
+        the planner to enqueue a final-submission proof for a Manager-authored
+        bounded domain (for example ``perf_tuning``), do not spend another
+        engineer/reviewer round proving the paper pipeline is missing. Mark the
+        planner artifact ``skipped`` and let the bounded project reach its own
+        terminal planner verdict.
         """
         if self._planner_scope_from_item(item) != _PLANNER_SCOPE_FINAL_SUBMISSION:
             return None
-        if self._effective_final_certification_gate(self._artifact_root()):
+        if self._final_submission_scope_applies(self._artifact_root()):
             return None
 
         reason = (
-            "skipped stale final_submission task: active vertical completion "
-            "gate is not certified"
+            "skipped stale final_submission task: active vertical has no "
+            "terminal certification gate"
         )
         self.memory.backlog.update(
             item.id,
