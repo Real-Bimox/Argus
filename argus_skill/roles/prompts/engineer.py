@@ -225,15 +225,14 @@ def build_mission_prompt(
         sections.append(learning_block)
     sections.append(
         "## Handoff\n"
-        "CHECKPOINT.md is the only role-maintained cross-round handoff file; do not "
-        "create handoff or evidence packets. Host invokes Reviewer only when required; "
-        "do not spawn a Reviewer subagent. End with a concise summary, decisive check, "
-        "`MILESTONE_STATUS=done|continue`, "
-        "`OPERATOR_QUESTION=<operator-only question|none>`, and "
+        "CHECKPOINT.md is the only role-maintained cross-round handoff file; do not create "
+        "handoff or evidence packets. Host invokes Reviewer only when required; do not "
+        "spawn a Reviewer subagent. End with "
+        "`MILESTONE_STATUS=done|continue`, `NEXT_OWNER=reviewer|engineer|operator`, "
+        "`OPERATOR_QUESTION=<operator-only question|none>`, "
         "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. "
-        "Agent-author at most five complete choices in the operator's language; `stop` "
-        "explicitly stops and a question parks the task. During long work, briefly report "
-        "meaningful progress to the operator; never narrate every tool or hidden reasoning."
+        "Standard review: owner=reviewer, question=none. A real operator decision: "
+        "owner=operator; its question parks the task. Give at most five choices."
     )
     static_text = "\n\n".join(sections)
     delta_text = "\n\n".join(delta_sections)
@@ -250,13 +249,12 @@ def build_mission_prompt(
         + _long_experiment_rule()
         + "\n\n"
         "## Handoff\n"
-        "CHECKPOINT.md remains the only role-maintained cross-round handoff file. "
-        "End with a concise natural summary, decisive check, and "
-        "`MILESTONE_STATUS=done|continue`. End with "
+        "Use only CHECKPOINT.md across rounds. End with summary, check, "
+        "`MILESTONE_STATUS=done|continue` and `NEXT_OWNER=reviewer|engineer|operator`. End with "
         "`OPERATOR_QUESTION=<operator-only question|none>` and "
-        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. Agent-author "
-        "complete choices in the operator's language. A real question parks the task. "
-        "For long work, give brief operator-facing updates at meaningful transitions."
+        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. Standard review uses "
+        "owner=reviewer and question=none; only a real operator decision parks the task. "
+        "Give brief updates only at meaningful transitions."
     )
     if shell_contract:
         compact = shell_contract + "\n\n" + compact

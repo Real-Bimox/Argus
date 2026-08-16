@@ -190,3 +190,170 @@ def test_engineer_operator_question_parks_without_reviewer(tmp_path: Path) -> No
     review_events = [event for event in events if event["type"] == "round.review.completed"]
     assert review_events[0]["operator_question"] == "请选择 A 或 B"
     assert review_events[0]["operator_options"][0]["id"] == "route-a"
+
+
+def test_engineer_reviewer_request_enters_independent_review(tmp_path: Path) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message=(
+                "Completed the artifact and its check script.\n"
+                "MILESTONE_STATUS=continue\n"
+                "OPERATOR_QUESTION=Please invoke the independent hostile Reviewer "
+                "to review this artifact.\n"
+                "OPERATOR_OPTIONS=review :: Invoke hostile Reviewer :: "
+                "Run the standard independent review."
+            ),
+            thread_id="t1",
+        ),
+    )
+    backend.queue("reviewer", CannedResponse(message=_done_review(), thread_id="v1"))
+
+    status, rounds, _final, _reason, _tid = _engineer(backend).run(
+        objective="complete and independently review the artifact",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(max_rounds=2, require_independent_review=True),
+        workdir=tmp_path,
+    )
+
+    assert [label for label, _prompt, _options in backend.history] == [
+        "engineer-r1",
+        "reviewer",
+    ]
+    assert status == "done"
+    assert rounds[0].review.review_source == "reviewer"
+    assert rounds[0].review.operator_question == ""
+
+
+def test_structured_reviewer_handoff_does_not_override_real_authority(
+    tmp_path: Path,
+) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message=(
+                "MILESTONE_STATUS=continue\n"
+                "NEXT_OWNER=reviewer\n"
+                "OPERATOR_QUESTION=Authorize the budget and external publication "
+                "before review.\n"
+                "OPERATOR_OPTIONS=approve :: Approve :: Spend budget and publish."
+            ),
+            thread_id="t1",
+        ),
+    )
+
+    status, rounds, _final, _reason, _tid = _engineer(backend).run(
+        objective="publish an artifact",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(max_rounds=2, require_independent_review=True),
+        workdir=tmp_path,
+    )
+
+    assert [label for label, _prompt, _options in backend.history] == ["engineer-r1"]
+    assert status == "blocked"
+    assert rounds[0].review.operator_question.startswith("Authorize the budget")
+
+
+def test_explicit_operator_handoff_is_authoritative_for_reviewer_wording(
+    tmp_path: Path,
+) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message=(
+                "MILESTONE_STATUS=continue\n"
+                "NEXT_OWNER=operator\n"
+                "OPERATOR_QUESTION=Please authorize invoking the independent Reviewer.\n"
+                "OPERATOR_OPTIONS=approve :: Approve :: Grant authorization."
+            ),
+            thread_id="t1",
+        ),
+    )
+
+    status, rounds, _final, _reason, _tid = _engineer(backend).run(
+        objective="perform an authorization-gated review",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(max_rounds=2, require_independent_review=True),
+        workdir=tmp_path,
+    )
+
+    assert [label for label, _prompt, _options in backend.history] == ["engineer-r1"]
+    assert status == "blocked"
+    assert rounds[0].review.operator_question.startswith("Please authorize")
+
+
+def test_legacy_reviewer_wording_does_not_bypass_operator_approval(
+    tmp_path: Path,
+) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message=(
+                "MILESTONE_STATUS=continue\n"
+                "OPERATOR_QUESTION=Request the independent Reviewer after operator approval.\n"
+                "OPERATOR_OPTIONS=approve :: Approve review :: Grant approval."
+            ),
+            thread_id="t1",
+        ),
+    )
+
+    status, rounds, _final, _reason, _tid = _engineer(backend).run(
+        objective="perform an approval-gated review",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(max_rounds=2, require_independent_review=True),
+        workdir=tmp_path,
+    )
+
+    assert [label for label, _prompt, _options in backend.history] == ["engineer-r1"]
+    assert status == "blocked"
+    assert rounds[0].review.operator_question.startswith("Request the independent")
+
+
+def test_structured_engineer_handoff_continues_without_early_review(
+    tmp_path: Path,
+) -> None:
+    backend = MemoryBackend()
+    backend.queue(
+        "engineer-r1",
+        CannedResponse(
+            message=(
+                "Completed the first internal step.\n"
+                "MILESTONE_STATUS=continue\n"
+                "NEXT_OWNER=engineer\n"
+                "OPERATOR_QUESTION=none"
+            ),
+            thread_id="t1",
+        ),
+    )
+    backend.queue(
+        "engineer-r2",
+        CannedResponse(
+            message=(
+                "Completed the artifact.\n"
+                "MILESTONE_STATUS=done\n"
+                "NEXT_OWNER=reviewer\n"
+                "OPERATOR_QUESTION=none"
+            ),
+            thread_id="t2",
+        ),
+    )
+    backend.queue("reviewer", CannedResponse(message=_done_review(), thread_id="v1"))
+
+    status, rounds, _final, _reason, _tid = _engineer(backend).run(
+        objective="complete a two-step artifact",
+        engineer_prompt_builder=lambda _na, _include_static=True: "Do the task.",
+        supervised_config=SupervisedConfig(max_rounds=2, require_independent_review=True),
+        workdir=tmp_path,
+    )
+
+    assert [label for label, _prompt, _options in backend.history] == [
+        "engineer-r1",
+        "engineer-r2",
+        "reviewer",
+    ]
+    assert status == "done"
+    assert len(rounds) == 1

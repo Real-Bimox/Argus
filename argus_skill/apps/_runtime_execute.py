@@ -1260,7 +1260,7 @@ class SkillLoopExecuteMixin:
         summary_lines = []
         visible_engineer_message = strip_named_lines(
             engineer_message,
-            ("MILESTONE_STATUS", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
+            ("MILESTONE_STATUS", "NEXT_OWNER", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
         )
         for line in visible_engineer_message.splitlines():
             cleaned = line.strip()

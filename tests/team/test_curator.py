@@ -6,8 +6,8 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+from argus_skill.team import completion, leaderboard, pool, registry, roster, task_board
 from argus_skill.team import curator as cur
-from argus_skill.team import leaderboard, pool, registry, roster, task_board
 
 
 def _sleeping_proc(*_args, **_kwargs):
@@ -727,6 +727,96 @@ def test_failed_dependency_publishes_summary_with_stranded_task(tmp_path: Path) 
     record = json.loads((root / "completion_summary.json").read_text(encoding="utf-8"))
     assert record["failed"] == 1
     assert record["blocked"] == 1
+
+
+def test_failed_dependency_fallback_is_not_called_an_operator_wait(tmp_path: Path) -> None:
+    root = tmp_path / "team"
+    conversation = tmp_path / "conversation"
+    registry.write_marker(tmp_path, team_id="t1", team_root=root, cwd=tmp_path, now=1.0)
+    task_board.form(
+        root,
+        [
+            {"task_id": "t::a", "title": "foundation", "objective": "x"},
+            {"task_id": "t::b", "title": "dependent", "objective": "y", "deps": ["t::a"]},
+        ],
+    )
+    task_board.fail(root, "t::a", reason="proof failed")
+    c = _fake_curator(tmp_path, conversation_root=conversation, completion_fn=None)
+
+    c._tick(now=100.0)
+
+    from argus_skill.core.transcript import read_turns
+
+    (turn,) = read_turns(conversation)
+    assert "Blocked: dependent" in turn["text"]
+    assert "Waiting for operator" not in turn["text"]
+
+
+def test_operator_wait_publishes_blocked_state_without_retry(tmp_path: Path) -> None:
+    root = tmp_path / "team"
+    conversation = tmp_path / "conversation"
+    registry.write_marker(tmp_path, team_id="t1", team_root=root, cwd=tmp_path, now=1.0)
+    task_board.form(root, [{"task_id": "t::a", "title": "valuation", "objective": "x"}])
+    assert task_board.claim_top(root, "t::w1", now=1.0)
+    task_board.block_for_operator(
+        root,
+        "t::a",
+        question="Choose the authorized data source",
+        reason="operator decision required",
+    )
+    prompts: list[str] = []
+    c = _fake_curator(
+        tmp_path,
+        conversation_root=conversation,
+        completion_fn=lambda prompt: prompts.append(prompt) or "Waiting for operator.",
+    )
+
+    c._tick(now=100.0)
+
+    assert len(prompts) == 1
+    assert '"state": "blocked"' in prompts[0]
+    assert "Choose the authorized data source" in prompts[0]
+    task = task_board.snapshot(root)[0]
+    assert task["state"] == "blocked"
+    assert task["owner"] == "t::w1"
+    assert c.live_owner_ids(root) == set()
+    record = json.loads((root / "completion_summary.json").read_text(encoding="utf-8"))
+    assert record["failed"] == 0
+    assert record["blocked"] == 1
+
+
+def test_resumed_blocked_task_publishes_final_completion_summary(tmp_path: Path) -> None:
+    root = tmp_path / "team"
+    conversation = tmp_path / "conversation"
+    registry.write_marker(
+        tmp_path, team_id="t1", team_root=root, cwd=tmp_path, now=1.0
+    )
+    marker = registry.list_markers(tmp_path)[0]
+    task_board.form(root, [{"task_id": "t::a", "title": "valuation", "objective": "x"}])
+    assert task_board.claim_top(root, "t::w1", now=1.0)
+    task_board.block_for_operator(root, "t::a", question="Choose source", reason="waiting")
+    summaries: list[str] = []
+
+    assert completion.publish_if_complete(
+        root,
+        marker=marker,
+        conversation_root=conversation,
+        summarize=lambda _prompt: summaries.append("blocked") or "Waiting.",
+    )
+    task_board.resume(root, "t::a", answer="Use source A")
+    assert task_board.claim_top(root, "t::w2", now=2.0)
+    task_board.complete(root, "t::a", shard="result.jsonl")
+    assert completion.publish_if_complete(
+        root,
+        marker=marker,
+        conversation_root=conversation,
+        summarize=lambda _prompt: summaries.append("done") or "Completed.",
+    )
+
+    assert summaries == ["blocked", "done"]
+    record = json.loads((root / "completion_summary.json").read_text(encoding="utf-8"))
+    assert record["done"] == 1
+    assert record["blocked"] == 0
 
 
 def test_start_then_stop_runs_ticks_and_reaps_real_child(tmp_path: Path) -> None:

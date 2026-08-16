@@ -105,20 +105,31 @@ def _load_all(root: Path) -> list[dict[str, Any]]:
     return [task for _modified, _canonical, task in tasks.values()]
 
 
-# Liveness/ownership fields that belong to a teammate ACTIVELY working a task.
+# Liveness/ownership fields that belong to a teammate working or waiting on a task.
 # A re-form of an already-running campaign (operator re-runs ``team form`` while
 # the Curator has teammates in flight) must NOT reset these to the pending
 # defaults: doing so silently de-owns the task, drops ``count_in_flight`` to 0,
 # and lets the pool double-spawn a second teammate into the SAME workdir on the
 # next reap. The static spec fields are always refreshed from the new spec.
-_LIVE_OWNERSHIP_FIELDS = ("state", "owner", "claim_ts", "heartbeat_ts", "attempts")
+_LIVE_OWNERSHIP_FIELDS = (
+    "state",
+    "owner",
+    "claim_ts",
+    "heartbeat_ts",
+    "attempts",
+    "reason",
+    "pending_question",
+    "operator_options",
+    "operator_answer",
+    "last_thread_id",
+)
 
 
 def form(root: Path, tasks: list[dict[str, Any]]) -> None:
     """Create (or refresh) the task records for a team from partial specs.
 
     Idempotent over an ACTIVE campaign: when a task record already exists and a
-    teammate is mid-flight on it (``state`` is ``claimed``/``running``), its
+    teammate is mid-flight or waiting on it (``claimed``/``running``/``blocked``), its
     ownership/liveness fields are PRESERVED and only the static spec fields
     (title/objective/target/priority/...) are refreshed. Re-running ``form`` on a
     live fleet therefore never de-owns a task a Curator teammate is working —
@@ -151,23 +162,34 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
                 "owner": "",
                 "result_shard": spec.get("result_shard", ""),
                 "reason": "",
+                "pending_question": "",
+                "operator_options": [],
+                "operator_answer": str(spec.get("operator_answer", "") or ""),
+                "last_thread_id": "",
                 "claim_ts": 0.0,
                 "heartbeat_ts": 0.0,
                 "attempts": 0,
                 "priority": int(spec.get("priority", 100)),
             }
             prior = _read_task(root, tid)
-            if (
-                prior is None
-                and len(str(tid).encode("utf-8")) > 120
-            ):
+            if prior is None and len(str(tid).encode("utf-8")) > 120:
                 raise ValueError("task_id exceeds 120 UTF-8 bytes")
-            if isinstance(prior, dict) and prior.get("state") in ("claimed", "running"):
+            if isinstance(prior, dict) and prior.get("state") in (
+                "claimed",
+                "running",
+                "blocked",
+            ):
                 # A teammate is mid-flight on this task — keep its ownership and
                 # only refresh the static spec fields rebuilt above.
                 for field in _LIVE_OWNERSHIP_FIELDS:
                     if field in prior:
                         task[field] = prior[field]
+            elif (
+                isinstance(prior, dict)
+                and prior.get("state") == "pending"
+                and prior.get("operator_answer")
+            ):
+                task["operator_answer"] = prior["operator_answer"]
             _write_task(root, tid, task)
 
 
@@ -232,6 +254,51 @@ def complete(root: Path, task_id: str, *, shard: str = "") -> None:
 
 def fail(root: Path, task_id: str, *, reason: str = "") -> None:
     _mutate(root, task_id, state="failed", reason=reason)
+
+
+def block_for_operator(
+    root: Path,
+    task_id: str,
+    *,
+    question: str,
+    options: list[dict[str, Any]] | None = None,
+    reason: str = "",
+    last_thread_id: str = "",
+) -> None:
+    """Park a task without making it claimable until an explicit answer resumes it."""
+
+    _mutate(
+        root,
+        task_id,
+        state="blocked",
+        reason=reason,
+        pending_question=question,
+        operator_options=list(options or []),
+        last_thread_id=last_thread_id,
+    )
+
+
+def resume(root: Path, task_id: str, *, answer: str) -> None:
+    """Apply an operator answer and return one blocked task to the Curator queue."""
+
+    answer = answer.strip()
+    if not answer:
+        raise ValueError("operator answer must not be empty")
+    with _store.locked(_lock(root)):
+        task = _store.read_json(_path(root, task_id), default=None)
+        if not isinstance(task, dict):
+            raise KeyError(task_id)
+        if task.get("state") != "blocked" or not task.get("pending_question"):
+            raise ValueError(f"task is not waiting for an operator answer: {task_id}")
+        task.update(
+            state="pending",
+            owner="",
+            reason="",
+            pending_question="",
+            operator_options=[],
+            operator_answer=answer,
+        )
+        _store.atomic_write_json(_path(root, task_id), task)
 
 
 def reassign_stale(
