@@ -1,9 +1,9 @@
-"""Canonical, safe delivery receipts for completed Argus missions.
+"""Canonical, safe delivery receipts for terminal Argus goals.
 
-A completion event is useful only when the operator can immediately see what
-finished and, when applicable, open the reviewed output.  This module derives a
-small receipt from already-authoritative sources; it never scans a workspace,
-creates output, or guesses that an arbitrary file is a deliverable.
+A delivery exists only when the overall operator goal is complete *and* a
+reviewed or contract-declared file can actually be opened. Intermediate mission
+success, resume progress, Manager live views, and summary-only outcomes never
+become completion receipts.
 """
 
 from __future__ import annotations
@@ -108,36 +108,13 @@ def _vertical_primary_targets(
     ]
 
 
-def _manager_live_targets(workspace: Path, state_root: Path) -> list[dict[str, str]]:
-    try:
-        from ..manager.live_view import load_live_view_decision
-
-        view = load_live_view_decision(workspace, manifest_root=state_root)
-    except Exception:  # noqa: BLE001 - previous verified view remains optional
-        return []
-    if view is None:
-        return []
-    return [
-        result
-        for path in view.paths
-        if (
-            result := _target(
-                workspace,
-                path,
-                source="manager_live",
-                label=view.title,
-                why=view.reason,
-            )
-        ) is not None
-    ]
-
-
 def build_delivery_receipt(
     *,
     item_id: str,
     title: str,
     summary: str,
     success: bool,
+    overall_complete: bool,
     status: str,
     review_status: str,
     final_submission_certified: bool,
@@ -146,13 +123,8 @@ def build_delivery_receipt(
     stage: str = "",
     reviewer_artifacts: Iterable[object] = (),
 ) -> dict[str, Any] | None:
-    """Build a durable completion receipt from verified, bounded inputs.
-
-    The receipt exists for a successful mission even when it produced no
-    renderable file.  In that case the UI can still make completion explicit,
-    while truthfully omitting an ``Open result`` file action.
-    """
-    if not success:
+    """Build a terminal receipt only for a real, openable deliverable."""
+    if not success or not overall_complete:
         return None
     normalized_item_id = str(item_id or "").strip()
     if not normalized_item_id:
@@ -170,12 +142,11 @@ def build_delivery_receipt(
 
     candidates: list[dict[str, str]] = []
     if root is not None and manifest_root is not None and root.is_dir() and manifest_root.is_dir():
-        # Reviewer-named evidence is strongest for a completed bounded mission.
-        # The vertical contract is next; the Manager's presentation remains a
-        # useful fallback when no concrete reviewed output was named.
+        # Reviewer-named evidence is strongest. The vertical contract is an
+        # explicit deliverable declaration. A Manager live view is deliberately
+        # excluded: it is presentation state, not proof of a final artifact.
         candidates.extend(_reviewed_targets(root, reviewer_artifacts))
         candidates.extend(_vertical_primary_targets(root, manifest_root, str(stage or "")))
-        candidates.extend(_manager_live_targets(root, manifest_root))
 
     targets: list[dict[str, str]] = []
     seen: set[str] = set()
@@ -187,6 +158,9 @@ def build_delivery_receipt(
         targets.append(candidate)
         if len(targets) >= MAX_DELIVERY_TARGETS:
             break
+
+    if not targets:
+        return None
 
     kind = "submission_certified" if final_submission_certified else "task_completed"
     return {

@@ -744,6 +744,31 @@ class MissionExecutionSettlementMixin:
             if final_submission_certified
             else ""
         )
+        try:
+            remaining_work = any(
+                row.id != item.id
+                and row.status
+                in {
+                    "pending",
+                    "running",
+                    "paused",
+                    "paused_budget",
+                    "paused_provider_cooldown",
+                    "paused_provider_fence",
+                    "paused_operator",
+                }
+                for row in self.memory.backlog.all()
+            )
+        except Exception:  # noqa: BLE001 - completion presentation fails closed
+            remaining_work = True
+        overall_complete = bool(
+            success
+            and (
+                final_submission_certified
+                or (not self.config.continuous and not remaining_work)
+            )
+        )
+        campaign_continues = bool(success and not overall_complete)
 
         self._update_no_progress_streak(
             kind=kind,
@@ -770,20 +795,21 @@ class MissionExecutionSettlementMixin:
         # contract, or Manager-owned live view; never scan or guess workspace
         # files at settlement time.
         delivery: dict[str, Any] | None = None
+        frontier = getattr(outcome, "final_frontier_report", {}) or {}
+        reviewer_artifacts = (
+            list(frontier.get("artifacts") or [])
+            if isinstance(frontier, dict)
+            else []
+        )
         try:
             from ..delivery import build_delivery_receipt
 
-            frontier = getattr(outcome, "final_frontier_report", {}) or {}
-            reviewer_artifacts = (
-                list(frontier.get("artifacts") or [])
-                if isinstance(frontier, dict)
-                else []
-            )
             delivery = build_delivery_receipt(
                 item_id=item.id,
                 title=item.title,
                 summary=mission_summary,
                 success=bool(success),
+                overall_complete=overall_complete,
                 status=status,
                 review_status=str(
                     getattr(outcome, "final_review_status", "") or ""
@@ -838,6 +864,12 @@ class MissionExecutionSettlementMixin:
             "success": success,
             "status": status,
             "summary": mission_summary,
+            "execution_workdir": str(state.execution_workdir),
+            "delivery_candidates": [
+                str(candidate)
+                for candidate in reviewer_artifacts
+                if str(candidate).strip()
+            ][:12],
             "outcome_class": mission_outcome_class(status=status, success=success),
             "outcome": state.outcome_dimensions,
             "planner_report": planner_report,
@@ -912,6 +944,8 @@ class MissionExecutionSettlementMixin:
             ),
             "final_submission_certified": final_submission_certified,
             "final_submission_signature": final_submission_signature,
+            "overall_complete": overall_complete,
+            "campaign_continues": campaign_continues,
             "delivery": delivery,
             "delivery_id": str((delivery or {}).get("delivery_id") or ""),
             "research_result": getattr(outcome, "research_result", None),
@@ -952,6 +986,8 @@ class MissionExecutionSettlementMixin:
                 or ""
             ),
             "summary": mission_summary,
+            "overall_complete": overall_complete,
+            "campaign_continues": campaign_continues,
             "delivery": delivery,
             "planner_report": planner_report,
             "plan_challenge": plan_challenge,

@@ -31,6 +31,7 @@ def test_delivery_receipt_prefers_reviewer_evidence_and_rejects_unsafe_paths(
         title="Create final result",
         summary="Verified final result.",
         success=True,
+        overall_complete=True,
         status="done",
         review_status="done",
         final_submission_certified=False,
@@ -42,13 +43,32 @@ def test_delivery_receipt_prefers_reviewer_evidence_and_rejects_unsafe_paths(
     assert receipt is not None
     assert receipt["delivery_id"] == "delivery:task-1:task_completed"
     assert receipt["primary_target"]["path"] == "final.md"
-    assert [target["path"] for target in receipt["targets"]] == [
-        "final.md",
-        "fallback.md",
-    ]
+    assert [target["path"] for target in receipt["targets"]] == ["final.md"]
 
 
-def test_delivery_receipt_exists_without_a_renderable_file(tmp_path: Path) -> None:
+def test_intermediate_success_has_no_delivery_even_with_an_artifact(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    state = tmp_path / "state"
+    workspace.mkdir()
+    state.mkdir()
+    (workspace / "partial.md").write_text("partial\n", encoding="utf-8")
+
+    assert build_delivery_receipt(
+        item_id="task-partial",
+        title="Resume task",
+        summary="One stage advanced.",
+        success=True,
+        overall_complete=False,
+        status="done",
+        review_status="done",
+        final_submission_certified=False,
+        workspace=workspace,
+        state_root=state,
+        reviewer_artifacts=["partial.md"],
+    ) is None
+
+
+def test_delivery_receipt_does_not_exist_without_a_renderable_file(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     state = tmp_path / "state"
     workspace.mkdir()
@@ -59,6 +79,7 @@ def test_delivery_receipt_exists_without_a_renderable_file(tmp_path: Path) -> No
         title="Finish analysis",
         summary="The bounded analysis is complete.",
         success=True,
+        overall_complete=True,
         status="done",
         review_status="done",
         final_submission_certified=False,
@@ -66,10 +87,7 @@ def test_delivery_receipt_exists_without_a_renderable_file(tmp_path: Path) -> No
         state_root=state,
     )
 
-    assert receipt is not None
-    assert receipt["primary_target"] is None
-    assert receipt["targets"] == []
-    assert receipt["summary"] == "The bounded analysis is complete."
+    assert receipt is None
 
 
 def test_failed_mission_has_no_delivery_receipt(tmp_path: Path) -> None:
@@ -78,6 +96,7 @@ def test_failed_mission_has_no_delivery_receipt(tmp_path: Path) -> None:
         title="Blocked task",
         summary="",
         success=False,
+        overall_complete=False,
         status="blocked",
         review_status="blocked",
         final_submission_certified=False,

@@ -51,6 +51,8 @@ def _mission_outcome_presentation(
     mission_status, role_status, label, tone = _MISSION_OUTCOME_PRESENTATIONS[
         outcome_class
     ]
+    if outcome_class == "completed" and event.get("campaign_continues") is True:
+        return "continued", "done", "Task continued", "info"
     if (
         outcome_class == "completed"
         and event.get("final_submission_certified") is True

@@ -45,12 +45,12 @@ def test_continuous_mission_completion_publishes_once(tmp_path) -> None:
     ]
     assert len(transcript) == 1
     assert transcript[0]["role"] == "argus"
-    assert "Task completed · Fix the first issue · review=done" in transcript[0]["text"]
+    assert "Task continued · Fix the first issue · review=done" in transcript[0]["text"]
     assert (
-        "Mission summary: Updated the parser and passed focused regression tests."
+        "Progress: Updated the parser and passed focused regression tests."
         in transcript[0]["text"]
     )
-    assert "Planner is selecting the next task" in transcript[0]["text"]
+    assert "Planner is selecting the next work item" in transcript[0]["text"]
     ui_events = [
         event
         for line in (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
@@ -60,6 +60,8 @@ def test_continuous_mission_completion_publishes_once(tmp_path) -> None:
     assert ui_events[0]["summary"] == (
         "Updated the parser and passed focused regression tests."
     )
+    assert ui_events[0]["campaign_continues"] is True
+    assert ui_events[0]["delivery"] is None
 
 
 def test_bounded_completion_says_the_task_is_finished(tmp_path) -> None:
@@ -86,7 +88,10 @@ def test_bounded_completion_says_the_task_is_finished(tmp_path) -> None:
     text = json.loads(
         (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
-    assert text == "Task completed · One bounded fix\nThis task is finished."
+    assert text == (
+        "Task ended · One bounded fix\n"
+        "This run ended without an openable deliverable."
+    )
 
 
 def test_completion_summary_uses_the_operator_language(tmp_path) -> None:
@@ -141,9 +146,8 @@ def test_bounded_increment_does_not_claim_project_or_stage_completion(tmp_path) 
         (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert text == (
-        "Task completed · Write the paper draft · review=done\n"
-        "This bounded work item is finished; project and stage completion "
-        "were not certified."
+        "Task ended · Write the paper draft · review=done\n"
+        "This run ended without an openable deliverable."
     )
 
 
@@ -268,6 +272,6 @@ def test_final_submission_completion_is_explicitly_certified(tmp_path) -> None:
         (tmp_path / "transcript.jsonl").read_text(encoding="utf-8").splitlines()[-1]
     )["text"]
     assert text == (
-        "Submission certified · Prepare final ICLR submission · review=done\n"
-        "The final submission passed independent review."
+        "Task ended · Prepare final ICLR submission · review=done\n"
+        "This run ended without an openable deliverable."
     )

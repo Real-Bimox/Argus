@@ -1077,6 +1077,55 @@ class LifeSupervisor(
             ),
         }
 
+    def _build_terminal_project_delivery(self, reason: str) -> dict[str, Any] | None:
+        """Promote the last verified mission output only after project_done."""
+        latest: dict[str, Any] = {}
+        try:
+            for entry in reversed(self.memory.journal.tail(80)):
+                extra = getattr(entry, "extra", None)
+                if (
+                    getattr(entry, "kind", "") == "mission_complete"
+                    and isinstance(extra, dict)
+                    and extra.get("success") is True
+                ):
+                    latest = extra
+                    break
+        except Exception:  # noqa: BLE001 - delivery presentation is optional
+            latest = {}
+        try:
+            from ..delivery import build_delivery_receipt
+
+            outcome = latest.get("outcome")
+            outcome = outcome if isinstance(outcome, dict) else {}
+            candidates = latest.get("delivery_candidates")
+            candidates = candidates if isinstance(candidates, list) else []
+            project_id = Path(self.memory.root).name
+            return build_delivery_receipt(
+                item_id=f"project-{project_id}",
+                title=(
+                    str(getattr(self.config, "continuous_objective", "") or "").strip()
+                    or str(latest.get("title") or "Completed task")
+                ),
+                summary=str(latest.get("summary") or reason or "").strip(),
+                success=True,
+                overall_complete=True,
+                status="done",
+                review_status=str(outcome.get("review_status") or "not_assessed"),
+                final_submission_certified=bool(
+                    latest.get("final_submission_certified")
+                ),
+                workspace=(
+                    str(latest.get("execution_workdir") or "").strip()
+                    or self._project_workdir()
+                ),
+                state_root=self.memory.root,
+                stage=str(self._current_pipeline_stage() or ""),
+                reviewer_artifacts=candidates,
+            )
+        except Exception:  # noqa: BLE001 - completion authority is unchanged
+            log.debug("terminal project delivery could not be built", exc_info=True)
+            return None
+
     def _emit_planner_verdict(
         self,
         *,
@@ -1087,6 +1136,8 @@ class LifeSupervisor(
         terminal_signature: str = "",
         **details: Any,
     ) -> bool:
+        if details.get("project_done") is True and "delivery" not in details:
+            details["delivery"] = self._build_terminal_project_delivery(reason)
         event = build_planner_verdict_event(
             status=status,
             reason=reason,
@@ -1234,6 +1285,32 @@ class LifeSupervisor(
                 self._publish_budget_pause_message(event)
             elif event_type == EventType.LIFE_MISSION_COMPLETED:
                 self._publish_mission_completion_message(event)
+            elif (
+                event_type == EventType.LIFE_PLANNER_VERDICT
+                and event.get("project_done") is True
+                and isinstance(event.get("delivery"), dict)
+            ):
+                delivery = dict(event["delivery"])
+                self._publish_mission_completion_message({
+                    "item_id": str(delivery.get("item_id") or "project"),
+                    "title": str(delivery.get("title") or "Completed task"),
+                    "success": True,
+                    "status": "done",
+                    "summary": str(delivery.get("summary") or event.get("reason") or ""),
+                    "outcome": {
+                        "review_status": str(
+                            delivery.get("review_status") or "not_assessed"
+                        ),
+                    },
+                    "final_submission_certified": (
+                        delivery.get("kind") == "submission_certified"
+                    ),
+                    "overall_complete": True,
+                    "campaign_continues": False,
+                    "delivery": delivery,
+                    "delivery_id": str(delivery.get("delivery_id") or ""),
+                    "message_kind": "project-completed",
+                })
         return delivered
 
     def _publish_mission_completion_message(self, event: dict[str, Any]) -> None:
@@ -1265,23 +1342,66 @@ class LifeSupervisor(
             title = str(event.get("title") or "Team mission").strip()
             success = bool(event.get("success"))
             summary = str(event.get("summary") or "").strip()
-            summary_line = (
-                f"{'本次完成' if chinese else 'Mission summary'}: {summary}"
-                if summary
-                else ""
-            )
             outcome = event.get("outcome")
             outcome = outcome if isinstance(outcome, dict) else {}
             review = str(outcome.get("review_status") or "").strip()
             final_submission_certified = (
                 event.get("final_submission_certified") is True
             )
-            if success:
-                completion_label = (
-                    "Submission certified"
-                    if final_submission_certified
-                    else "Task completed"
+            explicit_continuation = event.get("campaign_continues")
+            campaign_continues = bool(
+                success
+                and (
+                    explicit_continuation is True
+                    or (
+                        explicit_continuation is None
+                        and bool(getattr(self.config, "continuous", False))
+                        and not final_submission_certified
+                    )
                 )
+            )
+            delivery = (
+                dict(event["delivery"])
+                if isinstance(event.get("delivery"), dict)
+                else None
+            )
+            delivery_ready = bool(
+                delivery and isinstance(delivery.get("primary_target"), dict)
+            )
+            overall_complete = bool(
+                success
+                and not campaign_continues
+                and (
+                    event.get("overall_complete") is True
+                    or final_submission_certified
+                    or not bool(getattr(self.config, "continuous", False))
+                )
+            )
+            summary_label = (
+                "本次进展"
+                if chinese and campaign_continues
+                else "Progress"
+                if campaign_continues
+                else "本次完成"
+                if chinese
+                else "Mission summary"
+            )
+            summary_line = f"{summary_label}: {summary}" if summary else ""
+            if success:
+                if campaign_continues:
+                    completion_label = "任务已继续" if chinese else "Task continued"
+                elif overall_complete and delivery_ready:
+                    completion_label = (
+                        "交付已认证"
+                        if chinese and final_submission_certified
+                        else "Submission certified"
+                        if final_submission_certified
+                        else "任务已完成"
+                        if chinese
+                        else "Task completed"
+                    )
+                else:
+                    completion_label = "任务已结束" if chinese else "Task ended"
                 result = f"{completion_label} · {title}"
                 if review and review not in {"none", "not_assessed"}:
                     result += f" · review={review}"
@@ -1351,26 +1471,26 @@ class LifeSupervisor(
                     },
                 )
                 return
-            if final_submission_certified:
+            if campaign_continues:
                 continuation = (
-                    "The final submission passed independent review."
+                    "任务已继续；Planner 正在选择下一步工作。"
+                    if chinese
+                    else "Task continues; Planner is selecting the next work item."
                 )
-            elif bool(getattr(self.config, "continuous", False)) and bool(
-                getattr(self.config, "open_ended", False)
-            ):
+            elif final_submission_certified and delivery_ready:
                 continuation = (
-                    "Continuous campaign remains active; Planner is selecting "
-                    "the next task."
+                    "最终交付已通过独立审核。"
+                    if chinese
+                    else "The final submission passed independent review."
                 )
-            elif str(outcome.get("stage_certification") or "").strip() == (
-                "intentionally_skipped"
-            ):
-                continuation = (
-                    "This bounded work item is finished; project and stage "
-                    "completion were not certified."
-                )
+            elif overall_complete and delivery_ready:
+                continuation = "交付成果可打开。" if chinese else "The deliverable is ready to open."
             else:
-                continuation = "This task is finished."
+                continuation = (
+                    "本次处理已结束，但没有可打开的交付成果。"
+                    if chinese
+                    else "This run ended without an openable deliverable."
+                )
             publish_operator_message(
                 life_dir,
                 text="\n".join(
@@ -1382,19 +1502,22 @@ class LifeSupervisor(
                     )
                     if part
                 ),
-                message_id=f"mission-result-{item_id}-{str(event.get('status') or '')}",
+                message_id=(
+                    f"mission-result-{item_id}-"
+                    f"{str(event.get('message_kind') or ('continued' if campaign_continues else 'completed' if overall_complete and delivery_ready else 'ended'))}"
+                ),
                 event_fields={
                     "mission_result": True,
                     "item_id": item_id,
                     "success": success,
                     "summary": summary,
-                    "delivery": (
-                        dict(event["delivery"])
-                        if success and isinstance(event.get("delivery"), dict)
-                        else None
-                    ),
+                    "campaign_continues": campaign_continues,
+                    "overall_complete": overall_complete,
+                    "delivery": delivery if overall_complete and delivery_ready else None,
                     "delivery_id": (
-                        str(event.get("delivery_id") or "") if success else ""
+                        str(delivery.get("delivery_id") or "")
+                        if overall_complete and delivery_ready and delivery
+                        else ""
                     ),
                 },
             )

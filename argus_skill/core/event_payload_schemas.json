@@ -214,6 +214,10 @@
           }
         },
         "success": {"type": "boolean"},
+        "overall_complete": {"type": "boolean"},
+        "campaign_continues": {"type": "boolean"},
+        "execution_workdir": {"type": "string"},
+        "delivery_candidates": {"type": "array", "items": {"type": "string"}},
         "rounds": {"type": "integer", "minimum": 0},
         "elapsed_seconds": {"type": "number", "minimum": 0},
         "cost_usd": {"type": ["number", "null"], "minimum": 0},
@@ -448,6 +452,7 @@
         "stop_kind": {"type": ["string", "null"]},
         "completion_kind": {"type": ["string", "null"]},
         "delivery_id": {"type": "string", "minLength": 1},
+        "delivery": {"type": ["object", "null"]},
         "tasks_added": {"type": "integer", "minimum": 0}
       }
     },

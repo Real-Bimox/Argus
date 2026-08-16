@@ -174,6 +174,10 @@ export interface LifeMissionCompletedEvent extends EventMsg {
   "outcome_class"?: "completed" | "incomplete" | "stalled" | "blocked" | "failed" | "ended";
   "outcome"?: { "execution_status": string; "review_status": string; "stage_certification": string; "interruption_kind": string; "resumable": boolean; };
   "success"?: boolean;
+  "overall_complete"?: boolean;
+  "campaign_continues"?: boolean;
+  "execution_workdir"?: string;
+  "delivery_candidates"?: Array<string>;
   "rounds"?: number;
   "elapsed_seconds"?: number;
   "cost_usd"?: number | null;
@@ -293,6 +297,7 @@ export interface LifePlannerVerdictEvent extends EventMsg {
   "stop_kind"?: string | null;
   "completion_kind"?: string | null;
   "delivery_id"?: string;
+  "delivery"?: Record<string, unknown> | null;
   "tasks_added"?: number;
 }
 

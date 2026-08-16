@@ -6,6 +6,7 @@ import {
 } from './missionOutcome.js';
 import type {
   ArtifactInfo,
+  DeliveryReceipt,
   EventMsg,
   MissionAchievement,
   MissionDagNode,
@@ -301,7 +302,16 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     addRoleWork(view, event, 'planner', 'task', node.title || 'Task added', node.objective, 'pending');
   } else if (type === EVENT_TYPES.LIFE_PLANNER_VERDICT) {
     const projectDone = Boolean(event.project_done);
-    const label = projectDone ? 'Project reviewed' : 'Planning complete';
+    const delivery = projectDone && event.delivery && typeof event.delivery === 'object' && !Array.isArray(event.delivery)
+      ? JSON.parse(JSON.stringify(event.delivery)) as DeliveryReceipt
+      : null;
+    const label = delivery ? 'Task completed' : projectDone ? 'Project reviewed' : 'Planning complete';
+    if (delivery) {
+      view.delivery = delivery;
+      view.mission.status = 'complete';
+      view.mission.summary = delivery.summary || '';
+      view.mission.completed_at = ts;
+    }
     setRole(view, 'planner', 'done', label, ts);
     addTimeline(view, event, 'planner', label, S(event, 'reason'), projectDone ? 'success' : 'neutral');
     addRoleWork(view, event, 'planner', 'verdict', label, S(event, 'reason'), projectDone ? 'done' : 'planned');
