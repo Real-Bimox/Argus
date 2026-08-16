@@ -1,12 +1,11 @@
-"""Live-search venue selection and VenueProfile construction.
+"""Live-search VenueProfile construction for an explicitly selected venue.
 
-When ``target_venue`` is absent, the agent selects a domain-appropriate CCF-A
-conference whose submission deadline has not passed at runtime. When the target
-is non-built-in, it researches that venue directly. In both cases it writes
+An absent ``target_venue`` never authorizes venue discovery. When an explicit
+target is non-built-in, the agent researches only that venue and writes
 ``research/VENUE_SELECTION.md`` and ``research/VENUE_PROFILE.json`` from official
 sources, cached so the search runs once. Failure leaves venue selection
-unresolved; venue-dependent gates then fail closed instead of silently using an
-unrelated default.
+unresolved; venue-dependent gates then fail closed instead of silently choosing
+or using an unrelated default.
 
 Mirrors :mod:`argus_skill.skills.idea_search` (same live-search + run-once +
 fail-open discipline). The detailed field playbook lives in the
@@ -83,44 +82,33 @@ def _target_venue(workdir: Any) -> str | None:
 
 
 def needs_venue_research(workdir: Any) -> bool:
-    """True when venue selection/profile research is still required."""
+    """True when an explicit venue still needs a researched local profile."""
     try:
         venue = _target_venue(workdir)
+        if not venue:
+            return False
         local = load_local_venue_profile(Path(workdir))
         if local is not None and (
-            not venue
-            or _normalize_venue_key(local.key) == _normalize_venue_key(str(venue))
+            _normalize_venue_key(local.key) == _normalize_venue_key(str(venue))
         ):
             return False
         if _completed_attempt_matches(workdir, venue):
             return False
-        return not venue or not is_builtin_venue(venue)
+        return not is_builtin_venue(venue)
     except Exception:  # noqa: BLE001 — never let the guard raise
         return False
 
 
-def _build_prompt(venue: str | None) -> str:
-    selection = (
-        f"The operator/project already named this target venue: {venue}. "
-        "Verify its current submission cycle, deadline, and official format."
-        if venue
-        else
-        "No venue is selected. Using LIVE web_search and official sources, "
-        "identify CCF-A conferences relevant to this paper's actual AI research "
-        "area whose main/research-track submission deadline has not passed at "
-        "the current UTC date. Compare scope fit, exact deadline/time "
-        "zone, conference cycle, and evidence requirements; choose the best fit. "
-        "Do not choose a closed deadline merely because a bundled template exists."
-    )
+def _build_prompt(venue: str) -> str:
     return (
-        "You are selecting and configuring the publication venue for a research "
-        "paper. The choice must be current, explicit, and source-backed.\n\n"
-        f"{selection}\n\n"
-        "Write research/VENUE_SELECTION.md with: the current UTC date, candidate "
-        "CCF-A venues considered, official CCF classification source, official "
-        "CFP/deadline URLs, deadline time zones, open/closed determination, scope "
-        "fit, and the selected venue with rejection reasons for alternatives.\n\n"
-        "Using LIVE web_search, find the selected venue's OFFICIAL submission "
+        "The operator/project explicitly selected this publication venue: "
+        f"{venue}. Verify only this venue's current submission cycle, deadline, "
+        "scope, and official format. Do not search for or select alternatives "
+        "unless the operator explicitly requested venue discovery.\n\n"
+        "Write research/VENUE_SELECTION.md with the current UTC date, the explicit "
+        "venue, official CFP/deadline URL, deadline time zone, open/closed "
+        "determination, and scope fit.\n\n"
+        "Using LIVE web_search, find the venue's OFFICIAL submission "
         "instructions / author kit (call-for-papers, author guidelines, or the "
         "official LaTeX template). Extract its format facts — do NOT guess from "
         "memory; cite the official page.\n\n"
@@ -151,10 +139,10 @@ def _build_prompt(venue: str | None) -> str:
         "resolve_venue_profile as r; p=r('.'); print(p.key, p.page_budget_line())\"\n\n"
         "Also write paper/TEMPLATE_SOURCE.md recording the official URLs used, "
         "the extracted values, and `source: official | mirror (unverified)`. If "
-        "a fact cannot be confirmed, record the uncertainty. If no suitable "
-        "currently open CCF-A venue can be verified, write the blocker to "
+        "a fact cannot be confirmed, record the uncertainty. If the explicit "
+        "venue cannot be verified, write the blocker to "
         "research/VENUE_SELECTION.md and do not fabricate a profile. You are done "
-        "only when the selection is open, source-backed, and the profile loads."
+        "only when the venue is source-backed and the profile loads."
     )
 
 
@@ -175,6 +163,8 @@ def research_venue_profile(
         if not needs_venue_research(workdir):
             return False
         venue = _target_venue(workdir)
+        if not venue:
+            return False
         log.info("venue-research: codex live web-search for venue %r", venue)
         result = gateway_run_exec(
             runner,

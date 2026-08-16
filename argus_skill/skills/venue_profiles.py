@@ -477,9 +477,9 @@ def get_venue_profile(key: str | None) -> VenueProfile:
     """
     if not key:
         raise KeyError(
-            "no target venue selected: research the currently open, "
-            "domain-appropriate CCF-A venues and write target_venue plus "
-            "research/VENUE_PROFILE.json before venue-dependent paper work"
+            "no target venue selected: do not infer or search for one; ask the "
+            "operator to name a venue or explicitly request venue discovery before "
+            "venue-dependent paper work"
         )
     index = _alias_index()
     raw = str(key).strip().upper()
