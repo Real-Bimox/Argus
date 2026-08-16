@@ -74,6 +74,40 @@ def test_parse_planner_task_ignores_legacy_blocker_fingerprint() -> None:
     assert verdict.new_tasks[0].blocker_fingerprint == ""
 
 
+def test_parse_numbered_planner_task_fields() -> None:
+    verdict = parse_planner_text(
+        "PROJECT_DONE=false\n"
+        "REASON=Delegate the next bounded frontier.\n"
+        "TASK_1_TITLE=Certify the next multiplier family\n"
+        "TASK_1_OBJECTIVE=Produce a Reviewer-checkable theorem or obstruction.\n"
+        "TASK_1_ACCEPTANCE_CHECK=Run the exact verifier."
+    )
+
+    assert verdict.error == ""
+    assert len(verdict.new_tasks) == 1
+    assert verdict.new_tasks[0].title == "Certify the next multiplier family"
+    assert verdict.new_tasks[0].objective == (
+        "Produce a Reviewer-checkable theorem or obstruction."
+    )
+    assert verdict.new_tasks[0].acceptance_check == "Run the exact verifier."
+
+
+def test_parse_multiple_numbered_planner_tasks() -> None:
+    verdict = parse_planner_text(
+        "PROJECT_DONE=false\n"
+        "TASK_1_TITLE=First task\n"
+        "TASK_1_OBJECTIVE=Do the first bounded task.\n"
+        "TASK_2_TITLE=Second task\n"
+        "TASK_2_OBJECTIVE=Do the dependent bounded task."
+    )
+
+    assert verdict.error == ""
+    assert [task.title for task in verdict.new_tasks] == [
+        "First task",
+        "Second task",
+    ]
+
+
 def test_incomplete_key_value_result_is_retryable() -> None:
     verdict = parse_planner_text(
         "PROJECT_DONE=false\nREASON=External credential is still required."

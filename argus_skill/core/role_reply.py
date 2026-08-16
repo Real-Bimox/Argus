@@ -33,6 +33,7 @@ import re
 from typing import Any, Iterable, Mapping
 
 _FENCE = re.compile(r"^\s*```[a-zA-Z0-9_-]*\s*$")
+_SENTENCE_END = re.compile(r"[.!?。！？]")
 
 
 def _line_pattern(keys: Iterable[str]) -> re.Pattern[str]:
@@ -67,6 +68,13 @@ def read_key_values(text: str, keys: Iterable[str]) -> dict[str, str]:
             continue
         line = line.strip("`").strip()
         match = pattern.match(line)
+        if match is None:
+            # Streaming models occasionally omit the newline between their
+            # introductory sentence and the first named field.
+            for boundary in reversed(tuple(_SENTENCE_END.finditer(line))):
+                match = pattern.match(line[boundary.end() :].lstrip())
+                if match is not None:
+                    break
         if match is None:
             continue
         found[match.group("key").upper()] = match.group("value").strip().strip("`").strip()

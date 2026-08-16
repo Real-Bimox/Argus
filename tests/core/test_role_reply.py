@@ -72,6 +72,18 @@ def test_a_leading_status_emoji_does_not_hide_the_decision() -> None:
     }
 
 
+def test_missing_newline_after_intro_does_not_hide_first_decision() -> None:
+    values = read_key_values(
+        "I inspected the repository.CHOICE=existing\nVERTICAL=math",
+        ("CHOICE", "VERTICAL"),
+    )
+
+    assert values == {
+        "CHOICE": "existing",
+        "VERTICAL": "math",
+    }
+
+
 def test_a_code_fence_around_the_answer_does_not_break_it() -> None:
     reply = "```\nVERTICAL=research\nWORKFLOW_MODE=staged\n```"
 

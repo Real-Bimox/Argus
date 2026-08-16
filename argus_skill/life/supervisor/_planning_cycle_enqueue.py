@@ -600,8 +600,11 @@ class PlanningCycleEnqueueMixin:
 
     @staticmethod
     def _manager_decision_evidence(intent: Any) -> dict[str, Any]:
+        # Planner nodes are already subdivisions of the standing
+        # Manager-approved campaign. Mark that inherited authority even when
+        # the compact intent event has no optional routing fields.
         if not isinstance(intent, dict):
-            return {}
+            intent = {}
         evidence = {
             "vertical": str(intent.get("vertical") or "").strip(),
             "stage": str(
@@ -616,8 +619,7 @@ class PlanningCycleEnqueueMixin:
             ).strip(),
         }
         evidence = {key: value for key, value in evidence.items() if value}
-        if evidence:
-            evidence["routed"] = True
+        evidence["routed"] = True
         return evidence
 
     def _pc_record_revision_rejection(

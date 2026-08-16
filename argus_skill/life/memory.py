@@ -1423,6 +1423,9 @@ class Backlog:
                     )
                     for goal in non_goals
                 ]
+            inherited_manager_decision = dict(blocked.manager_decision)
+            if decision:
+                inherited_manager_decision["routed"] = True
             continuation = BacklogItem.new(
                 title=blocked.title,
                 objective=objective,
@@ -1456,7 +1459,7 @@ class Backlog:
                 expected_regressions=blocked.expected_regressions,
                 decision_rule=blocked.decision_rule,
                 non_goals=non_goals,
-                manager_decision=dict(blocked.manager_decision),
+                manager_decision=inherited_manager_decision,
             )
             blocked.status = "failed"
             blocked.finished_ts = time.time()
