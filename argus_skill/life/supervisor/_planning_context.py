@@ -802,12 +802,29 @@ class PlanningContextMixin:
         if state is None:
             return ""
         diagnostic = str(state.get("diagnostic") or "")
+        # Both diagnostics are satisfied by exactly one thing, and it is the
+        # same thing: ``_mission_execution_settlement`` writes the certified
+        # journal entry these gates read only for a mission that succeeded,
+        # carried ``item_scope == final_submission``, and was certified by the
+        # Reviewer. ``research_target_incomplete`` used to fall through to the
+        # "harness does not prescribe a task" branch — telling the Planner to
+        # use its judgement about a gate that accepts one prescribed action and
+        # nothing else. Testbed run 8 (s-fed750c2) burned four missions
+        # guessing, each independently reviewed ``done`` and each rejected;
+        # run 9 (s-1828745c) answered instead by escalating into
+        # self-maintenance and patching the Planner's own source.
+        prescribes_final_submission = diagnostic in {
+            "final_certification_missing",
+            "research_target_incomplete",
+        }
         task_instruction = (
             "The missing invariant is final independent certification. Author the "
             "next executable certification task with "
             "`TASK_SCOPE=final_submission`, so its successful Reviewer verdict can "
-            "be recorded as project-final evidence."
-            if diagnostic == "final_certification_missing"
+            "be recorded as project-final evidence. A task left at the default "
+            "bounded scope cannot satisfy this gate, however complete the work "
+            "behind it already is."
+            if prescribes_final_submission
             else (
                 "You decide which tasks, if any, are appropriate; the harness does "
                 "not prescribe a repair or delivery task."
