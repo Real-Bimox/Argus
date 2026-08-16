@@ -13,6 +13,8 @@ import pytest
 
 from argus_skill.daemon.state import (
     _process_alive as process_alive,
+)
+from argus_skill.daemon.state import (
     _terminate_windows_process_tree as terminate_windows_process_tree,
 )
 
