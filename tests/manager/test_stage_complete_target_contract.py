@@ -40,6 +40,16 @@ in as many ticks as there are stages with every gate still enforced.
 
 An *earlier* or unknown target stays fail-closed: that is a model confusing
 completion with a rollback, not a wording slip.
+
+Third pass. Pinning the field in the prompt worked — and that is how run 15
+(``s-f0dbba19``) failed. It emitted ``ACTION=complete`` / ``TARGET_STAGE=scope``
+at ``current_stage=scope``, exactly as instructed, and was refused for
+completing from a non-final stage. That shape is still not rewritten *here*:
+naming a later stage says "the work through X is done", which is a request to
+move and can be settled on shape alone, while naming the current stage says
+"close the project", which the completion contract exists to answer. The rescue
+for it therefore lives with the blockers, in
+``test_stage_complete_nonfinal_deadlock.py``.
 """
 
 from __future__ import annotations
@@ -60,6 +70,12 @@ def _verdict(action: str, target: str, *, current: str = "scope"):
 
 
 def test_complete_at_the_current_stage_is_unchanged() -> None:
+    """Left for the completion contract to answer, not settled here.
+
+    Whether this one becomes a step forward depends on why completion is
+    refused, which the parser cannot see — see
+    ``test_stage_complete_nonfinal_deadlock.py``.
+    """
     decision = _verdict("complete", "scope")
 
     assert decision.action == "complete"

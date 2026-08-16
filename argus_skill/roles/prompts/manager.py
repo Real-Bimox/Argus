@@ -1348,9 +1348,12 @@ def build_stage_decision_prompt(
         "- HOLD when any checklist work remains, or the evidence is weak/unclear.\n"
         "- ROLL BACK only when an EARLIER stage's evidence is missing, stale, or "
         "unreliable (say which one and why).\n"
-        "- For a finite objective, COMPLETE at the current stage when its checklist "
-        "is certified, the operator objective is satisfied, and every later stage "
-        "is inapplicable. For an open-ended campaign, do not COMPLETE. Reviewer "
+        "- For a finite objective whose current stage is the LAST one, COMPLETE "
+        "when its checklist is certified and the operator objective is "
+        "satisfied. From any earlier stage, ADVANCE instead, however finished "
+        "the objective looks: completion is only legal at the last stage, and "
+        "the harness steps one stage per turn with each gate running on the way "
+        "past. For an open-ended campaign, do not COMPLETE. Reviewer "
         "certification is evidence, not an automatic completion decision.\n"
         "- Stage names recorded in `research/GROUND_TRUTH.md` are dated "
         "observations, not live stage invariants. A legal pipeline transition "
@@ -1372,9 +1375,11 @@ def build_stage_decision_prompt(
         # ``current_stage=scope``, so the stage never advanced in either run
         # even though both campaigns completed and delivered.
         #
-        # The parser now normalizes a later target instead of rejecting it, so
-        # this is no longer the only thing standing between a correct decision
-        # and a lost one — but an exact answer still keeps the trace clean.
+        # Pinning it here then produced run 15, which obeyed the instruction and
+        # was refused for completing from a non-final stage. Both shapes are now
+        # executed as a one-step advance, so neither the obedient nor the
+        # improvising Manager loses its verdict; this line only keeps the trace
+        # exact.
         "For HOLD and for COMPLETE, set TARGET_STAGE to the current stage."
     )
 
