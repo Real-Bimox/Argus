@@ -181,7 +181,7 @@ def test_a_context_claim_route_assumption_and_judgement_all_read_back(
                     "--statement", text)[0] == 0
     assert _run(tmp_path, "route", "--id", "R1", "--goal", "C1",
                 "--obligation", "L1")[0] == 0
-    assert _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+    assert _run(tmp_path, "assume", "--by", "engineer:you", "--claim", "C1", "--id", "RH",
                 "--statement", "The Riemann Hypothesis",
                 "--source", "Riemann 1859")[0] == 0
     assert _run(tmp_path, "judge", "--claim", "C1", "--verdict", "supports",
@@ -209,7 +209,7 @@ def test_a_citation_records_the_proposition_and_reports_that_nobody_checked_it(
     assert _run(tmp_path, "context", "--id", "ctx", "--statement", "Fix n : Nat.")[0] == 0
     assert _run(tmp_path, "claim", "--id", "C1", "--context", "ctx",
                 "--statement", "n + n is even")[0] == 0
-    assert _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+    assert _run(tmp_path, "assume", "--by", "engineer:you", "--claim", "C1", "--id", "RH",
                 "--statement", "The Riemann Hypothesis",
                 "--source", "Titchmarsh, The Theory of the Riemann Zeta-function",
                 "--source-id", "doi:10.1093/oso/9780198533696.001.0001",
@@ -238,7 +238,7 @@ def test_an_assumption_citing_prose_says_so_instead_of_queuing_a_lookup(
     assert _run(tmp_path, "context", "--id", "ctx", "--statement", "Fix n : Nat.")[0] == 0
     assert _run(tmp_path, "claim", "--id", "C1", "--context", "ctx",
                 "--statement", "n + n is even")[0] == 0
-    code, payload = _run(tmp_path, "assume", "--claim", "C1", "--id", "F",
+    code, payload = _run(tmp_path, "assume", "--by", "engineer:you", "--claim", "C1", "--id", "F",
                          "--statement", "the standard averaging bound",
                          "--source", "folklore, stated in seminar notes")
     assert code == 0
@@ -260,7 +260,7 @@ def test_half_a_citation_is_refused_by_check_rather_than_read_as_uncited(
     assert _run(tmp_path, "context", "--id", "ctx", "--statement", "Fix n : Nat.")[0] == 0
     assert _run(tmp_path, "claim", "--id", "C1", "--context", "ctx",
                 "--statement", "n + n is even")[0] == 0
-    assert _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+    assert _run(tmp_path, "assume", "--by", "engineer:you", "--claim", "C1", "--id", "RH",
                 "--statement", "The Riemann Hypothesis",
                 "--source", "Titchmarsh",
                 "--source-id", "doi:10.1093/oso/9780198533696.001.0001")[0] == 0
@@ -597,7 +597,7 @@ def test_a_hand_edited_ledger_is_repaired_by_the_next_write_not_refused_by_it(
     """
     _run(tmp_path, "context", "--id", "ctx", "--statement", "Fix n : Nat.")
     _run(tmp_path, "claim", "--id", "C1", "--context", "ctx", "--statement", "P")
-    _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+    _run(tmp_path, "assume", "--by", "engineer:you", "--claim", "C1", "--id", "RH",
          "--statement", "The Riemann Hypothesis", "--source", "Riemann 1859")
 
     # The hand edit: a third version that quietly stops listing the assumption.
@@ -1281,7 +1281,7 @@ def test_an_assumption_holds_a_proved_claim_at_conditional_kernel(
     source = _proved_project(tmp_path)
     record_lean_evidence(tmp_path, claim_id="C1", source=source)
 
-    _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+    _run(tmp_path, "assume", "--by", "engineer:you", "--claim", "C1", "--id", "RH",
          "--statement", "The Riemann Hypothesis", "--source", "Riemann 1859")
     _, payload = _run(tmp_path, "show", "--claim", "C1")
     assert payload["claim"]["status"] == ClaimStatus.CONDITIONAL_KERNEL.value
@@ -1311,7 +1311,7 @@ def test_dropping_an_assumption_without_a_reason_is_refused_from_the_cli(
     """
     source = _proved_project(tmp_path)
     record_lean_evidence(tmp_path, claim_id="C1", source=source)
-    _run(tmp_path, "assume", "--claim", "C1", "--id", "RH",
+    _run(tmp_path, "assume", "--by", "engineer:you", "--claim", "C1", "--id", "RH",
          "--statement", "The Riemann Hypothesis", "--source", "Riemann 1859")
 
     code, payload = _run(tmp_path, "revise-claim", "--id", "C1",

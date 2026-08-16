@@ -445,21 +445,51 @@ def test_doctoral_non_breakthrough_results_are_not_success(result: dict) -> None
     assert _final_stage_decision(result, "doctoral") is None
 
 
-def test_doctoral_verified_new_publishable_or_doctoral_result_succeeds() -> None:
-    for significance in ("publishable", "doctoral"):
-        result = _research_result(
-            "new_theorem",
-            novelty="verified_new",
-            significance=significance,
-        )
-        assert (
-            research_completion_issue(
-                result,
-                research_target_level="doctoral",
-            )
-            == ""
-        )
-        assert _final_stage_decision(result, "doctoral") is not None
+def test_a_doctoral_target_is_not_cleared_by_publishable_significance() -> None:
+    """This test used to assert the opposite, and that was the defect.
+
+    ``publishable`` and ``doctoral`` accepted the same significance set for
+    every original result, so asking for doctoral work bought nothing: a
+    correct, verified-new theorem its own author graded ``publishable``
+    completed a doctoral project. The survey branch of the same function had
+    the ladder right the whole time, which is what made the omission easy to
+    miss — the vocabulary, the prompts, and the operator's expectation all had
+    two levels, and only the check had one.
+    """
+    publishable = _research_result(
+        "new_theorem", novelty="verified_new", significance="publishable"
+    )
+
+    assert (
+        research_completion_issue(publishable, research_target_level="doctoral")
+        == "significance_below_doctoral:publishable"
+    )
+    assert _final_stage_decision(publishable, "doctoral") is None
+
+    # ...and the same result still completes the target it was graded for.
+    assert (
+        research_completion_issue(publishable, research_target_level="publishable")
+        == ""
+    )
+    assert _final_stage_decision(publishable, "publishable") is not None
+
+
+def test_doctoral_significance_completes_a_doctoral_target() -> None:
+    result = _research_result(
+        "new_theorem", novelty="verified_new", significance="doctoral"
+    )
+
+    assert research_completion_issue(result, research_target_level="doctoral") == ""
+    assert _final_stage_decision(result, "doctoral") is not None
+
+
+def test_a_higher_rating_never_fails_a_lower_target() -> None:
+    """The ladder is monotone: nothing is refused for being too good."""
+    from argus_skill.core.research_contract import ACCEPTED_SIGNIFICANCE
+
+    order = ("exploratory", "publishable", "doctoral")
+    for index, target in enumerate(order):
+        assert ACCEPTED_SIGNIFICANCE[target] == frozenset(order[index:]), target
 
 
 def test_literature_review_uses_survey_quality_not_original_novelty() -> None:
@@ -711,3 +741,51 @@ def test_math_review_survives_a_direct_workflow_decision(tmp_path: Path) -> None
     persist_vertical(tmp_path, "math", workflow_mode="direct")
 
     assert _independent_review_required_for_project_root(tmp_path) is True
+
+
+# ---------------------------------------------------------------------------
+# Contract surfaces that were never wired
+# ---------------------------------------------------------------------------
+
+
+def test_math_declares_no_gate_that_nothing_runs() -> None:
+    """``STAGE_CHECKS`` and ``REVIEWER_CHECKLISTS`` are read by nothing.
+
+    ``vertical_contract`` stores ``STAGE_CHECKS`` and only ``assurance_level``
+    reads it back; nothing in this repository ever executes one of those shell
+    commands, and ``REVIEWER_CHECKLISTS`` is not read at all outside the
+    verticals that copy it from each other. Math declared both, so "is this
+    stage gated?" had a plausible wrong answer sitting in the module a
+    maintainer would read first.
+    """
+    module = load_vertical("math")
+
+    assert not hasattr(module, "STAGE_CHECKS")
+    assert not hasattr(module, "REVIEWER_CHECKLISTS")
+
+
+def test_dropping_them_did_not_drop_the_real_stage_check() -> None:
+    from argus_skill.verticals._base import load_vertical_contract
+
+    contract = load_vertical_contract("math")
+
+    assert contract.stage_completion_validator is not None
+    assert contract.assurance_level == "hybrid"
+
+
+def test_the_scope_instruction_survived_the_deletion() -> None:
+    """The reviewer checklist held one instruction that lived nowhere else.
+
+    Everything else in it restated "review the mathematics, not the paperwork",
+    which the review skill already says. This did not: establish the problem's
+    known status while scoping, instead of letting each later worker rediscover
+    it. Deleting the dict without moving it would have deleted the instruction.
+    """
+    skill = (
+        Path(__file__).resolve().parents[2]
+        / "argus_skill/verticals/math/skills/reviewer/math-research-review.md"
+    ).read_text(encoding="utf-8")
+
+    assert "known status of the problem" in " ".join(skill.split())
+    assert "was established here, and written down" in " ".join(skill.split())
+    assert "rediscover" in skill

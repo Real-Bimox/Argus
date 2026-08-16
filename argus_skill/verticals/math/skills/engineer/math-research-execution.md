@@ -117,7 +117,8 @@ there is no argument you can type that produces it. Keep it current with
     $S claim --id C1 --context ctx --statement "..." --formal-file research/lean/Main.lean
 
     # a result taken from elsewhere: holds C1 at conditional_kernel until retired
-    $S assume --claim C1 --id RH --statement "..." --source "Riemann 1859" \
+    $S assume --claim C1 --id RH --by "engineer:you" --statement "..." \
+        --source "Riemann 1859" \
         --source-id "doi:10.1093/oso/9780198533696.001.0001" --locator "Theorem 14.2"
 
     # one decomposition of a goal into obligations; records a plan, confers nothing
@@ -230,7 +231,7 @@ nothing about that waits on you mid-proof. Run
     $C status                                     # what still owes a lookup
     $C resolve --claim C1 --assumption RH         # does the document exist
     $C attribute --claim C1 --assumption RH \
-        --excerpt-file read.txt --verdict supports --by "reader:you"
+        --excerpt-file read.txt --verdict supports --by "reader:whoever-looked"
 
 whenever it suits — between routes, while a compile runs, or as a task handed to
 another worker. The work list is derived from the ledger rather than stored, so
@@ -253,6 +254,17 @@ opinion: a later reader can open what you read and disagree. Quote the statement
 including its hypotheses — a paper that has the theorem under conditions that do
 not hold here is the failure this is for, and it is invisible in a summary. A
 `refutes` needs an excerpt too: quote what is actually at that number.
+
+One citation you cannot close is your own. `attribute` refuses a `supports`
+verdict filed under the same name that ran `assume`, and a citation whose only
+support came from its filer reports as `self_checked` and does not clear
+delivery. This is not a comment on your care. You wrote "Theorem 3.2 of [K]"
+because you believed [K] has a Theorem 3.2 saying that; your going back and
+agreeing is that belief a second time, and the reading is exactly what is in
+question. Hand it to the Reviewer or to another worker. The other direction is
+always open: if you go back and find it is *not* there, file the `refutes`
+yourself — that is the one answer self-checking cannot manufacture, and it is
+worth more than any confirmation.
 
 If the source cannot be obtained at all, say so instead of leaving the lookup
 open — restate the assumption with `--source` alone and no `--source-id`, which

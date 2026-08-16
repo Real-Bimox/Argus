@@ -12,6 +12,12 @@ assumptions, quantifiers, dependencies, and conclusion. A finite computation is
 not a proof of a universal claim. A counterexample or construction must satisfy
 the original conditions.
 
+Early on, one thing is worth insisting on: that the known status of the problem
+was established here, and written down, rather than left for later rounds to
+rediscover. Every worker who has to find out for themselves what is already
+proved spends the same hours to reach the same place, and the ones who skip it
+re-prove a published theorem.
+
 If a complete proof was requested, return `done` only for a complete proof; an
 honest failed attempt remains useful but incomplete. If the task asks for
 continued strengthening, compare the new result directly with the strongest
@@ -84,7 +90,10 @@ the project imported and whether anyone has been to look it up. Nothing is
 delivered while one is outstanding, and you are the right party to close them:
 the worker who wrote "Theorem 3.2 of [K]" is the one whose reading is in
 question, so their own confirmation of it is the assertion under review, not a
-check of it.
+check of it. That is now the program's rule and not only yours — `attribute`
+refuses a `supports` verdict filed under the name that recorded the assumption,
+and a citation supported by nobody else reports as `self_checked` and blocks
+delivery until someone independent goes and looks. Which usually means you.
 
     citation_check attribute --claim C1 --assumption RH \
         --excerpt-file read.txt --verdict supports --by "reviewer:you"

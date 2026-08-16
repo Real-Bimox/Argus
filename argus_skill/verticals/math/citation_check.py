@@ -342,8 +342,32 @@ def attribute_citation(
     whatever they found where the citation pointed — the theorem that actually
     carries that number, the numbering around the gap. "It is not there" with
     nothing attached is an opinion, and the tier for opinions is ``judgement``.
+
+    A supporting verdict from the assumption's own filer is refused here as well
+    as discounted at read time. The read-side rule in ``assess_citation`` is the
+    gate — it holds against a record written by any route, including a hand
+    edit — and this is the error message: refusing at the point of the mistake
+    says which reader is needed while the worker is still standing there, rather
+    than leaving a citation that reads ``self_checked`` for whoever runs
+    ``status`` next. Refutations and inconclusive answers from the filer are
+    recorded normally; those are reports against interest.
     """
-    _require_assumption(project_root, claim_id, assumption_id)
+    assumption = _require_assumption(project_root, claim_id, assumption_id)
+    filer = normalize_text(assumption.filed_by)
+    if verdict == Verdict.SUPPORTS and filer and normalize_text(checked_by) == filer:
+        return {
+            "ok": False,
+            "layer": "attribution",
+            "recorded": None,
+            "refusals": [
+                f"{checked_by!r} filed this assumption, so this confirms a "
+                "citation you wrote. The reading of the source is the thing "
+                "under review, and its author's answer is that reading again, "
+                "not a check of it — record it under the reader who actually "
+                "went and looked. A refutation or an inconclusive answer from "
+                "you is recorded normally"
+            ],
+        }
     if normalize_text(checked_by).startswith(_RESOLVER_PREFIX):
         return {
             "ok": False,

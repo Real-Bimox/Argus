@@ -199,6 +199,28 @@ def normalize_research_result(value: Any) -> dict[str, Any] | None:
     }
 
 
+#: Which significance ratings clear each research target.
+#:
+#: A target level is a bar, and two bars that accept the same set are one bar
+#: with two names. That is what ``publishable`` and ``doctoral`` were for every
+#: result class except surveys: the survey branch below has always indexed the
+#: accepted set by target, while the original-result branch asked only for
+#: ``significance in {publishable, doctoral}`` regardless of which of the two
+#: was requested — so an operator who asked for doctoral work and received a
+#: result its own author graded ``publishable`` got a completion. The distinction
+#: survived in the vocabulary, in the prompts that ask a Reviewer to grade
+#: against it, and in the operator's expectation; it did not survive in the
+#: check. One table, read by both branches, is the whole fix.
+#:
+#: Monotone by construction: a higher rating always clears a lower target, so
+#: nothing is refused for being too good.
+ACCEPTED_SIGNIFICANCE: dict[str, frozenset[str]] = {
+    "exploratory": frozenset({"exploratory", "publishable", "doctoral"}),
+    "publishable": frozenset({"publishable", "doctoral"}),
+    "doctoral": frozenset({"doctoral"}),
+}
+
+
 def adapt_legacy_research_result_payload(
     payload: Any,
 ) -> dict[str, Any] | None:
@@ -243,12 +265,7 @@ def research_completion_issue(
     if result_class == "literature_review":
         if novelty not in {"known", "not_applicable"}:
             return "survey_novelty_must_be_not_applicable"
-        accepted_significance = {
-            "exploratory": {"exploratory", "publishable", "doctoral"},
-            "publishable": {"publishable", "doctoral"},
-            "doctoral": {"doctoral"},
-        }[target]
-        if significance in accepted_significance:
+        if significance in ACCEPTED_SIGNIFICANCE[target]:
             return ""
         return f"survey_significance_below_{target}:{significance}"
     if target == "exploratory":
@@ -261,7 +278,7 @@ def research_completion_issue(
         return f"result_class_below_{target}:{result_class}"
     if novelty != "verified_new":
         return "novelty_not_verified_new"
-    if significance not in {"publishable", "doctoral"}:
+    if significance not in ACCEPTED_SIGNIFICANCE[target]:
         return f"significance_below_{target}:{significance}"
     return ""
 
@@ -281,6 +298,7 @@ def research_pause_status(value: Any) -> str:
 
 
 __all__ = [
+    "ACCEPTED_SIGNIFICANCE",
     "CORRECTNESS_STATUSES",
     "NOVELTY_STATUSES",
     "RESEARCH_TARGET_LEVELS",

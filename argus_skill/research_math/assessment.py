@@ -54,6 +54,7 @@ from .models import (
     ProofRoute,
     SubjectRef,
     Verdict,
+    normalize_text,
 )
 
 __all__ = [
@@ -450,10 +451,19 @@ class CitationStatus(str, Enum):
     hypotheses hold in this setting, which is the third question and a fidelity
     one. The assumption stays undischarged either way, and the claim stays at
     ``conditional_kernel``.
+
+    ``self_checked`` is the one state that is about the checker rather than the
+    source. It says every supporting answer came from the party that filed the
+    assumption, which is the reading under review restating itself. It is a
+    separate state and not simply ``unchecked`` because the work list they
+    generate is different: ``unchecked`` asks for a reader, and this asks for a
+    *different* reader, and someone told the first thing does the obvious wrong
+    thing, which is to check it again.
     """
 
     UNCITED = "uncited"
     UNCHECKED = "unchecked"
+    SELF_CHECKED = "self_checked"
     CONFIRMED = "confirmed"
     DISPUTED = "disputed"
     INCONCLUSIVE = "inconclusive"
@@ -523,6 +533,26 @@ def assess_citation(
     the agreeing checker is how a wrong citation reaches a reader. Both
     producers are reported, so the disagreement is visible rather than resolved
     in silence.
+
+    A confirmation from the assumption's own filer is not one. The party who
+    wrote "Theorem 3.2 of [K]" is the party whose reading is in question, so
+    their own answer that [K] does contain a Theorem 3.2 is that reading
+    restated — the assertion under review, not a check of it. So supports are
+    counted only from producers other than ``filed_by``, and a citation whose
+    every supporter is the filer reads ``self_checked``: still open, and open
+    for a reason that says what would close it.
+
+    This applies to supports only. A filer who *refutes* their own citation is
+    reporting against interest, which is the one direction self-checking cannot
+    manufacture, and discarding it would let a worker bury a citation they had
+    already found to be wrong. Inconclusive is treated the same way, for the
+    same reason: it concedes rather than claims.
+
+    An assumption with no recorded filer — one written before the field existed,
+    or through the kernel API rather than the CLI — cannot be measured against
+    this rule, and is not retroactively downgraded. That is a real gap and the
+    honest place for it: the check reports what it knows, and the CLI requires
+    ``--by`` so that nothing recorded from here on lands in that gap.
     """
     subject = assumption.ref()
     if not assumption.cited_proposition:
@@ -534,10 +564,18 @@ def assess_citation(
         if record.binds_to(subject) and record.tier in CITATION_CHECK_TIERS
     ]
     verdicts = {record.verdict for record in checks}
+    filer = normalize_text(assumption.filed_by)
+    independent_support = any(
+        record.verdict == Verdict.SUPPORTS
+        and (not filer or normalize_text(record.produced_by) != filer)
+        for record in checks
+    )
     if Verdict.REFUTES in verdicts:
         status = CitationStatus.DISPUTED
-    elif Verdict.SUPPORTS in verdicts:
+    elif independent_support:
         status = CitationStatus.CONFIRMED
+    elif Verdict.SUPPORTS in verdicts:
+        status = CitationStatus.SELF_CHECKED
     elif Verdict.INCONCLUSIVE in verdicts:
         status = CitationStatus.INCONCLUSIVE
     else:

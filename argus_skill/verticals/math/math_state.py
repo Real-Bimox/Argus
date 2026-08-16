@@ -1240,18 +1240,35 @@ def _cmd_revise_claim(state: MathState, args: argparse.Namespace) -> dict[str, A
 
 def _cmd_assume(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
     _require_claim(state, args.claim)
+    kept = [
+        item
+        for item in _standing_on(state, args.claim)
+        if item.assumption_id != args.id
+    ]
+    # Re-stating an assumption keeps the filer the first recording named. The
+    # filer is not in the digest, so a re-file does not shed the evidence bound
+    # to it — which means letting the name change would let a worker whose own
+    # confirmation was discounted simply re-file under a colleague's name and
+    # have it count. Correcting a genuinely wrong filer is a retirement and a
+    # new id: that drops the checks obtained under the old one, which is the
+    # right outcome, because they were obtained about a different arrangement
+    # of who was checking whom.
+    previous = next(
+        (
+            item
+            for item in _standing_on(state, args.claim)
+            if item.assumption_id == args.id and item.filed_by
+        ),
+        None,
+    )
     assumption = ExternalAssumption(
         assumption_id=args.id,
         statement=args.statement,
         source=args.source,
         source_id=str(getattr(args, "source_id", "") or ""),
         locator=str(getattr(args, "locator", "") or ""),
+        filed_by=previous.filed_by if previous else str(getattr(args, "by", "") or ""),
     )
-    kept = [
-        item
-        for item in _standing_on(state, args.claim)
-        if item.assumption_id != args.id
-    ]
     revised = state.revise_claim(
         args.claim, external_assumptions=(*kept, assumption)
     )
@@ -1264,6 +1281,14 @@ def _cmd_assume(state: MathState, args: argparse.Namespace) -> dict[str, Any]:
             "conditional_kernel until a proof kernel discharges it"
         ),
     }
+    if previous is not None and normalize_text(previous.filed_by) != normalize_text(
+        str(getattr(args, "by", "") or "")
+    ):
+        payload["filed_by"] = (
+            f"kept {previous.filed_by!r}, who first recorded this assumption. "
+            "The filer is who the citation's own confirmation is measured "
+            "against, so re-filing does not reassign it"
+        )
     if not assumption.cited_proposition:
         payload["citation"] = (
             "this assumption cites prose and names no proposition, so `show` "
@@ -1483,6 +1508,18 @@ def _build_parser() -> argparse.ArgumentParser:
     assume.add_argument("--id", required=True)
     assume.add_argument("--statement", required=True)
     assume.add_argument("--source", required=True)
+    assume.add_argument(
+        "--by",
+        required=True,
+        help=(
+            "who is putting this dependency on the record. Kept so that a "
+            "later confirmation of the citation can be told apart from its "
+            "author restating it: `citation_check attribute` refuses a "
+            "supporting verdict under this same name, and a citation whose "
+            "only support came from here reports as `self_checked` and does "
+            "not clear delivery. Refuting your own citation is always recorded"
+        ),
+    )
     assume.add_argument(
         "--source-id",
         default="",

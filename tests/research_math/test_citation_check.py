@@ -86,6 +86,8 @@ def _project(root: Path, *, source_id: str = DOI, locator: str = LOCATOR) -> Non
     )
     argv = [
         "assume",
+        "--by",
+        "engineer:you",
         "--claim",
         "C1",
         "--id",
@@ -439,6 +441,8 @@ def test_correcting_the_theorem_number_drops_the_confirmation(
     _state(
         tmp_path,
         "assume",
+        "--by",
+        "engineer:you",
         "--claim",
         "C1",
         "--id",
@@ -617,3 +621,197 @@ def test_the_command_line_reports_what_is_outstanding_and_exits_on_it(
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
     assert payload["blocking"] == {}
+
+
+# ---------------------------------------------------------------------------
+# The reader whose reading is under review
+# ---------------------------------------------------------------------------
+#
+# The Reviewer skill has always said this in prose: "the worker who wrote
+# 'Theorem 3.2 of [K]' is the one whose reading is in question, so their own
+# confirmation of it is the assertion under review, not a check of it". Nothing
+# held it. An engineer could file the assumption, then file a supporting
+# literature verdict under any string at all -- including its own name -- and
+# the citation read `confirmed`, cleared `review`, and shipped.
+
+
+def test_the_filer_cannot_confirm_their_own_citation(tmp_path: Path) -> None:
+    _project(tmp_path)
+    excerpt = tmp_path / "read.txt"
+    excerpt.write_text(EXCERPT, encoding="utf-8")
+
+    result = attribute_citation(
+        tmp_path,
+        claim_id="C1",
+        assumption_id="rh",
+        excerpt=EXCERPT,
+        verdict=Verdict.SUPPORTS,
+        checked_by="engineer:you",
+    )
+
+    assert result["ok"] is False
+    assert result["recorded"] is None
+    (refusal,) = result["refusals"]
+    assert "filed this assumption" in refusal
+    assert _status(tmp_path) is CitationStatus.UNCHECKED
+
+
+def test_the_filer_can_still_refute_their_own_citation(tmp_path: Path) -> None:
+    """A report against interest is the one thing self-checking cannot fake.
+
+    Discarding it would be strictly worse than the hole it closes: a worker who
+    went back, found the theorem was not there, and said so would be unable to
+    record it, and the wrong citation would survive on the strength of nobody
+    having filed anything.
+    """
+    _project(tmp_path)
+
+    result = attribute_citation(
+        tmp_path,
+        claim_id="C1",
+        assumption_id="rh",
+        excerpt="Theorem 14.2 is about the divisor function and says nothing "
+        "whatever about zeta zeros or the error term.\n",
+        verdict=Verdict.REFUTES,
+        checked_by="engineer:you",
+    )
+
+    assert result["ok"] is True
+    assert _status(tmp_path) is CitationStatus.DISPUTED
+
+
+def test_a_self_supported_citation_is_reported_not_silently_confirmed(
+    tmp_path: Path,
+) -> None:
+    """The write-time refusal is the error message; this is the gate.
+
+    A record can reach the ledger without passing through ``attribute`` -- a
+    hand edit, a direct kernel call, an older file. The status is derived, so
+    it does not matter how the record got there.
+    """
+    from argus_skill.verticals.math.math_state import record_citation_evidence
+
+    _project(tmp_path)
+    record_citation_evidence(
+        tmp_path,
+        claim_id="C1",
+        assumption_id="rh",
+        verdict=Verdict.SUPPORTS,
+        produced_by="engineer:you",
+        retrieval={"kind": "excerpt", "text": EXCERPT},
+    )
+
+    assert _status(tmp_path) is CitationStatus.SELF_CHECKED
+
+
+def test_a_self_checked_citation_does_not_ship(tmp_path: Path) -> None:
+    _project(tmp_path)
+    from argus_skill.verticals.math.math_state import record_citation_evidence
+
+    record_citation_evidence(
+        tmp_path,
+        claim_id="C1",
+        assumption_id="rh",
+        verdict=Verdict.SUPPORTS,
+        produced_by="engineer:you",
+        retrieval={"kind": "excerpt", "text": EXCERPT},
+    )
+
+    assert CitationStatus.SELF_CHECKED not in DELIVERABLE_STATUSES
+    issues = stage_completion_issues("review", tmp_path)
+    assert any("rh" in issue for issue in issues), issues
+
+
+def test_one_independent_reader_is_enough(tmp_path: Path) -> None:
+    _project(tmp_path)
+
+    assert (
+        attribute_citation(
+            tmp_path,
+            claim_id="C1",
+            assumption_id="rh",
+            excerpt=EXCERPT,
+            verdict=Verdict.SUPPORTS,
+            checked_by="reviewer:alice",
+        )["ok"]
+        is True
+    )
+
+    assert _status(tmp_path) is CitationStatus.CONFIRMED
+    assert not [
+        issue for issue in stage_completion_issues("review", tmp_path) if "rh" in issue
+    ]
+
+
+def test_re_filing_does_not_reassign_the_filer(tmp_path: Path) -> None:
+    """Otherwise the rule costs one command to get around.
+
+    The filer is outside the assumption's digest -- deliberately, so that a
+    refutation cannot be shed by restating the assumption -- which means a
+    re-file keeps every check bound to it. If the name moved too, a worker whose
+    own confirmation was discounted would re-file under a colleague and have it
+    counted.
+    """
+    _project(tmp_path)
+    payload = _state(
+        tmp_path,
+        "assume",
+        "--by",
+        "engineer:someone-else",
+        "--claim",
+        "C1",
+        "--id",
+        "rh",
+        "--statement",
+        "Every nontrivial zero has real part one half.",
+        "--source",
+        "Titchmarsh, The Theory of the Riemann Zeta-Function",
+        "--source-id",
+        DOI,
+        "--locator",
+        LOCATOR,
+    )
+
+    assert "engineer:you" in payload["filed_by"]
+    result = attribute_citation(
+        tmp_path,
+        claim_id="C1",
+        assumption_id="rh",
+        excerpt=EXCERPT,
+        verdict=Verdict.SUPPORTS,
+        checked_by="engineer:you",
+    )
+    assert result["ok"] is False
+
+
+def test_an_assumption_with_no_recorded_filer_is_not_downgraded(
+    tmp_path: Path,
+) -> None:
+    """Records written before the field existed keep the reading they had.
+
+    Failing them closed would invalidate confirmations that were obtained
+    honestly and cannot now be re-obtained against a filer nobody wrote down.
+    The CLI requires ``--by``, so the gap does not grow.
+    """
+    from argus_skill.research_math import ExternalAssumption
+    from argus_skill.research_math.assessment import assess_citation
+    from argus_skill.research_math.models import EvidenceRecord
+
+    legacy = ExternalAssumption(
+        assumption_id="rh",
+        statement="Every nontrivial zero has real part one half.",
+        source="Titchmarsh",
+        source_id=DOI,
+        locator=LOCATOR,
+    )
+    assert legacy.filed_by == ""
+    record = EvidenceRecord(
+        evidence_id="legacy-1",
+        subject=legacy.ref(),
+        tier=EvidenceTier.LITERATURE,
+        verdict=Verdict.SUPPORTS,
+        produced_by="whoever",
+        artifact="research/literature/x.json",
+    )
+
+    assert assess_citation(legacy, [record]).status is CitationStatus.CONFIRMED

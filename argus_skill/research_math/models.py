@@ -273,6 +273,31 @@ class ExternalAssumption:
     correcting ``locator`` from ``Theorem 3.1`` to ``Theorem 3.2`` mints a
     different reference, and a check obtained against the wrong theorem does not
     survive it.
+
+    ``filed_by`` names whoever put this dependency on the record, and it is the
+    only field here that is about the recording rather than the mathematics. It
+    exists so that ``assess_citation`` can answer a question the schema could
+    not previously be asked: was the party who checked this citation the same
+    party whose reading is in question. Writing "Theorem 3.2 of [K]" and then
+    confirming that [K] contains a Theorem 3.2 is the assertion restated, not a
+    check of it, and without a filer on record the two are indistinguishable
+    from a confirmed citation obtained independently.
+
+    Deliberately *outside* the digest, unlike ``source_id`` and ``locator``.
+    Including it would be the tidier symmetry and the wrong rule: a refutation
+    binds to the assumption's ``ref()``, so a filer in the digest would let
+    anyone shed an inconvenient "it is not there" by re-filing the same
+    assumption under a different name. Confirmations are worth less than
+    refutations here, and no arrangement that makes refutations sheddable is a
+    net gain.
+
+    It is not an identity. Nothing authenticates it, and an agent that types
+    someone else's name gets someone else's name recorded — the same hole
+    ``produced_by`` has, in the same place, for the same reason. What it buys is
+    that the *undisguised* case stops working: a worker who files and then
+    checks under its own name is now refused, and getting past that requires
+    stating an identity that is not yours, which is a different act from
+    forgetting that a check was supposed to be independent.
     """
 
     assumption_id: str
@@ -280,6 +305,7 @@ class ExternalAssumption:
     source: str
     source_id: str = ""
     locator: str = ""
+    filed_by: str = ""
 
     @property
     def content_hash(self) -> str:
@@ -327,6 +353,7 @@ class ExternalAssumption:
             "source": self.source,
             "source_id": self.source_id,
             "locator": self.locator,
+            "filed_by": self.filed_by,
             "content_hash": self.content_hash,
         }
 
@@ -340,6 +367,7 @@ class ExternalAssumption:
             source=str(payload.get("source") or ""),
             source_id=str(payload.get("source_id") or ""),
             locator=str(payload.get("locator") or ""),
+            filed_by=str(payload.get("filed_by") or ""),
         )
 
 
