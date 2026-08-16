@@ -60,6 +60,16 @@ def test_compression_removed_redundant_examples(monkeypatch):
     assert "## Evidence policy" not in p
 
 
+def test_the_verdict_vocabulary_is_stated_once(monkeypatch):
+    # `done`/`continue`/`replan_requested`/`blocked` used to be defined twice —
+    # once in the role block and again, at greater length, in the handoff
+    # policy. Two definitions of the same four words is the redundancy this
+    # budget exists to catch, and it cost more than the sentence it funded.
+    p = _build(measured=False, monkeypatch=monkeypatch)
+    assert p.count("agent-fixable in-scope gap") == 1
+    assert p.count("replacement route, or boundary change") == 1
+
+
 def test_reviewer_records_prompt_block_token_estimates(monkeypatch):
     monkeypatch.delenv("ARGUS_SKILL_MEASURED_MODE", raising=False)
     reviewer = Reviewer(runner=None, skill_store=None)

@@ -28,10 +28,29 @@ def test_reviewer_is_not_given_checkpoint_bookkeeping():
 
 def test_reviewer_never_acts_as_checkpoint_editor():
     p = _prompt()
-    assert "strictly read-only" in p
+    assert "You do not change the work under review" in p
     assert "Put the next Engineer instruction only in NEXT_ACTION" in p
     assert "only in proportion to unresolved uncertainty" in p
     assert "six total read/search tool calls" not in p
+
+
+def test_the_no_mutation_rule_says_what_it_covers_and_what_it_does_not():
+    """It used to read "You are strictly read-only", which was not true.
+
+    Verticals hand the Reviewer commands that write: math's review skill tells
+    it to file `math_state judge` and `citation_check attribute`, and those
+    records are the independent-review evidence channel — the one thing only a
+    Reviewer can supply. A model holding both instructions has to pick one, and
+    the read-only sentence is the categorical one, so the channel starves
+    silently and the gate that waits on it never sees a check that was never
+    filed. The rule is about the *work under review*, so it now says that.
+    """
+    p = _prompt()
+
+    for forbidden in ("not its sources", "not its artifacts", "not its build"):
+        assert forbidden in p, "the prohibition still has to enumerate its scope"
+    assert "Recording your own verdict through a command your vertical gives you" in p
+    assert "strictly read-only" not in p
 
 
 def test_checkpoint_state_is_not_copied_into_the_prompt():
