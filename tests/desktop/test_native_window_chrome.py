@@ -33,6 +33,8 @@ def test_installer_bypasses_close_to_tray_before_replacing_files() -> None:
 
     assert "query-session-end" in main
     assert "include: resources/installer.nsh" in config
+    assert "!macro customCheckAppRunning" in include
+    assert '!insertmacro forceStopArgus' in include
     assert '/IM "Argus.exe"' in include
     assert '/IM "argus-backend.exe"' in include
 
