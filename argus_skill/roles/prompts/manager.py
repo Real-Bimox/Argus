@@ -1361,7 +1361,21 @@ def build_stage_decision_prompt(
         "Explain your reasoning however is clearest, then state the verdict on "
         "these lines at the end. Only these lines are read:\n"
         f"{response_schema}"
-        "For HOLD, set TARGET_STAGE to the current stage."
+        # The policy bullet above says to COMPLETE *at the current stage*, but
+        # that reads as guidance about WHEN to complete; this line is the format
+        # contract, and it used to pin TARGET_STAGE for HOLD only. So a Manager
+        # that correctly decided to complete would fill TARGET_STAGE with the
+        # stage it considered the objective completed *through*, and
+        # ``parse_stage_decision`` silently downgraded the verdict to HOLD with
+        # ``illegal_complete_target``. Testbed runs 11 and 12 both did exactly
+        # that: ``ACTION=complete`` / ``TARGET_STAGE=review`` against
+        # ``current_stage=scope``, so the stage never advanced in either run
+        # even though both campaigns completed and delivered.
+        #
+        # The parser now normalizes a later target instead of rejecting it, so
+        # this is no longer the only thing standing between a correct decision
+        # and a lost one — but an exact answer still keeps the trace clean.
+        "For HOLD and for COMPLETE, set TARGET_STAGE to the current stage."
     )
 
 

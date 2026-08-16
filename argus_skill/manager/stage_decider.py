@@ -159,7 +159,8 @@ def parse_stage_decision(
             * ADVANCE ``target_stage`` must be strictly LATER in ``stage_order``;
       * ROLLBACK ``target_stage`` must be strictly EARLIER than ``current_stage``
         (else HOLD);
-            * COMPLETE targets the current stage;
+            * COMPLETE targets the current stage; a later stage is accepted and
+        normalized to it, an earlier or unknown one is rejected;
       * HOLD pins ``target_stage`` to the current stage.
     """
     cur = (current_stage or "").strip().lower()
@@ -198,9 +199,31 @@ def parse_stage_decision(
 
     cur_idx = order.index(cur)
     if action == "complete":
+        # A COMPLETE naming a LATER stage is the model saying "everything
+        # through X is done", which is compatible with completing now — the
+        # decision is pinned to ``cur`` either way, and the target is discarded
+        # before the real completion contract runs. Rejecting it cost testbed
+        # runs 11 and 12 their stage transition: both emitted
+        # ``ACTION=complete`` / ``TARGET_STAGE=review`` at ``current_stage=scope``
+        # with correct reasoning, and both were silently recorded as HOLDs that
+        # nothing fed back to the Manager, so it had no way to converge.
+        # The deviation is still named in the diagnostic rather than erased.
+        #
+        # An EARLIER or unknown target stays fail-closed: that is a model
+        # confusing completion with a rollback, not a wording slip. Completion
+        # itself is not decided here — ``final_stage_completion_decision`` still
+        # rules on review certification, mission scope, research target and the
+        # external gate before any of this takes effect.
         if target and target != cur:
+            if target not in order or order.index(target) < cur_idx:
+                return StageDecision(
+                    "hold", cur, "manager held (default)", "illegal_complete_target"
+                )
             return StageDecision(
-                "hold", cur, "manager held (default)", "illegal_complete_target"
+                "complete",
+                cur,
+                reason or "operator objective complete",
+                "complete_target_normalized",
             )
         return StageDecision(
             "complete",
