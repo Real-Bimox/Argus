@@ -70,6 +70,24 @@ def test_reusing_an_id_for_different_evidence_fails(tmp_path) -> None:
         ledger.append_record(record_id="run-1", payload={"state": "done"})
 
 
+def test_preserve_existing_keeps_first_record_on_legacy_retry(tmp_path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    ledger = EvidenceLedger(path)
+    first = ledger.append_record(
+        record_id="run-1",
+        payload={"state": "error", "ts": 10},
+    )
+
+    returned = ledger.append_record(
+        record_id="run-1",
+        payload={"state": "error", "ts": 20},
+        preserve_existing=True,
+    )
+
+    assert returned == first
+    assert _rows(path) == [first]
+
+
 def test_correction_requires_existing_target(tmp_path) -> None:
     ledger = EvidenceLedger(tmp_path / "evidence.jsonl")
 
@@ -96,3 +114,22 @@ def test_correction_can_target_legacy_experiment_row(tmp_path) -> None:
 
     assert correction["target_record_id"] == "legacy-run"
     assert len(ledger.history("legacy-run")) == 2
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        '{"run_id":"torn"',
+        '{"run_id":"ok"}\nnot-json\n',
+        '["not-an-object"]\n',
+    ],
+)
+def test_corrupt_ledger_fails_before_appending(content, tmp_path) -> None:
+    path = tmp_path / "evidence.jsonl"
+    path.write_text(content)
+    ledger = EvidenceLedger(path)
+
+    with pytest.raises(ValueError, match="evidence ledger"):
+        ledger.append_record(record_id="new", payload={"state": "done"})
+
+    assert path.read_text() == content

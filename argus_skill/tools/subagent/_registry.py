@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -681,6 +682,7 @@ def _append_experiment_history(cwd: str, record: dict[str, Any]) -> None:
         record_id=run_id,
         record_type="experiment",
         payload=record,
+        preserve_existing=True,
     )
 
 
@@ -708,7 +710,6 @@ def append_experiment_correction(
             "run_id": normalized_run_id,
             "event": "CORRECTION",
             "details": dict(details or {}),
-            "ts": time.time(),
         },
     )
 
@@ -747,7 +748,18 @@ def _persist_experiment_record(
         "run_state": metrics.get("state", ""),
         "ts": time.time(),
     }
-    _append_experiment_history(cwd, record)
+    try:
+        _append_experiment_history(cwd, record)
+    except (OSError, TimeoutError, ValueError) as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        td["evidence_persistence_error"] = error
+        _write_task(task_id, td)
+        print(
+            f"argus subagent: terminal result preserved, but experiment "
+            f"history persistence failed for {task_id}: {error}",
+            file=sys.stderr,
+            flush=True,
+        )
     if not run_dir:
         return
     try:

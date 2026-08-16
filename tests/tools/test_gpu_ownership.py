@@ -85,6 +85,7 @@ def _baseline() -> dict:
 
 
 def test_known_campaign_process_can_age_into_stale_driver_row() -> None:
+    baseline = _baseline()
     live_training = _process(
         index="4",
         gpu_uuid="GPU-training",
@@ -94,7 +95,7 @@ def test_known_campaign_process_can_age_into_stale_driver_row() -> None:
     )
     receipt, state = evaluate_snapshot(
         _snapshot(_protected_process(), live_training),
-        _baseline(),
+        baseline,
         now_epoch=1_000,
     )
     assert receipt["gpu_guard_ok"] is True
@@ -111,7 +112,7 @@ def test_known_campaign_process_can_age_into_stale_driver_row() -> None:
     )
     receipt, _ = evaluate_snapshot(
         _snapshot(_protected_process(), stale_training),
-        _baseline(),
+        baseline,
         previous_state=state,
         now_epoch=1_030,
     )
@@ -142,6 +143,7 @@ def test_unknown_stale_driver_row_fails_closed() -> None:
 
 
 def test_stale_authorization_expires() -> None:
+    baseline = _baseline()
     live_training = _process(
         index="4",
         gpu_uuid="GPU-training",
@@ -151,7 +153,7 @@ def test_stale_authorization_expires() -> None:
     )
     _, state = evaluate_snapshot(
         _snapshot(_protected_process(), live_training),
-        _baseline(),
+        baseline,
         now_epoch=1_000,
     )
     stale_training = _process(
@@ -166,12 +168,54 @@ def test_stale_authorization_expires() -> None:
 
     receipt, _ = evaluate_snapshot(
         _snapshot(_protected_process(), stale_training),
-        _baseline(),
+        baseline,
         previous_state=state,
         now_epoch=1_121,
     )
 
     assert receipt["gpu_guard_ok"] is False
+
+
+def test_stale_authorization_is_bound_to_baseline_digest() -> None:
+    live_training = _process(
+        index="4",
+        gpu_uuid="GPU-training",
+        pid=200,
+        process_name="train.py",
+        campaign_owned=True,
+    )
+    _, state = evaluate_snapshot(
+        _snapshot(_protected_process(), live_training),
+        _baseline(),
+        now_epoch=1_000,
+    )
+    replacement_owner = _protected_process()
+    replacement_owner["pid"] = 101
+    replacement_owner["start_time_ticks"] = "1010"
+    replacement_baseline = establish_baseline(
+        _snapshot(replacement_owner),
+        _policy(),
+    )
+    stale_training = _process(
+        index="4",
+        gpu_uuid="GPU-training",
+        pid=200,
+        process_name="train.py",
+        metadata_available=False,
+        process_present=False,
+        stale=True,
+    )
+
+    receipt, next_state = evaluate_snapshot(
+        _snapshot(replacement_owner, stale_training),
+        replacement_baseline,
+        previous_state=state,
+        now_epoch=1_030,
+    )
+
+    assert receipt["previous_state_baseline_matched"] is False
+    assert receipt["gpu_guard_ok"] is False
+    assert next_state["baseline_sha256"] == replacement_baseline["baseline_sha256"]
 
 
 def test_live_unverifiable_training_process_fails_closed() -> None:

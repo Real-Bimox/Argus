@@ -1493,6 +1493,38 @@ def test_persist_experiment_record_writes_artifacts_and_dedups(monkeypatch, tmp_
     assert len(ledger.read_text().strip().splitlines()) == 1
 
 
+def test_persist_experiment_record_keeps_terminal_state_on_ledger_error(
+    monkeypatch,
+    tmp_path,
+    capsys,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    ledger = tmp_path / _sub.EXPERIMENT_HISTORY_REL
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text('{"run_id":"torn"')
+    task = {
+        "run_id": "run-1",
+        "task_id": "task-1",
+        "state": "done",
+        "exit_code": 0,
+        "command": "python train.py",
+    }
+
+    _sub._persist_experiment_record(
+        "task-1",
+        "COMPLETED",
+        task,
+        str(tmp_path),
+    )
+
+    persisted = _sub._read_task("task-1")
+    assert persisted is not None
+    assert persisted["state"] == "done"
+    assert persisted["exit_code"] == 0
+    assert "torn final row" in persisted["evidence_persistence_error"]
+    assert "terminal result preserved" in capsys.readouterr().err
+
+
 def test_cmd_status_surfaces_open_discussion(monkeypatch, tmp_path, capsys) -> None:
     monkeypatch.chdir(tmp_path)
     me = __import__("os").getpid()

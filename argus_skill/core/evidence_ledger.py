@@ -66,17 +66,25 @@ class EvidenceLedger:
 
     def _rows_unlocked(self) -> list[dict[str, Any]]:
         try:
-            lines = self.path.read_text(encoding="utf-8").splitlines()
+            text = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return []
+        if text and not text.endswith("\n"):
+            raise ValueError(f"evidence ledger has a torn final row: {self.path}")
         rows: list[dict[str, Any]] = []
-        for line in lines:
+        for line_number, line in enumerate(text.splitlines(), 1):
             try:
                 row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(row, dict):
-                rows.append(row)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"evidence ledger has invalid JSON on line {line_number}: "
+                    f"{self.path}"
+                ) from exc
+            if not isinstance(row, dict):
+                raise ValueError(
+                    f"evidence ledger line {line_number} is not an object: {self.path}"
+                )
+            rows.append(row)
         return rows
 
     def _append_unlocked(self, row: dict[str, Any]) -> None:
@@ -104,6 +112,7 @@ class EvidenceLedger:
         payload: dict[str, Any],
         record_type: str = "evidence",
         created_at: float | None = None,
+        preserve_existing: bool = False,
     ) -> dict[str, Any]:
         """Append one immutable record, idempotently for identical content."""
         normalized_id = str(record_id or "").strip()
@@ -123,7 +132,7 @@ class EvidenceLedger:
                 rows = self._rows_unlocked()
                 existing = self._existing_by_id(rows, normalized_id)
                 if existing is not None:
-                    if _record_sha256(existing) != digest:
+                    if _record_sha256(existing) != digest and not preserve_existing:
                         raise ValueError(
                             f"record_id {normalized_id!r} already names different evidence"
                         )
@@ -231,6 +240,13 @@ class EvidenceLedger:
                 and str(row["_ledger"].get("target_record_id") or "") == normalized_id
             )
         ]
+
+    def get(self, record_id: str) -> dict[str, Any] | None:
+        """Return one immutable record by id, including legacy rows."""
+        return self._existing_by_id(
+            self._rows_unlocked(),
+            str(record_id or "").strip(),
+        )
 
 
 __all__ = ["EvidenceLedger"]

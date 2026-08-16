@@ -6,10 +6,13 @@ import hashlib
 import json
 import os
 import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
+
+from ..core.file_lock import exclusive_file_lock
 
 IDENTITY_FIELDS = (
     "gpu_uuid",
@@ -39,13 +42,21 @@ def _canonical_sha256(value: object) -> str:
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-        handle.flush()
-        os.fsync(handle.fileno())
-    os.replace(temporary, path)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _run_text(command: list[str]) -> str:
@@ -396,7 +407,15 @@ def evaluate_snapshot(
     ]
 
     recent: dict[tuple[str, int, str], dict[str, Any]] = {}
-    for record in (previous_state or {}).get("recent_campaign_processes", []):
+    previous_matches_baseline = (
+        (previous_state or {}).get("baseline_sha256") == baseline["baseline_sha256"]
+    )
+    previous_records = (
+        (previous_state or {}).get("recent_campaign_processes", [])
+        if previous_matches_baseline
+        else []
+    )
+    for record in previous_records:
         if not isinstance(record, dict):
             continue
         age = now - float(record.get("last_verified_at") or 0)
@@ -443,6 +462,7 @@ def evaluate_snapshot(
     next_state = {
         "schema_version": 1,
         "updated_at": now,
+        "baseline_sha256": baseline["baseline_sha256"],
         "recent_campaign_processes": next_recent,
     }
     ok = not any(
@@ -458,6 +478,7 @@ def evaluate_snapshot(
         "time_epoch": now,
         "policy": policy,
         "baseline_sha256": baseline["baseline_sha256"],
+        "previous_state_baseline_matched": previous_matches_baseline,
         "gpu_guard_ok": ok,
         "campaign_processes_on_protected_gpus": campaign_on_protected,
         "missing_protected_baseline_processes": missing,
@@ -478,17 +499,24 @@ def check_gpu_ownership(
 ) -> dict[str, Any]:
     """Capture, evaluate, and persist recent owner state for the next poll."""
     baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-    try:
-        previous_state = json.loads(state_path.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        previous_state = {}
     snapshot = capture_gpu_snapshot(dict(baseline.get("policy") or {}))
-    receipt, next_state = evaluate_snapshot(
-        snapshot,
-        baseline,
-        previous_state=previous_state,
-    )
-    _atomic_write_json(state_path, next_state)
+    lock_path = state_path.with_suffix(state_path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("a+", encoding="utf-8") as handle:
+        with exclusive_file_lock(
+            handle,
+            lock_name=f"GPU ownership state lock {lock_path}",
+        ):
+            try:
+                previous_state = json.loads(state_path.read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                previous_state = {}
+            receipt, next_state = evaluate_snapshot(
+                snapshot,
+                baseline,
+                previous_state=previous_state,
+            )
+            _atomic_write_json(state_path, next_state)
     if receipt_path is not None:
         _atomic_write_json(receipt_path, receipt)
     return receipt
