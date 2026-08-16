@@ -11,9 +11,10 @@ delicate step.
 Objective mode in `research/PIPELINE_STATE.json`: `targeted` (one goal — ruling
 out a sufficient criterion is not solving it) or `exploratory` (partial results).
 If unset, ask. Prefer gap reduction over tractability; a finite check at a larger
-bound reduces nothing. Check `research/ROUTE_LEDGER.json` — a strategy-retired
-route needs a different mechanism. Targeted at `develop`/`certify`: maintain
-`research/PROOF_GRAPH.json`.
+bound reduces nothing. Retired routes and what killed them are projected into
+your context from `research/MATH_STATE.json` — a strategy-retired route needs a
+different mechanism, not another attempt at the same one. Targeted at
+`develop`/`certify`: maintain `research/PROOF_GRAPH.json`.
 
 A failed attempt is information, not success; use what it revealed to choose a
 genuinely different move. When strengthening a result, compare against the

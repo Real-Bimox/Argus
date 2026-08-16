@@ -61,6 +61,7 @@ __all__ = [
     "DISCHARGING_TIERS",
     "ESTABLISHED_STATUSES",
     "KERNEL_TIERS",
+    "PRODUCIBLE_TIERS",
     "REFUTING_TIERS",
     "SETTLED_CITATION_STATUSES",
     "CitationAssessment",
@@ -93,6 +94,24 @@ DISCHARGING_TIERS = frozenset({EvidenceTier.MECHANICAL})
 #: hear it until someone formalizes the refutation would keep a claim alive
 #: that is already dead.
 REFUTING_TIERS = frozenset({EvidenceTier.MECHANICAL, EvidenceTier.COMPUTATIONAL})
+
+#: Tiers a producer in this tree can actually write. Policy above says which
+#: tiers *count*; this says which ones can be *reached*, and the two are not
+#: the same set.
+#:
+#: ``computational`` is in ``REFUTING_TIERS`` and has no producer — see the
+#: command-surface rule at the top of ``verticals/math/math_state.py``: a tier
+#: may only be written by a program that performed a check of that kind, and no
+#: such verifier exists here yet. That gap is deliberate and the docstring says
+#: so. What was not deliberate is that the context projection rendered the
+#: policy set straight into an agent's instructions, so a role reading "how do
+#: I refute this" was offered a channel it cannot open. Telling a worker to do
+#: something the tree has no way to do costs more than saying nothing: they
+#: either look for the command until they give up, or conclude the state is
+#: broken. Keep this in step with the producers, not with the policy sets.
+PRODUCIBLE_TIERS = frozenset(
+    {EvidenceTier.MECHANICAL, EvidenceTier.LITERATURE, EvidenceTier.JUDGEMENT}
+)
 
 #: What answers "is the cited proposition really in the cited source". The
 #: ``literature`` tier alone, which is that tier's definition rather than a

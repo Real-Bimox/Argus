@@ -362,11 +362,12 @@ math 的六个 `.md` 通过**两条不同的路**到达角色，不要混淆：
 
 1. **`STAGE_CHECKS` 是装饰。** 三条 `test -f research/PIPELINE_STATE.json` 从不执行（§2）。
 2. **`solve` 的验证 profile 未解析。** 靠兜底默认值恰好为 `develop` 才让证明图生效（§5）。
-3. **prompt 引用了不存在的文件。** `math/skills/engineer/math-research-execution.md:22` 与
-   `planner/math-research-planning.md:14` 让角色去读 `research/ROUTE_LEDGER.json`——
-   **没有任何 Python 代码读或写这个文件**（`grep -rn ROUTE_LEDGER --include=*.py` 全仓库
-   只命中 `tests/test_math_objective_and_graph.py:333`，而那行断言的是 prompt 文本里
-   出现了这个字符串，不是文件被使用）。同期的 `failure_layer` 字段也已消失：
+3. ~~**prompt 引用了不存在的文件。**~~ **已修。** `math/skills/engineer/math-research-execution.md`
+   与 `planner/math-research-planning.md` 曾让角色去读 `research/ROUTE_LEDGER.json`——
+   **没有任何 Python 代码读或写这个文件**，而 `tests/test_math_objective_and_graph.py:333`
+   断言的是 prompt 文本里出现了这个字符串，反而把它钉死。两个 `.md` 现已改指真实机制
+   （`retire-route` 写入 `MATH_STATE.json`，`context_projection` 投影回上下文），
+   测试反转为扫描全部 skill `.md` 确认不再出现。同期的 `failure_layer` 字段也已消失：
    `core/failure_layer.py` 在 main 上**不存在**，且 `tests/test_reviewer_completion_contract.py:30-44`
    与 `tests/core/test_review_event_payload.py:32` 明确断言 `failure_layer` 已从
    `ReviewDecision.to_event_payload()` 中**移除**。

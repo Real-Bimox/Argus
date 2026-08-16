@@ -365,7 +365,7 @@ vertical 用自己的词汇去实例化**（不是 core 规定的枚举）。
 | `research/DOMAINS/` | Manager 运行时撰写的 data domain。 |
 | `research/PROOF_GRAPH.json` | **math 专用**，证明图。 |
 | `research/GROUND_TRUTH.md` | 被引用最多的证据文件（8 处）。 |
-| `research/ROUTE_LEDGER.json` | ⚠️ **陷阱**，见 §11。 |
+| `research/ROUTE_LEDGER.json` | ~~⚠️ 陷阱~~ **已修**，见 §11.4。此文件从不存在。 |
 
 ### 9.4 Lean 工具链：本机装在哪
 
@@ -410,15 +410,18 @@ vertical 用自己的词汇去实例化**（不是 core 规定的枚举）。
 1. **`STAGE_CHECKS` 是死的。** 被校验但不执行。名字带 "RUN TIME" 的测试是**测试自己**在跑那些命令。
 2. **`completion_gate` 不是严格度旋钮。** 见 §7。这是最贵的一个误解。
 3. **rank 阶梯在生产里从不拒绝。** 唯一调用点硬编码 rank 3。
-4. **`research/ROUTE_LEDGER.json` 是幻影。** math 的两个 skill `.md`
-   （`skills/planner/math-research-planning.md:14`、`skills/engineer/math-research-execution.md:22`）
-   指示角色去读它，但**整个仓库没有任何 Python 代码读或写这个路径**
-   （`grep -rn ROUTE_LEDGER --include=*.py` 只命中 `tests/test_math_objective_and_graph.py:333`，
-   而那一行断言的是 **prompt 文本里出现了这个字符串**，不是文件被使用）。
+4. ~~**`research/ROUTE_LEDGER.json` 是幻影。**~~ **已修。** math 的两个 skill `.md`
+   曾指示角色去读它，而整个仓库没有任何 Python 代码读或写这个路径
+   （`tests/test_math_objective_and_graph.py:333` 那行断言的是 **prompt 文本里
+   出现了这个字符串**，因此把幻影钉死在原地）。
+   路线退役这件事本身是真的、且早已实现在别处：`retire-route --id --retired-because`
+   写进 `research/MATH_STATE.json`，`context_projection.py:485` 再把退役路线连同理由
+   投影回角色上下文。两个 `.md` 现已改指真实机制，测试反转为
+   `test_no_skill_sends_a_role_to_the_route_ledger_phantom`（扫描 `SKILLS.rglob("*.md")`）。
    同期的 `failure_layer` 字段已被移除，`tests/test_reviewer_completion_contract.py:36`
    与 `tests/core/test_review_event_payload.py:32` 都断言它**不在** review payload 里。
-   **prompt 指令与运行时现实脱节的活标本，也是"测试断言的是 prompt 说了什么、
-   而不是系统做了什么"的活标本。**
+   **保留在这里作为"prompt 指令与运行时现实脱节"、以及"测试断言的是 prompt 说了什么、
+   而不是系统做了什么"的标本——后者正是它能存活这么久的原因。**
 5. **`scientist/*.md` 不会自动加载。** 见 §4 的两条投递路径。
 6. **math 的 `solve` 阶段靠回落巧合工作。** 见 §8。
 7. **只 grep 契约字段名会漏消费者。** 有 7 个包装方法。

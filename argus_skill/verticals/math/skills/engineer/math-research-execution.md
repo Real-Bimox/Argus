@@ -25,13 +25,19 @@ planning, audit, status, or evidence-packet files merely to satisfy the
 workflow. The theorem, proof, counterexample, code, or formal source is the
 evidence, and no fixed bundle of output filenames is required.
 
-Two files are exceptions once a `targeted` project has settled on a route and
+One file is an exception once a `targeted` project has settled on a route and
 reached `develop` or `certify`: `research/PROOF_GRAPH.json` records what still
-stands between the current state and the goal, and `research/ROUTE_LEDGER.json`
-records which routes were retired and why. They are not process paperwork —
-without them "how hard was this step" silently replaces "how much closer did
-this get us", and a retired route gets retried. Under `explore` neither is
-required.
+stands between the current state and the goal. It is not process paperwork —
+without it "how hard was this step" silently replaces "how much closer did this
+get us". Under `explore` it is not required.
+
+A route that died is recorded the same way every other fact about the work is,
+in `research/MATH_STATE.json`: `retire-route --id <route> --retired-because
+"<what killed it>"`. Retiring without a reason is the failure mode worth
+naming — the next person re-opens exactly the route you just closed, because
+"retired" alone does not tell them whether the idea was wrong or merely
+unfinished. Retired routes and their reasons are projected back into the
+context you are given; there is no separate ledger file to maintain.
 
 When continuing earlier work, compare the new result with the strongest prior
 result that matters. Explain the mathematical improvement directly; no special

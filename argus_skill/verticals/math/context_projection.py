@@ -317,6 +317,34 @@ def _tiers(names: frozenset) -> str:
     return " or ".join(sorted(tier.value for tier in names))
 
 
+def _reachable_tiers(names: frozenset) -> str:
+    """Render only the tiers of ``names`` something in this tree can write.
+
+    These lines are read as instructions — "to refuted: <tiers> evidence may
+    say this is false" is the answer a role gets when it asks how to kill a
+    claim. ``REFUTING_TIERS`` includes ``computational``, which has no producer
+    here, so the honest rendering names the channel that can actually be opened
+    and says plainly that the other one is not wired up rather than omitting it
+    (a role that knows a counterexample refutes will otherwise go looking for
+    the command that records one).
+    """
+    from ...research_math.assessment import PRODUCIBLE_TIERS
+
+    reachable = names & PRODUCIBLE_TIERS
+    unreachable = names - PRODUCIBLE_TIERS
+    if not reachable:
+        return (
+            f"no channel in this tree ({_tiers(names)} would count, but nothing "
+            "here produces it)"
+        )
+    if not unreachable:
+        return _tiers(reachable)
+    return (
+        f"{_tiers(reachable)} ({_tiers(unreachable)} would also count, but this "
+        "tree has no producer for it yet)"
+    )
+
+
 def _definitions(context: ContextVersion | None) -> tuple[list[list[str]], int]:
     """Every definition of the claim's own context version, capped.
 
@@ -633,8 +661,9 @@ def _transitions(status: ClaimStatus, claim: ClaimVersion) -> list[str]:
             "records in writing why the proof does not need it."
         )
     lines.append(
-        f"to refuted: {_tiers(REFUTING_TIERS)} evidence may say this is false, "
-        "and outranks any amount of support. A referee's opinion may not."
+        f"to refuted: {_reachable_tiers(REFUTING_TIERS)} evidence may say this "
+        "is false, and outranks any amount of support. A referee's opinion may "
+        "not."
     )
     return lines
 

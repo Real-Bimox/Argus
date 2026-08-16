@@ -330,9 +330,37 @@ def test_planner_states_that_ruling_out_a_criterion_is_not_solving() -> None:
     text = _flat(SKILLS / "planner" / "math-research-planning.md")
 
     assert "ruling out a sufficient criterion is not solving it" in text
-    assert "ROUTE_LEDGER.json" in text
     # The old blanket ban on graphs is gone.
     assert "no particular ledger or graph file is required" not in text
+
+
+def test_no_skill_sends_a_role_to_the_route_ledger_phantom() -> None:
+    """``research/ROUTE_LEDGER.json`` never existed.
+
+    Two skills told roles to read and maintain it; no Python in this repository
+    ever read or wrote it, and this test previously asserted the reference was
+    *present*, pinning the phantom in place. Route retirement is real and
+    already implemented elsewhere: ``retire-route --id --retired-because``
+    writes to ``research/MATH_STATE.json``, and ``context_projection`` feeds
+    retired routes plus their reasons back into the role's context.
+
+    An instruction to maintain a file nothing consumes costs more than the
+    wasted write. A role that cannot find the file it was told to check either
+    invents one or reports a blocker about missing state — testbed run 13's
+    Planner did the latter, queueing a mission to "record the missing
+    route/ledger state or equivalent gate metadata" in response to a completion
+    refusal that had nothing to do with ledgers.
+    """
+    for path in sorted(SKILLS.rglob("*.md")):
+        assert "ROUTE_LEDGER" not in _flat(path), path
+
+
+def test_the_planner_still_gets_told_retired_routes_matter() -> None:
+    """Removing the phantom must not remove the lesson it carried."""
+    text = _flat(SKILLS / "planner" / "math-research-planning.md")
+
+    assert "retired" in text.lower()
+    assert "MATH_STATE.json" in text
 
 
 def test_reviewer_names_the_three_failure_layers() -> None:
@@ -350,7 +378,9 @@ def test_engineer_permits_the_graph_once_the_route_is_settled() -> None:
     # that measures progress.
     assert "planning, ledger, graph, audit" not in text
     assert "PROOF_GRAPH.json" in text
-    assert "Under `explore` neither is required" in text
+    # Was "neither is required" while this paragraph still named a second file,
+    # the ROUTE_LEDGER phantom. One file, singular wording, same rule.
+    assert "Under `explore` it is not required" in text
 
 
 # ---------------------------------------------------------------------------
@@ -435,3 +465,81 @@ def test_every_declared_mode_is_settable_and_resolves(tmp_path: Path, mode: str)
     objective = set_objective(root, mode=mode, goal="G" if mode == "targeted" else "")
     assert objective.resolved and objective.mode == mode
     assert normalize_mode(mode) == mode
+
+
+def test_a_graph_whose_nodes_are_a_list_is_reported_not_crashed() -> None:
+    """``nodes`` as a JSON array used to raise AttributeError out of __init__.
+
+    ``validate`` exists to turn a malformed graph into a sentence its author can
+    act on. A shape error that escapes as a traceback from the constructor
+    reaches the author as a stack, if at all.
+    """
+    from argus_skill.verticals.math.proof_graph import ProofGraph
+
+    graph = ProofGraph({"goal": "m universal iff m | 24", "nodes": [{"id": "n1"}]})
+
+    issues = graph.validate()
+
+    assert any("nodes is a list" in issue for issue in issues), issues
+    assert graph.nodes == {}
+
+
+def test_a_well_formed_graph_reports_no_shape_issue() -> None:
+    from argus_skill.verticals.math.proof_graph import ProofGraph
+
+    graph = ProofGraph({"goal": "g", "nodes": {"n1": {"claim": "x"}}})
+
+    assert not any("nodes is a" in issue for issue in graph.validate())
+    assert set(graph.nodes) == {"n1"}
+
+
+# ---------------------------------------------------------------------------
+# Which channels a role is told it can open
+# ---------------------------------------------------------------------------
+
+
+def test_the_refutation_line_names_a_channel_that_exists() -> None:
+    """``REFUTING_TIERS`` is a policy set, not a menu of available commands.
+
+    It contains ``computational``, which by the command-surface rule at the top
+    of ``verticals/math/math_state.py`` has no producer in this tree — a tier
+    may only be written by a program that performed a check of that kind, and
+    no such verifier is wired up. The projection rendered the policy set
+    verbatim into "to refuted: mechanical or computational evidence may say
+    this is false", which is a role's answer to "how do I kill this claim".
+    """
+    from argus_skill.research_math.assessment import PRODUCIBLE_TIERS, REFUTING_TIERS
+    from argus_skill.verticals.math.context_projection import _reachable_tiers
+
+    rendered = _reachable_tiers(REFUTING_TIERS)
+
+    assert "mechanical" in rendered
+    assert "no producer for it yet" in rendered, (
+        "the unreachable tier must be marked, not silently dropped"
+    )
+    assert REFUTING_TIERS - PRODUCIBLE_TIERS, (
+        "if computational gained a producer, this test and _reachable_tiers "
+        "should both simplify — update PRODUCIBLE_TIERS"
+    )
+
+
+def test_a_fully_reachable_set_renders_plainly() -> None:
+    from argus_skill.research_math.assessment import KERNEL_TIERS
+    from argus_skill.verticals.math.context_projection import _reachable_tiers
+
+    assert _reachable_tiers(KERNEL_TIERS) == "mechanical"
+
+
+def test_producible_tiers_matches_the_documented_producers() -> None:
+    """Each producible tier must have a producer named in ``math_state``.
+
+    ``PRODUCIBLE_TIERS`` is hand-maintained; this pins it to the module whose
+    docstring is the record of which producers exist.
+    """
+    from argus_skill.research_math.assessment import PRODUCIBLE_TIERS
+    from argus_skill.research_math.models import EvidenceTier
+
+    assert EvidenceTier.COMPUTATIONAL not in PRODUCIBLE_TIERS
+    assert EvidenceTier.MECHANICAL in PRODUCIBLE_TIERS
+    assert EvidenceTier.LITERATURE in PRODUCIBLE_TIERS
+    assert EvidenceTier.JUDGEMENT in PRODUCIBLE_TIERS
