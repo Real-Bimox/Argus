@@ -399,6 +399,50 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
 }
 
 
+def _lean_workspace_note() -> str:
+    """Name the prebuilt Mathlib workspace this host already carries.
+
+    ``math-research-execution.md`` promises that "if the host has Mathlib
+    installed it is used automatically", and it does — but only through
+    ``_resolve_lake_workspace``, whose first and highest-priority step is "a
+    lakefile above the source". An Engineer who cannot see that a workspace
+    exists does the obvious thing and writes its own lakefile into the project
+    root, which *is* that first step, and so shadows the built library with an
+    empty one. The promise then costs a full Mathlib fetch and build to keep:
+    run 7 duplicated 7.5 GB into the project while a built workspace sat
+    unused. Naming the path is the whole remedy — it turns an invisible default
+    into something the agent can choose.
+
+    Resolved at call time rather than at import: the search re-reads
+    ``Path.home()`` and ``$ARGUS_SKILL_MATHLIB_WORKSPACE`` on every call, and a
+    banner quoting a path the search does not use would be worse than silence.
+    Fail-soft for the same reason — a host without Mathlib should get no
+    paragraph, not a paragraph about a directory that is not there.
+    """
+    try:
+        from .lean_evidence import resolved_mathlib_workspace
+    except Exception:  # noqa: BLE001 - optional heavy import
+        return ""
+    try:
+        workspace = resolved_mathlib_workspace(Path.home() / "Main.lean")
+    except Exception:  # noqa: BLE001 - a banner never fails a mission
+        return ""
+    if workspace is None:
+        return ""
+    return (
+        "\n\n## This host's Lean environment\n\n"
+        f"A built Lake workspace with Mathlib already exists at `{workspace}`.\n"
+        "Compiling from a directory with no lakefile of its own picks it up "
+        "automatically, so `import Mathlib` needs no project scaffolding from "
+        "you. Authoring a `lakefile.toml` in the project root does the "
+        "opposite of what it looks like: the workspace search takes the "
+        "nearest lakefile above the source first, so your new one shadows the "
+        "built library and you pay for a fresh Mathlib fetch and build. Write "
+        "one only if you actually need a different Mathlib revision, and say "
+        "in the round summary why."
+    )
+
+
 def role_banner(role: str) -> str:
     """Load Math context as a Skill for the generic role implementation."""
     role_name = (role or "").strip().lower()
@@ -417,8 +461,14 @@ def role_banner(role: str) -> str:
     )
     if text.startswith("---"):
         _frontmatter, _separator, body = text[3:].partition("---")
-        return body.strip()
-    return text.strip()
+        text = body
+    banner = text.strip()
+    # Only the two roles that compile. The Planner picks a route and the
+    # Manager picks a stage; neither runs Lean, and a host fact they cannot act
+    # on is prompt weight spent for nothing.
+    if role_name in {"engineer", "reviewer"}:
+        banner += _lean_workspace_note()
+    return banner
 
 
 __all__ = [
