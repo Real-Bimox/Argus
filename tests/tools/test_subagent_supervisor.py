@@ -1302,6 +1302,17 @@ def test_cmd_submit_reserves_disjoint_cpus_before_fork(
     assert record["cpu_count"] == 2
 
 
+class _OSNameProxy:
+    """Override one module's platform branch without mutating global os.name."""
+
+    def __init__(self, wrapped, name: str) -> None:
+        self._wrapped = wrapped
+        self.name = name
+
+    def __getattr__(self, name: str):
+        return getattr(self._wrapped, name)
+
+
 def test_cmd_submit_spawns_windows_worker(monkeypatch, tmp_path, capsys) -> None:
     from argus_skill.tools.subagent import _cli
 
@@ -1317,7 +1328,7 @@ def test_cmd_submit_spawns_windows_worker(monkeypatch, tmp_path, capsys) -> None
         spawned.append(kwargs)
         return _Worker()
 
-    monkeypatch.setattr(_cli.os, "name", "nt")
+    monkeypatch.setattr(_cli, "os", _OSNameProxy(os, "nt"))
     monkeypatch.setattr(_cli, "_spawn_windows_worker", fake_spawn_windows_worker)
 
     rc = _sub.cmd_submit(
@@ -1386,7 +1397,7 @@ def test_launch_durable_command_uses_native_powershell_on_windows(
         captured["kwargs"] = kwargs
         return _Proc()
 
-    monkeypatch.setattr(_registry.os, "name", "nt")
+    monkeypatch.setattr(_registry, "os", _OSNameProxy(os, "nt"))
     monkeypatch.setattr(_registry.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(_registry, "_child_env", lambda: {})
 
@@ -1451,7 +1462,7 @@ def test_terminate_proc_uses_windows_tree_before_root_fallback(monkeypatch) -> N
         proc.returncode = 1
         return True
 
-    monkeypatch.setattr(_direct_run.os, "name", "nt")
+    monkeypatch.setattr(_direct_run, "os", _OSNameProxy(os, "nt"))
     monkeypatch.setattr(_direct_run, "terminate_windows_process_tree", terminate_tree)
 
     _direct_run._terminate_proc(proc)
