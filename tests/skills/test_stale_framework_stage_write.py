@@ -162,6 +162,17 @@ def project(tmp_path: Path, monkeypatch) -> Path:
     monkeypatch.setattr(
         stage_machine, "_ensure_stage_completion", lambda *a, **k: None
     )
+    # These three tests are about what a *mismatched fingerprint* reports, and
+    # they reach a completion record the cheapest way there is: complete at
+    # ``scope``. That is early completion, which since run 13 requires standing
+    # — ``direct`` workflow mode on the read side, the explicit argument on the
+    # write side. Granting both here keeps the subject of these tests the
+    # rejection message rather than the stage position. See
+    # ``tests/skills/test_stage_completion_authority.py``.
+    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["workflow_mode"] = "direct"
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     return tmp_path
 
 
@@ -174,7 +185,9 @@ def _state(project: Path) -> dict:
 def test_the_completion_records_which_framework_stamped_it(project):
     """When a reader cannot reproduce the hash, the first question is always
     "was this written by the code I am running?" — record the answer."""
-    stage_machine.complete_final_stage(project, reason="scope is enough")
+    stage_machine.complete_final_stage(
+        project, reason="scope is enough", allow_early_completion=True
+    )
 
     record = _state(project)["stages"]["scope"]
     assert record["completion_contract_source"] == str(
@@ -189,7 +202,9 @@ def test_the_rejection_names_the_stage_that_holds_the_disputed_record(project):
         _staged_goal_completion_issue,
     )
 
-    stage_machine.complete_final_stage(project, reason="scope is enough")
+    stage_machine.complete_final_stage(
+        project, reason="scope is enough", allow_early_completion=True
+    )
     state_path = project / "research" / "PIPELINE_STATE.json"
     state = _state(project)
     expected = state["stages"]["scope"]["completion_contract_sha256"]
@@ -213,6 +228,8 @@ def test_a_matching_certificate_still_passes_the_gate(project):
         _staged_goal_completion_issue,
     )
 
-    stage_machine.complete_final_stage(project, reason="scope is enough")
+    stage_machine.complete_final_stage(
+        project, reason="scope is enough", allow_early_completion=True
+    )
 
     assert _staged_goal_completion_issue(project) == ""

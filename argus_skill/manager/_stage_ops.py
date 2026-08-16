@@ -458,9 +458,21 @@ class _StageDecisionMixin:
                                    decision.resolves_wait)
 
         if decision.action == "complete":
+            from ..skills.vertical_select import resolve_workflow_mode
+
             try:
+                # ``allow_early_completion`` is re-derived here rather than
+                # threaded from the decision: this is a backstop at the
+                # primitive, not the authority. ``final_stage_completion_decision``
+                # already applied the stricter test (it also requires the mission
+                # not be open-ended); a decision that reached this line has
+                # passed it. What this argument stops is the path that never
+                # went through the decider at all — see ``complete_final_stage``.
                 _complete(root, reason=decision.reason, completed_by="manager",
-                          evidence_root=self.execution_workdir)
+                          evidence_root=self.execution_workdir,
+                          allow_early_completion=(
+                              resolve_workflow_mode(root) == "direct"
+                          ))
             except StageCompletionError as exc:
                 return StageTransition(
                     "hold", cur, str(exc), current_stage=cur,

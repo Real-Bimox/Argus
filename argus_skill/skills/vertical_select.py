@@ -755,6 +755,23 @@ def vertical_completion_certificate_status(
     holds the record plus both fingerprints. The bool wrapper below is the
     predicate everything decides on; this is what the rejection gets to *say*.
     Fails closed on every error, as the predicate always has.
+
+    Two things this deliberately does NOT prove, stated here because four
+    docstrings in this tree once implied otherwise. The fingerprint is a hash of
+    the live checklist contract — framework source, no project evidence, no
+    goal, no actor, no secret — so anyone able to import
+    ``completion_contract_fingerprint`` can compute the expected value. It
+    detects a checklist that *moved* since certification; it does not
+    authenticate who certified. And ``_vertical_completion_record``'s structural
+    audit checks that an early completion is internally consistent, not that it
+    was ever legitimate.
+
+    Which is how testbed run 13 read ``{"ok": True}`` with two of math's three
+    stages ``skipped`` and the review never done. So early completion is checked
+    against the project's workflow mode here as well as at the write side:
+    ``direct`` mode is the one arrangement under which stopping before the final
+    stage is a real outcome rather than an abandoned pipeline. Run 13 was
+    ``staged``.
     """
     completion = _vertical_completion_record(project_root, vertical)
     if completion is None:
@@ -767,13 +784,37 @@ def vertical_completion_certificate_status(
     try:
         from ..verticals._base import (
             load_vertical,
+            vertical_checklist_stage_order,
             vertical_completion_contract_version,
         )
 
         module = load_vertical(vertical, project_root=project_root)
         completion_contract_version = vertical_completion_contract_version(module)
+        stage_order = [
+            _normalize_stage(stage)
+            for stage in vertical_checklist_stage_order(module)
+        ]
     except Exception:  # noqa: BLE001 — strict completion fails closed
         return {**detail, "reason": "completion contract version unreadable"}
+    if stage_order and completed_stage != stage_order[-1]:
+        try:
+            mode = resolve_workflow_mode(project_root)
+        except Exception:  # noqa: BLE001 — an unreadable mode fails closed
+            mode = ""
+        if mode != "direct":
+            skipped = ", ".join(stage_order[stage_order.index(completed_stage) + 1:]) \
+                if completed_stage in stage_order else "later stages"
+            return {
+                **detail,
+                "reason": (
+                    f"completion is recorded at {completed_stage!r}, not the "
+                    f"final stage {stage_order[-1]!r}, and workflow mode "
+                    f"{mode or 'unknown'!r} does not permit stopping early. "
+                    f"Skipped without certification: {skipped}"
+                ),
+                "workflow_mode": mode,
+                "final_stage": stage_order[-1],
+            }
     if completion_contract_version <= 0:
         return {"ok": True}
     try:
