@@ -6,6 +6,7 @@ ledger, structured RunWriter signal readers, and usage accounting helpers.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -13,12 +14,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-try:
-    import fcntl  # POSIX advisory locks for safe concurrent appends
-except ImportError:  # pragma: no cover - non-POSIX fallback
-    fcntl = None  # type: ignore[assignment]
-
 from ...core.daemon_lock import is_pid_running
+from ...core.evidence_ledger import EvidenceLedger
 from ...core.portable_filename import (
     legacy_hashed_filename_components,
     portable_filename_component,
@@ -670,32 +667,50 @@ def _append_experiment_history(cwd: str, record: dict[str, Any]) -> None:
     count. This is the durable, project-local memory a future engineer scans to
     learn why past runs succeeded or failed.
     """
-    try:
-        path = Path(cwd) / EXPERIMENT_HISTORY_REL
-        path.parent.mkdir(parents=True, exist_ok=True)
-        rid = record.get("run_id")
-        if rid and path.exists():
-            for line in path.read_text(encoding="utf-8").splitlines():
-                try:
-                    if json.loads(line).get("run_id") == rid:
-                        return  # already recorded
-                except (json.JSONDecodeError, AttributeError):
-                    continue
-        with path.open("a", encoding="utf-8") as f:
-            if fcntl is not None:
-                try:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-                except OSError:
-                    pass
-            f.write(json.dumps(record) + "\n")
-            f.flush()
-            if fcntl is not None:
-                try:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                except OSError:
-                    pass
-    except OSError:
-        pass
+    path = Path(cwd) / EXPERIMENT_HISTORY_REL
+    run_id = str(record.get("run_id") or "").strip()
+    if not run_id:
+        encoded = json.dumps(
+            record,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        run_id = f"event-{hashlib.sha256(encoded).hexdigest()[:20]}"
+    EvidenceLedger(path).append_record(
+        record_id=run_id,
+        record_type="experiment",
+        payload=record,
+    )
+
+
+def append_experiment_correction(
+    cwd: str,
+    *,
+    run_id: str,
+    correction_id: str,
+    relation: str,
+    reason: str,
+    evidence_refs: list[str] | tuple[str, ...] = (),
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Add a traceable correction without rewriting the original run row."""
+    normalized_run_id = str(run_id or "").strip()
+    if not normalized_run_id:
+        raise ValueError("run_id must be non-empty")
+    return EvidenceLedger(Path(cwd) / EXPERIMENT_HISTORY_REL).append_correction(
+        correction_id=correction_id,
+        target_record_id=normalized_run_id,
+        relation=relation,
+        reason=reason,
+        evidence_refs=evidence_refs,
+        payload={
+            "run_id": normalized_run_id,
+            "event": "CORRECTION",
+            "details": dict(details or {}),
+            "ts": time.time(),
+        },
+    )
 
 
 def _persist_experiment_record(

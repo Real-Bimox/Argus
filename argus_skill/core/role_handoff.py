@@ -45,7 +45,14 @@ def _named_value(message: str, name: str, *, limit: int = 500) -> str:
     value = ""
     expected = name.casefold()
     for line in str(message or "").splitlines():
-        key, separator, candidate = line.partition("=")
+        normalized_line = line.strip()
+        if (
+            len(normalized_line) >= 2
+            and normalized_line.startswith("`")
+            and normalized_line.endswith("`")
+        ):
+            normalized_line = normalized_line[1:-1].strip()
+        key, separator, candidate = normalized_line.partition("=")
         if separator and key.strip().casefold() == expected:
             normalized = candidate.strip()
             value = "" if normalized.casefold().rstrip(".") in _EMPTY_VALUES else normalized[:limit]

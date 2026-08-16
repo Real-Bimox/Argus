@@ -101,6 +101,7 @@ from ._registry import (
     _run_dir_from_command,
     _task_log_dir,
     _write_task,
+    append_experiment_correction,
 )
 from ._reporting import (
     _alert_engineer,
@@ -191,6 +192,7 @@ __all__ = [
     "_terminate_proc",
     "_mirror_discussion_md",
     "_append_experiment_history",
+    "append_experiment_correction",
     "_persist_experiment_record",
     "_lane_of",
     "_open_discussion_blockers",
