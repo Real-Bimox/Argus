@@ -592,8 +592,26 @@ def persist_vertical(
             raise ValueError(
                 f"invalid research target level: {research_target_level!r}"
             )
+        previous_target = normalize_research_target_level(
+            payload.get("research_target_level")
+        )
         payload["research_target_level"] = normalized_target
-        payload["research_target_set_at"] = time.time()
+        # STAMP ONLY ON A REAL CHANGE, for the same reason the stage below is
+        # seed-only. This timestamp exists so that raising the bar — say
+        # exploratory to publishable — retires certifications earned against
+        # the old bar: ``_research_project_done_issue`` walks the journal
+        # newest-first and stops at the first mission older than it. Stamping
+        # it on every re-persist made that gate unsatisfiable, because callers
+        # routinely re-affirm the level they just read. Every certification was
+        # older than the next re-stamp, so the Planner was told
+        # ``missing_<level>_reviewer_certification`` no matter what it did.
+        # Run 8 (s-fed750c2) solved the problem and proved it in Lean in
+        # mission 1, then spent missions 2, 3 and 4 certifying it, each one
+        # independently reviewed ``done`` and each one rejected.
+        if normalized_target != previous_target or not payload.get(
+            "research_target_set_at"
+        ):
+            payload["research_target_set_at"] = time.time()
     else:
         from ..verticals._base import load_vertical, vertical_research_target_levels
 
