@@ -51,6 +51,7 @@ let settingsView: WebContentsView | null = null;
 let supervisor: BackendSupervisor | null = null;
 let desktopSettings: DesktopSettings | null = null;
 let quitting = false;
+let windowsSessionEnding = false;
 let stopBackendAndQuitRequested = false;
 let cockpitLoaded = false;
 let tray: Tray | null = null;
@@ -198,8 +199,21 @@ function createWindow(): BrowserWindow {
   if (desktopSettings) applyWindowAppearance(window, desktopSettings);
   window.once('ready-to-show', () => window.show());
   window.on('resize', syncSettingsViewBounds);
+  window.on('query-session-end', () => {
+    // Windows Restart Manager (used by NSIS during upgrades) and OS shutdown
+    // must bypass close-to-tray. A normal WM_CLOSE still hides the window.
+    windowsSessionEnding = true;
+    quitting = true;
+    tray?.destroy();
+    tray = null;
+  });
+  window.on('session-end', () => {
+    windowsSessionEnding = true;
+    quitting = true;
+    app.exit(0);
+  });
   window.on('close', (event) => {
-    if (!shouldHideWindowOnClose(quitting)) return;
+    if (!shouldHideWindowOnClose(quitting, windowsSessionEnding)) return;
     event.preventDefault();
     closeSettingsView();
     window.hide();

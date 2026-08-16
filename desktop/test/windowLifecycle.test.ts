@@ -6,9 +6,10 @@ import {
   shouldStopBackendOnQuit,
 } from '../src/main/windowLifecycle';
 
-test('native close hides the Desktop shell while Argus remains active', () => {
-  assert.equal(shouldHideWindowOnClose(false), true);
-  assert.equal(shouldHideWindowOnClose(true), false);
+test('only an ordinary native close hides the Desktop shell', () => {
+  assert.equal(shouldHideWindowOnClose(false, false), true);
+  assert.equal(shouldHideWindowOnClose(true, false), false);
+  assert.equal(shouldHideWindowOnClose(false, true), false);
 });
 
 test('only explicit stop-and-quit stops the owned backend', () => {

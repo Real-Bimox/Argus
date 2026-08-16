@@ -20,6 +20,7 @@ win:
         - x64
   icon: resources/icon.ico
 nsis:
+  include: resources/installer.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false

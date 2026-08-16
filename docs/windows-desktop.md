@@ -45,8 +45,10 @@ artifacts as an available end-user release.
 
 The first-run screen selects an installed Agent CLI and starts the bundled
 backend. Installation is usable only after the backend reaches the ready screen.
-If NSIS asks to close Argus, close the existing Desktop window so it can replace
-the application files. A previously launched backend can be a separate process;
+During an upgrade, NSIS terminates old `Argus.exe` and frozen-backend process
+trees before its running-app check; it does not rely on WM_CLOSE because normal
+close intentionally hides Argus to the tray. A previously launched backend can
+be a separate process;
 the first launch of the new Desktop release safely replaces a proven prior
 backend after installation. If startup fails, use **Export sanitized
 diagnostics** from the error screen; the report includes the failed stage and
