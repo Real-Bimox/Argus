@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import nullcontext
+from pathlib import Path
 from typing import Any
 
 from ..skills import vertical_select
@@ -54,6 +55,98 @@ def _software_grounding_required(workflow_mode: str) -> bool:
 
 
 _CURRENT_OPERATOR_MARKER = "[CURRENT OPERATOR MESSAGE]"
+_ROUTING_RUNTIME_ENTRIES = frozenset({".argus", ".autors"})
+_REPOSITORY_SENSITIVE_VERTICALS = frozenset({
+    "software",
+    "argus_maintenance",
+    "digital_circuit",
+    "digital_circuit_benchmark",
+    "chip_design",
+    "speedrun",
+    "kernel_engineering",
+    "nanochat",
+    "nanogpt_speedrun",
+    "kernelbench",
+})
+_ROUTING_PROJECT_MARKERS = frozenset({
+    ".git",
+    "AGENTS.md",
+    "Cargo.toml",
+    "CMakeLists.txt",
+    "go.mod",
+    "package.json",
+    "pyproject.toml",
+    "requirements.txt",
+})
+
+
+def _routing_workspace_snapshot(root: Path | str) -> dict[str, Any]:
+    """Return bounded deterministic routing evidence without model tool use."""
+    path = Path(root).expanduser().resolve()
+    try:
+        entries = sorted(
+            (
+                child.name + ("/" if child.is_dir() else "")
+                for child in path.iterdir()
+                if child.name not in _ROUTING_RUNTIME_ENTRIES
+            ),
+            key=str.casefold,
+        )[:40]
+    except OSError:
+        return {
+            "root": str(path),
+            "accessible": False,
+            "workspace_empty": False,
+            "entries": [],
+            "project_markers": [],
+        }
+    marker_names = {
+        entry.rstrip("/")
+        for entry in entries
+        if entry.rstrip("/") in _ROUTING_PROJECT_MARKERS
+    }
+    return {
+        "root": str(path),
+        "accessible": True,
+        "workspace_empty": not entries,
+        "entries": entries,
+        "project_markers": sorted(marker_names),
+    }
+
+
+def _render_routing_workspace_snapshot(snapshot: dict[str, Any]) -> str:
+    entries = list(snapshot.get("entries") or [])
+    markers = list(snapshot.get("project_markers") or [])
+    return (
+        "\n\n## Host workspace snapshot (authoritative bounded routing evidence)\n"
+        f"accessible={str(bool(snapshot.get('accessible'))).lower()}\n"
+        f"workspace_empty={str(bool(snapshot.get('workspace_empty'))).lower()}\n"
+        f"project_markers={'; '.join(str(value) for value in markers) or 'none'}\n"
+        f"top_level_entries={'; '.join(str(value) for value in entries) or 'none'}\n"
+        "An empty snapshot is sufficient evidence that no repository-specific "
+        "capability can be reused. Do not call a tool merely to repeat it."
+    )
+
+
+def _decision_requires_agent_grounding(
+    decision: VerticalDecision,
+    *,
+    snapshot: dict[str, Any],
+    builtin_verticals: set[str],
+    project_domains: set[str],
+) -> bool:
+    """Whether this decision needs evidence beyond the Host snapshot."""
+    if not bool(snapshot.get("accessible")):
+        return True
+    if decision.choice != "existing":
+        return True
+    if decision.vertical in project_domains or decision.vertical not in builtin_verticals:
+        return True
+    if decision.adapted_stages:
+        return True
+    if bool(snapshot.get("workspace_empty")):
+        return False
+    return decision.vertical in _REPOSITORY_SENSITIVE_VERTICALS
 
 
 class _VerticalDecisionMixin:
@@ -212,10 +305,11 @@ class _VerticalDecisionMixin:
     ) -> VerticalDecision:
         """Choose the vertical for ``task``.
 
-        Every formal task is classified by the Manager itself after mandatory,
-        bounded repository inspection. A vertical decision without observed tool
-        activity is rejected rather than persisted, even when the model claims a
-        confident existing-vertical match.
+        Every formal task is classified by the Manager. The Host supplies a
+        bounded deterministic workspace snapshot; empty/new workspaces and clear
+        built-in capabilities do not require ceremonial Agent tool use. Decisions
+        that depend on an existing repository, project domain, or new capability
+        require observed tool evidence and receive at most one automatic retry.
 
         FAIL-HARD when agent judgment is needed: no backend, or a model reply that
         is missing / not a valid choice, RAISES ``VerticalDecisionError``. There is
@@ -273,71 +367,110 @@ class _VerticalDecisionMixin:
             or ""
         ).strip().lower()
 
-        with self._task_usage_scope(root_task_id):
-            prompt = build_vertical_decision_prompt(
-                task,
-                verticals_with_purpose=vertical_select.available_vertical_purposes(),
-                domains_with_purpose=DOMAIN_PURPOSES,
-                existing_data_domains=existing,
-                existing_data_domain_summaries=existing_summaries,
-                research_target_verticals=research_target_verticals,
-            )
-            grounded_prompt_limit = _manager_route_positive_int(
-                "ARGUS_SKILL_MANAGER_GROUNDED_ROUTE_MAX_PROMPT_CHARS",
-                _DEFAULT_GROUNDED_ROUTE_MAX_PROMPT_CHARS,
-            )
-            if len(prompt) > grounded_prompt_limit:
-                raise VerticalDecisionError(
-                    "Manager grounded-route prompt exceeds configured context cap "
-                    f"({len(prompt)} > {grounded_prompt_limit} characters)"
-                )
-            grounded_extra_args = (
-                [
-                    "--no-custom-instructions",
-                    "--disable-builtin-mcps",
-                    "--context",
-                    "default",
-                ]
-                if backend_name == "copilot"
-                else None
-            )
-            result = gateway_run_exec(
-                backend,
-                prompt=prompt,
-                options=RunnerOptions(
-                    model=_manager_model(),
-                    reasoning_effort=_manager_vertical_reasoning_effort(),
-                    working_dir=str(self.execution_workdir),
-                    dangerous_yolo=True,
-                    skip_git_repo_check=True,
-                    extra_args=grounded_extra_args,
-                ),
-                run_label="manager-classify-grounded",
-            )
-        failed, detail = _manager_backend_failure(result)
-        if failed:
-            raise VerticalDecisionError(
-                "Manager grounded-route backend failed"
-                + (f": {detail}" if detail else "")
-            )
-        if not bool(getattr(result, "tool_activity_observed", False)):
-            raise VerticalDecisionError(
-                "Manager grounded vertical decision did not inspect repository tools"
-            )
-        answer = extract_answer(result)
-        decision = parse_vertical_decision(
-            answer,
-            known_verticals=list(vertical_select.available_verticals()),
-            known_domains=list(BUILTIN_DOMAINS),
-            existing_data_domains=all_domain_names,
+        workspace_snapshot = _routing_workspace_snapshot(self.execution_workdir)
+        prompt = build_vertical_decision_prompt(
+            task,
+            verticals_with_purpose=vertical_select.available_vertical_purposes(),
+            domains_with_purpose=DOMAIN_PURPOSES,
+            existing_data_domains=existing,
+            existing_data_domain_summaries=existing_summaries,
             research_target_verticals=research_target_verticals,
-            default_execution_task="" if contextual_task else task.strip(),
+        ) + _render_routing_workspace_snapshot(workspace_snapshot)
+        grounded_prompt_limit = _manager_route_positive_int(
+            "ARGUS_SKILL_MANAGER_GROUNDED_ROUTE_MAX_PROMPT_CHARS",
+            _DEFAULT_GROUNDED_ROUTE_MAX_PROMPT_CHARS,
         )
-        if decision is None:
+        if len(prompt) > grounded_prompt_limit:
             raise VerticalDecisionError(
-                f"Manager could not decide a vertical for task {task!r}: the "
-                "model reply was missing or not a valid existing/new choice"
+                "Manager grounded-route prompt exceeds configured context cap "
+                f"({len(prompt)} > {grounded_prompt_limit} characters)"
             )
+        grounded_extra_args = (
+            [
+                "--no-custom-instructions",
+                "--disable-builtin-mcps",
+                "--context",
+                "default",
+            ]
+            if backend_name == "copilot"
+            else None
+        )
+        options = RunnerOptions(
+            model=_manager_model(),
+            reasoning_effort=_manager_vertical_reasoning_effort(),
+            working_dir=str(self.execution_workdir),
+            dangerous_yolo=True,
+            skip_git_repo_check=True,
+            extra_args=grounded_extra_args,
+        )
+        known_verticals = list(vertical_select.available_verticals())
+
+        def invoke_grounded_route(
+            route_prompt: str,
+            *,
+            run_label: str,
+        ) -> tuple[Any, VerticalDecision]:
+            with self._task_usage_scope(root_task_id):
+                route_result = gateway_run_exec(
+                    backend,
+                    prompt=route_prompt,
+                    options=options,
+                    run_label=run_label,
+                )
+            failed, detail = _manager_backend_failure(route_result)
+            if failed:
+                raise VerticalDecisionError(
+                    "Manager grounded-route backend failed"
+                    + (f": {detail}" if detail else "")
+                )
+            route_decision = parse_vertical_decision(
+                extract_answer(route_result),
+                known_verticals=known_verticals,
+                known_domains=list(BUILTIN_DOMAINS),
+                existing_data_domains=all_domain_names,
+                research_target_verticals=research_target_verticals,
+                default_execution_task="" if contextual_task else task.strip(),
+            )
+            if route_decision is None:
+                raise VerticalDecisionError(
+                    f"Manager could not decide a vertical for task {task!r}: the "
+                    "model reply was missing or not a valid existing/new choice"
+                )
+            return route_result, route_decision
+
+        result, decision = invoke_grounded_route(
+            prompt,
+            run_label="manager-classify-grounded",
+        )
+        tool_activity = bool(getattr(result, "tool_activity_observed", False))
+        grounding_required = _decision_requires_agent_grounding(
+            decision,
+            snapshot=workspace_snapshot,
+            builtin_verticals=set(known_verticals),
+            project_domains=set(all_domain_names),
+        )
+        if grounding_required and not tool_activity:
+            correction = (
+                "\n\n## Required grounding retry\n"
+                "The prior structured decision selected a repository-sensitive "
+                "or project-local capability without Agent tool evidence. Use one "
+                "targeted read-only repository tool operation, then return the "
+                "complete named decision lines again. Do not broaden the search."
+            )
+            retry_prompt = prompt + correction
+            if len(retry_prompt) > grounded_prompt_limit:
+                raise VerticalDecisionError(
+                    "Manager grounded-route retry exceeds configured context cap"
+                )
+            result, decision = invoke_grounded_route(
+                retry_prompt,
+                run_label="manager-classify-grounded-retry",
+            )
+            if not bool(getattr(result, "tool_activity_observed", False)):
+                raise VerticalDecisionError(
+                    "Manager grounded vertical decision did not inspect repository "
+                    "tools after one automatic retry"
+                )
         if decision.choice == "existing":
             from ..verticals._base import load_vertical_contract
             from ..verticals._data_domain import materialize_learned_data_domain

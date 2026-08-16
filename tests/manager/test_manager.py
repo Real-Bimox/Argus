@@ -662,11 +662,81 @@ def test_fast_route_environment_cannot_restore_tool_free_shortcut(
     ]
 
 
-def test_vertical_decision_rejects_model_reply_without_repository_tool_activity(
+def test_empty_workspace_builtin_research_does_not_require_ceremonial_tool_use(
     tmp_path,
 ) -> None:
-    class _NoToolRunner:
+    class _NoToolResearchRunner:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
         def run_exec(self, *, prompt, options, run_label, resume_thread_id=None):
+            self.calls.append(run_label)
+            return _DecisionResult(
+                json.dumps({
+                    "choice": "existing",
+                    "vertical": "research",
+                    "workflow_mode": "staged",
+                    "execution_task": "Write the requested survey and compile its PDF.",
+                    "rationale": "explicit built-in research task in an empty workspace",
+                    "research_target_level": "exploratory",
+                }),
+                tool_activity_observed=False,
+            )
+
+    runner = _NoToolResearchRunner()
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "Write a Chinese survey and compile its PDF."
+    )
+
+    assert decision.vertical == "research"
+    assert runner.calls == ["manager-classify-grounded"]
+
+
+def test_repository_sensitive_no_tool_route_retries_once_and_can_recover(
+    tmp_path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+
+    class _RetryRunner:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def run_exec(self, *, prompt, options, run_label, resume_thread_id=None):
+            self.calls.append(run_label)
+            return _DecisionResult(
+                json.dumps({
+                    "choice": "existing",
+                    "vertical": "software",
+                    "workflow_mode": "direct",
+                    "execution_task": "Repair the repository.",
+                    "rationale": "Python repository repair",
+                }),
+                tool_activity_observed=len(self.calls) == 2,
+            )
+
+    runner = _RetryRunner()
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "Repair the repository."
+    )
+
+    assert decision.vertical == "software"
+    assert runner.calls == [
+        "manager-classify-grounded",
+        "manager-classify-grounded-retry",
+    ]
+
+
+def test_vertical_decision_rejects_repeated_no_tool_repository_route(
+    tmp_path,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+
+    class _NoToolRunner:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def run_exec(self, *, prompt, options, run_label, resume_thread_id=None):
+            self.calls.append(run_label)
             return _DecisionResult(
                 json.dumps({
                     "choice": "existing",
@@ -678,13 +748,18 @@ def test_vertical_decision_rejects_model_reply_without_repository_tool_activity(
                 tool_activity_observed=False,
             )
 
+    runner = _NoToolRunner()
     with pytest.raises(
         VerticalDecisionError,
         match="did not inspect repository tools",
     ):
-        Manager(project_root=tmp_path, runner=_NoToolRunner()).decide_vertical(
+        Manager(project_root=tmp_path, runner=runner).decide_vertical(
             "Repair the repository."
         )
+    assert runner.calls == [
+        "manager-classify-grounded",
+        "manager-classify-grounded-retry",
+    ]
 
 
 def test_contextual_continuation_uses_formal_project_domain_and_clean_handoff(
