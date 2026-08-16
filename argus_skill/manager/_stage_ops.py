@@ -345,12 +345,44 @@ class _StageDecisionMixin:
             if final_decision is not None:
                 decision = final_decision
             else:
-                from .stage_decider import StageDecision
+                from .stage_decider import (
+                    StageDecision,
+                    final_stage_completion_blockers,
+                )
 
+                # Report which of the four checks refused. The bare
+                # "rejected by the project completion contract" left the
+                # Planner guessing: testbed run 13 answered it by queueing a
+                # mission to "record the missing route/ledger state or
+                # equivalent gate metadata", when the real answer was that it
+                # was sitting at ``scope`` and needed to advance.
+                blockers = final_stage_completion_blockers(
+                    review,
+                    current_stage=cur,
+                    stage_order=order,
+                    vertical=_completion_vertical,
+                    mission_scope=mission_scope,
+                    project_root=root,
+                    research_target_level=_research_target_level,
+                    checklist_contract=checklist_contract,
+                    completion_blocker=external_completion_gate_issue(
+                        self.execution_workdir
+                    ),
+                    allow_early_completion=(
+                        not open_ended
+                        and resolve_workflow_mode(root) == "direct"
+                    ),
+                )
+                detail = "; ".join(blockers)
                 decision = StageDecision(
                     "hold",
                     cur,
-                    "Manager completion rejected by the project completion contract",
+                    (
+                        f"Manager completion rejected: {detail}"
+                        if detail
+                        else "Manager completion rejected by the project "
+                        "completion contract"
+                    ),
                     "manager_completion_rejected",
                 )
         rework_decision = external_completion_gate_rework_decision(

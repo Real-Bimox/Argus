@@ -159,8 +159,9 @@ def parse_stage_decision(
             * ADVANCE ``target_stage`` must be strictly LATER in ``stage_order``;
       * ROLLBACK ``target_stage`` must be strictly EARLIER than ``current_stage``
         (else HOLD);
-            * COMPLETE targets the current stage; a later stage is accepted and
-        normalized to it, an earlier or unknown one is rejected;
+            * COMPLETE targets the current stage; a LATER stage becomes a
+        one-step ADVANCE (completion is only legal at the final stage), an
+        earlier or unknown one is rejected;
       * HOLD pins ``target_stage`` to the current stage.
     """
     cur = (current_stage or "").strip().lower()
@@ -200,30 +201,40 @@ def parse_stage_decision(
     cur_idx = order.index(cur)
     if action == "complete":
         # A COMPLETE naming a LATER stage is the model saying "everything
-        # through X is done", which is compatible with completing now — the
-        # decision is pinned to ``cur`` either way, and the target is discarded
-        # before the real completion contract runs. Rejecting it cost testbed
-        # runs 11 and 12 their stage transition: both emitted
+        # through X is done". Testbed runs 11, 12 and 13 all emitted
         # ``ACTION=complete`` / ``TARGET_STAGE=review`` at ``current_stage=scope``
-        # with correct reasoning, and both were silently recorded as HOLDs that
-        # nothing fed back to the Manager, so it had no way to converge.
-        # The deviation is still named in the diagnostic rather than erased.
+        # with correct reasoning behind it — run 13 had by then produced the
+        # survey, a both-directions proof, and a Lean build with no ``sorry``,
+        # all reviewer-certified.
+        #
+        # Pinning that to ``complete`` at ``cur`` does NOT rescue it. Completion
+        # is only legal at the final stage: ``final_stage_completion_decision``
+        # returns ``None`` for any earlier one (outside ``direct`` workflow
+        # mode), and the caller turns that into a HOLD. So the earlier
+        # normalization to ``complete@cur`` traded one HOLD for another and run
+        # 13 sat at ``scope`` with the problem solved, its Planner inventing
+        # gate-metadata busywork to explain the refusal.
+        #
+        # ADVANCE is the action that expresses what the model meant and that
+        # the machine can execute. One step, not a jump to ``target``:
+        # ``advance_stage`` validates the stage being *left*, so hopping
+        # ``scope -> review`` would skip ``solve``'s gate entirely. Stepping
+        # converges in as many ticks as there are stages and every gate still
+        # runs — including the vertical's deterministic completion validator,
+        # which is what raises ``StageCompletionError`` from ``_advance``.
         #
         # An EARLIER or unknown target stays fail-closed: that is a model
-        # confusing completion with a rollback, not a wording slip. Completion
-        # itself is not decided here — ``final_stage_completion_decision`` still
-        # rules on review certification, mission scope, research target and the
-        # external gate before any of this takes effect.
+        # confusing completion with a rollback, not a wording slip.
         if target and target != cur:
             if target not in order or order.index(target) < cur_idx:
                 return StageDecision(
                     "hold", cur, "manager held (default)", "illegal_complete_target"
                 )
             return StageDecision(
-                "complete",
-                cur,
+                "advance",
+                order[cur_idx + 1],
                 reason or "operator objective complete",
-                "complete_target_normalized",
+                "complete_target_advanced",
             )
         return StageDecision(
             "complete",
@@ -394,6 +405,81 @@ def final_stage_completion_decision(
     return StageDecision("complete", cur, reason, diagnostic)
 
 
+def final_stage_completion_blockers(
+    review: Any,
+    *,
+    current_stage: str,
+    stage_order: Sequence[str],
+    vertical: str = "",
+    mission_scope: str = "",
+    project_root: Any = None,
+    research_target_level: str | None = None,
+    checklist_contract: Any | None = None,
+    completion_blocker: str = "",
+    allow_early_completion: bool = False,
+) -> tuple[str, ...]:
+    """Why ``final_stage_completion_decision`` refused, in the operator's words.
+
+    That function answers yes-or-no across four independent checks and returns
+    a bare ``None`` for every no, so its caller could only report "Manager
+    completion rejected by the project completion contract" — the same sentence
+    whether the stage was simply not the last one, an external gate was open, a
+    bounded mission had no standing to close the project, or the Reviewer had
+    not certified. Testbed run 13 hit the first of those with the problem fully
+    solved (search program, both-directions proof, Lean build with no ``sorry``,
+    reviewer-certified) and its Planner responded by inventing gate-metadata
+    busywork — "record the missing route/ledger state or equivalent gate
+    metadata if required by the workflow" — because nothing told it the actual
+    answer was "you are at ``scope``; advance".
+
+    Deliberately a separate function rather than a changed return type: the
+    decision is consumed as a truthy/``None`` value in several places, and a
+    reporting improvement is not worth a signature migration across them. The
+    checks are duplicated in the same order as above; the reviewer check
+    already phrases its own reason, so that one passes through verbatim.
+
+    Returns an empty tuple when nothing blocks, which callers must treat as
+    "no explanation available" rather than "completion is allowed" — the
+    decision function remains the authority on that.
+    """
+    cur = (current_stage or "").strip().lower()
+    order = [str(s).strip().lower() for s in stage_order]
+    if cur not in order:
+        return (f"stage {cur!r} is not part of this vertical's stage order",)
+    if cur != order[-1] and not allow_early_completion:
+        return (
+            f"completion is only legal at the final stage ({order[-1]!r}); this "
+            f"project is at {cur!r}. Advance through the remaining stages "
+            f"({', '.join(order[order.index(cur) + 1:])}) instead — each one "
+            "runs its own completion gate on the way past",
+        )
+    blocker = str(completion_blocker or "").strip()
+    if blocker:
+        return (blocker,)
+    if not allow_early_completion and not _mission_scope_can_complete(
+        mission_scope,
+        vertical,
+        project_root=project_root,
+    ):
+        return (
+            f"a mission scoped {mission_scope or '(unset)'!r} cannot close a "
+            f"{vertical or 'this'!r} project: its completion gate is "
+            "'certified', so only a 'final_submission' mission carries the "
+            "authority to end it",
+        )
+    missing = str(
+        _review_certifies_completion(
+            review,
+            vertical=vertical,
+            mission_scope=mission_scope,
+            research_target_level=research_target_level,
+            checklist_contract=checklist_contract,
+        )
+        or ""
+    ).strip()
+    return (missing,) if missing else ()
+
+
 def external_completion_gate_rework_decision(
     review: Any,
     *,
@@ -504,6 +590,7 @@ __all__ = [
     "fallback_empty_stage_decision",
     "external_completion_gate_rework_decision",
     "external_completion_gate_stage_guard_decision",
+    "final_stage_completion_blockers",
     "final_stage_completion_decision",
     "build_stage_decision_prompt",
     "parse_stage_decision",

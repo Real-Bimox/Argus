@@ -55,6 +55,24 @@ STAGE_CHECKS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+def adopt_operator_objective(project_root: Path, request: str) -> object:
+    """Vertical-contract hook: give the objective mode an in-product channel.
+
+    Math is the only vertical that refuses to complete *any* stage until an
+    out-of-band choice has been made (see ``objective_mode``), and until now
+    the sole way to make that choice was a module CLI on the host. The hook is
+    declared here rather than in core because the concept is math-local: no
+    other vertical has two completion bars to pick between, and core must not
+    learn about ``math_objective_mode`` to deliver one.
+
+    Re-exported rather than reimplemented — ``objective_mode`` owns the rule
+    that a transcription never overwrites an operator's choice.
+    """
+    from .objective_mode import adopt_operator_objective as _adopt
+
+    return _adopt(project_root, request)
+
+
 def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
     """Validate objective identity, Lean evidence, and the policy-required graph."""
     from ...core.verification_policy import resolve_policy
@@ -108,7 +126,60 @@ def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
         issues.append(
             "proof graph goal does not match the Manager-owned math_goal"
         )
+    issues.extend(_targeted_goal_closure_issues(stage_name, objective, graph))
     return tuple(issues)
+
+
+def _targeted_goal_closure_issues(
+    stage_name: str, objective: Any, graph: Any
+) -> tuple[str, ...]:
+    """A targeted project completes by closing its goal, not by passing review.
+
+    Everything else the completion path checks is about the *strength* of a
+    result — ``research_completion_issue`` reads result_class, novelty and
+    significance against the research target level, and the reviewer checklist
+    is LLM-judged prose. None of it asks the one question this mode exists to
+    ask: is G proved or refuted?
+
+    ``ProofGraph.gap()`` has answered that since it was written and had exactly
+    one caller, the standalone operator CLI ``proof_graph_check``. So a
+    targeted project could reach ``decision=complete`` with its root node still
+    ``open``: the deterministic state on disk said "G is unproved" while the
+    certificate said "done", and nothing put the two in the same room. The
+    reviewer is the only thing that ever stood in the way, and it is never told
+    the persisted ``math_goal`` or the gap — and the failure case is by
+    construction one where its verdict is ``done``.
+
+    Gated to ``review`` deliberately. Applying it at ``solve`` would make the
+    middle stage uncompletable — a stage whose whole job is to shrink the gap
+    cannot be blocked on the gap being zero. That is the shape of bug #41, and
+    it is not worth re-creating to catch a case ``review`` catches anyway.
+
+    Exploratory mode is untouched: it has no single G, which is the entire
+    reason the two modes exist separately.
+    """
+    if stage_name != "review" or not objective.is_targeted:
+        return ()
+    report = graph.gap()
+    if not report.reachable:
+        return (
+            "targeted math cannot complete: research/PROOF_GRAPH.json has no "
+            "goal node, so the gap to the named goal is unmeasurable. Mark the "
+            "goal node with `is_goal: true` (or name it after the goal) and "
+            "record what it still rests on",
+        )
+    if report.gap_size:
+        blocking = ", ".join(report.blocking_nodes[:6])
+        if len(report.blocking_nodes) > 6:
+            blocking += f", ... ({len(report.blocking_nodes)} total)"
+        return (
+            "targeted math cannot complete: the named goal still rests on "
+            f"{report.gap_size} unproved proposition(s): {blocking}. A targeted "
+            "project completes by proving or refuting its goal — if the goal "
+            "turned out to be the wrong question, the honest close is to say "
+            "so and switch the objective mode, not to certify the stage",
+        )
+    return ()
 
 
 def _math_state_issues(project_root: Path) -> tuple[str, ...]:
@@ -483,6 +554,7 @@ __all__ = [
     "STAGE_CHECKS",
     "STAGE_ORDER",
     "WORKFLOW_MODE",
+    "adopt_operator_objective",
     "completion_gate",
     "prepare_mission",
     "role_banner",

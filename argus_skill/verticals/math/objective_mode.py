@@ -20,21 +20,32 @@ Guessing between them makes one of the two behave badly, so the operator
 picks. An unset mode is reported rather than assumed: the two have different
 completion bars, and silently choosing either is wrong in one direction.
 
-The operator picks through the CLI at the bottom of this module. That is the
-whole channel, and it is deliberately the only one: no model decides this. A
+The operator picks through the CLI at the bottom of this module, and that
+choice is authoritative: nothing overwrites it. No model decides it either. A
 vertical, a research target level, and a workflow mode are all read out of the
 operator's request by the Manager because a wrong guess there costs a
 misrouted mission; a wrong guess *here* silently changes what "finished"
-means, and the project reports success against a bar nobody chose. So this one
-waits.
+means, and the project reports success against a bar nobody chose.
 
-Waiting has a cost of its own and it is paid up front: until it is set, every
-math stage refuses to complete — ``scope`` included, because the objective
-gate in :mod:`argus_skill.verticals.math.stages` runs before the stage
-dispatch. That is the intended shape. A project that ran ``scope`` to
-completion under an unchosen bar would have to be re-judged afterwards against
-whichever bar was later picked, and the retrieval it did is exactly the work
-that depends on knowing whether there is one goal to close.
+That used to be the whole channel, and it made the vertical unusable in the
+product: a math project created through the real front door had no mode, every
+stage refused to complete, and the only remedy was shell access to the host.
+"The operator decides" had been implemented as "an operator with shell access
+decides". So there is now a second, narrower way in —
+:func:`adopt_operator_objective`, which restates the operator's own request as
+a ``targeted`` goal when nobody has chosen anything. It is transcription, not
+choice: it never overwrites a resolved objective, it records itself as
+``transcribed_from_request`` so the two are distinguishable on disk, and it
+only ever writes the *stronger* of the two bars, so nothing can be certified
+under a weaker rule than the operator would have picked.
+
+Waiting still has a cost and it is still paid up front: until the mode is set
+by either route, every math stage refuses to complete — ``scope`` included,
+because the objective gate in :mod:`argus_skill.verticals.math.stages` runs
+before the stage dispatch. That is the intended shape. A project that ran
+``scope`` to completion under an unchosen bar would have to be re-judged
+afterwards against whichever bar was later picked, and the retrieval it did is
+exactly the work that depends on knowing whether there is one goal to close.
 """
 from __future__ import annotations
 
@@ -48,7 +59,11 @@ from typing import Any, Sequence
 __all__ = [
     "MATH_OBJECTIVE_MODES",
     "MODE_COMPLETION",
+    "SOURCE_KEY",
+    "SOURCE_OPERATOR",
+    "SOURCE_TRANSCRIBED",
     "MathObjective",
+    "adopt_operator_objective",
     "main",
     "normalize_mode",
     "resolve_objective",
@@ -56,6 +71,13 @@ __all__ = [
 ]
 
 MATH_OBJECTIVE_MODES = ("targeted", "exploratory")
+
+#: Who chose the mode. An operator choice is authoritative and is never
+#: overwritten; a transcription is the runtime restating the operator's own
+#: request so the project is not stalled before anyone can be asked.
+SOURCE_KEY = "math_objective_source"
+SOURCE_OPERATOR = "operator"
+SOURCE_TRANSCRIBED = "transcribed_from_request"
 
 #: What completion requires under each mode. Injected verbatim, so it is
 #: written to be read by a reviewer deciding `done`.
@@ -150,7 +172,7 @@ def resolve_objective(project_root: object) -> MathObjective:
 
 
 def set_objective(
-    project_root: object, *, mode: Any, goal: str = ""
+    project_root: object, *, mode: Any, goal: str = "", source: str = SOURCE_OPERATOR
 ) -> MathObjective:
     """Persist the operator's choice into the Manager-owned pipeline state.
 
@@ -184,6 +206,9 @@ def set_objective(
     root = Path(str(project_root))
     payload = _read_state(root)
     payload["math_objective_mode"] = normalized
+    payload[SOURCE_KEY] = (
+        source if source in (SOURCE_OPERATOR, SOURCE_TRANSCRIBED) else SOURCE_OPERATOR
+    )
     if goal.strip():
         payload["math_goal"] = goal.strip()
     path = root.joinpath(*_STATE_RELPATH)
@@ -193,6 +218,50 @@ def set_objective(
     tmp_path.write_text(rendered, encoding="utf-8")
     os.replace(tmp_path, path)
     return resolve_objective(root)
+
+
+def adopt_operator_objective(project_root: object, request: str) -> MathObjective:
+    """Restate the operator's own request as the objective, once, if nobody has.
+
+    ``set_objective`` had exactly one production entry point: the argparse CLI
+    at the bottom of this module. Nothing in the Manager, front door, webapi,
+    daemon or any UI called it, and no agent prompt named the concept. Meanwhile
+    an unset mode blocks *every* math stage — ``scope`` included, by design —
+    and ``_ensure_stage_completion`` turns that into a ``StageCompletionError``
+    the operator never sees. So a math project created through the real product
+    could not close a single stage, and the only remedy was to shell into the
+    host and run a module CLI. Every testbed run that appeared to work did so
+    because ``math-docs/testbed_launch.py`` wrote the mode before the Manager
+    was ever invoked — a harness self-described as "not a fixture".
+
+    "The operator decides" was implemented as "an operator with shell access
+    decides", which is not the same thing. This is the difference: the operator
+    already stated what they wanted when they opened the project, and this
+    transcribes that statement rather than inventing one. The runtime is
+    restating, not choosing — which is why the mode it writes is recorded as
+    ``transcribed_from_request`` and why an operator value is never touched.
+
+    The transcription is always ``targeted``, and that direction is deliberate:
+    targeted is the *strictly stronger* bar (it additionally demands the named
+    goal be proved or refuted — see ``_targeted_goal_closure_issues``), so a
+    transcription can never let a project report success against a weaker bar
+    than the operator would have picked. Loosening it to ``exploratory`` stays
+    an explicit operator act, because that is the direction where a wrong guess
+    costs something.
+
+    Idempotent and non-destructive: a resolved objective from any source is
+    left alone, so re-dispatching a mission never rewrites a goal mid-project.
+    """
+    root = Path(str(project_root))
+    payload = _read_state(root)
+    if normalize_mode(payload.get("math_objective_mode")) is not None:
+        return resolve_objective(root)
+    statement = " ".join(str(request or "").split())
+    if not statement:
+        return resolve_objective(root)
+    return set_objective(
+        root, mode="targeted", goal=statement, source=SOURCE_TRANSCRIBED
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:

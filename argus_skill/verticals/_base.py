@@ -225,12 +225,27 @@ def vertical_stage_completion_issues(
     return _contract(mod).completion_issues(stage, project_root)
 
 
+def vertical_adopt_operator_objective(
+    mod: VerticalDefinition,
+    *,
+    project_root: Path,
+    request: str,
+) -> bool:
+    """Hand the vertical the operator's request so it can record its objective.
+
+    Returns whether the vertical declares an adopter at all. Verticals that
+    have nothing to choose declare none, and this is a no-op for them.
+    """
+    return _contract(mod).adopt_operator_objective(project_root, request)
+
+
 __all__ = [
     "DEFAULT_VERTICAL",
     "VerticalContract",
     "VerticalDefinition",
     "load_vertical",
     "load_vertical_contract",
+    "vertical_adopt_operator_objective",
     "vertical_checklist_stage_order",
     "vertical_checklist_items",
     "vertical_checklist_optional_stages",

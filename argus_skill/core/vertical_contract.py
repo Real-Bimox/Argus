@@ -82,6 +82,10 @@ class VerticalContract:
     library_preparer: Callable[[VerticalLibraryContext], None] | None = None
     stage_completion_validator: Callable[[str, Path], object] | None = None
     planner_task_validator: Callable[[str, Path, Any], object] | None = None
+    # Optional: records the operator's stated objective at project setup, for a
+    # vertical that cannot pick a completion bar on its own. See
+    # ``adopt_operator_objective``.
+    operator_objective_adopter: Callable[[Path, str], object] | None = None
     stage_checks: dict[str, tuple[tuple[str, str], ...]] | None = None
     stage_primary_deliverables: dict[str, tuple[str, ...]] | None = None
     # Stages whose Engineer round runs with live web search enabled. ``None``
@@ -159,6 +163,29 @@ class VerticalContract:
             for issue in self.planner_task_validator(stage, project_root, task)
             if str(issue).strip()
         )
+
+    def adopt_operator_objective(self, project_root: Path, request: str) -> bool:
+        """Let the vertical record the operator's stated objective, if it wants one.
+
+        Most verticals declare no adopter and this is a no-op. It exists for a
+        vertical whose completion rule depends on a choice that cannot be
+        guessed from the request alone — ``math`` has two opposite bars
+        (``targeted`` vs ``exploratory``) and refuses every stage until one is
+        selected. Without a hook the only way to select it was a host CLI, so
+        the vertical was unusable through the product: a math project created
+        through the real front door could not close a single stage.
+
+        Core deliberately does not learn what the choice *is*. It hands the
+        vertical the operator's own request text at the one moment that text is
+        known and the project is being set up, and the vertical decides whether
+        the text says anything it can use. Returns whether an adopter ran at
+        all, not whether it wrote anything — an adopter that correctly declines
+        to overwrite an existing choice is not a failure.
+        """
+        if self.operator_objective_adopter is None:
+            return False
+        self.operator_objective_adopter(project_root, str(request or ""))
+        return True
 
     def prepare_mission(
         self,
@@ -320,6 +347,13 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         raise VerticalContractError(
             f"vertical {name!r} has a non-callable planner task validator"
         )
+    operator_objective_adopter = getattr(provider, "adopt_operator_objective", None)
+    if operator_objective_adopter is not None and not callable(
+        operator_objective_adopter
+    ):
+        raise VerticalContractError(
+            f"vertical {name!r} has a non-callable operator objective adopter"
+        )
     raw_stage_checks = getattr(provider, "STAGE_CHECKS", {}) or {}
     if not isinstance(raw_stage_checks, dict):
         raise VerticalContractError(f"vertical {name!r} stage checks are not a mapping")
@@ -453,6 +487,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         ),
         stage_completion_validator=stage_completion_validator,
         planner_task_validator=planner_task_validator,
+        operator_objective_adopter=operator_objective_adopter,
         stage_checks=stage_checks,
         stage_primary_deliverables=stage_primary_deliverables,
         engineer_live_search_stages=engineer_live_search_stages,

@@ -8,32 +8,35 @@ about *when* to complete — the format contract at the end of the prompt pinned
 TARGET_STAGE for HOLD alone.
 
 So a Manager that reasoned correctly still filled the field wrong. Testbed runs
-11 (``s-b1a3757f``) and 12 (``s-44cb57c7``) each emitted::
+11 (``s-b1a3757f``), 12 (``s-44cb57c7``) and 13 (``s-d9ea298f``) each emitted::
 
     ACTION=complete
     TARGET_STAGE=review
     REASON=Reviewer-certified final submission satisfies the scoped problem...
 
-against ``current_stage=scope``, and each was recorded as::
-
-    {"action": "hold", "target_stage": "scope",
-     "diagnostic": "illegal_complete_target"}
-
-Nothing feeds that diagnostic back to the model, so the Manager had no way to
-converge — it made the same call, and lost it, on every cycle. Both campaigns
-completed and delivered all three phases anyway through the Goal Gate and the
-final-submission path, so the stage machine sat at ``scope`` for both full runs
-and nothing surfaced it as a failure.
+against ``current_stage=scope``. By that point run 13 had produced the search
+program, a both-directions proof of the characterization, and a Lean 4 build
+with no ``sorry`` and no ``axiom``, all reviewer-certified.
 
 Two changes, one prompt and one parser, because a prompt-only fix leaves a hard
 gate keyed on a probabilistic output:
 
 * the format contract now pins the field for COMPLETE as well as HOLD;
-* a COMPLETE naming a *later* stage is normalized to the current one rather
-  than rejected. The target is discarded before completion is actually decided
-  — ``final_stage_completion_decision`` rules on review certification, mission
-  scope, research target and the external gate regardless — so the syntactic
-  check was buying nothing the real contract does not already enforce.
+* a COMPLETE naming a *later* stage becomes a one-step ADVANCE.
+
+The second bullet is deliberately not "normalize to ``complete`` at the current
+stage", which is what this file asserted on its first pass. Completion is only
+legal at the *final* stage: ``final_stage_completion_decision`` returns ``None``
+for any earlier one outside ``direct`` workflow mode, and the caller turns that
+into ``manager_completion_rejected``. Normalizing therefore traded one HOLD for
+another, and run 13 demonstrated the cost live — it sat at ``scope`` with the
+problem solved while its Planner invented gate-metadata busywork to explain a
+refusal it could not see.
+
+ADVANCE is what the model meant and what the machine can execute. One step, not
+a jump to the named target: ``advance_stage`` validates the stage being *left*,
+so hopping ``scope -> review`` would skip ``solve``'s gate. Stepping converges
+in as many ticks as there are stages with every gate still enforced.
 
 An *earlier* or unknown target stays fail-closed: that is a model confusing
 completion with a rollback, not a wording slip.
@@ -75,20 +78,37 @@ def test_complete_with_no_target_is_unchanged() -> None:
 
 
 @pytest.mark.parametrize("target", ["solve", "review", "report"])
-def test_a_later_target_is_normalized_not_dropped(target: str) -> None:
-    """Runs 11 and 12's exact verdict. ``review`` is the one they emitted."""
+def test_a_later_target_advances_one_step(target: str) -> None:
+    """Runs 11, 12 and 13's exact verdict. ``review`` is the one they emitted."""
     decision = _verdict("complete", target)
 
-    assert decision.action == "complete"
-    assert decision.target_stage == "scope"
-    assert decision.diagnostic == "complete_target_normalized"
+    assert decision.action == "advance"
+    assert decision.target_stage == "solve"
+    assert decision.diagnostic == "complete_target_advanced"
+
+
+def test_a_later_target_never_skips_an_intervening_gate() -> None:
+    """``advance_stage`` only validates the stage being left.
+
+    Jumping straight to the named target would carry ``solve`` past its own
+    completion validator without ever running it.
+    """
+    decision = _verdict("complete", "report")
+
+    assert decision.target_stage == STAGES[1]
+    assert decision.target_stage != "report"
 
 
 def test_the_deviation_is_still_named_in_the_trace() -> None:
-    """Normalizing must not make the slip invisible to an operator."""
+    """Rewriting the action must not make the slip invisible to an operator."""
     assert _verdict("complete", "review").diagnostic != _verdict(
         "complete", "scope"
     ).diagnostic
+
+
+def test_the_reason_survives_the_rewrite() -> None:
+    """The Manager's justification is the only account of why it moved."""
+    assert _verdict("complete", "review").reason == "because"
 
 
 def test_an_earlier_target_stays_fail_closed() -> None:
@@ -109,8 +129,8 @@ def test_an_unknown_target_stays_fail_closed() -> None:
 def test_the_prompt_pins_target_stage_for_both_actions(action: str) -> None:
     """The format contract must name both actions where the field is defined.
 
-    The parser is forgiving now, but a verdict that needs normalizing is still
-    a verdict the operator has to read past.
+    The parser is forgiving now, but a verdict that needs rewriting is still a
+    verdict the operator has to read past.
     """
     from argus_skill.roles.prompts import manager as manager_prompts
 
