@@ -998,6 +998,20 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
         f"Request: {_fallback_request_excerpt(body)}"
     )
 
+    def _empty_reply_for_outcome() -> str:
+        outcome = getattr(runner, "last_chat_outcome", None)
+        stop_reason = _redact_live_text(
+            getattr(outcome, "stop_reason", "")
+        ).strip()
+        if not stop_reason:
+            return empty_reply
+        return (
+            "[Manager reply unavailable] The SELF turn stopped before producing an "
+            f"assistant message: {stop_reason}. No task was dispatched and the "
+            "current mission was not changed. "
+            f"Request: {_fallback_request_excerpt(body)}"
+        )
+
     def _redact_live_text(text: Any) -> str:
         return redact_secrets_text(str(text or ""), known_values=known_secret_values())
 
@@ -1136,7 +1150,7 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
         if runner.chat_reply_if_conversational(**triage_kwargs):
             if not quick_reply:
                 chat_state["last_thread_id"] = getattr(runner, "last_thread_id", None)
-            return captured[0] if captured else empty_reply
+            return captured[0] if captured else _empty_reply_for_outcome()
     except TypeError:
         # Older runner without phase_cb / route support — retry without them
         # (fail-soft; the older runner will classify route internally).
@@ -1146,7 +1160,7 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
                 seed_thread_id=chat_state.get("last_thread_id"),
             ):
                 chat_state["last_thread_id"] = getattr(runner, "last_thread_id", None)
-                return captured[0] if captured else empty_reply
+                return captured[0] if captured else _empty_reply_for_outcome()
         except Exception as exc:  # noqa: BLE001 — triage failure
             if is_pre_provider_refusal_error(exc):
                 return _pre_provider_refusal_reply(exc, body)

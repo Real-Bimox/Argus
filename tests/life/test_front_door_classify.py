@@ -47,6 +47,8 @@ def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     prompt = build_front_door_prompt("你好", active_mission=True)
 
     assert len(prompt) <= 4_000
+    assert "substantive or multi-source research" in prompt
+    assert "company due diligence" in prompt
     assert all(
         label in prompt
         for label in (

@@ -395,7 +395,7 @@ class SelfReplyMixin:
         root_task_id: str | None = None,
     ) -> bool:
         with self.task_usage_context(root_task_id):
-            return self._maybe_chat_outcome(
+            outcome = self._maybe_chat_outcome(
                 objective=objective,
                 sink=sink,
                 seed_thread_id=seed_thread_id,
@@ -403,7 +403,9 @@ class SelfReplyMixin:
                 route=route,
                 self_mode=self_mode,
                 root_task_id=root_task_id,
-            ) is not None
+            )
+        self.last_chat_outcome = outcome
+        return outcome is not None
 
     def reset_chat_session(self) -> None:
         self._next_seed_thread_id = None
