@@ -17,6 +17,7 @@ from ...core.event_catalog import EventType
 from ...core.planner_verdict import PlannerVerdictStatus
 from ._constants import (
     MANAGER_FEEDBACK_REPLAN_LIMIT,
+    PLAN_AWAITING,
     PLAN_ERROR,
     PLAN_RETRY,
     PLAN_TERMINAL_IDLE,
@@ -213,6 +214,11 @@ class PlanningCycleIntakeMixin:
     def _pc_preflight_shortcircuits(self, state: _PlanCycleState) -> Any | None:
         """Wiki-maintenance / no-runner / external-blocker / bounded-terminal."""
         revision_request = state.revision_request
+
+        runtime_block = self._runtime_failure_circuit_block()
+        if runtime_block is not None:
+            self._enter_pause_backoff()
+            return PLAN_AWAITING
 
         wiki_collect_task = (
             None

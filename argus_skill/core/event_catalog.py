@@ -98,6 +98,9 @@ class EventType(StrEnum):
     LIFE_PLANNER_VERIFICATION_PROBE = "life.planner.verification_probe"
     LIFE_PLANNER_STALL_ESCALATION = "life.planner.stall_escalation"
     LIFE_PLANNER_ERROR = "life.planner.error"
+    LIFE_RUNTIME_FAILURE_CIRCUIT_OPENED = "life.runtime_failure.circuit_opened"
+    LIFE_RUNTIME_FAILURE_CIRCUIT_BLOCKED = "life.runtime_failure.circuit_blocked"
+    LIFE_RUNTIME_FAILURE_CANARY_PASSED = "life.runtime_failure.canary_passed"
     LIFE_PLAN_SIGNAL = "life.plan.signal"
     LIFE_PLAN_REVISION_PROPOSED = "life.plan.revision.proposed"
     LIFE_PLAN_REVISION_REJECTED = "life.plan.revision.rejected"
@@ -243,6 +246,9 @@ SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
     EventType.LIFE_PLANNER_TERMINAL_IDLE,
     EventType.LIFE_PLANNER_VERIFICATION_PROBE,
     EventType.LIFE_PLANNER_STALL_ESCALATION,
+    EventType.LIFE_RUNTIME_FAILURE_CIRCUIT_OPENED,
+    EventType.LIFE_RUNTIME_FAILURE_CIRCUIT_BLOCKED,
+    EventType.LIFE_RUNTIME_FAILURE_CANARY_PASSED,
     EventType.LIFE_PLAN_SIGNAL,
     EventType.LIFE_PLAN_REVISION_PROPOSED,
     EventType.LIFE_PLAN_REVISION_REJECTED,

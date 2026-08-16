@@ -1,4 +1,4 @@
-"""Fresh-per-round Engineer session contract."""
+"""Role-session defaults and fresh-only fallback contract."""
 from __future__ import annotations
 
 import json
@@ -45,8 +45,8 @@ def _loop(backend: MemoryBackend, skills: Path, checkpoint: Path | None = None) 
     )
 
 
-def test_role_session_policy_defaults_to_fresh() -> None:
-    assert SupervisedConfig().role_session_policy == "fresh"
+def test_role_session_policy_defaults_to_backend_aware_auto() -> None:
+    assert SupervisedConfig().role_session_policy == "auto"
 
 
 def test_engineer_and_reviewer_never_resume_across_rounds_or_missions(

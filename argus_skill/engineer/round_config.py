@@ -187,8 +187,9 @@ class SupervisedConfig:
     backend_failure_threshold: int = 2
     backend_failure_backoff_seconds: float = 15.0
     session_id: str | None = None
-    # Experimental A/B policy. Production stays fresh unless explicitly set to
-    # mission or rolling.
+    # Product-wide policy: ``auto`` selects bounded rolling sessions for
+    # resumable native CLIs and fresh turns for others. Explicit fresh/mission/
+    # rolling values remain available for rollback and evaluation.
     role_session_policy: str = field(default_factory=configured_role_session_policy)
     role_session_max_turns: int = field(
         default_factory=lambda: _env_int(_ROLE_SESSION_MAX_TURNS_ENV, 6)
@@ -272,7 +273,7 @@ class SupervisedConfig:
         unchanged.
         """
         if self.role_session_policy not in ROLE_SESSION_POLICIES:
-            raise ValueError("role_session_policy must be fresh, mission, or rolling")
+            raise ValueError("role_session_policy must be auto, fresh, mission, or rolling")
         budget = int(self.max_rounds)
         if budget <= 0:
             return

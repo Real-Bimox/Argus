@@ -50,6 +50,7 @@ _OBSERVED_EVENT_TYPES = frozenset({
     "life.planner.error",
     "life.planner.waiting",
     "life.mission.completed",
+    "life.runtime_failure.circuit_opened",
     "round.start",
     "round.review.completed",
     "wiki.hook.warning",
@@ -57,6 +58,7 @@ _OBSERVED_EVENT_TYPES = frozenset({
 _EVENT_AUDIT_TYPES = frozenset({
     "life.supervisor.error",
     "life.planner.error",
+    "life.runtime_failure.circuit_opened",
     "wiki.hook.warning",
 })
 _COMMON_OBSERVATION_DETAIL_KEYS = (
@@ -76,6 +78,12 @@ _COMMON_OBSERVATION_DETAIL_KEYS = (
     "model_call_skipped",
     "wait_mode",
     "waiting_contract",
+    "fingerprint",
+    "exception_type",
+    "callsite",
+    "normalized_error",
+    "occurrence_count",
+    "runtime_identity",
     "prompt_block_stats",
     "operation",
 )
@@ -103,6 +111,8 @@ class SelfMaintenanceSnapshot:
     publication_status: str
     publication_error: str
     awaiting_commit: str = ""
+    maintenance_mode: str = ""
+    maintenance_error: str = ""
 
 
 @dataclass(frozen=True)
@@ -145,6 +155,10 @@ def read_self_maintenance_snapshot(
             if str(value.get("publication_status") or "") == _PUBLICATION_AWAITING
             else ""
         ),
+        maintenance_mode=str(value.get("maintenance_mode") or "").strip(),
+        maintenance_error=str(
+            value.get("maintenance_error") or value.get("isolation_error") or ""
+        ).strip()[:500],
     )
 
 
@@ -619,6 +633,59 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         except ValueError:
             return 1800.0
 
+    def _framework_source_error(self) -> str:
+        """Return why this runtime cannot create a reviewed Git worktree.
+
+        PyInstaller's ``_internal`` directory is an immutable release payload,
+        not a source checkout.  Detect that from the local ``.git`` marker
+        before invoking Git so a packaged Desktop never advertises repair
+        capability and then fails at ``git rev-parse``.  Source maintenance is
+        also refused for a dirty/unborn checkout because a worktree based on
+        HEAD would not represent the code that is actually running.
+        """
+        marker = self.framework_root / ".git"
+        if not marker.exists():
+            return (
+                "framework runtime is not a Git source checkout; use a verified "
+                "Argus release update built from a separate maintenance repository"
+            )
+        try:
+            probe = _run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=self.framework_root,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"Git source probe failed: {type(exc).__name__}: {exc}"
+        if probe.returncode != 0:
+            return "framework Git source probe failed"
+        try:
+            repo = Path(probe.stdout.strip()).resolve()
+        except (OSError, RuntimeError, ValueError):
+            return "framework Git source root is malformed"
+        if repo != self.framework_root:
+            return "framework source root is not the Git repository root"
+        try:
+            head = _run(
+                ["git", "rev-parse", "--verify", "HEAD^{commit}"],
+                cwd=repo,
+                check=False,
+            )
+            if head.returncode != 0 or not head.stdout.strip():
+                return "framework Git source has no committed HEAD"
+            status = _run(
+                ["git", "status", "--porcelain", "--untracked-files=normal"],
+                cwd=repo,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return f"Git source validation failed: {type(exc).__name__}: {exc}"
+        if status.returncode != 0:
+            return "framework Git source status is unavailable"
+        if status.stdout.strip():
+            return "framework Git source is dirty; release repair requires a clean checkout"
+        return ""
+
     def preflight_isolation(self, *, force: bool = False) -> bool:
         state = self._state()
         now = time.time()
@@ -629,21 +696,28 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             return state.get("maintenance_available") is True
         probe = self.root / "isolation-probe"
         probe.mkdir(parents=True, exist_ok=True)
-        error = ""
+        error = self._framework_source_error()
+        source_available = not error
         full_access = (
             os.environ.get("ARGUS_SKILL_SAFE_MODE", "0").strip().lower()
             not in {"1", "true", "yes", "on"}
         )
-        if full_access:
+        if not source_available:
+            available = False
+            maintenance_mode = "release_update"
+        elif full_access:
             available = True
+            maintenance_mode = "source_worktree"
             error = ""
         elif self.backend in {"copilot", "pi"}:
             available = False
+            maintenance_mode = "deferred"
             error = (
                 f"{self.backend} self-maintenance deferred: safe isolated "
                 "authentication is unavailable without exposing provider credentials"
             )
         else:
+            maintenance_mode = "source_worktree"
             try:
                 from ..core.sandbox import isolated_workdir_command
 
@@ -671,6 +745,8 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         previous = state.get("maintenance_available")
         updates: dict[str, Any] = {
             "maintenance_available": available,
+            "maintenance_mode": maintenance_mode,
+            "maintenance_error": error[:1000],
             "access_mode": "full" if full_access else "isolated",
             "isolation_checked_at": now,
             "isolation_error": error[:1000],
@@ -681,7 +757,14 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             except (AttributeError, OSError):
                 active_item = None
             if active_item is None:
-                updates.update(phase="deferred", active_item_id="")
+                updates.update(
+                    phase=(
+                        "release_update_required"
+                        if maintenance_mode == "release_update"
+                        else "deferred"
+                    ),
+                    active_item_id="",
+                )
         self._write_state(
             **updates,
         )
@@ -689,6 +772,7 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
             self._emit({
                 "type": "manager.self_maintenance.availability",
                 "available": available,
+                "mode": maintenance_mode,
                 "error": error[:1000],
                 "agent_layer": "manager",
             })
@@ -977,6 +1061,9 @@ class DaemonSelfMaintenance(SelfMaintenanceState):
         return item.id
 
     def _prepare_worktree(self, incident_id: str) -> tuple[Path, str]:
+        source_error = self._framework_source_error()
+        if source_error:
+            raise ValueError(source_error)
         probe = _run(
             ["git", "rev-parse", "--show-toplevel"],
             cwd=self.framework_root,

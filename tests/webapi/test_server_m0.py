@@ -529,7 +529,7 @@ def test_api_meta_identifies_protocol_capabilities_and_loaded_checkout(
     assert meta["runtime"]["pid"] > 0
     assert meta["runtime"]["desktop_launch_nonce"] == "desktop-launch-test"
     runtime = meta["runtime"]
-    assert runtime["release_id"].startswith("0.1.1+")
+    assert runtime["release_id"].startswith("0.1.2+")
     assert runtime["release_matches_source"] is (
         runtime["manifest_source_digest"] == runtime["runtime_source_digest"]
     )
@@ -618,7 +618,7 @@ def test_build_snapshot_shape_and_failsoft(
     assert snap["cost_control"]["unresolved_calls"] == 0
     assert snap["daemon_commands"]["revision"] == 0
     assert snap["observability"]["slo"]["status"] == "healthy"
-    assert snap["mission_view"]["schema_version"] == 5
+    assert snap["mission_view"]["schema_version"] == 6
     assert len(snap["roles"]) == 4  # manager/planner/engineer/reviewer
     assert {r["role"] for r in snap["roles"]} == {"manager", "planner", "engineer", "reviewer"}
     assert len(snap["recent_events"]) == 2
@@ -923,7 +923,7 @@ def test_get_meta_is_public_versioned_and_uncached(
     assert r.headers["x-argus-protocol"] == (
         f"argus.webapi/{API_PROTOCOL_MAJOR}.{API_PROTOCOL_MINOR}"
     )
-    assert r.headers["x-argus-release"].startswith("0.1.1+")
+    assert r.headers["x-argus-release"].startswith("0.1.2+")
     assert r.json()["protocol"]["major"] == API_PROTOCOL_MAJOR
     assert r.json()["authentication"] == {
         "required": True,

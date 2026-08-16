@@ -183,6 +183,8 @@ export interface LifeMissionCompletedEvent extends EventMsg {
   "repair_capability"?: Record<string, unknown> | null;
   "stop_kind"?: "budget_exhausted" | "provider_cooldown" | "provider_fence" | "daemon_shutdown" | "operator_pause" | "operator_abort" | "backend_unavailable" | "transient_error" | "permanent_error" | null;
   "recoverable"?: boolean;
+  "delivery_id"?: string;
+  "delivery"?: { "schema_version"?: number; "delivery_id"?: string; "kind"?: string; "item_id"?: string; "title"?: string; "summary"?: string; "status"?: string; "review_status"?: string; "delivered_at"?: number; "primary_target"?: Record<string, unknown> | null; "targets"?: Array<Record<string, unknown>>; } | null;
   "operator_question"?: string;
 }
 
@@ -301,6 +303,41 @@ export interface LifePlannerErrorEvent extends EventMsg {
   "reason"?: string;
 }
 
+export interface LifeRuntimeFailureCircuitOpenedEvent extends EventMsg {
+  type: "life.runtime_failure.circuit_opened";
+  payload_schema_version?: 1;
+  "item_id"?: string;
+  "fingerprint": string;
+  "exception_type": string;
+  "callsite": string;
+  "normalized_error"?: string;
+  "occurrence_count"?: number;
+  "runtime_identity"?: Record<string, unknown>;
+  "newly_opened"?: boolean;
+  "operator_alert"?: boolean;
+}
+
+export interface LifeRuntimeFailureCircuitBlockedEvent extends EventMsg {
+  type: "life.runtime_failure.circuit_blocked";
+  payload_schema_version?: 1;
+  "item_id"?: string;
+  "fingerprint": string;
+  "exception_type"?: string;
+  "callsite"?: string;
+  "normalized_error"?: string;
+  "occurrence_count"?: number;
+  "runtime_identity"?: Record<string, unknown>;
+  "operator_alert"?: boolean;
+  "reason": string;
+}
+
+export interface LifeRuntimeFailureCanaryPassedEvent extends EventMsg {
+  type: "life.runtime_failure.canary_passed";
+  payload_schema_version?: 1;
+  "item_id": string;
+  "circuit_cleared": boolean;
+}
+
 export interface LifePlannerTaskAddedEvent extends EventMsg {
   type: "life.planner.task_added";
   payload_schema_version?: 1;
@@ -401,6 +438,8 @@ export interface RoleSessionTurnEvent extends EventMsg {
   "prompt_chars"?: number;
   "prompt_estimated_tokens"?: number;
   "capsule_path"?: string;
+  "metadata_persisted"?: boolean;
+  "persistence_warning"?: string;
   "signal_kind"?: "repeated_contradiction" | "reviewer_confusion" | "quality_degradation";
   "signal_detail"?: string;
 }
@@ -866,6 +905,9 @@ export interface EventPayloadByType {
   "life.planner.start": LifePlannerStartEvent;
   "life.planner.verdict": LifePlannerVerdictEvent;
   "life.planner.error": LifePlannerErrorEvent;
+  "life.runtime_failure.circuit_opened": LifeRuntimeFailureCircuitOpenedEvent;
+  "life.runtime_failure.circuit_blocked": LifeRuntimeFailureCircuitBlockedEvent;
+  "life.runtime_failure.canary_passed": LifeRuntimeFailureCanaryPassedEvent;
   "life.planner.task_added": LifePlannerTaskAddedEvent;
   "life.planner.task_skipped": LifePlannerTaskSkippedEvent;
   "life.manager.intent.completed": LifeManagerIntentCompletedEvent;

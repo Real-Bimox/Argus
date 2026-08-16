@@ -7,8 +7,10 @@ import { delimiter, join, resolve } from 'node:path';
 import { app } from 'electron';
 import { apiBaseUrl, cockpitUrl, type DesktopSettings } from './settings';
 import {
+  authenticatedBundledBackendMatches,
   backendLaunchClaimMatches,
   backendOwnershipMatches,
+  priorBackendOwnershipMatches,
   type BackendOwnership,
   type BackendProbeIdentity,
 } from './backendIdentity';
@@ -128,8 +130,26 @@ export class BackendSupervisor extends EventEmitter {
       return;
     }
     if (probe.occupied) {
-      this.setState('error', `端口 ${this.settings.port} 已被其他程序占用`, probe.detail);
-      return;
+      // An installer update can leave the previous Desktop backend listening
+      // while the new Electron host starts. Replace it only after its live API
+      // exactly matches this user's prior authenticated ownership record; an
+      // arbitrary older Argus or unrelated listener still fails closed.
+      if (this.priorOwnershipMatches(probe) || this.legacyBundledBackendMatches(probe)) {
+        this.setState('starting', '正在升级受管理的 Argus 本地后端', probe.detail);
+        const stopped = await this.stopPriorOwnedBackend(probe);
+        if (this.stopping || generation !== this.lifecycleGeneration) return;
+        if (!stopped) {
+          this.setState(
+            'error',
+            '无法安全替换上一版本的 Argus 本地后端',
+            `${probe.detail || `端口 ${this.settings.port} 仍被占用`}\n旧后端的身份已验证，但其监听进程未能在限定时间内退出；请从旧版 Argus 正常退出后重试。`
+          );
+          return;
+        }
+      } else {
+        this.setState('error', `端口 ${this.settings.port} 已被其他程序占用`, probe.detail);
+        return;
+      }
     }
 
     this.setState('starting', '正在启动 Argus 本地后端');
@@ -368,6 +388,9 @@ export class BackendSupervisor extends EventEmitter {
     }
 
     let body: {
+      authentication?: {
+        authenticated?: boolean;
+      };
       runtime?: {
         package_version?: string;
         release_id?: string;
@@ -390,6 +413,14 @@ export class BackendSupervisor extends EventEmitter {
     }
 
     const runtime = body.runtime;
+    if (body.authentication?.authenticated !== true) {
+      return {
+        compatible: false,
+        occupied: true,
+        failureKind: 'identity',
+        detail: '端口上的服务未通过当前 Argus 桌面端身份认证'
+      };
+    }
     if (
       !runtime?.package_version
       || !runtime.executable
@@ -403,6 +434,14 @@ export class BackendSupervisor extends EventEmitter {
         detail: '端口上的服务缺少当前 Argus 桌面运行身份'
       };
     }
+    const respondingIdentity = {
+      authenticated: true,
+      pid: runtime.pid,
+      executable: runtime.executable,
+      manifestSourceDigest: runtime.manifest_source_digest,
+      startedAt: runtime.started_at,
+      launchNonce: runtime.desktop_launch_nonce
+    };
     if (process.env.ARGUS_DESKTOP_DEV !== '1') {
       const expectedExecutable = resolve(this.resolveCommand().command).toLowerCase();
       const actualExecutable = resolve(runtime.executable).toLowerCase();
@@ -411,7 +450,8 @@ export class BackendSupervisor extends EventEmitter {
           compatible: false,
           occupied: true,
           failureKind: 'identity',
-          detail: `端口由另一份 Argus 占用：${runtime.executable}`
+          detail: `端口由另一份 Argus 占用：${runtime.executable}`,
+          ...respondingIdentity
         };
       }
       if (runtime.package_version !== app.getVersion()) {
@@ -419,7 +459,8 @@ export class BackendSupervisor extends EventEmitter {
           compatible: false,
           occupied: true,
           failureKind: 'identity',
-          detail: `端口上的 Argus 版本为 ${runtime.package_version}，当前桌面版为 ${app.getVersion()}`
+          detail: `端口上的 Argus 版本为 ${runtime.package_version}，当前桌面版为 ${app.getVersion()}`,
+          ...respondingIdentity
         };
       }
       const expectedDigest = this.expectedManifestDigest();
@@ -428,18 +469,15 @@ export class BackendSupervisor extends EventEmitter {
           compatible: false,
           occupied: true,
           failureKind: 'identity',
-          detail: '端口上的 Argus 后端不是当前桌面构建'
+          detail: '端口上的 Argus 后端不是当前桌面构建',
+          ...respondingIdentity
         };
       }
     }
     return {
       compatible: true,
       occupied: false,
-      pid: runtime.pid,
-      executable: runtime.executable,
-      manifestSourceDigest: runtime.manifest_source_digest,
-      startedAt: runtime.started_at,
-      launchNonce: runtime.desktop_launch_nonce
+      ...respondingIdentity
     };
   }
 
@@ -860,25 +898,77 @@ export class BackendSupervisor extends EventEmitter {
     schedule(HEALTH_INTERVAL_MS);
   }
 
-  private ownershipMatches(probe: BackendProbe): boolean {
-    if (!probe.pid) return false;
-    const manifestSourceDigest = this.expectedManifestDigest();
-    if (!manifestSourceDigest) return false;
+  private readOwnership(): Partial<BackendOwnership> | null {
     try {
       const file = join(app.getPath('userData'), 'runtime', 'backend.json');
       const payload = JSON.parse(readFileSync(file, 'utf-8')) as Partial<BackendOwnership>;
-      return backendOwnershipMatches(payload, probe, {
-        host: this.settings.host,
-        port: this.settings.port,
-        executable: process.env.ARGUS_DESKTOP_DEV === '1' && probe.executable
-          ? resolve(probe.executable)
-          : resolve(this.resolveCommand().command),
-        manifestSourceDigest,
-        tokenSha256: this.tokenSha256()
-      });
+      return payload && typeof payload === 'object' ? payload : null;
     } catch {
+      return null;
+    }
+  }
+
+  private ownershipMatches(probe: BackendProbe): boolean {
+    if (!probe.pid) return false;
+    const manifestSourceDigest = this.expectedManifestDigest();
+    const ownership = this.readOwnership();
+    if (!manifestSourceDigest || ownership === null) return false;
+    return backendOwnershipMatches(ownership, probe, {
+      host: this.settings.host,
+      port: this.settings.port,
+      executable: process.env.ARGUS_DESKTOP_DEV === '1' && probe.executable
+        ? resolve(probe.executable)
+        : resolve(this.resolveCommand().command),
+      manifestSourceDigest,
+      tokenSha256: this.tokenSha256()
+    });
+  }
+
+  private priorOwnershipMatches(probe: BackendProbe): boolean {
+    const ownership = this.readOwnership();
+    if (ownership === null) return false;
+    return priorBackendOwnershipMatches(ownership, probe, {
+      host: this.settings.host,
+      port: this.settings.port,
+      tokenSha256: this.tokenSha256()
+    });
+  }
+
+  /**
+   * Support an in-place installer upgrade from an older Desktop build whose
+   * ownership record is absent or predates schema 3. The token-authenticated
+   * listener must still report the exact executable path bundled by this app.
+   */
+  private legacyBundledBackendMatches(probe: BackendProbe): boolean {
+    if (process.env.ARGUS_DESKTOP_DEV === '1') return false;
+    return authenticatedBundledBackendMatches(probe, {
+      executable: resolve(this.resolveCommand().command)
+    });
+  }
+
+  /** Replace only an authenticated previous-release listener from this Desktop install. */
+  private async stopPriorOwnedBackend(probe: BackendProbe): Promise<boolean> {
+    const runtimePid = probe.pid;
+    const ownedPrior = this.priorOwnershipMatches(probe);
+    const legacyBundled = this.legacyBundledBackendMatches(probe);
+    if (!runtimePid || (!ownedPrior && !legacyBundled)) return false;
+    this.log.info(
+      `replacing ${ownedPrior ? 'owned' : 'legacy bundled'} desktop backend pid=${runtimePid} on ${this.settings.host}:${this.settings.port}`
+    );
+    if (this.isProcessAlive(runtimePid) && !(await this.killTree(runtimePid))) {
       return false;
     }
+    // Do not signal a distinct historical launcher PID: the authenticated API
+    // proves the listener, not a PID which may have been reused after the old
+    // launcher exited. Killing the listener's tree is sufficient to free the
+    // port and preserves the no-unknown-process ownership boundary.
+    this.clearOwnership(runtimePid);
+    const deadline = Date.now() + 5_000;
+    while (await this.portOccupied()) {
+      if (Date.now() >= deadline) return false;
+      await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 100));
+    }
+    return true;
   }
 
   private writeOwnership(

@@ -135,6 +135,11 @@ contract does not require one.
   twice.
 - Separate project daemons have separate workspaces, backlogs, transcripts, and
   output files.
+- An uncaught Argus orchestration exception opens a durable runtime-failure
+  circuit keyed by exception type, Argus call site, and normalized runtime path.
+  Pending work and Planner calls are held under that same loaded release instead
+  of repeatedly spending Agent turns. A release/source/checkpoint-contract change
+  or a reviewed canary closes the circuit.
 
 Explicit pause stops the current mission and daemon while preserving the goal
 and backlog. An explicit resume that runs commands or changes artifacts is TEAM
@@ -207,11 +212,11 @@ diagnostic evidence, not a universal latency promise.
   `--override-discussion "<reason>"` break-glass submit, whose reason is recorded
   durably. Supervisor and Engineer turns are appended to the same durable
   transcript, with heartbeat and terminal resolution recorded.
-- Native Windows currently has no detached subagent worker because the runner
-  relies on POSIX process ownership. It fails closed instead of claiming a
-  submission. Use foreground execution when it fits the turn, WSL2, or another
-  approved durable runner until a native Windows worker and process-tree tests
-  exist.
+- Native Windows launches a detached Argus-owned worker for durable `direct`
+  and `supervised` subagents. The worker persists registry/log state outside the
+  provider turn, records its PID, applies CPU admission, and uses identity-checked
+  process-tree cleanup. POSIX retains its process-group implementation; WSL2 is
+  optional rather than required for Windows durability.
 
 ## 4. Verticals and workflows
 
@@ -307,6 +312,11 @@ review.
   paths and an acceptance check. Upstream adoption also uses a private worktree.
 - Safety: the change must pass independent review and canary validation before
   handoff/publication; the maintenance role does not push, merge, or publish.
+- Source capability: worktree repair is advertised only when the loaded framework
+  root is a clean Git checkout with a committed HEAD. A frozen Desktop `_internal`
+  tree is never treated as source and never reaches worktree preparation; it
+  reports `maintenance_mode=release_update` and waits for a verified release built
+  from a separate source repository.
 - Scope: Argus framework source and runtime release state. It does not learn user
   preferences and does not write SELF Skills or project Wiki pages.
 
@@ -488,10 +498,13 @@ Web UI, Manager model, and daemon:
 | First full SELF inspection after completed prewarm | SELF process is initialized; the logical session and model/tool work may still add latency |
 | Deterministic command longer than two minutes | Durable `direct` receipt returns promptly and the command survives the submitting turn |
 | Supervised experiment raises a concern | Status exposes `reply_with`; Engineer reply and Supervisor response persist in one discussion transcript |
-| Detached subagent requested on native Windows | Request fails explicitly; no false submitted receipt |
+| Detached subagent requested on native Windows | Argus-owned worker returns a durable submitted receipt and survives the provider turn |
 | Default identity template | Excluded from model prompts until the operator edits it |
 | Operator pause | Not captured or replayed as a failure lesson |
 | Planner acceptance check | No unconditional-success or tautological checks |
+| Successful Pi turn with no `CHECKPOINT.md` | Mission remains successful; empty open-item metadata and a persistence warning only when needed |
+| Same uncaught runtime exception under rephrased missions | One durable circuit opens; later Planner/Engineer dispatch waits for changed runtime facts |
+| Frozen Desktop framework repair request | Reports release-update mode and never runs `git rev-parse` against `_internal` |
 
 ## 10. Project lifecycle
 

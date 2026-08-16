@@ -90,6 +90,7 @@ def reduce_mission_lifecycle_event(
         # but operators and supervision tooling must not mistake it for current
         # evidence.
         view["review"] = {"status": "", "reason": "", "rejected_attempts": 0}
+        view["delivery"] = None
         view["outcome"] = {}
         _set_role(view, "reviewer", "waiting", "Awaiting engineer handoff", ts)
         _set_role(view, "engineer", "active", "Starting mission", ts)
@@ -117,6 +118,11 @@ def reduce_mission_lifecycle_event(
             "status": mission_status,
             "completed_at": ts,
         })
+        raw_delivery = event.get("delivery")
+        if bool(event.get("success")) and isinstance(raw_delivery, dict):
+            view["delivery"] = dict(raw_delivery)
+        elif not bool(event.get("success")):
+            view["delivery"] = None
         raw_outcome = event.get("outcome")
         if isinstance(raw_outcome, dict):
             view["outcome"] = dict(raw_outcome)

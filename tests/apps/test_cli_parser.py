@@ -35,8 +35,8 @@ def test_version_reports_release_identity(capsys) -> None:
     with pytest.raises(SystemExit, match="0"):
         build_parser().parse_args(["--version"])
     rendered = capsys.readouterr().out
-    assert "argus-skill 0.1.1" in rendered
-    assert "0.1.1+" in rendered
+    assert "argus-skill 0.1.2" in rendered
+    assert "0.1.2+" in rendered
 
 
 def test_debug_help_still_exposes_internal_flags(monkeypatch: pytest.MonkeyPatch) -> None:

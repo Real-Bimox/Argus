@@ -28,6 +28,17 @@ def _init_repo(path: Path, branch: str = "main") -> None:
     )
 
 
+def _commit_repo(path: Path) -> None:
+    subprocess.run(["git", "config", "user.name", "test"], cwd=path, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=path, check=True
+    )
+    (path / ".gitignore").write_text("life/\nproject/\n", encoding="utf-8")
+    (path / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=path, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=path, check=True)
+
+
 class _Manager:
     def __init__(
         self,
@@ -102,6 +113,8 @@ def test_copilot_self_maintenance_defers_without_safe_isolated_auth(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("ARGUS_SKILL_SAFE_MODE", "1")
+    _init_repo(tmp_path)
+    _commit_repo(tmp_path)
     events: list[dict] = []
     controller = DaemonSelfMaintenance(
         life_dir=tmp_path / "life",
@@ -127,6 +140,8 @@ def test_pi_self_maintenance_defers_without_exposing_provider_auth(
     monkeypatch,
 ) -> None:
     monkeypatch.setenv("ARGUS_SKILL_SAFE_MODE", "1")
+    _init_repo(tmp_path)
+    _commit_repo(tmp_path)
     controller = DaemonSelfMaintenance(
         life_dir=tmp_path / "life",
         framework_root=tmp_path,
@@ -148,6 +163,8 @@ def test_self_maintenance_full_access_is_available_by_default(
     monkeypatch,
 ) -> None:
     monkeypatch.delenv("ARGUS_SKILL_SAFE_MODE", raising=False)
+    _init_repo(tmp_path)
+    _commit_repo(tmp_path)
     controller = DaemonSelfMaintenance(
         life_dir=tmp_path / "life",
         framework_root=tmp_path,
@@ -161,6 +178,47 @@ def test_self_maintenance_full_access_is_available_by_default(
     state = json.loads(controller.state_path.read_text(encoding="utf-8"))
     assert state["maintenance_available"] is True
     assert state["access_mode"] == "full"
+    assert state["maintenance_mode"] == "source_worktree"
+
+
+def test_non_git_packaged_runtime_uses_release_update_mode_without_git_probe(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    manager = _Manager()
+    events: list[dict] = []
+
+    def forbidden_run(*_args, **_kwargs):  # pragma: no cover - assertion is the test
+        raise AssertionError("packaged preflight must not invoke git")
+
+    monkeypatch.setattr(self_maintenance_mod, "_run", forbidden_run)
+    controller = DaemonSelfMaintenance(
+        life_dir=tmp_path / "life",
+        framework_root=tmp_path / "frozen" / "_internal",
+        project_workdir=tmp_path / "project",
+        manager=manager,
+        memory=SimpleNamespace(),
+        backend="pi",
+        on_event=events.append,
+    )
+
+    assert controller.preflight_isolation(force=True) is False
+    state = json.loads(controller.state_path.read_text(encoding="utf-8"))
+    assert state["maintenance_available"] is False
+    assert state["maintenance_mode"] == "release_update"
+    assert state["phase"] == "release_update_required"
+    assert "not a Git source checkout" in state["maintenance_error"]
+    assert manager.calls == 0
+    assert events[-1]["type"] == "manager.self_maintenance.availability"
+    assert events[-1]["mode"] == "release_update"
+
+    controller.observe({"type": "life.planner.error", "error": "runtime bug"})
+    assert controller.audit_if_due(daemon_state={"budget_allowed": True}) == ""
+    assert manager.calls == 0
+    assert not any(
+        event.get("type") == "manager.self_maintenance.preparation_failed"
+        for event in events
+    )
 
 
 def test_frontend_dependency_links_are_temporary(tmp_path: Path) -> None:
@@ -182,7 +240,7 @@ def test_frontend_dependency_links_are_temporary(tmp_path: Path) -> None:
             target = worktree / relative
             assert target.is_symlink() or (
                 hasattr(target, "is_junction") and target.is_junction()
-            )
+            ) or target.resolve() == (source / relative).resolve()
             assert (target / "marker").read_text(encoding="utf-8") == "installed\n"
 
     assert not (worktree / "frontend/web/node_modules").exists()
@@ -234,6 +292,7 @@ def _publication_repo(tmp_path: Path) -> tuple[Path, str]:
         "node_modules/\n*.pyc\n",
         encoding="utf-8",
     )
+    (repo / ".gitattributes").write_text("* text eol=lf\n", encoding="utf-8")
     (repo / "argus_skill" / "base.py").write_text("BASE = 1\n", encoding="utf-8")
     (repo / "argus_skill" / "release_tools" / "generate_manifest.py").write_text(
         "import pathlib, subprocess, sys\n"

@@ -591,6 +591,58 @@ def build_continuous_prompt(
     )
 
 
+def build_continuous_resume_prompt(
+    *,
+    continuous_objective: str,
+    journal_tail: str,
+    planning_cycle: int,
+    runtime_change_summary: str = "",
+    mission: Any | None = None,
+    project_root: Path | str | None = None,
+    state_root: Path | str | None = None,
+) -> str:
+    """Render only the changing Planner delta for a resumable role session.
+
+    The prior same-role turn already contains the immutable Planner contract,
+    vertical policy, and tool boundary.  Repeating that large preamble on every
+    cycle defeats provider prompt caching; this delta still carries the current
+    stage/checklist, durable objective, journal, and fresh runtime facts.
+    """
+    from ...core.project import resolve_project_root
+    from .registry import resolve_role_prompt
+
+    workspace = resolve_project_root(project_root)
+    state = resolve_project_root(state_root) if state_root is not None else workspace
+    prompt_context = resolve_role_prompt(continuous_request(state))
+    skill_block = ""
+    if mission is not None:
+        try:
+            libraries = mission.libraries()
+            skill_block = str(getattr(libraries, "block", "") or "")
+        except Exception:  # noqa: BLE001 - a resume delta must remain available
+            skill_block = ""
+    return _join_prompt_blocks(
+        "## Continued Planner cycle\n"
+        "You are resuming your own bounded Planner session. The original role "
+        "contract remains binding; do not replay old exploration or re-author "
+        "the static policy. Current state below supersedes stale session facts.",
+        str(prompt_context.role_banner or ""),
+        "## Current workflow stage\n"
+        f"- current: `{prompt_context.stage}`\n"
+        f"- sequence: {', '.join(prompt_context.stage_order) or '(none)'}\n"
+        + str(prompt_context.stage_checklist or ""),
+        skill_block,
+        "## Original operator request (immutable anchor)\n" + continuous_objective.strip(),
+        "## Journal of completed work (most recent last)\n"
+        + (journal_tail.strip() or "(no completed work yet — this is the first cycle)"),
+        "## Current reality (authoritative over the journal above)\n"
+        + (runtime_change_summary.strip() or "(no additional runtime context)"),
+        f"This is planning cycle #{planning_cycle + 1}.",
+        "Inspect only what is needed to choose the next concrete task or a real "
+        "blocker, then finish with the existing key-value completion footer.",
+    )
+
+
 __all__ = [
     "BOUNDED_DAG",
     "CONTINUOUS",
@@ -599,6 +651,7 @@ __all__ = [
     "PLAN_PREVIEW",
     "build_bounded_dag_prompt",
     "build_continuous_prompt",
+    "build_continuous_resume_prompt",
     "continuous_request",
     "preview_request",
 ]

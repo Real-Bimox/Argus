@@ -10,7 +10,7 @@
 
 让长期 Agent 能够规划、执行、验证、暂停，并在一次模型调用之后继续推进。
 
-**当前为 Preview v0.1.1 · 正式开源版正在路上。**
+**当前为 Preview v0.1.2 · 正式开源版正在路上。**
 
 [![GitHub Stars](https://img.shields.io/github/stars/lbx154/Argus?style=flat-square)](https://github.com/lbx154/Argus/stargazers)
 [![License](https://img.shields.io/github/license/lbx154/Argus?style=flat-square)](LICENSE)
@@ -139,9 +139,10 @@ Agent CLI，开放工具让 Agent 直接检查并修复机器，然后重新运�
 `argus doctor --advisor none --verify`。
 主动修复会执行一次真实 Agent turn，可能需要几分钟；它不是快速版本检查。
 
-Windows 当前支持安装、Manager 对话、配对、Web/TUI 和终端作用域 daemon 控制。
-detached subagent 仍属于 POSIX/WSL2 能力；native Windows 会明确失败，不会伪报任务
-已启动。图形安装见 **[Windows Desktop](docs/windows-desktop.md)**。
+Windows 当前支持安装、Manager 对话、配对、Web/TUI、终端作用域 daemon 控制和
+原生 durable subagent。Native Windows 使用独立 worker 承载 direct 或 supervised
+长命令，持久化任务注册与日志，并进行有界进程树清理；此路径不再强制依赖 WSL2。
+图形安装见 **[Windows Desktop](docs/windows-desktop.md)**。
 
 ### macOS：uv tool 管理安装，不手工创建虚拟环境
 

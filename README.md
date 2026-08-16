@@ -10,7 +10,7 @@
 
 Long-running agent work that can plan, execute, verify, pause, and continue beyond a single model turn.
 
-**Preview v0.1.1 · Official open-source release on the way.**
+**Preview v0.1.2 · Official open-source release on the way.**
 
 [![GitHub Stars](https://img.shields.io/github/stars/lbx154/Argus?style=flat-square)](https://github.com/lbx154/Argus/stargazers)
 [![License](https://img.shields.io/github/license/lbx154/Argus?style=flat-square)](LICENSE)
@@ -146,10 +146,11 @@ inspect and fix the machine, then reruns deterministic checks. Use
 The active repair may take several minutes because it performs a real Agent
 turn; it is not a quick version check.
 
-Windows currently supports installation, Manager chat, pairing, Web/TUI, and
-terminal-scoped daemon control. Detached subagents remain a POSIX/WSL2 feature;
-native Windows fails explicitly instead of claiming a background task started.
-The Windows Desktop installer is documented separately in
+Windows currently supports installation, Manager chat, pairing, Web/TUI,
+terminal-scoped daemon control, and native durable subagents. On native Windows,
+a detached worker owns direct or supervised long commands, persists registry and
+log state, and uses bounded process-tree cleanup; WSL2 remains optional rather
+than required for this path. The Windows Desktop installer is documented separately in
 **[Windows Desktop](docs/windows-desktop.md)**.
 
 ### macOS — managed command install, no manual virtual environment

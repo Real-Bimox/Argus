@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { GitDiffView, MissionView } from '../../../core/src/types';
+import type { DeliveryReceipt, GitDiffView, MissionView } from '../../../core/src/types';
 import {
   displayObjective,
   formatMissionElapsed,
@@ -70,10 +70,12 @@ function Achievement({ view }: { view: MissionView }) {
 export function MissionControl({
   view,
   onOpenArtifact,
+  onOpenDelivery,
   gitDiff,
 }: {
   view: MissionView;
   onOpenArtifact?: (path: string) => void;
+  onOpenDelivery?: (delivery: DeliveryReceipt) => void;
   gitDiff?: GitDiffView;
 }) {
   const { t } = useI18n();
@@ -89,6 +91,7 @@ export function MissionControl({
   const [selectedTaskId, setSelectedTaskId] = useState(activeNode?.id || '');
   const outcome = outcomeDimensionSummary(view.outcome);
   const routing = formatMissionRouting(view.routing);
+  const delivery = view.delivery;
   useEffect(() => setReplayIndex(Math.max(0, view.timeline.length - 1)), [view.timeline.length]);
   useEffect(() => {
     if (activeNode?.id) setSelectedTaskId(activeNode.id);
@@ -137,6 +140,27 @@ export function MissionControl({
             <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-ink-dim">
               {view.mission.summary}
             </p>
+          </div>
+        ) : null}
+        {delivery ? (
+          <div className="mt-3 flex flex-wrap items-center gap-3 rounded border border-ok/30 bg-ok/5 px-3 py-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-ok">
+                {delivery.kind === 'submission_certified' ? 'Delivery certified' : 'Task completed'}
+              </div>
+              <div className="mt-1 truncate text-xs text-ink-dim" title={delivery.summary || delivery.title}>
+                {delivery.summary || delivery.title}
+              </div>
+            </div>
+            {onOpenDelivery ? (
+              <button
+                type="button"
+                onClick={() => onOpenDelivery(delivery)}
+                className="shrink-0 rounded border border-ok/40 px-2 py-1 font-mono text-[10px] text-ok hover:border-ok"
+              >
+                {delivery.primary_target ? 'Open result' : 'View task'}
+              </button>
+            ) : null}
           </div>
         ) : null}
         {view.frontier.change ? (

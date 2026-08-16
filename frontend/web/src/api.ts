@@ -101,6 +101,13 @@ export interface Turn {
   ts: number;
   role: string; // "operator" | "argus"
   text: string;
+  message_id?: string;
+  mission_result?: boolean;
+  item_id?: string;
+  success?: boolean;
+  summary?: string;
+  delivery_id?: string;
+  delivery?: unknown;
 }
 export interface ProjectIndex {
   projects: ProjectRow[];

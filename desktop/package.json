@@ -1,6 +1,6 @@
 {
   "name": "argus-desktop",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Windows desktop host for the Argus autonomous research runtime",
   "author": "lbx154",
@@ -13,7 +13,7 @@
     "postinstall": "node -e \"require('electron')\"",
     "dev": "electron-vite dev",
     "typecheck": "tsc --noEmit",
-    "test:identity": "node -e \"require('fs').rmSync('.test-out',{recursive:true,force:true})\" && tsc --module commonjs --moduleResolution node --target ES2022 --esModuleInterop --skipLibCheck --outDir .test-out src/main/backendIdentity.ts src/main/backendProcess.ts src/main/backendResilience.ts src/main/loggerSafety.ts src/main/navigation.ts src/main/redaction.ts src/main/releaseIdentity.ts src/main/runner.ts src/renderer/ipcRecovery.ts test/backendIdentity.test.ts test/backendProcess.test.ts test/backendResilience.test.ts test/ipcRecovery.test.ts test/loggerSafety.test.ts test/navigation.test.ts test/redaction.test.ts test/releaseIdentity.test.ts test/runner.test.ts && node --test .test-out/test/*.test.js && node -e \"require('fs').rmSync('.test-out',{recursive:true,force:true})\"",
+    "test:identity": "node -e \"require('fs').rmSync('.test-out',{recursive:true,force:true})\" && tsc --module commonjs --moduleResolution node --target ES2022 --esModuleInterop --skipLibCheck --outDir .test-out src/main/backendIdentity.ts src/main/backendProcess.ts src/main/backendResilience.ts src/main/loggerSafety.ts src/main/navigation.ts src/main/redaction.ts src/main/releaseIdentity.ts src/main/runner.ts src/main/windowLifecycle.ts src/renderer/ipcRecovery.ts test/backendIdentity.test.ts test/backendProcess.test.ts test/backendResilience.test.ts test/ipcRecovery.test.ts test/loggerSafety.test.ts test/navigation.test.ts test/redaction.test.ts test/releaseIdentity.test.ts test/runner.test.ts test/windowLifecycle.test.ts && node --test .test-out/test/*.test.js && node -e \"require('fs').rmSync('.test-out',{recursive:true,force:true})\"",
     "build": "electron-vite build",
     "build:web": "npm --prefix ../frontend/web run build",
     "build:backend": "powershell -ExecutionPolicy Bypass -File scripts/build-backend.ps1",

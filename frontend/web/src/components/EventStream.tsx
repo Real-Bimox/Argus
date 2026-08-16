@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGsapMotion } from '../lib/motion';
 import type { EventMsg } from '../api';
+import type { DeliveryReceipt } from '../../../core/src/types';
 import { renderEvent, toneColor, isReasoning, eventKey, mergeFragment, type Rendered } from '../lib/eventRender';
 import { eventMatchesView, fragmentMode, type EventViewFilter } from '../../../core/src/events';
 import { theme } from '../lib/theme';
@@ -265,7 +266,56 @@ function RoleLogCollection({ rows, live }: { rows: ActivityRow[]; live: boolean 
   );
 }
 
-function ConversationThread({ group, latest }: { group: ConversationGroup; latest: boolean }) {
+function deliveryFromEvent(event: EventMsg): DeliveryReceipt | null {
+  const delivery = event.delivery;
+  if (!delivery || typeof delivery !== 'object' || Array.isArray(delivery)) return null;
+  const candidate = delivery as Partial<DeliveryReceipt>;
+  if (typeof candidate.delivery_id !== 'string' || !candidate.delivery_id.trim()) return null;
+  return candidate as DeliveryReceipt;
+}
+
+function DeliveryCard({
+  delivery,
+  onOpen,
+}: {
+  delivery: DeliveryReceipt;
+  onOpen?: (delivery: DeliveryReceipt) => void;
+}) {
+  const { locale } = useI18n();
+  const zh = locale === 'zh-CN';
+  const certified = delivery.kind === 'submission_certified';
+  return (
+    <aside className="mx-auto my-3 flex w-full max-w-full gap-3 rounded-lg border border-ok/35 bg-ok/5 px-4 py-3 lg:max-w-[61.8vw]">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ok/15 font-semibold text-ok">✓</span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ok">
+          {certified ? (zh ? '交付已认证' : 'Delivery certified') : (zh ? '任务已完成' : 'Task completed')}
+        </div>
+        <div className="mt-1 truncate text-sm font-semibold text-ink" title={delivery.title}>{delivery.title}</div>
+        {delivery.summary ? <p className="mt-1 text-xs leading-5 text-ink-dim">{delivery.summary}</p> : null}
+        {onOpen ? (
+          <button
+            type="button"
+            onClick={() => onOpen(delivery)}
+            className="mt-2 rounded border border-ok/40 px-2 py-1 font-mono text-[10px] text-ok hover:border-ok hover:bg-ok/10"
+          >
+            {delivery.primary_target ? (zh ? '打开成果' : 'Open result') : (zh ? '查看任务' : 'View task')}
+          </button>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function ConversationThread({
+  group,
+  latest,
+  onOpenDelivery,
+}: {
+  group: ConversationGroup;
+  latest: boolean;
+  onOpenDelivery?: (delivery: DeliveryReceipt) => void;
+}) {
   const isSystemMessage = (row: ActivityRow) =>
     row.ev.type === 'ui.argus' && /^(info:|operation cancelled|cancelled\b)/i.test(row.r.text.trim());
   const replyParts = group.rows
@@ -281,6 +331,15 @@ function ConversationThread({ group, latest }: { group: ConversationGroup; lates
   const replies = replyParts.flatMap((part) => part.reply ? [part.reply] : []);
   const systemMessages = replyParts.flatMap((part) => part.messages);
   const operational = group.rows.filter(({ ev }) => ev.type !== 'ui.argus');
+  const deliveries = (() => {
+    const seen = new Set<string>();
+    return group.rows.flatMap((row) => {
+      const delivery = deliveryFromEvent(row.ev);
+      if (!delivery || seen.has(delivery.delivery_id)) return [];
+      seen.add(delivery.delivery_id);
+      return [delivery];
+    });
+  })();
 
   return (
     <section className="border-b border-line/60">
@@ -290,6 +349,9 @@ function ConversationThread({ group, latest }: { group: ConversationGroup; lates
         <div key={`${group.key}-system-${index}`} className="mx-auto w-full max-w-full px-6 py-1.5 text-center text-xs text-ink-faint lg:max-w-[61.8vw]">
           {message}
         </div>
+      ))}
+      {deliveries.map((delivery) => (
+        <DeliveryCard key={delivery.delivery_id} delivery={delivery} onOpen={onOpenDelivery} />
       ))}
       {operational.length > 0 ? (
         <div className="mx-auto w-full max-w-full border-t border-line/40 lg:max-w-[61.8vw]">
@@ -316,6 +378,7 @@ export function EventStream({
   filter = 'all',
   query = '',
   skipFirst = 0,
+  onOpenDelivery,
 }: {
   events: EventMsg[];
   connected: boolean;
@@ -325,6 +388,7 @@ export function EventStream({
   filter?: EventViewFilter;
   query?: string;
   skipFirst?: number;
+  onOpenDelivery?: (delivery: DeliveryReceipt) => void;
 }) {
   const { locale, t } = useI18n();
   const [following, setFollowing] = useState(true);
@@ -480,7 +544,12 @@ export function EventStream({
               </section>
             ) : null}
             {conversations.groups.map((group, index) => (
-              <ConversationThread key={group.key} group={group} latest={index === conversations.groups.length - 1} />
+              <ConversationThread
+                key={group.key}
+                group={group}
+                latest={index === conversations.groups.length - 1}
+                onOpenDelivery={onOpenDelivery}
+              />
             ))}
           </>
         )}

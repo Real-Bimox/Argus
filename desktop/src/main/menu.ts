@@ -6,6 +6,7 @@ export interface MenuActions {
   restartBackend(): Promise<boolean>;
   exportDiagnostics(): Promise<string | null>;
   openSetup(): Promise<void>;
+  stopBackendAndQuit(): Promise<void>;
 }
 
 export function installApplicationMenu(
@@ -37,8 +38,18 @@ export function installApplicationMenu(
           click: () => void actions.openData()
         },
         { type: 'separator' },
-        { role: 'close', label: '关闭窗口' },
-        { role: 'quit', label: '退出 Argus' }
+        {
+          label: '关闭窗口并在后台继续',
+          click: () => getWindow()?.hide()
+        },
+        {
+          label: '退出桌面界面（后台继续）',
+          click: () => app.quit()
+        },
+        {
+          label: '停止本地后端并退出',
+          click: () => void actions.stopBackendAndQuit()
+        }
       ]
     },
     {

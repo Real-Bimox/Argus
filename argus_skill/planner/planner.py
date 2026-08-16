@@ -21,6 +21,7 @@ from ..core.ports import RunnerBackend
 from ..core.role_session import (
     RoleSessionCapsule,
     configured_role_session_policy,
+    effective_role_session_policy,
     objective_revision,
 )
 from ..core.run_gateway import run_exec as gateway_run_exec
@@ -190,19 +191,24 @@ class Planner:
         """Inspect the active objective and delegate the next concrete work."""
         cfg = config or PlannerConfig()
         workdir = Path(cfg.working_dir).resolve() if cfg.working_dir else Path.cwd()
+        backend_name = str(getattr(self.runner, "backend", type(self.runner).__name__))
+        session_policy = effective_role_session_policy(
+            cfg.role_session_policy,
+            backend_name,
+        )
         session = RoleSessionCapsule.open(
             role="planner",
-            policy=cfg.role_session_policy,
+            policy=session_policy,
             objective_revision=(
                 cfg.objective_revision or objective_revision(continuous_objective)
             ),
             workdir=workdir,
-            backend=str(getattr(self.runner, "backend", type(self.runner).__name__)),
+            backend=backend_name,
             model=str(cfg.model or ""),
             checkpoint_path=None,
             path=(
                 cfg.role_session_path
-                if cfg.role_session_policy != "fresh"
+                if session_policy != "fresh"
                 else None
             ),
         )
@@ -210,7 +216,12 @@ class Planner:
             max_turns=cfg.role_session_max_turns,
             max_input_tokens=cfg.role_session_max_input_tokens,
         )
-        prompt = self._build_planner_prompt(
+        prompt_builder = (
+            self._build_resumed_planner_prompt
+            if resume_thread_id
+            else self._build_planner_prompt
+        )
+        prompt = prompt_builder(
             continuous_objective=continuous_objective,
             journal_tail=journal_tail,
             planning_cycle=planning_cycle,
@@ -264,7 +275,7 @@ class Planner:
                 error=exc_text,
             )
         text = "\n".join(getattr(result, "agent_messages", None) or [])
-        session.complete(result, decisive_output=text)
+        session_metadata_persisted = session.complete(result, decisive_output=text)
         failed = int(getattr(result, "exit_code", 0) or 0) != 0 or bool(
             getattr(result, "fatal_error", None)
         )
@@ -288,6 +299,8 @@ class Planner:
                 "prompt_chars": len(prompt),
                 "prompt_estimated_tokens": (len(prompt) + 3) // 4,
                 "capsule_path": str(session.path or ""),
+                "metadata_persisted": session_metadata_persisted,
+                "persistence_warning": session.persistence_error,
             })
         if failed:
             stderr_tail = "\n".join(
@@ -335,6 +348,31 @@ class Planner:
                 open_ended=bool(cfg.open_ended),
             )
         return verdict
+
+    @staticmethod
+    def _build_resumed_planner_prompt(
+        *,
+        continuous_objective: str,
+        journal_tail: str,
+        planning_cycle: int,
+        runtime_change_summary: str = "",
+        mission: Any | None = None,
+        open_ended: bool = False,  # noqa: ARG004 - protocol parity with full prompt
+        memory_maintenance_enabled: bool = True,  # noqa: ARG004 - same contract
+        project_root: Path | str | None = None,
+        state_root: Path | str | None = None,
+    ) -> str:
+        from ..roles.prompts.planner import build_continuous_resume_prompt
+
+        return build_continuous_resume_prompt(
+            continuous_objective=continuous_objective,
+            journal_tail=journal_tail,
+            planning_cycle=planning_cycle,
+            runtime_change_summary=runtime_change_summary,
+            mission=mission,
+            project_root=project_root,
+            state_root=state_root,
+        )
 
     @staticmethod
     def _build_planner_prompt(

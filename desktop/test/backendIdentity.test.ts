@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  authenticatedBundledBackendMatches,
   backendLaunchClaimMatches,
   backendOwnershipMatches,
+  priorBackendOwnershipMatches,
   type BackendOwnership,
   type BackendProbeIdentity,
   type ExpectedBackendIdentity,
@@ -52,6 +54,64 @@ test('rejects stale PID, executable, digest, or token records', () => {
   assert.equal(backendOwnershipMatches(ownership, { ...probe, executable: 'D:\\Other\\argus-backend.exe' }, expected), false);
   assert.equal(backendOwnershipMatches(ownership, { ...probe, manifestSourceDigest: 'c'.repeat(64) }, expected), false);
   assert.equal(backendOwnershipMatches({ ...ownership, tokenSha256: 'd'.repeat(64) }, probe, expected), false);
+});
+
+test('accepts only the authenticated ownership record of a prior Desktop release', () => {
+  const priorProbe: BackendProbeIdentity = {
+    ...probe,
+    compatible: false,
+    occupied: true,
+    manifestSourceDigest: 'prior-release-digest',
+  };
+  const priorOwnership: BackendOwnership = {
+    ...ownership,
+    manifestSourceDigest: 'prior-release-digest',
+  };
+  assert.equal(priorBackendOwnershipMatches(priorOwnership, priorProbe, {
+    host: expected.host,
+    port: expected.port,
+    tokenSha256: expected.tokenSha256,
+  }), true);
+  assert.equal(priorBackendOwnershipMatches(
+    { ...priorOwnership, tokenSha256: 'x'.repeat(64) },
+    priorProbe,
+    { host: expected.host, port: expected.port, tokenSha256: expected.tokenSha256 },
+  ), false);
+  assert.equal(priorBackendOwnershipMatches(
+    { ...priorOwnership, startedAt: '2026-08-09T13:01:00Z' },
+    priorProbe,
+    { host: expected.host, port: expected.port, tokenSha256: expected.tokenSha256 },
+  ), false);
+  assert.equal(priorBackendOwnershipMatches(
+    priorOwnership,
+    { ...priorProbe, executable: 'D:\\Other\\argus-backend.exe' },
+    { host: expected.host, port: expected.port, tokenSha256: expected.tokenSha256 },
+  ), false);
+});
+
+test('accepts an authenticated same-path legacy backend for in-place upgrade only', () => {
+  const legacyProbe: BackendProbeIdentity = {
+    ...probe,
+    compatible: false,
+    occupied: true,
+    authenticated: true,
+    manifestSourceDigest: 'old-release-digest',
+  };
+  assert.equal(authenticatedBundledBackendMatches(legacyProbe, {
+    executable: expected.executable,
+  }), true);
+  assert.equal(authenticatedBundledBackendMatches(
+    { ...legacyProbe, executable: 'D:\\Other\\argus-backend.exe' },
+    { executable: expected.executable },
+  ), false);
+  assert.equal(authenticatedBundledBackendMatches(
+    { ...legacyProbe, authenticated: false },
+    { executable: expected.executable },
+  ), false);
+  assert.equal(authenticatedBundledBackendMatches(
+    { ...legacyProbe, manifestSourceDigest: undefined },
+    { executable: expected.executable },
+  ), false);
 });
 
 test('rejects legacy or incomplete ownership records', () => {

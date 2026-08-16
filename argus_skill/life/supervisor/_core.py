@@ -723,6 +723,7 @@ class LifeSupervisor(
                 "iteration_cap",
                 "lifecycle_block",
                 "stage_hold",
+                "infra_blocked",
             }:
                 # No mission actually ran — this is a held/paused outcome. Escalate
                 # the wait like the idle path (15→300s) instead of resetting to
@@ -823,6 +824,7 @@ class LifeSupervisor(
                 "iteration_cap",
                 "lifecycle_block",
                 "stage_hold",
+                "infra_blocked",
             }:
                 stopped_by = outcome.get("status", "")
                 break
@@ -910,6 +912,10 @@ class LifeSupervisor(
         item = self.memory.backlog.next_pending()
         if item is None:
             return None
+
+        runtime_block = self._runtime_failure_circuit_block(item=item)
+        if runtime_block is not None:
+            return runtime_block
 
         obsolete_final_submission = (
             self._maybe_skip_inapplicable_final_submission_item(item)
@@ -1382,6 +1388,14 @@ class LifeSupervisor(
                     "item_id": item_id,
                     "success": success,
                     "summary": summary,
+                    "delivery": (
+                        dict(event["delivery"])
+                        if success and isinstance(event.get("delivery"), dict)
+                        else None
+                    ),
+                    "delivery_id": (
+                        str(event.get("delivery_id") or "") if success else ""
+                    ),
                 },
             )
         except Exception:  # noqa: BLE001 - notification must not break supervision

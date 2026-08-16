@@ -566,6 +566,10 @@ class SelfReplyMixin:
             f"- phase: {phase}",
             f"- isolated repair capability: {isolation}",
         ]
+        if snapshot.maintenance_mode:
+            lines.append(f"- maintenance mode: {snapshot.maintenance_mode}")
+        if snapshot.maintenance_error:
+            lines.append(f"- maintenance note: {snapshot.maintenance_error}")
         if snapshot.last_audit_at > 0:
             lines.append(
                 "- last audit: "

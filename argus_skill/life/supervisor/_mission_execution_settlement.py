@@ -550,6 +550,21 @@ class MissionExecutionSettlementMixin:
         # persisted success target is resumable, not a success or terminal failure.
         if success:
             self.memory.backlog.mark_done(item.id, outcome=outcome_dimensions)
+            if "runtime_failure_canary" in state.item_tags:
+                try:
+                    from ..runtime_failure_circuit import clear_runtime_failure_circuit
+
+                    circuit_cleared = clear_runtime_failure_circuit(
+                        self.memory.root,
+                        reason=f"reviewed runtime canary passed in mission {item.id}",
+                    )
+                    self._emit({
+                        "type": EventType.LIFE_RUNTIME_FAILURE_CANARY_PASSED,
+                        "item_id": item.id,
+                        "circuit_cleared": circuit_cleared,
+                    })
+                except Exception:  # noqa: BLE001 - canary result remains successful
+                    log.exception("failed to clear runtime circuit after canary")
         elif status == "blocked" and operator_question:
             from ...core.operator_decision import build_operator_decision
 
@@ -749,6 +764,38 @@ class MissionExecutionSettlementMixin:
                 or ""
             ).split()
         )[:1200]
+        # A completed mission needs one durable, operator-facing receipt rather
+        # than three loosely related hints (event, chat text, and sidebar).
+        # Resolve targets only from the final Reviewer evidence, vertical
+        # contract, or Manager-owned live view; never scan or guess workspace
+        # files at settlement time.
+        delivery: dict[str, Any] | None = None
+        try:
+            from ..delivery import build_delivery_receipt
+
+            frontier = getattr(outcome, "final_frontier_report", {}) or {}
+            reviewer_artifacts = (
+                list(frontier.get("artifacts") or [])
+                if isinstance(frontier, dict)
+                else []
+            )
+            delivery = build_delivery_receipt(
+                item_id=item.id,
+                title=item.title,
+                summary=mission_summary,
+                success=bool(success),
+                status=status,
+                review_status=str(
+                    getattr(outcome, "final_review_status", "") or ""
+                ),
+                final_submission_certified=final_submission_certified,
+                workspace=(state.execution_workdir or self._project_workdir()),
+                state_root=self.memory.root,
+                stage=state.pipeline_stage_at_start,
+                reviewer_artifacts=reviewer_artifacts,
+            )
+        except Exception:  # noqa: BLE001 - delivery presentation never owns settlement
+            log.debug("mission delivery receipt could not be built", exc_info=True)
         try:
             from ...core.metrics import metrics_root_for_project, record_metric
 
@@ -865,6 +912,8 @@ class MissionExecutionSettlementMixin:
             ),
             "final_submission_certified": final_submission_certified,
             "final_submission_signature": final_submission_signature,
+            "delivery": delivery,
+            "delivery_id": str((delivery or {}).get("delivery_id") or ""),
             "research_result": getattr(outcome, "research_result", None),
             "repair_capability": {
                 "capability_id": str(state.repair_capability.get("capability_id") or ""),
@@ -903,6 +952,7 @@ class MissionExecutionSettlementMixin:
                 or ""
             ),
             "summary": mission_summary,
+            "delivery": delivery,
             "planner_report": planner_report,
             "plan_challenge": plan_challenge,
             "expected_plan_id": item.plan_id,

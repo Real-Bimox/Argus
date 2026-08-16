@@ -8,6 +8,8 @@ files:
 extraResources:
   - from: build/argus-backend
     to: argus-backend
+  - from: resources/icon.ico
+    to: icon.ico
 win:
   target:
     - target: nsis

@@ -1,8 +1,9 @@
 """Round-loop phase: engineer turn execution + non-review stop shortcircuits.
 
-Owns running one fresh Engineer provider-session turn (prompt in, parsed
-``RunnerResult`` out, plus the secret-guard scrub, long-job-ownership check,
-and ``round.main.completed`` accounting that always happen regardless of
+Owns running one Engineer provider-session turn (fresh or safely resumed;
+prompt in, parsed ``RunnerResult`` out), plus the secret-guard scrub,
+long-job-ownership check, and ``round.main.completed`` accounting that always
+happen regardless of
 outcome), and then the non-review-worthy stop-kind shortcircuits that must
 end or retry the round WITHOUT invoking the Reviewer: daemon shutdown,
 operator abort, model misconfiguration, an external pause (budget/provider
@@ -104,7 +105,7 @@ class RoundExecutionMixin:
         engineer_session = state.engineer_session
         if engineer_session is None:
             raise RuntimeError("engineer role session was not initialized")
-        engineer_session.complete(
+        session_metadata_persisted = engineer_session.complete(
             engineer_result,
             decisive_output=engineer_message,
         )
@@ -128,6 +129,8 @@ class RoundExecutionMixin:
                 "prompt_chars": len(engineer_prompt),
                 "prompt_estimated_tokens": (len(engineer_prompt) + 3) // 4,
                 "capsule_path": str(engineer_session.path or ""),
+                "metadata_persisted": session_metadata_persisted,
+                "persistence_warning": engineer_session.persistence_error,
             })
         if supervised_config.context_packet_path:
             try:

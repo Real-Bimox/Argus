@@ -42,6 +42,8 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
         node_key="screen",
     )
     checkpoint = mission.parent / "CHECKPOINT.md"
+    assert checkpoint.is_file()
+    assert checkpoint.read_text(encoding="utf-8") == ""
     checkpoint.write_text("# Current State\n\nScreen complete.\n", encoding="utf-8")
     engineer = record_engineer_handoff(
         mission_context_path=mission,
@@ -72,6 +74,10 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
     ]
     assert mission_payload["context_refs"][0]["ref"] == "research/IDEA_CANDIDATES.md"
     assert "content_hash" not in mission_payload["context_refs"][0]
+    assert mission_payload["checkpoint"] == {
+        "path": str(checkpoint),
+        "contract_version": 2,
+    }
     frontier_path = Path(mission_payload["frontier"]["path"])
     frontier = json.loads(frontier_path.read_text(encoding="utf-8"))
     assert frontier["objective"] == "Screen one candidate on public tasks."
@@ -137,6 +143,30 @@ def test_context_packet_seals_engineer_and_reviewer_handoffs(tmp_path: Path) -> 
     assert reviewed_payload["review"]["frontier_disposition"] == "continue"
     assert "engineer_summary" not in reviewed_payload
     assert "text" not in reviewed_payload["checkpoint"]
+
+
+def test_context_refresh_never_overwrites_role_authored_checkpoint(tmp_path: Path) -> None:
+    mission = create_mission_context(
+        life_dir=tmp_path,
+        mission_id="mission-refresh",
+        stage="research",
+        objective="First objective",
+    )
+    checkpoint = mission.parent / "CHECKPOINT.md"
+    checkpoint.write_text(
+        "# Open Questions / Blockers\n\n- preserve this state\n",
+        encoding="utf-8",
+    )
+
+    refreshed = create_mission_context(
+        life_dir=tmp_path,
+        mission_id="mission-refresh",
+        stage="research",
+        objective="Refreshed objective",
+    )
+
+    assert refreshed == mission
+    assert checkpoint.read_text(encoding="utf-8").endswith("- preserve this state\n")
 
 
 def test_agent_task_context_hides_host_content_hash() -> None:

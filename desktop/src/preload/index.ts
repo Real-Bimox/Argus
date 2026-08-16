@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 window.addEventListener('DOMContentLoaded', () => {
   document.documentElement.dataset.argusDesktop = 'true';
+  // Windows now keeps caption controls in the native non-client frame. The
+  // launcher stylesheet uses this marker to remove its old overlay spacer.
+  document.documentElement.dataset.argusDesktopNativeFrame = 'true';
 });
 
 export type RunnerKind =
@@ -46,6 +49,13 @@ export interface DesktopRuntimeIdentity {
   state: DesktopStatus['state'];
   pid?: number;
   url?: string;
+}
+
+export interface DesktopDeliveryNotification {
+  deliveryId: string;
+  title: string;
+  summary: string;
+  path?: string;
 }
 
 export interface DesktopSetup {
@@ -93,6 +103,17 @@ const api = {
   restartBackend: (): Promise<boolean> => ipcRenderer.invoke('argus:restart-backend'),
   exportDiagnostics: (): Promise<string | null> => ipcRenderer.invoke('argus:export-diagnostics'),
   openCockpit: (): Promise<void> => ipcRenderer.invoke('argus:open-cockpit'),
+  notifyDelivery: (payload: DesktopDeliveryNotification): Promise<boolean> =>
+    ipcRenderer.invoke('argus:notify-delivery', payload),
+  onOpenDelivery: (
+    callback: (payload: DesktopDeliveryNotification) => void,
+  ): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: DesktopDeliveryNotification): void => {
+      callback(payload);
+    };
+    ipcRenderer.on('argus:open-delivery', listener);
+    return () => ipcRenderer.removeListener('argus:open-delivery', listener);
+  },
   onShowSetup: (callback: () => void): (() => void) => {
     const listener = (): void => callback();
     ipcRenderer.on('argus:show-setup', listener);

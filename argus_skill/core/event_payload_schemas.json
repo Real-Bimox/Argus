@@ -237,6 +237,23 @@
           ]
         },
         "recoverable": {"type": "boolean"},
+        "delivery_id": {"type": "string"},
+        "delivery": {
+          "type": ["object", "null"],
+          "properties": {
+            "schema_version": {"type": "integer", "minimum": 1},
+            "delivery_id": {"type": "string"},
+            "kind": {"type": "string"},
+            "item_id": {"type": "string"},
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "status": {"type": "string"},
+            "review_status": {"type": "string"},
+            "delivered_at": {"type": "number", "minimum": 0},
+            "primary_target": {"type": ["object", "null"]},
+            "targets": {"type": "array", "items": {"type": "object"}}
+          }
+        },
         "operator_question": {"type": "string"}
       }
     },
@@ -442,6 +459,44 @@
         "reason": {"type": "string"}
       }
     },
+    "life.runtime_failure.circuit_opened": {
+      "version": 1,
+      "required": ["fingerprint", "exception_type", "callsite"],
+      "properties": {
+        "item_id": {"type": "string"},
+        "fingerprint": {"type": "string", "minLength": 1},
+        "exception_type": {"type": "string", "minLength": 1},
+        "callsite": {"type": "string", "minLength": 1},
+        "normalized_error": {"type": "string"},
+        "occurrence_count": {"type": "integer", "minimum": 1},
+        "runtime_identity": {"type": "object"},
+        "newly_opened": {"type": "boolean"},
+        "operator_alert": {"type": "boolean"}
+      }
+    },
+    "life.runtime_failure.circuit_blocked": {
+      "version": 1,
+      "required": ["fingerprint", "reason"],
+      "properties": {
+        "item_id": {"type": "string"},
+        "fingerprint": {"type": "string", "minLength": 1},
+        "exception_type": {"type": "string"},
+        "callsite": {"type": "string"},
+        "normalized_error": {"type": "string"},
+        "occurrence_count": {"type": "integer", "minimum": 1},
+        "runtime_identity": {"type": "object"},
+        "operator_alert": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1}
+      }
+    },
+    "life.runtime_failure.canary_passed": {
+      "version": 1,
+      "required": ["item_id", "circuit_cleared"],
+      "properties": {
+        "item_id": {"type": "string", "minLength": 1},
+        "circuit_cleared": {"type": "boolean"}
+      }
+    },
     "life.planner.task_added": {
       "version": 1,
       "required": ["item_id"],
@@ -550,6 +605,8 @@
         "prompt_chars": {"type": "integer", "minimum": 0},
         "prompt_estimated_tokens": {"type": "integer", "minimum": 0},
         "capsule_path": {"type": "string"},
+        "metadata_persisted": {"type": "boolean"},
+        "persistence_warning": {"type": "string"},
         "signal_kind": {"type": "string", "enum": ["repeated_contradiction", "reviewer_confusion", "quality_degradation"]},
         "signal_detail": {"type": "string"}
       }
