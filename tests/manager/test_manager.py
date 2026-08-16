@@ -689,7 +689,33 @@ def test_empty_workspace_builtin_research_does_not_require_ceremonial_tool_use(
     )
 
     assert decision.vertical == "research"
+    assert decision.workflow_mode == "direct"
     assert runner.calls == ["manager-classify-grounded"]
+
+
+def test_company_due_diligence_cannot_enter_publication_workflow(
+    tmp_path,
+) -> None:
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "vertical": "research",
+        "workflow_mode": "staged",
+        "execution_task": "Investigate the company from public sources.",
+        "rationale": "multiple public evidence tracks",
+        "research_target_level": "exploratory",
+        "target_venue": None,
+    })
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "Investigate Shanghai Qiadao Technology and verify any quantum claims."
+    )
+
+    assert decision.vertical == "research"
+    assert decision.research_target_level == "exploratory"
+    assert decision.target_venue == ""
+    assert decision.workflow_mode == "direct"
+    assert "Company due diligence" in runner.calls[0]["prompt"]
+    assert "never `research`/`staged`" in runner.calls[0]["prompt"]
 
 
 def test_repository_sensitive_no_tool_route_retries_once_and_can_recover(

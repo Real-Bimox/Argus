@@ -17,6 +17,10 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
     """Prepare live research evidence before Agents inspect their libraries."""
     if context.workflow_mode == "direct" or not context.paper_mission:
         return
+    from ...core.research_contract import resolve_research_target_level
+
+    if resolve_research_target_level(context.workdir) == "exploratory":
+        return
     if (
         _enabled("ARGUS_SKILL_VENUE_RESEARCH")
         and context.stage in _VENUE_STAGES

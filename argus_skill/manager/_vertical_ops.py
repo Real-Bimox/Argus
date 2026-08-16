@@ -44,6 +44,21 @@ def _repository_workflow_mode(mode: str) -> str:
     return "staged" if require_planner else mode
 
 
+def _normalize_exploratory_research_workflow(
+    decision: VerticalDecision,
+) -> VerticalDecision:
+    """Keep bounded general research out of the publication pipeline."""
+    if (
+        decision.choice == "existing"
+        and decision.vertical == "research"
+        and not decision.domain
+        and decision.research_target_level == "exploratory"
+        and not decision.target_venue
+    ):
+        decision.workflow_mode = "direct"
+    return decision
+
+
 def _software_grounding_required(workflow_mode: str) -> bool:
     raw = os.environ.get("ARGUS_SKILL_SOFTWARE_REQUIRE_GROUNDING", "").strip().lower()
     if raw:
@@ -436,7 +451,9 @@ class _VerticalDecisionMixin:
                     f"Manager could not decide a vertical for task {task!r}: the "
                     "model reply was missing or not a valid existing/new choice"
                 )
-            return route_result, route_decision
+            return route_result, _normalize_exploratory_research_workflow(
+                route_decision
+            )
 
         result, decision = invoke_grounded_route(
             prompt,
