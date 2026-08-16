@@ -18,4 +18,17 @@
 ; tray" in Argus, so waiting/retrying can never establish process exit.
 !macro customCheckAppRunning
   !insertmacro forceStopArgus
+
+  ; Some legacy 0.1.2 uninstallers return exit code 2 even with no Argus
+  ; process, causing installUtil.nsh to retry and misreport appCannotBeClosed.
+  ; Keep INSTALL_REGISTRY_KEY so initMultiUser retains the chosen directory,
+  ; but remove the obsolete uninstaller registration immediately before the
+  ; install section calls uninstallOldVersion. The new package then overwrites
+  ; the dedicated app directory in place and writes a fresh registration.
+  DeleteRegKey HKCU "${UNINSTALL_REGISTRY_KEY}"
+  DeleteRegKey HKLM "${UNINSTALL_REGISTRY_KEY}"
+  !ifdef UNINSTALL_REGISTRY_KEY_2
+    DeleteRegKey HKCU "${UNINSTALL_REGISTRY_KEY_2}"
+    DeleteRegKey HKLM "${UNINSTALL_REGISTRY_KEY_2}"
+  !endif
 !macroend

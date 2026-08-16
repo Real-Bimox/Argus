@@ -37,6 +37,8 @@ def test_installer_bypasses_close_to_tray_before_replacing_files() -> None:
     assert '!insertmacro forceStopArgus' in include
     assert '/IM "Argus.exe"' in include
     assert '/IM "argus-backend.exe"' in include
+    assert 'DeleteRegKey HKCU "${UNINSTALL_REGISTRY_KEY}"' in include
+    assert 'DeleteRegKey HKLM "${UNINSTALL_REGISTRY_KEY}"' in include
 
 
 def test_release_build_keeps_checked_in_windows_icon_resources() -> None:
