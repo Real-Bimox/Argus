@@ -69,8 +69,10 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   dependencies, review, stage transitions, context discovery, and Skill learning.
 - Write TASK_TITLE and TASK_OBJECTIVE in the operator objective's language.
 - End with named lines, not JSON. Use `WAITING=true` only for a real external
-  blocker. If an explicit final-certification instruction is present, additionally
-  use `TASK_SCOPE=final_submission`; ordinary tasks omit it.
+  blocker. Never poll a watched durable task; emit no
+  `TASK_*` block and set `BLOCKER_FINGERPRINT`, `RECHECK_CONDITION`,
+  `RECHECK_TOKEN`, `WAIT_MODE=event`, and `WAKE_ON=subagent_state`. If explicit
+  final certification is requested, also use `TASK_SCOPE=final_submission`.
 """
 
 _EXTERNAL_TARGET_CONTRACT = (

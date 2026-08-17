@@ -130,6 +130,9 @@ def test_planner_prompt_requires_read_only_delegation_and_plain_key_values() -> 
     assert "Engineer owns edits" in _PLANNER_CORE_CONTRACT
     assert "PROJECT_DONE=false" in _PLANNER_CORE_CONTRACT
     assert "not JSON" in _PLANNER_CORE_CONTRACT
+    assert "Never poll a watched durable task" in _PLANNER_CORE_CONTRACT
+    assert "`WAIT_MODE=event`" in _PLANNER_CORE_CONTRACT
+    assert "`WAKE_ON=subagent_state`" in _PLANNER_CORE_CONTRACT
     for field in ("TASK_TITLE", "TASK_OBJECTIVE", "TASK_ACCEPTANCE_CHECK"):
         assert field in _PLANNER_CORE_CONTRACT
     for field in (

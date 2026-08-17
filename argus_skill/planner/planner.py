@@ -128,6 +128,7 @@ class WaitingContract:
     wake_on: tuple[str, ...] = ()
     watched_paths: tuple[str, ...] = ()
     expires_at: float = 0.0
+    observed_revision: str = ""
     # True when only fresh operator input can change the blocker (for example,
     # new credentials, a scope choice, or authorization for an additional
     # mission/thesis).  Manager owns stage transitions, not operator scope.
