@@ -34,6 +34,51 @@ from typing import Any, Iterable, Mapping
 
 _FENCE = re.compile(r"^\s*```[a-zA-Z0-9_-]*\s*$")
 
+#: What may sit immediately before a key for it to still be starting a footer.
+#:
+#: Deliberately only sentence terminators. A model that writes
+#: ``...the requested Lean source.STATUS=done`` has ended its prose and begun
+#: its verdict; a model that writes ``end with `MILESTONE_STATUS=done|continue``
+#: is quoting its own instructions mid-sentence, and splitting there would
+#: manufacture a verdict out of an example. Backtick, comma and colon are
+#: therefore not here. An underscore is not here either, which is what keeps
+#: ``STATUS`` from being found inside ``MILESTONE_STATUS``.
+_SENTENCE_END = r"[.!?)\]\"']"
+
+
+def _split_glued_keys(text: str, keys: Iterable[str]) -> str:
+    """Give a key welded to the end of a sentence its own line.
+
+    Every reader here is line-based, which is the right shape for a footer and
+    one newline away from losing one. Testbed run 15 (``s-f0dbba19``) lost a
+    complete Reviewer ``done`` verdict — status, reason, research result and
+    frontier report, 6767 output tokens — because a single message ran
+    ``...for the requested Lean source.STATUS=done`` with no line break. The
+    other eighteen named fields, on their own lines below it, parsed fine. The
+    harness reported "Reviewer output did not contain a valid named verdict
+    footer", defaulted to ``continue``, and bought an Engineer round and a
+    second Reviewer round to re-derive the verdict it had already been given.
+
+    The module docstring promises tolerance of a bullet, bold, backticks and an
+    ``ARGUS_`` prefix. This is the same promise for the one decoration that
+    actually cost something.
+    """
+    names = sorted(
+        {str(k).strip().upper() for k in keys if str(k).strip()},
+        key=len,
+        reverse=True,
+    )
+    if not names:
+        return str(text or "")
+    joined = "|".join(re.escape(name) for name in names)
+    return re.sub(
+        r"(?<=" + _SENTENCE_END + r")[ \t]*"
+        r"((?:ARGUS_)?(?:" + joined + r")[`*_]*\s*[:=])",
+        r"\n\1",
+        str(text or ""),
+        flags=re.IGNORECASE,
+    )
+
 
 def _line_pattern(keys: Iterable[str]) -> re.Pattern[str]:
     names = sorted({str(k).strip().upper() for k in keys if str(k).strip()}, key=len, reverse=True)
@@ -58,7 +103,26 @@ def read_key_values(text: str, keys: Iterable[str]) -> dict[str, str]:
     Absent rather than empty-string: a caller needs to tell "the role did not
     answer this" from "the role answered with nothing", and collapsing the two
     is how a silent default gets mistaken for a decision.
+
+    A key found welded to the end of a sentence is read too, but only after the
+    line-based pass has had its say and only for the keys that pass did not
+    find — so no reply that parses today can be reinterpreted by the rescue.
     """
+    found = _read_key_values(text, keys)
+    missing = [
+        key
+        for key in keys
+        if str(key).strip() and str(key).strip().upper() not in found
+    ]
+    if missing:
+        for key, value in _read_key_values(
+            _split_glued_keys(text, missing), missing
+        ).items():
+            found.setdefault(key, value)
+    return found
+
+
+def _read_key_values(text: str, keys: Iterable[str]) -> dict[str, str]:
     pattern = _line_pattern(keys)
     found: dict[str, str] = {}
     for raw in str(text or "").splitlines():
@@ -86,7 +150,25 @@ def read_records(
     and each new ``start_key`` line opens the next record. Plain
     :func:`read_key_values` keeps only the last occurrence of a key, which is
     right for a single verdict and wrong for a list.
+
+    A welded ``start_key`` costs one record rather than the whole reply, so
+    "the strict pass found nothing" is the wrong trigger here — it reads the
+    records after the weld and silently drops the one before it. The rescue
+    runs instead whenever splitting recovers strictly more records.
     """
+    records = _read_records(text, keys, start_key=start_key)
+    rescued = _read_records(
+        _split_glued_keys(text, keys), keys, start_key=start_key
+    )
+    return rescued if len(rescued) > len(records) else records
+
+
+def _read_records(
+    text: str,
+    keys: Iterable[str],
+    *,
+    start_key: str,
+) -> list[dict[str, str]]:
     pattern = _line_pattern(keys)
     wanted = str(start_key).strip().upper()
     records: list[dict[str, str]] = []
@@ -120,6 +202,13 @@ def read_block(text: str, key: str, keys: Iterable[str]) -> str:
     verdict that explains it, so the value continues until the next recognised
     key or the end of the reply.
     """
+    value = _read_block(text, key, keys)
+    if value:
+        return value
+    return _read_block(_split_glued_keys(text, keys), key, keys)
+
+
+def _read_block(text: str, key: str, keys: Iterable[str]) -> str:
     pattern = _line_pattern(keys)
     wanted = str(key).strip().upper()
     collected: list[str] | None = None

@@ -430,23 +430,69 @@ def compact_backlog_item(item: Any) -> dict[str, Any]:
     }
 
 
+def _carries_stage_state(root: Path) -> bool:
+    """Does this root's pipeline state actually record a stage?
+
+    ``current_stage`` answers every root that has the file at all, because a
+    fresh project genuinely is at stage one and that fallback is right for it.
+    It is wrong for a root that was never the stage's home. Under the split
+    between a session state root and an execution workdir, the workdir copy of
+    ``PIPELINE_STATE.json`` holds only the adopted objective — no ``vertical``,
+    no ``current_stage``, no ``stages`` — so reading a stage out of it means
+    reading the default vertical's first stage and calling it fact.
+    """
+    try:
+        payload = json.loads(
+            (root / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return bool(
+        str(payload.get("current_stage") or "").strip()
+        or str(payload.get("vertical") or "").strip()
+    )
+
+
 def current_stage_for_session(
     session: dict[str, Any],
     life_dir: Path,
 ) -> str:
+    """The stage this session is actually at, for the operator's cockpit.
+
+    Testbed run 15 (``s-f0dbba19``) finished its math project at stage
+    ``review`` of ``scope -> solve -> review``, with all three stages recorded
+    done. The API served ``research`` — stage one of the eight-stage default
+    pipeline, a vertical that project never ran — for the entire run, because
+    the execution workdir happened to hold a three-key ``PIPELINE_STATE.json``
+    carrying the adopted objective and nothing else, and the old lookup
+    accepted the first root where that file merely *existed*.
+
+    ``_snapshot`` overwrites the event-sourced stage with this value, so the
+    served mission view contradicted the harness's own ``mission-view.json``.
+
+    So: a root that records a stage answers first, and the state root is asked
+    before the workdir. The old existence-only order is kept as a fallback,
+    which is what still answers for a fresh project whose state file is empty.
+    """
     from ..skills.stage_machine import current_stage
 
-    candidates = [session.get("workdir"), session.get("cwd"), life_dir]
-    for raw in candidates:
-        if not raw:
-            continue
-        root = Path(str(raw)).expanduser()
-        if not (root / "research" / "PIPELINE_STATE.json").exists():
-            continue
-        try:
-            return str(current_stage(root) or "")
-        except Exception:  # noqa: BLE001 - snapshot remains available
-            continue
+    authoritative = [life_dir, session.get("workdir"), session.get("cwd")]
+    legacy = [session.get("workdir"), session.get("cwd"), life_dir]
+    for candidates, require_stage_state in ((authoritative, True), (legacy, False)):
+        for raw in candidates:
+            if not raw:
+                continue
+            root = Path(str(raw)).expanduser()
+            if not (root / "research" / "PIPELINE_STATE.json").exists():
+                continue
+            if require_stage_state and not _carries_stage_state(root):
+                continue
+            try:
+                return str(current_stage(root) or "")
+            except Exception:  # noqa: BLE001 - snapshot remains available
+                continue
     return ""
 
 
