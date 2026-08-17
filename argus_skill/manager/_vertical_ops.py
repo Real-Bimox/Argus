@@ -414,7 +414,8 @@ class _VerticalDecisionMixin:
             model=_manager_model(),
             reasoning_effort=_manager_vertical_reasoning_effort(),
             working_dir=str(self.execution_workdir),
-            dangerous_yolo=True,
+            sandbox_mode="read-only",
+            force_safe_mode=True,
             skip_git_repo_check=True,
             extra_args=grounded_extra_args,
         )

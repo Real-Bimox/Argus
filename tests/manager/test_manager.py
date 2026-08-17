@@ -545,7 +545,9 @@ def test_grounded_vertical_decision_rewrites_task_without_unrequested_rendering(
     assert [call["run_label"] for call in runner.calls] == [
         "manager-classify-grounded"
     ]
-    assert runner.last_options.dangerous_yolo is True
+    assert runner.last_options.sandbox_mode == "read-only"
+    assert runner.last_options.force_safe_mode is True
+    assert runner.last_options.dangerous_yolo is False
 
 
 def test_vertical_decision_pins_manager_model(tmp_path, monkeypatch) -> None:
@@ -636,8 +638,9 @@ def test_vertical_decision_always_uses_repository_grounded_route(
     assert [call["run_label"] for call in runner.calls] == [
         "manager-classify-grounded",
     ]
-    assert runner.calls[0]["options"].sandbox_mode is None
-    assert runner.calls[0]["options"].dangerous_yolo is True
+    assert runner.calls[0]["options"].sandbox_mode == "read-only"
+    assert runner.calls[0]["options"].force_safe_mode is True
+    assert runner.calls[0]["options"].dangerous_yolo is False
     assert "--available-tools=" not in runner.calls[0]["options"].extra_args
     assert "Inspect routing evidence" in runner.calls[0]["prompt"]
     assert "at most 3 targeted operations" in runner.calls[0]["prompt"]
