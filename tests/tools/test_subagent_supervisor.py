@@ -1594,7 +1594,7 @@ def test_reply_back_block_demands_concrete_fix_not_bare_agreement() -> None:
 def test_supervisor_discuss_prompt_requires_concrete_fix_resolution(monkeypatch, tmp_path) -> None:
     monkeypatch.chdir(tmp_path)
     tid = "train-fix"
-    _append_discussion(tid, "engineer", "agree, it's no-go")
+    _append_discussion(tid, "engineer", "agree, the criterion was not met")
     captured: dict[str, str] = {}
 
     class _Result:
@@ -1615,7 +1615,7 @@ def test_supervisor_discuss_prompt_requires_concrete_fix_resolution(monkeypatch,
     )
     prompt = captured["prompt"]
     assert "CONCRETE fix" in prompt
-    assert "no-go" in prompt.lower()
+    assert "criterion was not met" in prompt.lower()
     # It should reason in terms of the actual hyperparameters.
     assert "hyperparameters in the Command" in prompt
 

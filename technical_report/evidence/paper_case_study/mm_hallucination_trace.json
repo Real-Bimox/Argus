@@ -5,7 +5,7 @@
   "engineer_rounds": 174,
   "reviewer_revisions": 94,
   "session_rolls": 29,
-  "early_no_go_rollbacks": 7,
+  "early_route_rollbacks": 7,
   "submission_rollbacks": 2,
   "canonical_methods": 5,
   "canonical_benchmarks": 3,
@@ -14,7 +14,7 @@
   "canonical_scored_rows": 4500,
   "final_pages": 10,
   "final_format": "AAAI",
-  "no_go_branches": [
+  "discarded_approaches": [
     "strong-baseline coverage",
     "conservative veto",
     "bidirectional arbitration",
@@ -32,7 +32,7 @@
     "GPU saturation telemetry for HallusionBench replacements"
   ],
   "windows_hours": {
-    "no_go_start": 108.03,
+    "pivot_start": 108.03,
     "negative_scope_locked": 120.02,
     "full_matrix_complete": 122.58,
     "first_submission_stage": 127.62,

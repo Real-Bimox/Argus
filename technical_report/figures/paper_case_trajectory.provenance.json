@@ -1,7 +1,7 @@
 {
   "figure_id": "representative-paper-trajectory",
   "reader_question": "How does one Argus campaign recover from failed hypotheses and late submission defects?",
-  "claim": "The representative campaign uses seven early no-go rollbacks, a scientific scope pivot, and two late submission repairs to reach a completed manuscript.",
+  "claim": "The representative campaign drops seven weak approaches, changes the research question, and repairs two late submission defects before completing the manuscript.",
   "evidence": [
     "stage_transitions.csv",
     "mm_hallucination_trace.json"

@@ -131,7 +131,7 @@ def _supervisor_summarize_report(task_id: str, event: str, task_data: dict[str, 
         "5. Final health verdict (YOU are the authority on run health): end with a\n"
         "   line `Final health verdict: usable | unusable | inconclusive` plus a\n"
         "   short reason from the metric TREND. A mechanical health-gate or\n"
-        "   `*_NO_GO.md` / `status.json state=failed` that fired on a single\n"
+        "   `*_REJECTED.md` / `status.json state=failed` that fired on a single\n"
         "   metric-threshold breach (e.g. one tail step's clipped_ratio, a brief\n"
         "   reward dip) is ADVISORY ONLY — it does NOT override your judgement. If\n"
         "   the trend is actually healthy and the run produced usable signal,\n"

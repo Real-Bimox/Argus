@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from ...core.model_visible_text import sanitize_model_visible_text
@@ -26,6 +27,26 @@ _POSIX_LONG_EXPERIMENT_RULE = (
     "`check_with`; persist them only when a later round must observe the run. On "
     "`state=discussing`, use its exact `reply_with`. Yield; do not poll in the foreground."
 )
+_PERFORMANCE_DIAGNOSTIC_TASK = re.compile(
+    r"\b(?:throughput|latency|performance|bottleneck|profil(?:e|ing|er)?|"
+    r"resource|cpu|gpu|scal(?:e|ing|ability)|benchmark)\b|"
+    r"吞吐|性能|瓶颈|延迟|剖析",
+    re.IGNORECASE,
+)
+
+
+def _performance_diagnostic_section(task: str) -> str:
+    if not _PERFORMANCE_DIAGNOSTIC_TASK.search(task):
+        return ""
+    return (
+        "## Performance diagnosis\n"
+        "An end-to-end threshold miss only shows that this run missed its target. Before "
+        "claiming a root cause, dominant/bottleneck stage, or replacement "
+        "architecture, inspect the code hot path and live resource/wait state, then "
+        "obtain phase timing/profiling or a controlled A/B that explains a material "
+        "share of elapsed time. Otherwise say that the cause is still unclear, "
+        "continue the diagnosis, and do not promote the hypothesis into a Skill."
+    )
 
 _WINDOWS_LONG_EXPERIMENT_RULE = (
     "For commands expected to run over two minutes on native Windows, use "
@@ -133,7 +154,11 @@ def _post_task_learning_section(
         "done, create or update the applicable Engineer Skills directly in the "
         "project skill directory before you hand off.\n"
         + rules
-        + "\nIf there is no durable reusable procedure, make no Skill edit."
+        + "\nDo not turn task-specific hypotheses, causal attributions, failed "
+        "attempts, or replacement recommendations into Skills unless phase "
+        "attribution/profiling or a controlled comparison verified the causal rule. "
+        "Keep inconclusive findings out of Skills.\n"
+        "If there is no durable reusable procedure, make no Skill edit."
     )
 
 
@@ -172,6 +197,9 @@ def build_mission_prompt(
             + unique_original_request
         )
     sections.append("## Current mission task\n" + task)
+    diagnostic_block = _performance_diagnostic_section(task)
+    if diagnostic_block:
+        sections.append(diagnostic_block)
     # The Engineer is the role that can most easily satisfy a task while
     # missing the requirement the task exists to serve — the mission text
     # describes this increment, not what the operator agreed "done" means.
@@ -256,6 +284,8 @@ def build_mission_prompt(
         "owner=reviewer and question=none; only a real operator decision parks the task. "
         "Give brief updates only at meaningful transitions."
     )
+    if diagnostic_block:
+        compact = diagnostic_block + "\n\n" + compact
     if shell_contract:
         compact = shell_contract + "\n\n" + compact
     if learning_block:

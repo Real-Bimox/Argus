@@ -147,7 +147,7 @@
     },
     {
       "id": "paper-11",
-      "title": "A Diagnostic No-Go for Train-Free Localization Probes in Attribute-Object Binding",
+      "title": "A Negative Diagnostic for Train-Free Localization Probes in Attribute-Object Binding",
       "program": "Multimodal & Vision-Language Models",
       "status": "manuscript",
       "status_label": "Manuscript",
@@ -246,12 +246,12 @@
     },
     {
       "id": "paper-20",
-      "title": "No-Go Evidence for Train-Free Black-Box Visual Hallucination Mitigation",
+      "title": "Negative Evidence for Train-Free Black-Box Visual Hallucination Mitigation",
       "program": "Multimodal & Vision-Language Models",
       "status": "manuscript",
       "status_label": "Manuscript",
       "pages": 10,
-      "page_link": "/papers/multimodal-mllm/no-go-visual-hallucination-mitigation.pdf",
+      "page_link": "/papers/multimodal-mllm/negative-visual-hallucination-mitigation.pdf",
       "human_baseline_text": null,
       "source_url": "https://argusbot.cn/research.html"
     },
@@ -367,7 +367,7 @@
     },
     {
       "id": "paper-31",
-      "title": "A No-Go Diagnostic for DiT-Only Structured Pruning of Wan Image-to-Video Generation",
+      "title": "A Negative Diagnostic for DiT-Only Structured Pruning of Wan Image-to-Video Generation",
       "program": "Efficiency, Compression & Decoding",
       "status": "manuscript",
       "status_label": "Manuscript",

@@ -590,14 +590,14 @@ dependency direction and makes a new vertical inherit assumptions from another.
 ## ARGUS-P1-05 — Make user-facing output clear and natural
 
 **Status: completed.** Manager, CLI review, mission completion, and Mission View now lead
-with the result, then concrete reason and next action; bare `NO-GO/BLOCKED/REVISE` is no
+with the result, then concrete reason and next action; a bare binary verdict is no
 longer a complete user message. Independent blind review preferred the revised version
 10/10 with no factual loss. See the P1-05 output-review JSON.
 
 **Problem.** Some Argus messages read like generated process notes: they repeat the
 request, pile up headings, use abstract language, and bury the result. Users should
 not have to decode the output to learn what happened or what Argus needs from them.
-A bare verdict such as `NO-GO` is a common example: it may be useful internally, but
+A bare rejection verdict is a common example: it may be useful internally, but
 it tells the user neither what failed nor what happens next.
 
 Argus should write like a good teammate. Lead with the result, explain the important
@@ -612,7 +612,7 @@ adding a human persona or exposing a raw thought transcript.
       hard to read or obviously machine-written. Pair each with a short human rewrite.
 - [x] Keep internal role traffic out of user-facing messages unless it helps the user
       make a decision or understand a failure.
-- [x] Do not show bare internal verdicts such as `GO`, `NO-GO`, `REVISE`, or
+- [x] Do not show bare internal verdicts such as `GO`, `REVISE`, or
       `BLOCKED`. If a status is useful, follow it with a plain-language reason and the
       next action. For example: “Cannot continue yet: the validator still fails on X.
       Argus will try Y next; no user action is needed.”
@@ -640,7 +640,7 @@ adding a human persona or exposing a raw thought transcript.
   accurately, with no drop in factual correctness.
 - Uncertainty and changes of mind are stated plainly rather than hidden behind a
   confident summary.
-- No user-facing message stops at a label such as `NO-GO`; it says what is blocked,
+- No user-facing message stops at a one-word verdict; it says what is blocked,
   why, and what Argus or the user should do next.
 - Questions are understandable without knowing Argus’s internal role vocabulary.
 

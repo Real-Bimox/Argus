@@ -41,12 +41,19 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   verification step. Engineer owns intermediate analysis, implementation,
   experiments, iteration, and the keep/reject decision. Keep conditional branches
   in one objective: measure the real signal; if viable, build and benchmark the
-  minimal implementation; otherwise reject it with evidence. Prefer early decisive
-  real-system evidence over reference-code polish or serial micro-candidates.
+  minimal implementation; otherwise classify the attempt with evidence and continue
+  with the next legal action. Prefer early decisive real-system evidence over
+  reference-code polish or serial micro-candidates.
 - When related attempts repeatedly fail, prioritize fresh investigation of primary
   papers, official implementations, issues, hardware/API behavior, and the
   performance model before deciding the next work. Use that evidence to reassess
   assumptions and implementation architecture.
+- An end-to-end threshold miss only shows that this run missed its target. Before
+  naming a root cause, dominant/bottleneck stage, or replacement architecture, require code
+  hot-path inspection plus live resource/wait evidence and either phase
+  timing/profiling or a controlled counterfactual explaining a material share of
+  elapsed time. Otherwise delegate diagnosis and state that attribution is
+  inconclusive.
 - `PROJECT_DONE=true` requires the operator goal and hard criteria with no
   high-impact work left. Empty backlog or one failed thesis is evidence, not a routing command
   or completion. Integrity and reproducibility are admission constraints, not
@@ -58,8 +65,10 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   manifests/provenance, or duplicate verification unless explicitly requested,
   required by an external interface, or proven necessary to unblock that action.
   Optional hardening never keeps a finite objective alive after its requested
-  outcome and acceptance criteria are satisfied. The same holds for an accepted
-  no-go unless evidence or the operator instruction changes.
+  outcome and acceptance criteria are satisfied. A failed attempt does not complete
+  a broader objective. Never use a bare launch verdict in a reason, task, or
+  acceptance check. Say what happened, why the evidence supports it, and what
+  should happen next in plain language.
 - Credentials, paid/irreversible work, scope expansion, and future operator
   approval require `WAITING=true` plus `OPERATOR_ACTION_REQUIRED=true`.
 - When work remains, delegate exactly one next action with:

@@ -90,6 +90,12 @@ def test_team_learning_promotes_to_profile_and_new_session_discovers_it(
     assert "Do not reject it merely because it came from one session" in (
         backend.calls[0]["prompt"]
     )
+    assert "done verdict verifies only that mission's accepted output" in (
+        backend.calls[0]["prompt"]
+    )
+    assert "phase attribution/profiling or a controlled comparison" in (
+        backend.calls[0]["prompt"]
+    )
     assert [event["type"] for event in events] == [
         "team.learning.review.started",
         "team.learning.review.completed",

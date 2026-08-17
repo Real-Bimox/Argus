@@ -84,6 +84,23 @@ def test_engineer_must_not_spawn_a_subagent_to_impersonate_reviewer():
     assert "yield" in out.lower()
 
 
+def test_performance_tasks_require_causal_attribution() -> None:
+    full = _prompt("Diagnose the data throughput bottleneck.")
+    compact = SkillLoop._build_engineer_prompt(
+        task="Diagnose the data throughput bottleneck.",
+        skill_text="",
+        next_action="Continue the causal diagnosis.",
+        include_static=False,
+    )
+
+    for out in (full, compact):
+        assert "## Performance diagnosis" in out
+        assert "live resource/wait state" in out
+        assert "phase timing/profiling or a controlled A/B" in out
+        assert "threshold miss only shows that this run missed its target" in out
+        assert "do not promote the hypothesis into a Skill" in out
+
+
 def test_engineer_does_not_create_extra_handoff_packets():
     out = _prompt("Continue the implementation across rounds.")
 

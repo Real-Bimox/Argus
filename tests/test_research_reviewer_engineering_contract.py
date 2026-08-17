@@ -27,7 +27,7 @@ def test_research_reviewer_prompt_disables_trust_first_shortcut(tmp_path) -> Non
         planner_review_instruction="",
         round_index=1,
         session_id=None,
-        main_summary="validator exited 0 with a scientific NO-GO",
+        main_summary="validator exited 0 but the measured target was missed",
         main_error=None,
         prior_checkpoint={},
         working_dir=tmp_path,

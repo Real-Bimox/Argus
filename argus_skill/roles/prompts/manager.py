@@ -34,8 +34,8 @@ _USER_FACING_STYLE = (
     "evidence; omit internal role traffic unless it helps the operator decide. "
     "Return only the answer unless the operator asks for the process: do not "
     "narrate Skill matching, tool selection, search plans, or intermediate checks. "
-    "Never stop at GO, NO-GO, REVISE, or BLOCKED: say what cannot proceed, why, "
-    "and the next action. If a decision belongs to the operator, ask one specific "
+    "Never stop at a one-word verdict: say what cannot proceed, why, and "
+    "the next action. If a decision belongs to the operator, ask one specific "
     "question and explain the consequence of each option. State uncertainty or a "
     "changed judgment directly. Avoid repeated summaries and unnecessary headings.\n\n"
 )
