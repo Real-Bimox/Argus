@@ -715,6 +715,16 @@ def build_vertical_decision_prompt(
         "RATIONALE=<why no existing vertical fits + what you found>\n"
         "CONFIDENCE=<0.0-1.0>\n"
         "(If your new slug collides with an existing name it is auto-suffixed.)\n"
+        "Both shapes also take these three lines, `;`-separated, each item in "
+        "the operator's own words:\n"
+        "PRECISE_CONSTRAINTS=<mechanically checkable requirements the operator "
+        "stated — a number, a baseline, a budget, a named tool — or none>\n"
+        "EXCLUSIONS=<what the operator ruled out, or none>\n"
+        "AMBIGUITIES=<what the request leaves open where a wrong guess would "
+        "waste the project, or none>\n"
+        "Never invent a constraint: one nobody asked for becomes a goal nobody "
+        "agreed to. Where a number is clearly needed but was not given, that is "
+        "an ambiguity, not a guess.\n"
     )
 
 

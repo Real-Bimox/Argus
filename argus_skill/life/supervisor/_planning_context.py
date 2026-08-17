@@ -355,20 +355,25 @@ class PlanningContextMixin:
         """
         if not self.config.final_certification_gate:
             return False
-        from ...skills.vertical_select import (
-            VerticalResolutionError,
-            resolve_vertical,
-        )
+        from ...skills.vertical_select import resolve_vertical_if_decided
         from ...verticals._base import load_vertical_contract
 
-        try:
-            vertical = resolve_vertical(workdir)
-        except VerticalResolutionError:
-            # The Manager has not decided + persisted the vertical yet. An
-            # undecided mission is definitionally not at its final-submission
-            # gate, so the gate does not apply (keep running); it is NOT a silent
-            # default to research — resolve_vertical still raised loudly, we just
-            # treat "no vertical yet" as "gate not satisfied" for THIS check.
+        vertical = resolve_vertical_if_decided(workdir)
+        if vertical is None:
+            # The Manager has not decided + persisted a vertical on this root.
+            # An undecided mission is definitionally not at its final-submission
+            # gate, so the gate does not apply and the project keeps running.
+            #
+            # This asks ``resolve_vertical_if_decided`` rather than
+            # ``resolve_vertical`` because the latter does not raise for an
+            # undecided project — it logs and answers ``research``, whose
+            # completion gate is ``certified``. Reading that fallback here would
+            # turn "nobody has decided yet" into "the paper gate applies",
+            # which is exactly backwards, and would do it silently. Today every
+            # production caller passes a state root that does carry the
+            # decision, and ``config.final_certification_gate`` is itself
+            # computed from a persisted certified vertical, so the fallback was
+            # masked twice over rather than being safe.
             return False
         return load_vertical_contract(
             vertical, project_root=workdir
