@@ -298,7 +298,10 @@ def render_reviewer_prompt(
 ) -> tuple[str, str]:
     """Render the complete Reviewer prompt as ``(static_preamble, round_delta)``."""
     from ...core.project import resolve_project_root
-    from ...core.research_contract import resolve_research_target_level
+    from ...core.research_contract import (
+        RESULT_FIELD_CHOICES,
+        resolve_research_target_level,
+    )
     from ...skills.vertical_select import _persisted_vertical
     from .registry import resolve_role_prompt
 
@@ -403,13 +406,17 @@ def render_reviewer_prompt(
             f"not this round's bar. This round: {policy_line(_policy)}. The integrity "
             "floor is identical at every profile. Judge directly and explain in "
             "`reason`. If the direction cannot reach the target, return "
-            "`replan_requested`. End with `RESEARCH_RESULT=<JSON>` using the "
-            "project research-result contract and only evidence you inspected. "
-            "Fields: `result_class`, `correctness_status`, `novelty_status`, "
-            "`significance_status`, `statement_fidelity_status`, `evidence`, and "
-            "`limitations`. Use `result_class=literature_review` for a bounded "
-            "review or survey; literature reviews may use `novelty_status=not_applicable`. "
-            "`evidence` and `limitations` are JSON string arrays.\n\n"
+            "`replan_requested`.\n"
+            "End with `RESEARCH_RESULT=<JSON>` over evidence you inspected. "
+            "`evidence` and `limitations` are JSON string arrays; a survey is "
+            "`literature_review` with `novelty_status` `known` or `not_applicable`. "
+            "Every field below takes one listed value verbatim — any other value "
+            "voids the whole result, however well it describes the work:\n"
+            + "".join(
+                f"{_field}: {' '.join(_choices)}\n"
+                for _field, _choices in RESULT_FIELD_CHOICES
+            )
+            + "\n"
         )
     # Live search-altitude facts (NO verdict) so the reviewer can SEE the
     # floor history when judging forward_progress — i.e. distinguish "this

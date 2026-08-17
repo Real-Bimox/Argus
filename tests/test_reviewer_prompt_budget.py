@@ -134,6 +134,22 @@ def test_reviewer_keeps_distinct_original_and_mission_objectives(monkeypatch):
 
 
 def test_research_target_context_stays_compact(tmp_path, monkeypatch):
+    """The block may hold the contract's vocabulary, and nothing more.
+
+    The bound was 1_100 chars while the block listed the five research-result
+    field *names* and none of their legal values. Testbed run 15
+    (``s-f0dbba19``) emitted six ``RESEARCH_RESULT`` blocks under it and the
+    contract rejected all six, every one for inventing vocabulary the prompt
+    had never supplied. Enumerating the five value sets costs ~600 chars, and
+    600 chars that make a hard gate answerable are worth more than a bound
+    that made it unanswerable.
+
+    So the guard moves rather than disappears, and what it now guards is
+    prose: the value lists are rendered from ``RESULT_FIELD_CHOICES``, so they
+    track the contract on their own and only added text can push this over.
+    The margin above is sized for the longest verification-profile line, not
+    for another paragraph.
+    """
     from argus_skill.skills.vertical_select import persist_vertical
 
     persist_vertical(
@@ -157,8 +173,8 @@ def test_research_target_context_stays_compact(tmp_path, monkeypatch):
     )
 
     stats = reviewer.last_prompt_block_stats["research_target"]
-    assert stats["chars"] < 1_100
-    assert stats["estimated_tokens"] < 300
+    assert stats["chars"] < 1_320
+    assert stats["estimated_tokens"] < 340
 
 
 def test_reviewer_prompt_uses_named_footer_without_schema_language(monkeypatch) -> None:
