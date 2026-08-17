@@ -29,7 +29,6 @@ from ..core.run_gateway import run_exec as gateway_run_exec
 TASK_SCOPE_BOUNDED = "bounded"
 TASK_SCOPE_FINAL_SUBMISSION = "final_submission"
 NO_CONCRETE_TASKS_ERROR = "planner said not done but produced no concrete tasks"
-INVALID_TEAM_METADATA_PREFIX = "invalid planner Agent Team metadata:"
 FORBIDDEN_BARE_VERDICT_ERROR = "planner used a forbidden bare launch verdict"
 OPEN_ENDED_PROJECT_DONE_ERROR = (
     "standing continuous objective cannot finish with PROJECT_DONE=true; "

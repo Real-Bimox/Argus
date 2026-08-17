@@ -410,46 +410,6 @@ def test_plan_next_repairs_binary_outcome_label(monkeypatch) -> None:
     assert "what failed, why" in runner.calls[1]["prompt"]
 
 
-def test_plan_next_repairs_invalid_team_footer_once(monkeypatch) -> None:
-    common = [
-        "PROJECT_DONE=false",
-        "REASON=the exact checks are safely separable",
-        "TASK_TITLE=Run exact team checks",
-        "TASK_OBJECTIVE=Construct, check, and independently review the payload.",
-        "TASK_TEAM_REASON=eligible: disjoint construction and review roots",
-        "TEAM_CHILD_KEY=payload",
-        "TEAM_CHILD_ROLE=candidate_payload",
-        "TEAM_CHILD_OWNS_PATHS=artifacts/payload",
-        "TEAM_CHILD_OBJECTIVE=Construct the exact payload.",
-        "TEAM_CHILD_ACCEPTANCE_CHECK=test -f result.json",
-        "TEAM_CHILD_KEY=review",
-        "TEAM_CHILD_ROLE=independent hostile replay reviewer",
-        "TEAM_CHILD_OWNS_PATHS=artifacts/review",
-        "TEAM_CHILD_DEPS=payload",
-        "TEAM_CHILD_OBJECTIVE=Replay the payload independently.",
-        "TEAM_CHILD_ACCEPTANCE_CHECK=test -f review.json",
-    ]
-    runner = _SequenceRunner([
-        "\n".join([*common[:9], "TEAM_CHILD_DEPS=Curator dispatch only", *common[9:]]),
-        "\n".join(common),
-    ])
-    monkeypatch.setattr(
-        Planner,
-        "_build_planner_prompt",
-        staticmethod(lambda **kwargs: "original planner prompt"),
-    )
-
-    verdict = Planner(runner).plan_next(
-        continuous_objective="run exact independent checks",
-        planning_cycle=3,
-        config=PlannerConfig(working_dir="/tmp/project"),
-    )
-
-    assert verdict.error == ""
-    assert len(verdict.new_tasks[0].team_children) == 2
-    assert runner.calls[1]["run_label"] == "planner.cycle3.repair1"
-    assert "invalid planner Agent Team metadata:" in runner.calls[1]["prompt"]
-    assert "exact TEAM_CHILD_KEY" in runner.calls[1]["prompt"]
 def test_plan_next_downgrades_invalid_skip_hint_without_repair_call(
     monkeypatch,
 ) -> None:
