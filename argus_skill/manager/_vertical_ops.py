@@ -436,9 +436,12 @@ class _VerticalDecisionMixin:
                 )
             return decision
 
+        workspace_snapshot = _routing_workspace_snapshot(self.execution_workdir)
         if (
             not contextual_task
             and _manager_fast_route_enabled()
+            and bool(workspace_snapshot.get("workspace_empty"))
+            and not existing
             and len(task.strip())
             <= _manager_route_positive_int(
                 "ARGUS_SKILL_MANAGER_FAST_ROUTE_MAX_TASK_CHARS",
@@ -507,7 +510,6 @@ class _VerticalDecisionMixin:
                         )
                     ))
 
-        workspace_snapshot = _routing_workspace_snapshot(self.execution_workdir)
         prompt = build_vertical_decision_prompt(
             task,
             verticals_with_purpose=vertical_select.available_vertical_purposes(),

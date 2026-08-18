@@ -117,9 +117,11 @@ def test_video_research_harness_is_grounded_before_authoring_domain(
 
     assert division.vertical == "video_robotics_research"
     assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-fast",
         "manager-classify-grounded",
     ]
-    assert "Inspect routing evidence" in runner.calls[0]["prompt"]
+    assert "Investigate freely as needed" in runner.calls[1]["prompt"]
+    assert "Host workspace snapshot" in runner.calls[1]["prompt"]
     assert (
         tmp_path / "research" / "DOMAINS" / "video_robotics_research.json"
     ).exists()
@@ -321,6 +323,7 @@ def test_vertical_env_cannot_replace_manager_authored_domain(
 
     assert div.vertical == "math_conjecture"
     assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-fast",
         "manager-classify-grounded",
     ]
     assert (tmp_path / "research" / "DOMAINS" / "math_conjecture.json").exists()
@@ -419,6 +422,7 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     mgr.divide(_NOVEL_TASK)
 
     assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-fast",
         "manager-classify-grounded",
     ]
     call = next(c for c in runner.calls if c["run_label"] == "manager-classify-grounded")
@@ -429,9 +433,9 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     assert opts.dangerous_yolo is False
     assert opts.full_auto is False
     assert opts.reasoning_effort == "low"
-    assert "inspect routing evidence" in call["prompt"].lower()
-    assert "at most 3 targeted operations" in call["prompt"].lower()
-    assert "<16k characters total" in call["prompt"]
+    assert "investigate freely as needed" in call["prompt"].lower()
+    assert "host workspace snapshot" in call["prompt"].lower()
+    assert "manager_tool_root" in call["prompt"]
 
 
 def test_copilot_vertical_decision_keeps_tools_available_for_repo_inspection(
@@ -446,20 +450,12 @@ def test_copilot_vertical_decision_keeps_tools_available_for_repo_inspection(
         "write a research paper",
     )
 
-    call = next(
-        c for c in runner.calls if c["run_label"] == "manager-classify-grounded"
-    )
-    assert call["options"].extra_args == [
-        "--no-custom-instructions",
-        "--disable-builtin-mcps",
-        "--context",
-        "default",
-    ]
+    call = next(c for c in runner.calls if c["run_label"] == "manager-classify-fast")
+    assert call["options"].extra_args is None
     assert call["options"].sandbox_mode == "read-only"
     assert call["options"].force_safe_mode is True
     assert call["options"].dangerous_yolo is False
-    assert "Inspect routing evidence" in call["prompt"]
-    assert "at most 3 targeted operations" in call["prompt"]
+    assert "fast, tool-free front-door judgment" in call["prompt"]
 
 
 def test_authoring_call_respects_safe_mode(tmp_path, monkeypatch):
