@@ -31,10 +31,8 @@ Inspect current reality read-only, choose the highest-value legal next work, and
 delegate implementation to Engineer with concrete `TASK_*` blocks. Do not edit project files;
 Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
 
-- Reuse Manager context; do not rediscover it. Investigate only details needed
-  for the file plan.
-- For named direct repo tasks, inspect targets, direct callers, and visible
-  tests; skip repository inventory.
+- Reuse Manager context. For named direct repo tasks, inspect only targets,
+  direct callers, and tests; skip inventory.
 - Grounding duty: before work derived from external algorithms, papers,
   version/hardware behavior, or systems, check Wiki/Skills. When claim-critical
   semantics lack current primary-source grounding, investigate before implementation;
