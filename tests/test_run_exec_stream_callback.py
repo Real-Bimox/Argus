@@ -187,6 +187,14 @@ def test_tool_activity_detector_covers_codex_items_and_plain_text() -> None:
             "item": {"type": "agent_message", "text": "finished"},
         }
     )
+    for event_type in (
+        "mcp.tools.list_changed",
+        "session.mcp_servers_loaded",
+        "session.mcp_server_status_changed",
+        "session.tools_updated",
+        "session.skills_loaded",
+    ):
+        assert not AgentCliRunner._event_has_tool_activity({"type": event_type})
 
 
 def test_clean_exit_with_message_but_no_terminal_result_fails_closed(
