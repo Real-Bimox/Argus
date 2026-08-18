@@ -305,7 +305,22 @@ class CopilotAcpClient:
         if resp is None or "error" in resp:
             self._alive = False
             raise RuntimeError(f"acp initialize failed: {resp}")
-        self._agent_caps = (resp.get("result") or {}).get("agentCapabilities") or {}
+        init_result = resp.get("result") or {}
+        auth_methods = init_result.get("authMethods") or []
+        if auth_methods:
+            method_id = str(auth_methods[0].get("id") or "").strip()
+            if not method_id:
+                self._alive = False
+                raise RuntimeError("acp initialize returned an authentication method without an id")
+            auth_resp = self._request(
+                "authenticate",
+                {"methodId": method_id},
+                timeout=self._startup_timeout_s,
+            )
+            if auth_resp is None or "error" in auth_resp:
+                self._alive = False
+                raise RuntimeError(f"acp authenticate failed: {auth_resp}")
+        self._agent_caps = init_result.get("agentCapabilities") or {}
 
     def _on_dead(self) -> None:
         self._alive = False
