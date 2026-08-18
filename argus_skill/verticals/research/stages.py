@@ -56,19 +56,26 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.idea_portfolio",
             statement=(
-                "Canonical 12-route team portfolio passed before broad paper idea lock."
+                "A canonical 12-route team pipeline explores ideas concurrently. "
+                "Every completed route enters its own fresh independent review and, "
+                "when qualified, its cheapest faithful probe without waiting for "
+                "slower routes."
             ),
             evidence_hint=(
-                "research/ideation/routes + team tasks/shards"
+                "research/IDEA_PORTFOLIO.json + research/ideation/portfolios/**/"
+                "{routes,reviews,probes} + team tasks/shards"
             ),
         ),
         ChecklistItem(
             id="research.adversarial_selection",
             statement=(
-                "Fresh proponent, assassin, and meta-review passed before probes."
+                "The selected thesis is the earliest independently reviewed candidate "
+                "whose faithful probe earns an ADVANCE verdict. Selection is greedy "
+                "and does not wait for every route or probe; route, review, and probe "
+                "must use fresh workers with deterministic provenance."
             ),
             evidence_hint=(
-                "research/ideation/debates + team provenance"
+                "research/IDEA_SELECTION.json + selected route/review/EVIDENCE.json"
             ),
         ),
         ChecklistItem(
@@ -108,9 +115,10 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "decisive counterexample/coverage test. Prefer <=10 minutes / <=$1 "
                 "when faithful, but do not substitute a toy proxy merely to meet that "
                 "budget. Preserve commands and raw outputs. Store the outcome without "
-                "turning it into a mechanical routing decision; the Planner reads it "
-                "and decides what it changes. A passed wiring-only smoke does not prove "
-                "the thesis. "
+                "turning a metric threshold into a mechanical routing decision; a "
+                "fresh Reviewer authors the explicit advance/reject/inconclusive "
+                "verdict, and the greedy pipeline routes only on that reviewed verdict. "
+                "A passed wiring-only smoke does not prove the thesis. "
                 "Record what the probe established — untested / inconclusive / "
                 "supported / refuted — separately from whether it ran; infrastructure "
                 "failures, baseline ceiling/floor saturation, tasks that do not "

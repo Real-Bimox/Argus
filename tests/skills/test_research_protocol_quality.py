@@ -76,22 +76,37 @@ def test_live_checklist_requires_thesis_and_implementation_adequacy() -> None:
     assert "weak result cannot be rescued" in review["review.publication_value"]
 
 
-def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
+def test_broad_paper_ideation_streams_review_and_probes() -> None:
     discovery = _skill("engineer/idea-discovery.md")
+    creator = _skill("engineer/idea-creator.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
     normalized_discovery = " ".join(discovery.split())
+    normalized_creator = " ".join(creator.split())
+    normalized_pipeline = " ".join(pipeline.split())
     research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
 
     assert "pool-set --root <team_root> --width 12 --state running" in discovery
     assert "spawn only the missing routes" in discovery
     assert "Never restart a second" in discovery
     assert "A single model call" in discovery
-    assert "written cross-examination" in discovery
+    assert "fresh independent reviewer" in discovery
+    assert "starts its probe immediately" in discovery
+    assert "first route whose independent probe records `advance`" in discovery
     assert "at least four routes" in discovery
     assert "network/statistical physics" in normalized_discovery
-    assert "Canonical 12-route" in research["research.idea_portfolio"]
-    assert "broad paper idea lock" in research["research.idea_portfolio"]
-    assert "Fresh proponent" in research["research.adversarial_selection"]
-    assert "before probes" in research["research.adversarial_selection"]
+    assert "canonical 12-route team pipeline" in research["research.idea_portfolio"].lower()
+    assert "without waiting" in research["research.idea_portfolio"]
+    assert "earliest independently reviewed candidate" in (
+        research["research.adversarial_selection"]
+    )
+    assert "does not wait for every route or probe" in (
+        research["research.adversarial_selection"]
+    )
+    assert "first independently reviewed probe with an `advance` verdict wins" in (
+        normalized_creator
+    )
+    assert "Do not wait for every candidate" in normalized_creator
+    assert "unfinished routes are not a stage blocker" in normalized_pipeline
 
 
 def test_research_idea_selection_requires_ambition_without_decorative_math() -> None:

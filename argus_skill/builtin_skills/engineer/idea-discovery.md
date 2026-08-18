@@ -25,7 +25,7 @@ boundary finding may close that gap.
 
 For a `publishable` or `doctoral` paper mission that starts from a broad
 direction rather than an operator-locked hypothesis, use `agent-team-lead` to
-form a 12-route ideation portfolio before ranking anything:
+form a 12-route streaming idea pipeline:
 
 1. First inventory existing independent route reports. Count every report that
    already has a distinct mechanism, source trail, closest work, kill argument,
@@ -47,12 +47,17 @@ form a 12-route ideation portfolio before ranking anything:
 3. Form all missing tasks, then set the team pool with
    `pool-set --root <team_root> --width 12 --state running`. The lead continues
    venue and source verification while the Curator supervises the portfolio.
-4. Search primary papers and official artifacts for novelty. Also inspect
+4. As soon as one route report lands, give it to a fresh independent reviewer.
+   The reviewer verifies primary sources, attacks prior art and ambition, and
+   emits `qualified` or `rejected` plus the cheapest faithful probe contract.
+   A qualified route starts its probe immediately in the next free team slot;
+   it never waits for the other eleven routes.
+5. Search primary papers and official artifacts for novelty. Also inspect
    credible practitioner reports, technical blogs, benchmark issue trackers,
    and incident reports when they reveal deployment failures or unmet needs;
    these may motivate a gap but never replace primary evidence for a novelty
    claim.
-5. Preserve every route report and failed route. A single model call, several
+6. Preserve every route report and failed route. A single model call, several
    parallel search queries inside one context, or twelve variants of one
    mechanism do not satisfy the portfolio.
 
@@ -245,26 +250,26 @@ reviewer would write; this skill must articulate it so kill-argument
 later can stress-test it for real>
 ```
 
-### Step 5 — adversarially select the shortlist
+### Step 5 — review and probe each route as it lands
 
-For each serious survivor, start fresh independent proponent and prior-art
-assassin roles with live source access and disjoint report paths under
-`research/ideation/debates/<candidate-id>/`. The assassin must search for the
-nearest implementation, benchmark, negative result, and simpler explanation;
-the proponent must answer that exact evidence rather than a generic objection.
-Give each side one written cross-examination response, then give a fresh
-meta-reviewer both complete arguments, route reports, and closest sources.
+Every route has its own fresh `idea-review` task. That reviewer searches for the
+nearest implementation, benchmark, negative result, and simpler explanation,
+then judges novelty, technical depth, theoretical/causal foundation, frontier
+significance, falsifiability, benchmark validity, and local feasibility. Local
+ease cannot rescue a shallow or already-occupied idea.
 
-The meta-reviewer ranks novelty, technical depth, theoretical/causal foundation,
-frontier significance, mechanism specificity, falsifiability, benchmark
-validity, and local feasibility separately. Local ease cannot compensate for an
-incremental, shallow, weakly grounded, or unimportant thesis. Persist the full
-exchange and the reasons each candidate survives or is killed.
+A `qualified` review immediately unlocks that route's `idea-probe` task. The
+probe runs the cheapest faithful public-evidence test and records a structured
+`advance`, `reject`, or `inconclusive` decision. Rejected reviews produce a
+cheap skipped record rather than consuming experiment budget.
 
-### Step 6 — hand off to idea-creator
+### Step 6 — greedily select the first validated idea
 
-`IDEA_CANDIDATES.md` is the input for `idea-creator`, which ranks
-candidates against pilot budgets and selects 1–3 to pilot in parallel.
+The first route whose independent probe records `advance` becomes the default
+thesis in `research/IDEA_SELECTION.json`. Do not wait for slower routes,
+reviews, or probes to finish and do not replace the winner merely because a
+later candidate looks stronger on paper. Drain unstarted work after selection;
+running work may finish and remains part of the audit trail.
 
 ## Anti-patterns
 
@@ -281,9 +286,7 @@ candidates against pilot budgets and selects 1–3 to pilot in parallel.
 
 ## Output contract
 
-For broad publishable/doctoral paper ideation, preserves the 12 raw route
-reports under `research/ideation/routes/` and the adversarial exchanges under
-`research/ideation/debates/`. Writes `research/IDEA_CANDIDATES.md` ranked by
-novelty × research value × falsifiability × feasibility within the operator's
-actual budget. This is the source of truth for the next skill (`idea-creator`)
-and must be present before any experiment plan is written.
+For broad publishable/doctoral paper ideation, preserves route, review, and
+probe artifacts under `research/ideation/portfolios/<direction>/`. Writes the
+greedy winner to `research/IDEA_SELECTION.json`; unfinished routes never block
+the selected idea from entering planning.
