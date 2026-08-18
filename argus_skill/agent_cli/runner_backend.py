@@ -68,7 +68,14 @@ def _resolve_explicit_candidate(candidate: Path) -> str | None:
     # extensionless files even on Windows. ``shutil.which`` applies PATHEXT and
     # can miss those exact candidates, so honor an explicitly located file
     # before probing sibling .exe/.cmd variants.
-    if candidate.is_file() and (os.name == "nt" or os.access(candidate, os.X_OK)):
+    try:
+        is_file = candidate.is_file()
+    except OSError:
+        # PATH can contain an inaccessible launcher owned by another user.
+        # Treat that entry as unavailable instead of breaking discovery for
+        # every backend that appears later on PATH.
+        return None
+    if is_file and (os.name == "nt" or os.access(candidate, os.X_OK)):
         return str(candidate)
     resolved = shutil.which(str(candidate))
     if resolved:
