@@ -341,11 +341,14 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             statement=(
                 "The evidence supports one defensible, venue-relevant thesis. Internal "
                 "records preserve all valid outcomes, but the proposed paper is a "
-                "selective argument: claim-critical contrary evidence remains visible; "
+                "selective argument: it leads with the strongest valid evidence for the "
+                "thesis, retains claim-critical contrary evidence, and keeps "
                 "misconfigured runs, exploratory dead ends, and secondary diagnostics "
-                "are kept in audit artifacts or an appendix rather than dumped into "
-                "the main narrative. If the original method claim failed and no "
-                "standalone insight remains, return to research/plan instead of drafting."
+                "in audit artifacts or an appendix rather than dumping them into the "
+                "main narrative. A selected idea with a plausible mechanism receives "
+                "credible targeted repair before weak results are reframed for a paper. "
+                "If no strong thesis survives, return to implementation, experiments, "
+                "or research/plan instead of drafting."
             ),
             evidence_hint="paper/main.tex + canonical raw evidence + Reviewer judgment",
         ),
@@ -355,8 +358,9 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             id="draft.tex",
             statement=(
                 "paper/main.tex uses the selected venue's official structure and tells "
-                "one coherent argument. The title, abstract, introduction, method, and "
-                "experiments all serve the same thesis; the paper does not introduce "
+                "one coherent argument, not a chronological experiment report. The "
+                "title, abstract, introduction, method, and experiments all serve the "
+                "same thesis; the paper does not introduce "
                 "a method as its contribution and then make that method's failure the "
                 "main conclusion without an independently valuable insight. A "
                 "literature review instead aligns its scope, taxonomy/comparison "

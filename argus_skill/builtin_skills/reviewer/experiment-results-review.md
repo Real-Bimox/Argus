@@ -11,6 +11,8 @@ Review experiment results as a senior ML researcher would before allowing the te
 - You are deciding whether these results are worth writing up, not whether the paper is well-written.
 - Weak results honestly presented are better than strong results from flawed methodology.
 - If the results wouldn't survive peer review scrutiny, say so now — not after the paper is written.
+- A complete experiment history is not a paper. Require one defensible thesis and
+  the strongest valid evidence needed to establish it.
 - Results may support a paper only when the contribution retains a nontrivial
   technical core, verified originality, claim-relevant formal/causal grounding,
   and field-level consequence. A benchmark win does not create ambition.
@@ -37,6 +39,14 @@ There is no fixed number of optimization passes. Stop when credible fixes are
 exhausted or no longer worth their cost, not because a retry counter fired.
 Preserve all valid evidence internally, but do not force every negative run into
 the manuscript.
+
+For an idea that has passed selection, a weak first result cannot route directly
+to drafting. Require a concrete post-selection repair cycle when the mechanism
+remains plausible: diagnose the cause, improve the method/implementation or test
+for a stated scientific reason, and rerun the decisive comparison. Reject any
+"improvement" obtained by changing labels, dropping seeds, switching metrics
+after inspection, mining slices, weakening baselines, or suppressing evidence
+that would alter the headline conclusion.
 
 ## Six review dimensions
 
@@ -110,6 +120,9 @@ Return JSON:
 - Headline claim contradicts the actual numbers
 - Missing a planned benchmark/condition with no explanation
 - Reporting only the best cherry-picked metric while hiding others
+- Drafting a selected method's weak result before a credible diagnosis and
+  targeted repair, unless the negative finding itself already supports a
+  surprising and independently useful thesis
 - Results are used to promote a shallow prompt/schema/wrapper/scale variant,
   decorative theory, or finding with no field-level consequence
 

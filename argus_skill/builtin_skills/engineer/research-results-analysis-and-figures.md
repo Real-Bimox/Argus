@@ -79,9 +79,19 @@ Map every planned claim to `supported`, `weak`, `rejected`, `missing`, or
 `contradicted`. Missing evidence becomes a named experiment, ablation, robustness
 slice, or claim downgrade—not an estimate.
 
-Then select the publication thesis. The paper is not the evidence inventory:
+For a selected idea, weak core evidence first triggers diagnosis and improvement,
+not paper writing. Audit whether the mechanism received a faithful implementation
+and competitive test, make concrete targeted repairs while they have credible
+information gain, and rerun the decisive comparison. Predeclare what the repair
+should change and preserve the earlier runs. Never manufacture improvement by
+changing labels, dropping seeds, switching headline metrics after inspection, or
+mining a favorable slice.
+
+Then select the publication thesis. The paper is not the evidence inventory or a
+chronological experiment report:
 
 - keep every claim-critical comparison that could change the thesis;
+- lead with the strongest valid evidence that establishes and explains the thesis;
 - keep misconfigured runs out of scientific conclusions;
 - move secondary dead ends and exhaustive diagnostics to internal artifacts or
   an appendix when useful;
@@ -151,7 +161,9 @@ inventory table.
 one-sentence thesis, supported/rejected claims, strongest accept/reject arguments,
 limitations, and the intended figure/table inventory. It must not present a
 method as the contribution while making that method's failure the main message
-unless a separate, compelling insight supports that framing. Internal paths,
+unless a separate, compelling insight supports that framing. Organize the
+manuscript evidence by the questions needed to prove the thesis, not by run order
+or by everything the project tried. Internal paths,
 commands, GPU/cache details, route names, hashes, and daemon mechanics stay in
 provenance artifacts—not manuscript prose.
 
