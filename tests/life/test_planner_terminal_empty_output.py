@@ -516,7 +516,7 @@ def test_nonterminal_empty_plan_repair_exhaustion_stops_for_operator_input(
     assert "repair exhausted after 1 attempt" in str(error_event.get("error", ""))
 
 
-def test_nonterminal_empty_plan_replays_unassessed_current_stage_review(
+def test_nonterminal_planning_replays_unassessed_current_stage_review_first(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -571,7 +571,7 @@ def test_nonterminal_empty_plan_replays_unassessed_current_stage_review(
 
     assert supervisor._plan_next_work() == PLAN_RETRY
 
-    assert backend.planner_calls == 2
+    assert backend.planner_calls == 0
     assert backend.manager_calls == 1
     state = json.loads((project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
     assert state["current_stage"] == "solve"

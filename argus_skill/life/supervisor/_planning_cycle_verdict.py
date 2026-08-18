@@ -233,7 +233,7 @@ class PlanningCycleVerdictMixin:
                     # during a replan that review has already been assessed —
                     # assessing it is what produced the revision request.
                     reconciliation = self._reconcile_reviewed_stage_empty_plan(verdict)
-            if reconciliation in {"advance", "rollback"}:
+            if reconciliation in {"advance", "complete", "rollback"}:
                 return PLAN_RETRY
             if reconciliation == "hold":
                 return self._pc_complete_terminal_empty_plan(state)

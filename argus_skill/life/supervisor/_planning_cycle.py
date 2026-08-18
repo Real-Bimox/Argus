@@ -9,7 +9,7 @@ from typing import Any
 
 from ...core.event_catalog import EventType
 from ...core.planner_verdict import PlannerVerdictStatus
-from ._constants import MANAGER_RECONCILE_AFTER_IDLE_CYCLES
+from ._constants import MANAGER_RECONCILE_AFTER_IDLE_CYCLES, PLAN_RETRY
 from ._planning_cycle_completion import PlanningCycleCompletionMixin
 from ._planning_cycle_enqueue import PlanningCycleEnqueueMixin
 from ._planning_cycle_helpers import (
@@ -502,14 +502,11 @@ class PlanningCycleMixin(
         Gated on ``continuous``, not ``open_ended``. ``open_ended`` answers a
         different question — whether a Planner ``project_done`` should be
         honoured or ignored — and using it here made stage traversal a
-        privilege of never-finishing campaigns. A bounded staged campaign is
-        still continuous (see ``front_door``'s ``inferred_continuous``): its
-        Planner keeps cycling, so "not done, and no task left to propose" is
-        exactly the campaign-level moment when this stage's planned work has
-        drained and the Manager should be asked. Without this, a vertical whose
-        completion gate is not ``certified`` — 26 of the 28 shipped ones —
-        could never leave its first stage, because the only other route is a
-        per-mission ``stage_closing`` contract that the Host downgrades away.
+        privilege of never-finishing campaigns. Reconcile before asking the
+        Planner for more work; otherwise its required no-empty-task repair can
+        invent another same-stage mission before the Manager sees accepted
+        review evidence. The empty-plan path still calls this method for
+        persisted campaigns created by older runtimes.
         """
         if not getattr(self.config, "continuous", False):
             return ""
@@ -553,7 +550,7 @@ class PlanningCycleMixin(
                 "rollback": "revoked",
             }.get(decision.action, "not_assessed")
             self.memory.backlog.update(item.id, outcome=outcome)
-        if decision.action not in {"advance", "rollback"}:
+        if decision.action not in {"advance", "complete", "rollback"}:
             return ""
         self._emit_status(
             f"manager reconciled reviewed stage to {decision.target_stage}"
@@ -923,17 +920,19 @@ class PlanningCycleMixin(
         the planner fails and should be retried later.
 
         This orchestrates the planning-cycle lifecycle phases in order: intake
-        gating, preflight short-circuits, planner invocation, verdict
-        normalization, waiting handling, project_done normalization, the
-        no-new-tasks rejection, and finally backlog dedupe/enqueue/commit. Each
-        phase mutates a shared ``_PlanCycleState`` scratch object and returns
-        ``None`` to continue the cycle, or a non-``None`` result that the
-        caller should return immediately.
+        gating, preflight short-circuits, reviewed-stage reconciliation,
+        planner invocation, verdict normalization, waiting handling,
+        project_done normalization, the no-new-tasks rejection, and finally
+        backlog dedupe/enqueue/commit. Each phase mutates a shared
+        ``_PlanCycleState`` scratch object and returns ``None`` to continue the
+        cycle, or a non-``None`` result that the caller should return
+        immediately.
         """
         state = _PlanCycleState(revision_request)
         for phase in (
             self._pc_intake_gate,
             self._pc_preflight_shortcircuits,
+            self._pc_reconcile_reviewed_stage,
             self._pc_invoke_planner,
             self._pc_normalize_verdict,
             self._pc_handle_waiting,
@@ -947,6 +946,15 @@ class PlanningCycleMixin(
             if result is not None:
                 return result
         return self._pc_emit_final_verdict(state)
+
+    def _pc_reconcile_reviewed_stage(
+        self,
+        state: _PlanCycleState,
+    ) -> bool | None | str:
+        if state.revision_request is not None:
+            return None
+        action = self._reconcile_reviewed_stage_empty_plan(None)
+        return PLAN_RETRY if action in {"advance", "complete", "rollback"} else None
 
 
 __all__ = [
