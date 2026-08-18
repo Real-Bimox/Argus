@@ -642,14 +642,14 @@ def _apply_venue_to_checklist_body(body: str, venue: VenueProfile) -> str:
         replacements = {
             (
                 "paper/main.tex uses the official Frontiers in Sleep journal-article "
-                "sections and tells one coherent argument."
+                "sections and tells one coherent argument"
             ): (
                 "paper/main.tex uses the Frontiers in Sleep Hypothesis and "
                 "Theory sections in a coherent order: one-paragraph Abstract, "
                 "Introduction, subject-relevant evidence and theory subsections, "
                 "discriminating tests or proposed study, Discussion, Conclusion, "
                 "required declarations, and References. The article tells one "
-                "coherent argument."
+                "coherent argument"
             ),
             (
                 "Every BibTeX entry is verified through a scholarly source (arXiv, "
@@ -705,6 +705,10 @@ def _apply_venue_to_checklist_body(body: str, venue: VenueProfile) -> str:
         }
         for old, new in replacements.items():
             body = body.replace(old, new)
+        body = body.replace(
+            "irrelevant cross-benchmark matrix",
+            "irrelevant omnibus benchmark matrix",
+        )
         body = body.replace(
             "Academic prose reads like a real EMNLP paper, not generic agent output:",
             "Academic prose reads like a real Frontiers in Sleep Hypothesis and "
