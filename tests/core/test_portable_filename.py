@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from argus_skill.core.portable_filename import (
     legacy_hashed_filename_components,
+    normalized_logical_identifier,
     portable_filename_component,
 )
 
@@ -28,3 +29,7 @@ def test_oversized_identifier_keeps_legacy_lookup_component() -> None:
     component = portable_filename_component("x" * 121, windows=True)
 
     assert component.startswith("argus-id-")
+
+
+def test_normalized_logical_identifier_collapses_unicode_equivalents() -> None:
+    assert normalized_logical_identifier("é") == normalized_logical_identifier("e\u0301")

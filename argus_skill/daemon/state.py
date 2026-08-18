@@ -36,6 +36,7 @@ _TEST_ALLOW_MEMORY_CONTINUOUS_ENV = "ARGUS_SKILL_DAEMON_TEST_ALLOW_MEMORY_CONTIN
 _DRAIN_REQUEST_FILE = "daemon.drain-request.json"
 _STOP_REQUEST_FILE = "daemon.stop-request.json"
 DAEMON_UPGRADE_REQUEST_FILE = "daemon.upgrade-request.json"
+_WINDOWS_LOCK_POLL_SECONDS = 0.05
 
 
 def _truthy_env(name: str, default: str = "1") -> bool:
@@ -219,13 +220,56 @@ def clear_daemon_drain_request(life_dir: Path, *, pid: int) -> None:
 def _continuous_config_lock(life_dir: Path):
     life_dir.mkdir(parents=True, exist_ok=True)
     with (life_dir / ".continuous.lock").open("a+b") as handle:
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        fd = handle.fileno()
+        if os.name == "nt" and msvcrt is not None:
+            while True:
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(_WINDOWS_LOCK_POLL_SECONDS)
+        elif fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             yield
         finally:
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            if os.name == "nt" and msvcrt is not None:
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    pass
+            elif fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        directory_fd = os.open(str(path), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        with tmp.open("w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(str(tmp), str(path))
+        _fsync_directory(path.parent)
+    finally:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def _read_continuous_state_unlocked(life_dir: Path) -> ContinuousConfigState:
@@ -296,7 +340,6 @@ def _write_continuous_config_unlocked(
 ) -> bool:
     life_dir.mkdir(parents=True, exist_ok=True)
     path = _continuous_config_path(life_dir)
-    tmp = path.with_suffix(f".{os.getpid()}.tmp")
     data = {
         "enabled": enabled,
         "objective": objective,
@@ -307,11 +350,10 @@ def _write_continuous_config_unlocked(
         data["done_reason"] = done_reason
         data["done_at"] = done_at or datetime.now(timezone.utc).isoformat()
     try:
-        tmp.write_text(
+        _atomic_write_text(
+            path,
             json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
-        os.replace(str(tmp), str(path))
         return True
     except OSError:
         log.warning("failed to write continuous config to %s", path)

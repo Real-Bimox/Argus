@@ -173,6 +173,7 @@ LEGACY_EVENT_ALIASES: dict[str, EventType] = {
     "mission.started": EventType.LIFE_MISSION_STARTED,
     "mission.completed": EventType.LIFE_MISSION_COMPLETED,
     "mission.error": EventType.LIFE_MISSION_FAILED,
+    "life.team.waiting": EventType.LIFE_PLANNER_WAITING,
 }
 
 SIGNAL_EVENT_TYPES: frozenset[str] = frozenset({
