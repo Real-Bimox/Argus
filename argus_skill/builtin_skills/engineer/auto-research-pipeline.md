@@ -176,13 +176,18 @@ that would overturn the claim.
   observations in the existing project history.
 - Do not lock an idea until the ambition standard survives independent
   prior-art attack and adversarial review.
+- Stream discovery into validation: each completed route receives a fresh
+  independent review immediately, and every qualified route starts its cheapest
+  faithful probe without waiting for the rest of the portfolio. Select the first
+  probe that earns an `advance` verdict; unfinished routes are not a stage
+  blocker.
 - For a broad publishable/doctoral Agent paper, at least four portfolio routes
   must independently search for load-bearing mathematical or physical
   foundations. Cover distinct relevant lenses rather than variants of one
   analogy, and require each route to derive an algorithm, bound, impossibility
   result, scaling law, threshold, or quantitative prediction tied to measurable
   Agent behavior.
-- Reuse a completed independent route portfolio; do not start another breadth
+- Reuse the active independent route pipeline; do not start another breadth
   sweep under new route names.
 - Validate each finalist in one decision-sized milestone, but preserve the
   dependency inside that milestone: first complete the nearest-source grounding,
@@ -201,7 +206,9 @@ that would overturn the claim.
 - Before paid/model-backed execution, verify that candidate predictions cannot
   read gold labels or scorer-derived fields and that baselines receive the same
   decision-time information.
-- Store the probe without a routing verdict; the Planner decides what it changes.
+- Store measurements separately from the routing verdict. A fresh Reviewer
+  authors `advance`, `reject`, or `inconclusive`; the harness never derives that
+  verdict mechanically from a metric threshold.
 
 ### 2. Plan
 

@@ -1,4 +1,5 @@
-"""Durable team formation and completion checks for broad paper ideation."""
+"""Durable streaming idea pipelines for broad paper research."""
+
 from __future__ import annotations
 
 import hashlib
@@ -15,10 +16,13 @@ from ...core.research_contract import (
 )
 from ...team import formation, pool, task_board
 
-TEAM_ID = "research-idea-portfolio-v1"
+TEAM_ID = "research-idea-pipeline-v2"
 TEAM_WIDTH = 12
 TEAM_ROOT = Path(".argus") / "teams"
 _STATE_PATH = Path("research") / "IDEA_PORTFOLIO.json"
+_SELECTION_PATH = Path("research") / "IDEA_SELECTION.json"
+_REVIEW_VERDICTS = frozenset({"qualified", "rejected"})
+_PROBE_DECISIONS = frozenset({"advance", "reject", "inconclusive", "skipped"})
 _ROUTE_THEMES = (
     ("mechanism", "method mechanisms and algorithmic interventions"),
     ("systems", "systems architecture, runtime, and deployment failures"),
@@ -32,11 +36,6 @@ _ROUTE_THEMES = (
     ("data", "data, measurement, and trace-grounded opportunities"),
     ("negative", "impossibility, negative, and boundary results"),
     ("incidents", "cross-domain incidents and unmet practitioner needs"),
-)
-_DEBATE_TASKS = (
-    "selection-proponent",
-    "selection-assassin",
-    "selection-meta-review",
 )
 
 
@@ -76,6 +75,83 @@ def _route_task(
     }
 
 
+def _review_task(
+    route_task: dict[str, Any],
+    artifact_root: str,
+) -> dict[str, Any]:
+    route_id = str(route_task["target"])
+    route_output = str(route_task["owns_paths"][0])
+    output = f"{artifact_root}/reviews/{route_id}.json"
+    return {
+        "task_id": f"{route_task['task_id']}-review",
+        "title": f"Independently review candidate {route_id}",
+        "objective": (
+            f"Act as a fresh, hostile research reviewer for `{route_output}`. "
+            "Verify its primary sources and nearest prior art with live evidence. "
+            "Judge the nontrivial technical core, originality, formal or causal "
+            "grounding, field-level significance, falsifiability, and local "
+            "feasibility. Do not compare against unfinished routes and do not wait "
+            "for the rest of the portfolio. Write exactly one JSON object to "
+            f"`{output}` with schema_version=1, route_id, verdict (`qualified` or "
+            "`rejected`), summary, technical_depth, originality, "
+            "theoretical_grounding, field_significance, local_feasibility, "
+            "fatal_concerns (array), and probe (object). A "
+            "qualified review's probe object must contain premise, evaluator_identity, "
+            "comparison_identity, minimum_signal, and stop_rules. Qualify only when "
+            "the route is strong enough to justify an immediate cheap faithful probe."
+        ),
+        "acceptance_check": (
+            f"`{output}` is valid review JSON with a decisive qualified/rejected "
+            "verdict and a complete probe contract when qualified."
+        ),
+        "role": "idea-review",
+        "owns_paths": [output],
+        "deps": [str(route_task["task_id"])],
+        "target": route_id,
+        "priority": 5,
+    }
+
+
+def _probe_task(
+    route_task: dict[str, Any],
+    review_task: dict[str, Any],
+    artifact_root: str,
+) -> dict[str, Any]:
+    route_id = str(route_task["target"])
+    review_output = str(review_task["owns_paths"][0])
+    probe_root = f"{artifact_root}/probes/{route_id}"
+    evidence_path = f"{probe_root}/EVIDENCE.json"
+    return {
+        "task_id": f"{route_task['task_id']}-probe",
+        "title": f"Run the first faithful probe for {route_id}",
+        "objective": (
+            f"Read `{review_output}`. Own only `{probe_root}/`. If the review verdict "
+            "is rejected, do not spend experiment budget: write a skipped evidence "
+            f"record to `{evidence_path}`. If qualified, immediately execute the "
+            "review's cheapest faithful public-evidence probe without waiting for any "
+            "other route. Preserve code, commands, raw outputs, and uncertainty under "
+            f"`{probe_root}/`. Write `{evidence_path}` as schema_version=1 research "
+            "idea evidence with idea_id, premise_version, premise, execution_status, "
+            "failure_class, idea_status, evaluator_identity, comparison_identity, "
+            "summary, evidence, and decision (`advance`, `reject`, `inconclusive`, "
+            "or `skipped`). Encode `advance` as completed/none/supported; encode "
+            "`reject` only as completed/empirical/refuted; encode under-powered or "
+            "execution-limited results as inconclusive; encode a rejected-review "
+            "short-circuit as blocked/scope_change/untested/skipped. Use advance only "
+            "for an independently reviewable result strong enough to enter planning."
+        ),
+        "acceptance_check": (
+            f"`{evidence_path}` is valid research evidence with a machine-readable "
+            "decision and links to every probe artifact, or a justified skipped record."
+        ),
+        "role": "idea-probe",
+        "owns_paths": [probe_root],
+        "deps": [str(review_task["task_id"])],
+        "target": route_id,
+        "priority": 0,
+    }
+
+
 def portfolio_tasks(
     team_id: str = TEAM_ID,
     artifact_root: str = "research/ideation",
@@ -89,67 +165,9 @@ def portfolio_tasks(
         )
         for index, (slug, theme) in enumerate(_ROUTE_THEMES, 1)
     ]
-    route_ids = [task["task_id"] for task in routes]
-    proponent_path = f"{artifact_root}/debates/proponent.md"
-    assassin_path = f"{artifact_root}/debates/assassin.md"
-    meta_path = f"{artifact_root}/debates/meta-review.md"
-    debates = [
-        {
-            "task_id": f"{team_id}-selection-proponent",
-            "title": "Build the strongest portfolio selection case",
-            "objective": (
-                "Read all 12 independent route reports, select the strongest serious "
-                f"candidates, and write `{proponent_path}`. Steelman technical depth, "
-                "originality, grounding, significance, falsifier, and feasibility "
-                "under matching `##` headings."
-            ),
-            "acceptance_check": f"`{proponent_path}` compares all viable routes.",
-            "role": "selection-proponent",
-            "owns_paths": [proponent_path],
-            "deps": route_ids,
-            "target": "selection",
-            "priority": 20,
-        },
-        {
-            "task_id": f"{team_id}-selection-assassin",
-            "title": "Attack the portfolio independently",
-            "objective": (
-                "Read all 12 independent route reports as a prior-art and ambition "
-                f"assassin. Write `{assassin_path}` with the strongest reduction to "
-                "existing work, technical shallowness, confounds, and fatal probes "
-                "under matching `##` headings."
-            ),
-            "acceptance_check": f"`{assassin_path}` attacks each serious finalist.",
-            "role": "selection-assassin",
-            "owns_paths": [assassin_path],
-            "deps": route_ids,
-            "target": "selection",
-            "priority": 20,
-        },
-        {
-            "task_id": f"{team_id}-selection-meta-review",
-            "title": "Adjudicate the adversarial idea debate",
-            "objective": (
-                "Act as a fresh meta-reviewer. Read the route reports and both debate "
-                f"sides, then write `{meta_path}` with an originality verdict, killed "
-                "ideas, surviving thesis, unresolved risks, and the first faithful "
-                "probe under matching `##` headings."
-            ),
-            "acceptance_check": (
-                f"`{meta_path}` adjudicates proponent and assassin evidence without "
-                "collapsing them into one author's simulation."
-            ),
-            "role": "selection-meta-review",
-            "owns_paths": [meta_path],
-            "deps": [
-                f"{team_id}-selection-proponent",
-                f"{team_id}-selection-assassin",
-            ],
-            "target": "selection",
-            "priority": 30,
-        },
-    ]
-    return [*routes, *debates]
+    reviews = [_review_task(route, artifact_root) for route in routes]
+    probes = [_probe_task(route, review, artifact_root) for route, review in zip(routes, reviews)]
+    return [*routes, *reviews, *probes]
 
 
 def _portfolio_identity(direction: str) -> tuple[str, str, str]:
@@ -167,6 +185,13 @@ def _portfolio_identity(direction: str) -> tuple[str, str, str]:
 
 def _write_state(project_root: Path, payload: dict[str, Any]) -> None:
     path = project_root / _STATE_PATH
+    previous_digest = ""
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(previous, dict):
+            previous_digest = str(previous.get("direction_sha256") or "")
+    except (OSError, json.JSONDecodeError):
+        pass
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(
         f"{path.name}.tmp.{os.getpid()}.{threading.get_ident():x}.{uuid.uuid4().hex[:8]}"
@@ -179,15 +204,15 @@ def _write_state(project_root: Path, payload: dict[str, Any]) -> None:
         os.replace(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)
+    if previous_digest != str(payload.get("direction_sha256") or ""):
+        (project_root / _SELECTION_PATH).unlink(missing_ok=True)
 
 
 def _active_portfolio(
     project_root: Path,
 ) -> tuple[Path, str, str, str] | None:
     try:
-        payload = json.loads(
-            (project_root / _STATE_PATH).read_text(encoding="utf-8")
-        )
+        payload = json.loads((project_root / _STATE_PATH).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
     if not isinstance(payload, dict):
@@ -217,24 +242,37 @@ def ensure_idea_portfolio(project_root: Path, *, direction: str) -> Path:
     tasks = portfolio_tasks(team_id, artifact_root)
     existing = task_board.snapshot(root)
     receipt = formation.load_receipt(root)
-    if (
+    canonical = (
         existing
-        and all(task.get("state") == "done" for task in existing)
         and str(receipt.get("team_id") or "") == team_id
         and task_board.material_specs_match(root, tasks)
-    ):
-        _write_state(project_root, {
-            "artifact_root": artifact_root,
-            "direction_sha256": direction_digest,
-            "team_id": team_id,
-        })
+    )
+    if canonical:
+        _write_state(
+            project_root,
+            {
+                "artifact_root": artifact_root,
+                "direction_sha256": direction_digest,
+                "team_id": team_id,
+            },
+        )
+        selection = idea_portfolio_selection(project_root)
+        if selection is not None:
+            _materialize_selection(project_root, root, selection)
+            return root
+        pool_state = pool.read(root)
+        if (
+            str(pool_state.get("state") or "") == "running"
+            and int(pool_state.get("width", 0) or 0) != TEAM_WIDTH
+        ):
+            pool.update(root, width=TEAM_WIDTH, state="running")
         return root
     formation.form_team(
         project_root=project_root,
         root=root,
         team_id=team_id,
         mission=(
-            "Discover and adversarially select publishable direction "
+            "Stream independent idea discovery through review and faithful probes for "
             f"{direction_digest}."
         ),
         lead="engineer",
@@ -242,11 +280,14 @@ def ensure_idea_portfolio(project_root: Path, *, direction: str) -> Path:
         tasks=tasks,
     )
     pool.update(root, width=TEAM_WIDTH, state="running")
-    _write_state(project_root, {
-        "artifact_root": artifact_root,
-        "direction_sha256": direction_digest,
-        "team_id": team_id,
-    })
+    _write_state(
+        project_root,
+        {
+            "artifact_root": artifact_root,
+            "direction_sha256": direction_digest,
+            "team_id": team_id,
+        },
+    )
     return root
 
 
@@ -268,52 +309,230 @@ def _valid_shard(root: Path, task: dict[str, Any]) -> bool:
     )
 
 
-def _output_present(project_root: Path, task: dict[str, Any]) -> bool:
+def _task_output_path(project_root: Path, task: dict[str, Any]) -> Path | None:
     owned = list(task.get("owns_paths") or [])
     if len(owned) != 1:
-        return False
+        return None
     path = project_root / str(owned[0])
+    if str(task.get("role") or "") == "idea-probe":
+        path /= "EVIDENCE.json"
+    return path
+
+
+def _json_object(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _review_payload(project_root: Path, task: dict[str, Any]) -> dict[str, Any] | None:
+    payload = _json_object(_task_output_path(project_root, task))
+    target = str(task.get("target") or "")
+    if (
+        payload is None
+        or payload.get("schema_version") != 1
+        or str(payload.get("route_id") or "") != target
+        or str(payload.get("verdict") or "") not in _REVIEW_VERDICTS
+        or not str(payload.get("summary") or "").strip()
+        or any(
+            not str(payload.get(key) or "").strip()
+            for key in (
+                "technical_depth",
+                "originality",
+                "theoretical_grounding",
+                "field_significance",
+                "local_feasibility",
+            )
+        )
+        or not isinstance(payload.get("fatal_concerns"), list)
+    ):
+        return None
+    if payload["verdict"] == "qualified":
+        probe = payload.get("probe")
+        required = (
+            "premise",
+            "evaluator_identity",
+            "comparison_identity",
+            "minimum_signal",
+            "stop_rules",
+        )
+        if not isinstance(probe, dict) or any(
+            not str(probe.get(key) or "").strip() for key in required
+        ):
+            return None
+    return payload
+
+
+def _probe_payload(project_root: Path, task: dict[str, Any]) -> dict[str, Any] | None:
+    payload = _json_object(_task_output_path(project_root, task))
+    target = str(task.get("target") or "")
+    decision = str((payload or {}).get("decision") or "")
+    if (
+        payload is None
+        or str(payload.get("idea_id") or "") != target
+        or decision not in _PROBE_DECISIONS
+    ):
+        return None
+    from .idea_evidence import validate_idea_evidence
+
+    if validate_idea_evidence(payload):
+        return None
+    execution = str(payload.get("execution_status") or "")
+    status = str(payload.get("idea_status") or "")
+    if decision == "advance" and not (execution == "completed" and status == "supported"):
+        return None
+    if decision == "reject" and not (execution == "completed" and status == "refuted"):
+        return None
+    if decision == "inconclusive" and status not in {"untested", "inconclusive"}:
+        return None
+    if decision == "skipped" and status != "untested":
+        return None
+    return payload
+
+
+def _output_present(project_root: Path, task: dict[str, Any]) -> bool:
+    path = _task_output_path(project_root, task)
+    if path is None:
+        return False
+    role = str(task.get("role") or "")
+    if role == "idea-review":
+        return _review_payload(project_root, task) is not None
+    if role == "idea-probe":
+        return _probe_payload(project_root, task) is not None
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return False
-    required = {
-        "idea-route": (
-            "## Mechanism",
-            "## Primary sources",
-            "## Closest work",
-            "## Kill argument",
-            "## Faithful probe",
-        ),
-        "selection-proponent": (
-            "## Technical depth",
-            "## Originality",
-            "## Grounding",
-            "## Significance",
-            "## Falsifier",
-            "## Feasibility",
-        ),
-        "selection-assassin": (
-            "## Prior-art reduction",
-            "## Technical shallowness",
-            "## Confounds",
-            "## Fatal probes",
-        ),
-        "selection-meta-review": (
-            "## Originality verdict",
-            "## Killed ideas",
-            "## Surviving thesis",
-            "## Unresolved risks",
-            "## First faithful probe",
-        ),
-    }.get(str(task.get("role") or ""), ())
+    required = (
+        "## Mechanism",
+        "## Primary sources",
+        "## Closest work",
+        "## Kill argument",
+        "## Faithful probe",
+    )
     if not path.is_file() or any(heading not in text for heading in required):
         return False
-    return (
-        str(task.get("role") or "") != "idea-route"
-        or "https://" in text
-        or "http://" in text
+    return "https://" in text or "http://" in text
+
+
+def _selection_from_tasks(
+    project_root: Path,
+    root: Path,
+    team_id: str,
+    artifact_root: str,
+    direction_digest: str,
+    actual: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    candidates: list[tuple[int, float, str, dict[str, Any]]] = []
+    for route_spec in portfolio_tasks(team_id, artifact_root):
+        if str(route_spec.get("role") or "") != "idea-route":
+            continue
+        route_id = str(route_spec["task_id"])
+        review_id = f"{route_id}-review"
+        probe_id = f"{route_id}-probe"
+        route = actual.get(route_id, {})
+        review = actual.get(review_id, {})
+        probe = actual.get(probe_id, {})
+        if any(task.get("state") != "done" for task in (route, review, probe)):
+            continue
+        if any(not _valid_shard(root, task) for task in (route, review, probe)):
+            continue
+        if any(not _output_present(project_root, task) for task in (route, review, probe)):
+            continue
+        review_payload = _review_payload(project_root, review)
+        probe_payload = _probe_payload(project_root, probe)
+        if (
+            review_payload is None
+            or review_payload.get("verdict") != "qualified"
+            or probe_payload is None
+            or probe_payload.get("decision") != "advance"
+        ):
+            continue
+        owners = {str(task.get("owner") or "") for task in (route, review, probe)}
+        route_seq = int(route.get("finish_seq") or 0)
+        review_seq = int(review.get("finish_seq") or 0)
+        probe_seq = int(probe.get("finish_seq") or 0)
+        if "" in owners or len(owners) != 3 or not (0 < route_seq < review_seq < probe_seq):
+            continue
+        paths = {
+            "route_artifact": _task_output_path(project_root, route),
+            "review_artifact": _task_output_path(project_root, review),
+            "evidence_artifact": _task_output_path(project_root, probe),
+        }
+        selection = {
+            "schema_version": 1,
+            "policy": "greedy_first_qualified",
+            "team_id": team_id,
+            "direction_sha256": direction_digest,
+            "route_id": str(route.get("target") or ""),
+            "route_task_id": route_id,
+            "review_task_id": review_id,
+            "probe_task_id": probe_id,
+            "probe_finish_seq": probe_seq,
+            "selected_at": float(probe.get("finished_ts") or 0),
+            **{
+                key: str(path.relative_to(project_root))
+                for key, path in paths.items()
+                if path is not None
+            },
+        }
+        candidates.append(
+            (
+                probe_seq,
+                float(probe.get("finished_ts") or 0),
+                route_id,
+                selection,
+            )
+        )
+    return min(candidates, default=None, key=lambda item: item[:3])[3] if candidates else None
+
+
+def idea_portfolio_selection(project_root: Path) -> dict[str, Any] | None:
+    project_root = Path(project_root).expanduser().resolve()
+    active = _active_portfolio(project_root)
+    if active is None:
+        return None
+    root, team_id, artifact_root, direction_digest = active
+    tasks = portfolio_tasks(team_id, artifact_root)
+    if not task_board.material_specs_match(root, tasks):
+        return None
+    actual = {str(task.get("task_id") or ""): task for task in task_board.snapshot(root)}
+    return _selection_from_tasks(
+        project_root,
+        root,
+        team_id,
+        artifact_root,
+        direction_digest,
+        actual,
     )
+
+
+def _materialize_selection(
+    project_root: Path,
+    root: Path,
+    selection: dict[str, Any],
+) -> None:
+    path = project_root / _SELECTION_PATH
+    current = _json_object(path)
+    if current != selection:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(
+            f"{path.name}.tmp.{os.getpid()}.{threading.get_ident():x}.{uuid.uuid4().hex[:8]}"
+        )
+        try:
+            tmp.write_text(
+                json.dumps(selection, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            os.replace(tmp, path)
+        finally:
+            tmp.unlink(missing_ok=True)
+    if str(pool.read(root).get("state") or "") not in {"draining", "dissolved"}:
+        pool.update(root, state="draining")
 
 
 def idea_portfolio_completion_issues(project_root: Path) -> tuple[str, ...]:
@@ -323,91 +542,47 @@ def idea_portfolio_completion_issues(project_root: Path) -> tuple[str, ...]:
     active = _active_portfolio(project_root)
     if active is None:
         return ("research idea portfolio state is missing or invalid",)
-    root, team_id, artifact_root, _direction_digest = active
+    root, team_id, artifact_root, direction_digest = active
     tasks = portfolio_tasks(team_id, artifact_root)
     expected = {task["task_id"]: task for task in tasks}
-    actual = {
-        str(task.get("task_id") or ""): task
-        for task in task_board.snapshot(root)
-    }
+    actual = {str(task.get("task_id") or ""): task for task in task_board.snapshot(root)}
     issues: list[str] = []
-    if (
-        set(actual) != set(expected)
-        or not task_board.material_specs_match(root, tasks)
-    ):
+    if set(actual) != set(expected) or not task_board.material_specs_match(root, tasks):
         return ("research idea portfolio task board is missing or not canonical",)
     if int(pool.read(root).get("width", 0) or 0) != TEAM_WIDTH:
         issues.append("research idea portfolio did not preserve width 12")
 
-    route_tasks = [
-        actual[task_id]
-        for task_id in expected
-        if task_id not in {f"{team_id}-{name}" for name in _DEBATE_TASKS}
-    ]
-    debate_tasks = [actual[f"{team_id}-{name}"] for name in _DEBATE_TASKS]
-    if any(task.get("state") != "done" for task in route_tasks):
-        issues.append("research idea portfolio has incomplete routes")
-    if any(task.get("state") != "done" for task in debate_tasks):
-        issues.append("research adversarial selection is incomplete")
-    route_owners = {str(task.get("owner") or "") for task in route_tasks}
-    if "" in route_owners or len(route_owners) != TEAM_WIDTH:
-        issues.append("research idea routes lack 12 distinct worker owners")
-    debate_owners = {str(task.get("owner") or "") for task in debate_tasks}
-    if (
-        "" in debate_owners
-        or len(debate_owners) != len(debate_tasks)
-        or debate_owners & route_owners
-    ):
-        issues.append("research selection roles lack fresh independent workers")
-    if any(not _valid_shard(root, task) for task in actual.values()):
-        issues.append("research idea portfolio lacks valid worker result shards")
-    if any(not _output_present(project_root, task) for task in actual.values()):
-        issues.append("research idea portfolio lacks route or debate artifacts")
+    selection = _selection_from_tasks(
+        project_root,
+        root,
+        team_id,
+        artifact_root,
+        direction_digest,
+        actual,
+    )
+    if selection is not None:
+        _materialize_selection(project_root, root, selection)
+        return tuple(issues)
 
-    route_finished = [int(task.get("finish_seq") or 0) for task in route_tasks]
-    debate_by_role = {
-        str(task.get("role") or ""): task for task in debate_tasks
-    }
-    proponent = debate_by_role.get("selection-proponent", {})
-    assassin = debate_by_role.get("selection-assassin", {})
-    meta = debate_by_role.get("selection-meta-review", {})
-    route_boundary = max(route_finished, default=0.0)
-    debate_finished = [
-        int(proponent.get("finish_seq") or 0),
-        int(assassin.get("finish_seq") or 0),
-    ]
-    if (
-        not route_boundary
-        or any(
-            not finished
-            or not int(task.get("claim_seq") or 0)
-            or finished <= int(task.get("claim_seq") or 0)
-            for task, finished in zip(route_tasks, route_finished)
+    advanced = any(
+        str(task.get("role") or "") == "idea-probe"
+        and (_probe_payload(project_root, task) or {}).get("decision") == "advance"
+        for task in actual.values()
+    )
+    if advanced:
+        issues.append("research greedy selection lacks valid route/review/probe provenance")
+        return tuple(issues)
+
+    probes = [task for task in actual.values() if str(task.get("role") or "") == "idea-probe"]
+    terminal = {"done", "failed", "blocked"}
+    if probes and all(str(task.get("state") or "") in terminal for task in probes):
+        issues.append(
+            "research idea pipeline exhausted without a reviewed probe qualified to advance"
         )
-        or any(
-            not finished
-            or int(task.get("claim_seq") or 0) <= route_boundary
-            or finished <= int(task.get("claim_seq") or 0)
-            for task, finished in zip((proponent, assassin), debate_finished)
+    else:
+        issues.append(
+            "research idea pipeline has no independently reviewed probe qualified to advance yet"
         )
-        or int(meta.get("claim_seq") or 0) <= max(debate_finished, default=0)
-        or int(meta.get("finish_seq") or 0)
-        <= int(meta.get("claim_seq") or 0)
-    ):
-        issues.append("research idea portfolio completion order is invalid")
-    meta_finished_ns = int(float(meta.get("finished_ts") or 0) * 1_000_000_000)
-    probes = [project_root / "research/SIGNAL_DERISK.json"]
-    probes.extend((project_root / "research/ideas").glob("*/EVIDENCE.json"))
-    if meta_finished_ns:
-        try:
-            probe_predates_selection = any(
-                probe.is_file() and probe.stat().st_mtime_ns < meta_finished_ns
-                for probe in probes
-            )
-        except OSError:
-            probe_predates_selection = True
-        if probe_predates_selection:
-            issues.append("research signal probe predates adversarial idea selection")
     return tuple(issues)
 
 
@@ -417,6 +592,7 @@ __all__ = [
     "TEAM_WIDTH",
     "ensure_idea_portfolio",
     "idea_portfolio_completion_issues",
+    "idea_portfolio_selection",
     "portfolio_required",
     "portfolio_tasks",
 ]
