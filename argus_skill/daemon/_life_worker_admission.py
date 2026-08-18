@@ -498,6 +498,34 @@ def spawn_detached_daemon_clean(
     return int(completed.returncode)
 
 
+def _launcher_failure_message(detail: str, returncode: int) -> str:
+    """Summarize the helper's stderr without truncating an actionable refusal.
+
+    This used to keep only the last non-empty line. That is the right rule for
+    a traceback, where the last line is the exception, and exactly the wrong
+    rule for an admission refusal: the workspace-lease message is deliberately
+    multi-line (owning pid, session, project, then the three ways out), and
+    collapsing it left the operator with "- or start this objective in a
+    different directory" and no idea what was holding the directory.
+
+    So anchor on the framework's own ``argus-skill:`` prefix when it is there
+    and keep that message whole, and fall back to the last-line rule only for
+    output the framework did not format — which in practice means a crash.
+    """
+    lines = detail.splitlines()
+    starts = [
+        index
+        for index, line in enumerate(lines)
+        if line.strip().startswith("argus-skill:")
+    ]
+    if starts:
+        return "\n".join(lines[starts[-1]:]).strip()
+    return next(
+        (line.strip() for line in reversed(lines) if line.strip()),
+        f"clean daemon launcher exited with code {returncode}",
+    )
+
+
 def run_foreground(config: LifeWorkerConfig) -> int:
     # Lazy import: see ``run_handoff_child`` in ``_life_worker_admission.py``
     # (this module) for why this cannot be a top-level import.

@@ -276,7 +276,23 @@ def migrate_legacy_manager_state(
     state_root: Path | str,
     legacy_root: Path | str,
 ) -> bool:
-    """Import pre-isolation Manager state once without mutating the workspace."""
+    """Import pre-isolation Manager state once without mutating the workspace.
+
+    Raises when the source payload NAMES a vertical this installation cannot
+    resolve: importing it would seat the campaign on a vertical whose stages,
+    checklist, and completion hooks do not exist, and every later read would
+    fail somewhere less legible than here.
+
+    A payload that names NO vertical is a different situation and is imported
+    normally. The workdir copy of ``research/PIPELINE_STATE.json`` is not only a
+    legacy artifact — it is the live evidence root (every Manager stage call
+    passes ``evidence_root=self.execution_workdir``), so a project can hold
+    Manager-owned keys there, such as the math vertical's objective mode, before
+    the Manager has decided anything. Refusing those bricks the project: this
+    runs inside ``build_life_runner``, so raising kills the front-door runner,
+    which is reported to the operator as "could not classify … please retry" —
+    advice that can never succeed, for a project that is merely undecided.
+    """
     target_root = Path(state_root).expanduser()
     source_root = Path(legacy_root).expanduser()
     try:
@@ -295,9 +311,13 @@ def migrate_legacy_manager_state(
     from ..verticals._data_domain import migrate_data_domains
 
     migrate_data_domains(source_root, target_root)
-    if _known_vertical(payload.get("vertical"), target_root) is None:
+    named = payload.get("vertical")
+    names_a_vertical = isinstance(named, str) and named.strip() != ""
+    if names_a_vertical and _known_vertical(named, target_root) is None:
         raise VerticalResolutionError(
-            "legacy Manager state does not name a resolvable vertical"
+            f"legacy Manager state at {source} names vertical {named!r}, which is "
+            f"neither a built-in vertical (available: "
+            f"{', '.join(available_verticals())}) nor a project data domain"
         )
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(target.suffix + f".migrate.{os.getpid()}.tmp")
@@ -306,7 +326,12 @@ def migrate_legacy_manager_state(
         encoding="utf-8",
     )
     os.replace(temporary, target)
-    resolve_vertical(target_root)
+    if names_a_vertical:
+        # Warm read that proves the imported decision resolves against the new
+        # root. Skipped when undecided: `resolve_vertical` would only log its
+        # "no Manager vertical resolved" fallback warning for a project that is
+        # correctly still waiting for the Manager to choose.
+        resolve_vertical(target_root)
     return True
 
 
@@ -539,8 +564,26 @@ def persist_vertical(
             raise ValueError(
                 f"invalid research target level: {research_target_level!r}"
             )
+        previous_target = normalize_research_target_level(
+            payload.get("research_target_level")
+        )
         payload["research_target_level"] = normalized_target
-        payload["research_target_set_at"] = time.time()
+        # STAMP ONLY ON A REAL CHANGE, for the same reason the stage below is
+        # seed-only. This timestamp exists so that raising the bar — say
+        # exploratory to publishable — retires certifications earned against
+        # the old bar: ``_research_project_done_issue`` walks the journal
+        # newest-first and stops at the first mission older than it. Stamping
+        # it on every re-persist made that gate unsatisfiable, because callers
+        # routinely re-affirm the level they just read. Every certification was
+        # older than the next re-stamp, so the Planner was told
+        # ``missing_<level>_reviewer_certification`` no matter what it did.
+        # Run 8 (s-fed750c2) solved the problem and proved it in Lean in
+        # mission 1, then spent missions 2, 3 and 4 certifying it, each one
+        # independently reviewed ``done`` and each one rejected.
+        if normalized_target != previous_target or not payload.get(
+            "research_target_set_at"
+        ):
+            payload["research_target_set_at"] = time.time()
     else:
         from ..verticals._base import load_vertical, vertical_research_target_levels
 
@@ -674,6 +717,104 @@ def vertical_reached_own_terminal_stage(project_root: object, vertical: str) -> 
     return _vertical_completion_record(project_root, vertical) is not None
 
 
+def vertical_completion_certificate_status(
+    project_root: object,
+    vertical: str,
+) -> dict[str, Any]:
+    """Whether terminal ``done`` matches the contract, and if not, what differs.
+
+    Returns ``{"ok": True}`` or a rejection carrying the stage that actually
+    holds the record plus both fingerprints. The bool wrapper below is the
+    predicate everything decides on; this is what the rejection gets to *say*.
+    Fails closed on every error, as the predicate always has.
+
+    Two things this deliberately does NOT prove, stated here because four
+    docstrings in this tree once implied otherwise. The fingerprint is a hash of
+    the live checklist contract — framework source, no project evidence, no
+    goal, no actor, no secret — so anyone able to import
+    ``completion_contract_fingerprint`` can compute the expected value. It
+    detects a checklist that *moved* since certification; it does not
+    authenticate who certified. And ``_vertical_completion_record``'s structural
+    audit checks that an early completion is internally consistent, not that it
+    was ever legitimate.
+
+    Which is how testbed run 13 read ``{"ok": True}`` with two of math's three
+    stages ``skipped`` and the review never done. So early completion is checked
+    against the project's workflow mode here as well as at the write side:
+    ``direct`` mode is the one arrangement under which stopping before the final
+    stage is a real outcome rather than an abandoned pipeline. Run 13 was
+    ``staged``.
+    """
+    completion = _vertical_completion_record(project_root, vertical)
+    if completion is None:
+        return {"ok": False, "reason": "no certified completion record"}
+    completed_stage, record = completion
+    detail: dict[str, Any] = {"ok": False, "stage": completed_stage}
+    source = str(record.get("completion_contract_source") or "").strip()
+    if source:
+        detail["source"] = source
+    try:
+        from ..verticals._base import (
+            load_vertical,
+            vertical_checklist_stage_order,
+            vertical_completion_contract_version,
+        )
+
+        module = load_vertical(vertical, project_root=project_root)
+        completion_contract_version = vertical_completion_contract_version(module)
+        stage_order = [
+            _normalize_stage(stage)
+            for stage in vertical_checklist_stage_order(module)
+        ]
+    except Exception:  # noqa: BLE001 — strict completion fails closed
+        return {**detail, "reason": "completion contract version unreadable"}
+    if stage_order and completed_stage != stage_order[-1]:
+        try:
+            mode = resolve_workflow_mode(project_root)
+        except Exception:  # noqa: BLE001 — an unreadable mode fails closed
+            mode = ""
+        if mode != "direct":
+            skipped = ", ".join(stage_order[stage_order.index(completed_stage) + 1:]) \
+                if completed_stage in stage_order else "later stages"
+            return {
+                **detail,
+                "reason": (
+                    f"completion is recorded at {completed_stage!r}, not the "
+                    f"final stage {stage_order[-1]!r}, and workflow mode "
+                    f"{mode or 'unknown'!r} does not permit stopping early. "
+                    f"Skipped without certification: {skipped}"
+                ),
+                "workflow_mode": mode,
+                "final_stage": stage_order[-1],
+            }
+    if completion_contract_version <= 0:
+        return {"ok": True}
+    try:
+        from .stage_machine import completion_contract_fingerprint
+
+        expected = completion_contract_fingerprint(
+            Path(str(project_root)),
+            completed_stage,
+            version=completion_contract_version,
+        )
+    except Exception:  # noqa: BLE001 — versioned completion fails closed
+        return {**detail, "reason": "completion contract could not be recomputed"}
+    detail["expected"] = expected
+    detail["version"] = completion_contract_version
+    try:
+        persisted_version = int(record.get("completion_contract_version") or 0)
+    except (TypeError, ValueError):
+        return {**detail, "reason": "persisted contract version is not a number"}
+    persisted = str(record.get("completion_contract_sha256") or "")
+    detail["persisted"] = persisted
+    detail["persisted_version"] = persisted_version
+    if persisted_version != completion_contract_version:
+        return {**detail, "reason": "contract version moved since certification"}
+    if persisted != expected:
+        return {**detail, "reason": "certified checklist differs from the live one"}
+    return {"ok": True}
+
+
 def vertical_has_current_completion_certificate(
     project_root: object,
     vertical: str,
@@ -684,39 +825,8 @@ def vertical_has_current_completion_certificate(
     decisions use this stricter predicate so a versioned checklist change forces
     one fresh Reviewer/Manager certification.
     """
-    completion = _vertical_completion_record(project_root, vertical)
-    if completion is None:
-        return False
-    completed_stage, record = completion
-    try:
-        from ..verticals._base import (
-            load_vertical,
-            vertical_completion_contract_version,
-        )
-
-        module = load_vertical(vertical, project_root=project_root)
-        completion_contract_version = vertical_completion_contract_version(module)
-    except Exception:  # noqa: BLE001 — strict completion fails closed
-        return False
-    if completion_contract_version <= 0:
-        return True
-    try:
-        from .stage_machine import completion_contract_fingerprint
-
-        expected = completion_contract_fingerprint(
-            Path(str(project_root)),
-            completed_stage,
-            version=completion_contract_version,
-        )
-    except Exception:  # noqa: BLE001 — versioned completion fails closed
-        return False
-    try:
-        persisted_version = int(record.get("completion_contract_version") or 0)
-    except (TypeError, ValueError):
-        return False
     return bool(
-        persisted_version == completion_contract_version
-        and str(record.get("completion_contract_sha256") or "") == expected
+        vertical_completion_certificate_status(project_root, vertical).get("ok")
     )
 
 

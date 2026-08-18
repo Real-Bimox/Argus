@@ -45,6 +45,7 @@ def mission_outcome_dimensions(
     review_status: str = "",
     stage_transition: object = None,
     stage_transition_skipped: bool = False,
+    stage_transition_deferred: bool = False,
     stop_kind: object = None,
     resumable: bool = False,
 ) -> dict[str, object]:
@@ -66,16 +67,26 @@ def mission_outcome_dimensions(
     stage_action = ""
     if isinstance(stage_transition, dict):
         stage_action = str(stage_transition.get("action") or "").strip().lower()
-    stage_certification = (
-        "intentionally_skipped"
-        if stage_transition_skipped
-        else {
+    if stage_transition_skipped:
+        stage_certification = "intentionally_skipped"
+    elif stage_action:
+        stage_certification = {
             "advance": "certified",
             "complete": "certified",
             "hold": "not_certified",
             "rollback": "revoked",
         }.get(stage_action, "not_assessed")
-    )
+    elif stage_transition_deferred:
+        # A Planner-authored intermediate node deliberately holds the stage:
+        # its reviewed evidence is real, it simply has not been adjudicated
+        # yet. Kept distinct from ``intentionally_skipped``, which means a
+        # review-only workflow suppressed the stage writer and so must never
+        # be replayed. Campaign-level stage reconciliation replays deferred
+        # evidence; without this distinction every Planner node looked like a
+        # deliberate suppression and no stage could ever close.
+        stage_certification = "deferred"
+    else:
+        stage_certification = "not_assessed"
 
     return {
         "execution_status": execution_status,

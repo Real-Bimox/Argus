@@ -315,7 +315,7 @@ class PlanningCycleEnqueueMixin:
             )
             if (
                 canonical_scope == PLANNER_SCOPE_FINAL_SUBMISSION
-                and not self._effective_final_certification_gate(self._artifact_root())
+                and not self._final_submission_scope_applies(self._artifact_root())
             ):
                 canonical_scope = PLANNER_SCOPE_BOUNDED
             canonical_acceptance = str(
@@ -600,8 +600,11 @@ class PlanningCycleEnqueueMixin:
 
     @staticmethod
     def _manager_decision_evidence(intent: Any) -> dict[str, Any]:
+        # Planner nodes are already subdivisions of the standing
+        # Manager-approved campaign. Mark that inherited authority even when
+        # the compact intent event has no optional routing fields.
         if not isinstance(intent, dict):
-            return {}
+            intent = {}
         evidence = {
             "vertical": str(intent.get("vertical") or "").strip(),
             "stage": str(
@@ -616,8 +619,7 @@ class PlanningCycleEnqueueMixin:
             ).strip(),
         }
         evidence = {key: value for key, value in evidence.items() if value}
-        if evidence:
-            evidence["routed"] = True
+        evidence["routed"] = True
         return evidence
 
     def _pc_record_revision_rejection(

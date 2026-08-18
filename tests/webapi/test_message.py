@@ -1546,6 +1546,7 @@ def test_explicit_pending_answer_continues_without_a_model_call(
     assert continuation.tags == [
         "paper", "operator-reply", "manager-approved", "review:required",
     ]
+    assert continuation.manager_decision == {"routed": True}
     assert "MANAGER OPERATOR-ANSWER DECISION" in (
         life / "inbox.jsonl"
     ).read_text(encoding="utf-8")

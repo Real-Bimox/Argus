@@ -134,6 +134,10 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
     failures are not cached so the next operator turn can recover.
     """
     backend = chat_state.get("backend")
+    # Cleared per call: the reason belongs to this attempt, and a build that
+    # succeeds (or a cache hit, which is a build that already succeeded) must
+    # not leave the previous turn's failure behind for the caller to report.
+    chat_state.pop("manager_runner_error", None)
     # The memory backend has no real LLM runner; never triage — every line is
     # a task (preserves existing memory-backend behaviour and its tests).
     if backend == "memory":
@@ -231,7 +235,18 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
             set_acp_scope = getattr(backend, "set_acp_scope", None)
             if callable(set_acp_scope):
                 set_acp_scope(acp_scope)
-    except Exception:  # noqa: BLE001 — retry on the next operator turn
+    except Exception as exc:  # noqa: BLE001 — retry on the next operator turn
+        # Not cached (a transient build failure must not disable triage for the
+        # rest of the session), but not silent either. Everything below this
+        # line — the vertical resolver, the state migration, the backend
+        # construction — reports precisely what is wrong, and returning a bare
+        # ``None`` collapses all of it into "classifier unavailable", which the
+        # operator is shown as "please retry". Some of those faults are
+        # permanent, so retrying is advice that can never work; the reason is
+        # logged with its traceback and handed to the caller so the operator
+        # turn can say what actually broke.
+        log.exception("Manager front-door runner build failed")
+        chat_state["manager_runner_error"] = f"{type(exc).__name__}: {exc}"
         return None
 
     chat_state["manager_runner"] = runner

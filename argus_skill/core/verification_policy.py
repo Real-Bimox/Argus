@@ -92,6 +92,25 @@ STAGE_PROFILES: dict[str, dict[str, str]] = {
         "report": "certify",
         "deliver": "certify",
     },
+    # Three coarse stages, so each maps to one profile with nothing left over.
+    # ``scope`` settles what the problem is and what is already known about it,
+    # which is the explore question asked about a theorem rather than a premise.
+    # ``solve`` is where the mathematics is done and where the proof-gap
+    # structure has to be maintained, and ``develop`` is the profile that
+    # requires it. ``review`` is the delivery point and the only stage that
+    # blocks on every cited proposition having been read, which is this
+    # vertical's form of full claim coverage.
+    #
+    # Without this entry math resolved to the ``unresolved`` fallback: profile
+    # ``develop`` with ``resolved=False``. The proof-graph requirement came out
+    # the same for ``solve`` by accident and the wrong way round for ``review``,
+    # which was certifying under a develop-grade policy while reporting that it
+    # had no policy at all.
+    "math": {
+        "scope": "explore",
+        "solve": "develop",
+        "review": "certify",
+    },
 }
 
 #: One line per profile, for the prompt. Deliberately terse: the reviewer

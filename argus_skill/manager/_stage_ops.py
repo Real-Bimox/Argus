@@ -308,14 +308,18 @@ class _StageDecisionMixin:
                     ),
                 })
 
-        decision = parse_stage_decision(raw, current_stage=cur, stage_order=order)
-
         from ..core.external_completion_gate import external_completion_gate_issue
         from ..core.research_contract import resolve_research_target_level
         from ..skills.vertical_select import (
             resolve_vertical,
             resolve_workflow_mode,
         )
+
+        # Computed once and shared by every check below that needs it.
+        _allow_early_completion = (
+            not open_ended and resolve_workflow_mode(root) == "direct"
+        )
+        decision = parse_stage_decision(raw, current_stage=cur, stage_order=order)
 
         _completion_vertical = resolve_vertical(root)
         _research_target_level = resolve_research_target_level(root)
@@ -337,22 +341,63 @@ class _StageDecisionMixin:
                     decision.action,
                     decision.reason,
                 ),
-                allow_early_completion=(
-                    not open_ended
-                    and resolve_workflow_mode(root) == "direct"
-                ),
+                allow_early_completion=_allow_early_completion,
             )
             if final_decision is not None:
                 decision = final_decision
             else:
-                from .stage_decider import StageDecision
-
-                decision = StageDecision(
-                    "hold",
-                    cur,
-                    "Manager completion rejected by the project completion contract",
-                    "manager_completion_rejected",
+                from .stage_decider import (
+                    StageDecision,
+                    final_stage_completion_blockers,
+                    stage_position_is_the_only_completion_blocker,
                 )
+
+                # Report which of the checks refused. The bare "rejected by the
+                # project completion contract" left the Planner guessing:
+                # testbed run 13 answered it by queueing a mission to "record
+                # the missing route/ledger state or equivalent gate metadata",
+                # when the real answer was that it was sitting at ``scope`` and
+                # needed to advance.
+                blockers = final_stage_completion_blockers(
+                    review,
+                    current_stage=cur,
+                    stage_order=order,
+                    vertical=_completion_vertical,
+                    mission_scope=mission_scope,
+                    project_root=root,
+                    research_target_level=_research_target_level,
+                    checklist_contract=checklist_contract,
+                    completion_blocker=external_completion_gate_issue(
+                        self.execution_workdir
+                    ),
+                    allow_early_completion=_allow_early_completion,
+                )
+                if stage_position_is_the_only_completion_blocker(blockers):
+                    # Nothing is wrong with this completion except where the
+                    # pipeline is standing, so stand somewhere else. Reporting
+                    # the refusal better was not enough on its own: run 15 got
+                    # the improved sentence and still sat at ``scope`` with the
+                    # problem solved, because a Manager cannot act on an
+                    # explanation it is given after its turn has ended.
+                    decision = StageDecision(
+                        "advance",
+                        order[order.index(cur) + 1],
+                        decision.reason or "operator objective complete",
+                        "complete_at_nonfinal_advanced",
+                    )
+                else:
+                    detail = "; ".join(blockers)
+                    decision = StageDecision(
+                        "hold",
+                        cur,
+                        (
+                            f"Manager completion rejected: {detail}"
+                            if detail
+                            else "Manager completion rejected by the project "
+                            "completion contract"
+                        ),
+                        "manager_completion_rejected",
+                    )
         rework_decision = external_completion_gate_rework_decision(
             review,
             current_stage=cur,
@@ -426,9 +471,21 @@ class _StageDecisionMixin:
                                    decision.resolves_wait)
 
         if decision.action == "complete":
+            from ..skills.vertical_select import resolve_workflow_mode
+
             try:
+                # ``allow_early_completion`` is re-derived here rather than
+                # threaded from the decision: this is a backstop at the
+                # primitive, not the authority. ``final_stage_completion_decision``
+                # already applied the stricter test (it also requires the mission
+                # not be open-ended); a decision that reached this line has
+                # passed it. What this argument stops is the path that never
+                # went through the decider at all — see ``complete_final_stage``.
                 _complete(root, reason=decision.reason, completed_by="manager",
-                          evidence_root=self.execution_workdir)
+                          evidence_root=self.execution_workdir,
+                          allow_early_completion=(
+                              resolve_workflow_mode(root) == "direct"
+                          ))
             except StageCompletionError as exc:
                 return StageTransition(
                     "hold", cur, str(exc), current_stage=cur,

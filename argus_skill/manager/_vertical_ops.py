@@ -723,6 +723,7 @@ class _VerticalDecisionMixin:
                 force_replacement=force_stage_reset or adapted,
                 evidence_root=self.execution_workdir,
             )
+            self._adopt_operator_objective(vertical, decision, task)
         division = Division(
             task=task,
             vertical=vertical,
@@ -743,6 +744,66 @@ class _VerticalDecisionMixin:
         )
         self._apply_vertical_decision_rendering(decision)
         return division
+
+    def _adopt_operator_objective(
+        self, vertical: str, decision: VerticalDecision, task: str
+    ) -> None:
+        """Hand the chosen vertical the operator's request, if it wants one.
+
+        A vertical whose completion rule depends on a choice core cannot make
+        (``math``: prove one named goal, or explore a direction?) gets exactly
+        one chance to record that choice from the operator's own words — here,
+        where the request text and the freshly persisted project state are both
+        in hand. Placed after ``reset_stage_for_new_intent`` so a rollback that
+        rewrites the pipeline state cannot erase what was just adopted.
+
+        ``execution_task`` before ``task``: it is the statement the pipeline
+        actually pursues, and a vertical that turns it into a completion target
+        must be measured against the same text the Planner and Engineer were
+        given. ``task`` is the fallback for the paths that never produced one.
+
+        Adopted into the execution workdir as well as the project root, when
+        those differ. Not belt-and-braces: ``_ensure_stage_completion`` invokes
+        the vertical validator with ``evidence_root or project_root``, so in the
+        split layout the daemon actually runs — pipeline state under
+        ``~/.argus-skill/projects/<sid>``, artifacts in the operator's repo —
+        the validator reads the *workdir* copy, and adopting only into the
+        project root would leave the gate exactly as unsatisfiable as before.
+        The two copies cannot drift: adoption never overwrites a resolved
+        objective, and both are written from this one request string.
+
+        Fail-open, like ``reset_stage_for_new_intent`` next to it. Raising here
+        would sink a correctly persisted vertical decision over an optional
+        convenience, and a learned data domain has no vertical module at all —
+        a lookup failure, not a defect. The cost of failing open is that the
+        vertical falls back to refusing completion with an explicit
+        unresolved-objective message, which is the state this hook exists to
+        improve on, not a silent wrong answer.
+        """
+        from ..verticals._base import (
+            load_vertical,
+            vertical_adopt_operator_objective,
+        )
+
+        request = str(getattr(decision, "execution_task", "") or "").strip() or task
+        roots = [self.project_root]
+        workdir = getattr(self, "execution_workdir", None)
+        if workdir is not None and Path(workdir) != Path(self.project_root):
+            roots.append(Path(workdir))
+        for root in roots:
+            try:
+                vertical_adopt_operator_objective(
+                    load_vertical(vertical, project_root=self.project_root),
+                    project_root=Path(root),
+                    request=request,
+                )
+            except Exception:  # noqa: BLE001 — never break division on a hook
+                _log.debug(
+                    "objective adoption skipped for %r at %s",
+                    vertical,
+                    root,
+                    exc_info=True,
+                )
 
     def commit_domain(
         self,

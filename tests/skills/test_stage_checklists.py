@@ -451,6 +451,18 @@ def test_manager_early_completion_is_a_current_completion_certificate(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
+    """Early completion is a real outcome — for a caller that has standing.
+
+    This asserted the same three facts before run 13, minus the standing. It
+    was, exactly, the shape that run's Engineer produced: ``complete`` at
+    ``scope``, ``solve`` and ``review`` ``skipped``, certificate valid. The
+    difference between that and a legitimate early close is entirely who is
+    allowed to ask, so that is now what the test supplies — ``direct`` workflow
+    mode, where stopping before the final stage is a real answer rather than an
+    abandoned pipeline, plus the explicit argument at the primitive.
+
+    The refusal side lives in ``tests/skills/test_stage_completion_authority.py``.
+    """
     from argus_skill.skills import stage_machine
     from argus_skill.skills.vertical_select import (
         persist_vertical,
@@ -463,6 +475,10 @@ def test_manager_early_completion_is_a_current_completion_certificate(
         "math",
         research_target_level="exploratory",
     )
+    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["workflow_mode"] = "direct"
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
     monkeypatch.setattr(
         stage_machine,
         "_ensure_stage_completion",
@@ -472,11 +488,10 @@ def test_manager_early_completion_is_a_current_completion_certificate(
     stage_machine.complete_final_stage(
         tmp_path,
         reason="The scoped answer satisfies the operator objective.",
+        allow_early_completion=True,
     )
 
-    state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
-    )
+    state = json.loads(state_path.read_text(encoding="utf-8"))
     assert state["current_stage"] == "scope"
     assert state["stages"]["scope"]["status"] == "done"
     assert state["stages"]["solve"]["status"] == "skipped"

@@ -29,6 +29,7 @@ from .checkpoint import resolve_shared_checkpoint
 log = logging.getLogger(__name__)
 # Config dataclasses are re-exported here for historical/test imports.
 from .round_config import (
+    DEFAULT_LIVE_SEARCH_STAGES,
     EngineerConfig,
     SupervisedConfig,
     _engineer_live_search,
@@ -364,6 +365,7 @@ class SupervisedEngineer(
 
 
 __all__ = [
+    "DEFAULT_LIVE_SEARCH_STAGES",
     "EngineerConfig",
     "SupervisedConfig",
     "SupervisedEngineer",

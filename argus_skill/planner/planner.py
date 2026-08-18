@@ -478,7 +478,7 @@ class Planner:
         )
 
 
-_KEY_VALUE_KEYS = (
+_GLOBAL_KEY_VALUE_KEYS = (
     "PROJECT_DONE",
     "STATUS",
     "REASON",
@@ -496,17 +496,29 @@ _KEY_VALUE_KEYS = (
     "WAKE_ON",
     "WATCHED_PATHS",
     "EXPIRES_AT",
+)
+_TASK_KEY_VALUE_FIELDS = (
     # Legacy delimiter only: it starts a new minimal task block but is not
     # retained as task metadata.
-    "TASK_KEY",
-    "TASK_TITLE",
-    "TASK_OBJECTIVE",
-    "TASK_ACCEPTANCE_CHECK",
-    "TASK_NON_GOALS",
-    "TASK_SCOPE",
+    "KEY",
+    "TITLE",
+    "OBJECTIVE",
+    "ACCEPTANCE_CHECK",
+    "NON_GOALS",
+    "SCOPE",
 )
 _KEY_VALUE_LINE = re.compile(
-    r"^(?:[-*]\s*)?(?:ARGUS_)?(?P<key>" + "|".join(_KEY_VALUE_KEYS) + r")\s*[:=]\s*(?P<value>.*)$",
+    r"^(?:[-*]\s*)?(?:ARGUS_)?(?P<key>(?:"
+    + "|".join(_GLOBAL_KEY_VALUE_KEYS)
+    + r")|TASK(?:_\d+)?_(?:"
+    + "|".join(_TASK_KEY_VALUE_FIELDS)
+    + r"))\s*[:=]\s*(?P<value>.*)$",
+    re.IGNORECASE,
+)
+_NUMBERED_TASK_KEY = re.compile(
+    r"^TASK_(?P<index>\d+)_(?P<field>"
+    + "|".join(_TASK_KEY_VALUE_FIELDS)
+    + r")$",
     re.IGNORECASE,
 )
 
@@ -515,6 +527,7 @@ def _planner_key_values(text: str) -> tuple[dict[str, str], list[dict[str, str]]
     """Parse global fields and optional repeated ``TASK_*`` key-value blocks."""
     values: dict[str, str] = {}
     tasks: list[dict[str, str]] = []
+    numbered_tasks: dict[str, dict[str, str]] = {}
     current_task: dict[str, str] | None = None
     for raw_line in text.splitlines():
         line = raw_line.strip().strip("`").strip()
@@ -523,6 +536,12 @@ def _planner_key_values(text: str) -> tuple[dict[str, str], list[dict[str, str]]
             continue
         key = match.group("key").upper()
         value = match.group("value").strip()
+        numbered_match = _NUMBERED_TASK_KEY.match(key)
+        if numbered_match is not None:
+            index = numbered_match.group("index")
+            normalized_key = f"TASK_{numbered_match.group('field').upper()}"
+            numbered_tasks.setdefault(index, {})[normalized_key] = value
+            continue
         if key == "TASK_KEY":
             if current_task is not None:
                 tasks.append(current_task)
@@ -535,6 +554,7 @@ def _planner_key_values(text: str) -> tuple[dict[str, str], list[dict[str, str]]
             values[key] = value
     if current_task is not None:
         tasks.append(current_task)
+    tasks.extend(numbered_tasks.values())
     return values, tasks
 
 

@@ -142,11 +142,58 @@ def vertical_prepare_mission(
     stage: str,
     project_root: Path,
     state_root: Path,
+    mission: object,
 ) -> str:
+    """``mission`` is the claimed backlog item; see ``VerticalContract``."""
     return _contract(mod).prepare_mission(
         stage=stage,
         project_root=project_root,
         state_root=state_root,
+        mission=mission,
+    )
+
+
+def vertical_mission_prelude(
+    *,
+    vertical_root: Path,
+    project_root: Path,
+    state_root: Path,
+    stage: str,
+    mission: object,
+) -> str:
+    """Resolve the active vertical and return its block for *this* mission.
+
+    One seam, two callers. The daemon's supervisor builds this for a claimed
+    backlog item; ``team/teammate_entry.py`` builds it for the board task a
+    dispatched teammate owns. Both need the identical three steps — resolve the
+    project's persisted vertical, load its contract, forward the hook by
+    keyword — and computing them twice is how the two drift: a teammate that
+    resolved the vertical differently would be reading a different project than
+    the Engineer that dispatched it.
+
+    ``vertical_root`` is where the Manager's ``PIPELINE_STATE.json`` decision
+    lives; ``project_root`` is the tree this mission actually works in. They are
+    separate parameters because the supervisor already passes two different
+    paths (session artifact root vs. adopted mission workdir), and collapsing
+    them here would silently retarget it.
+
+    Deliberately unguarded, and that is the whole point of the hook's contract
+    (see ``VerticalContract.prepare_mission``): a stale out-of-tree provider
+    halts the run with a ``TypeError`` naming the argument to add, rather than
+    being quietly demoted to mission-blind for the life of the project. A caller
+    that cannot afford to die — a single subordinate teammate, say — owns that
+    decision at its own call site, where the trade is visible.
+    """
+    from ..skills.vertical_select import resolve_vertical
+
+    contract = load_vertical_contract(
+        resolve_vertical(vertical_root), project_root=vertical_root
+    )
+    return contract.prepare_mission(
+        stage=stage,
+        project_root=project_root,
+        state_root=state_root,
+        mission=mission,
     )
 
 
@@ -178,12 +225,27 @@ def vertical_stage_completion_issues(
     return _contract(mod).completion_issues(stage, project_root)
 
 
+def vertical_adopt_operator_objective(
+    mod: VerticalDefinition,
+    *,
+    project_root: Path,
+    request: str,
+) -> bool:
+    """Hand the vertical the operator's request so it can record its objective.
+
+    Returns whether the vertical declares an adopter at all. Verticals that
+    have nothing to choose declare none, and this is a no-op for them.
+    """
+    return _contract(mod).adopt_operator_objective(project_root, request)
+
+
 __all__ = [
     "DEFAULT_VERTICAL",
     "VerticalContract",
     "VerticalDefinition",
     "load_vertical",
     "load_vertical_contract",
+    "vertical_adopt_operator_objective",
     "vertical_checklist_stage_order",
     "vertical_checklist_items",
     "vertical_checklist_optional_stages",
@@ -192,6 +254,7 @@ __all__ = [
     "vertical_completion_contract_version",
     "vertical_completion_gate",
     "vertical_mission_kind",
+    "vertical_mission_prelude",
     "vertical_research_target_levels",
     "vertical_prepare_mission",
     "vertical_planner_task_issues",

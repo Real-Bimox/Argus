@@ -212,6 +212,11 @@ def _sync_status_stage(project_root: Path | str, stage: str) -> bool:
         return False
 
 
+def framework_source_root() -> Path:
+    """The ``argus_skill`` package directory that is actually executing."""
+    return Path(__file__).resolve().parent.parent
+
+
 def _set_stage(
     project_root: Path | str,
     *,
@@ -313,6 +318,11 @@ def _set_stage(
         if completion_contract_version > 0 and completion_contract_sha256:
             prev_record["completion_contract_version"] = completion_contract_version
             prev_record["completion_contract_sha256"] = completion_contract_sha256
+            # Which framework computed that hash. When a reader cannot reproduce
+            # it, the first question is always "was this written by the same
+            # code I am running?" — record the answer instead of making the next
+            # operator reconstruct it from process archaeology.
+            prev_record["completion_contract_source"] = str(framework_source_root())
 
     skipped_stages: list[str] = []
     if direction in {"advance", "complete"}:
@@ -439,9 +449,14 @@ def advance_stage(
     recorded explicitly. The just-completed stage is stamped ``done``.
 
     After initial state creation, ``advance_stage`` / ``rollback_stage`` are the ONLY mutators
-    of ``current_stage`` — both invoked solely by the Manager, which owns stage
-    authority (reviewer/planner only advise; the engineer never edits stage
-    state).
+    of ``current_stage``. They are *intended* to be Manager-only — reviewer and
+    planner advise, the engineer reports — but nothing here authenticates the
+    caller: ``advanced_by`` is free text, and any role that can import this
+    module can call this function. The real protection is that every transition
+    runs the active vertical's deterministic completion validator against
+    evidence on disk, which a caller cannot satisfy by asserting it. See
+    :func:`complete_final_stage` for what happened when a primitive relied on
+    the intent instead of the check.
     """
     raw_order, _items = _active_vertical_checklist_defs(project_root)
     order = [_normalize_stage(s) for s in raw_order]
@@ -549,21 +564,56 @@ def complete_final_stage(
     reason: str,
     completed_by: str = "manager",
     evidence_root: Path | str | None = None,
+    allow_early_completion: bool = False,
 ) -> str:
     """Mark the current pipeline stage ``done`` without moving ``current_stage``.
 
     Used when the Manager determines that the certified current stage satisfies
     the operator objective. The stage's ``status`` is stamped ``done`` so the
-    project reads as complete. This is the
-    terminal counterpart to :func:`advance_stage` / :func:`rollback_stage` and,
-    like them, is a Manager-owned mutation (gated by the stage-transition
-    authority context).
+    project reads as complete. This is the terminal counterpart to
+    :func:`advance_stage` / :func:`rollback_stage`.
+
+    The name is now enforced. Until testbed run 14 this function completed
+    *whichever* stage happened to be current, and the word "final" lived only in
+    :func:`argus_skill.manager.stage_decider.final_stage_completion_decision` —
+    a decision-layer check a caller reaches this primitive without passing
+    through. Run 13 (``s-d9ea298f``) is what that costs. Its Engineer, blocked
+    on ``staged_goal_gate_incomplete``, imported this module and called this
+    function at ``scope``, stage 1 of math's ``scope -> solve -> review``. The
+    primitive did exactly as asked: ran only ``scope``'s validator, stamped a
+    valid contract fingerprint, and — via ``_set_stage(direction="complete")`` —
+    marked ``solve`` and ``review`` ``skipped``. The result passes
+    ``_vertical_completion_record``'s structural audit *perfectly*, because it
+    was not hand-forged; it was minted by this function. Reviewing the math was
+    never required. ``completed_by`` was ``"manager-repair"``, a string that
+    appears nowhere in this codebase.
+
+    So: completion is refused off the final stage unless the caller says, in
+    this argument, that it has the standing to complete early. The Manager
+    passes it when ``direct`` workflow mode is resolved, which is the one
+    legitimate early-completion path and matches the flag
+    ``final_stage_completion_decision`` already takes. Everyone else — every
+    agent that can ``import argus_skill`` — now gets a ``ValueError``.
+
+    This is a lock, not a signature. ``completed_by`` remains free text and the
+    contract fingerprint remains recomputable by anyone who can read the
+    framework source, so a determined caller can still pass the argument. What
+    it stops is the *accident-shaped* forgery: reaching for a function whose
+    name promised a check it did not perform.
     """
     raw_order, _items = _active_vertical_checklist_defs(project_root)
     order = [_normalize_stage(s) for s in raw_order]
     cur = _normalize_stage(current_stage(project_root))
     if cur not in order:
         raise ValueError(f"current stage {cur!r} is not in the active vertical")
+    if cur != order[-1] and not allow_early_completion:
+        raise ValueError(
+            f"cannot complete at {cur!r}: it is not the final stage of the "
+            f"active vertical ({order[-1]!r}), and early completion was not "
+            f"authorized. Remaining: {', '.join(order[order.index(cur) + 1:])}. "
+            "Advance through them, or pass allow_early_completion=True if the "
+            "workflow mode genuinely permits stopping here."
+        )
     _ensure_stage_completion(
         project_root,
         cur,

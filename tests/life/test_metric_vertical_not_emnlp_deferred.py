@@ -166,7 +166,11 @@ def test_tick_skips_inapplicable_final_submission_for_bounded_domain(
     assert result["status"] == "skipped"
     assert updates[0]["item_id"] == item.id
     assert updates[0]["status"] == "skipped"
-    assert "not certified" in updates[0]["last_error"]
+    # The skip condition is broader than "completion gate is not certified":
+    # a vertical with a required research target also consumes this scope, so
+    # what is retired here is a vertical with no terminal gate of either kind.
+    # See tests/life/test_final_submission_scope_applies.py.
+    assert "no terminal certification gate" in updates[0]["last_error"]
     assert state_path.read_text(encoding="utf-8") == (
         '{"current_stage": "profile", "vertical": "perf_tuning"}\n'
     )

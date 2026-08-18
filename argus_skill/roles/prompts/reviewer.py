@@ -298,7 +298,10 @@ def render_reviewer_prompt(
 ) -> tuple[str, str]:
     """Render the complete Reviewer prompt as ``(static_preamble, round_delta)``."""
     from ...core.project import resolve_project_root
-    from ...core.research_contract import resolve_research_target_level
+    from ...core.research_contract import (
+        RESULT_FIELD_CHOICES,
+        resolve_research_target_level,
+    )
     from ...skills.vertical_select import _persisted_vertical
     from .registry import resolve_role_prompt
 
@@ -315,8 +318,31 @@ def render_reviewer_prompt(
             _proot,
             scope=scope_normalized,
             vertical=routed_vertical,
+            # Suppressed only when this project has no pipeline state to read a
+            # stage from — not merely because the caller named the vertical.
+            #
+            # The two used to be the same condition, on the reasoning that a
+            # caller passing ``vertical`` explicitly is one running outside a
+            # project (``argus_maintenance`` in a bare directory), where asking
+            # for a stage checklist is actively harmful: ``current_stage``
+            # returns the vertical's first stage as a FALLBACK rather than
+            # reporting that it found nothing, and an unresolved stage renders
+            # as "Configuration error: this required checklist is not loaded.
+            # Do not mark the stage complete" — a blocker manufactured out of a
+            # missing file.
+            #
+            # But the daemon passes ``vertical_override`` for a real campaign
+            # that does have pipeline state, so the proxy misfires there and the
+            # Reviewer silently loses its stage checklist: for a math project in
+            # ``solve`` that is ~2k characters of the acceptance criteria it is
+            # supposed to be judging against, while the Engineer's own prompt
+            # still carries them. ``_persisted`` is non-None exactly when
+            # ``research/PIPELINE_STATE.json`` records a vertical, which is the
+            # condition actually being asked about.
             checklist_mode=(
-                ChecklistMode.NONE if explicit_vertical else ChecklistMode.AUTO
+                ChecklistMode.NONE
+                if explicit_vertical and not _persisted
+                else ChecklistMode.AUTO
             ),
         )
     )
@@ -380,13 +406,17 @@ def render_reviewer_prompt(
             f"not this round's bar. This round: {policy_line(_policy)}. The integrity "
             "floor is identical at every profile. Judge directly and explain in "
             "`reason`. If the direction cannot reach the target, return "
-            "`replan_requested`. End with `RESEARCH_RESULT=<JSON>` using the "
-            "project research-result contract and only evidence you inspected. "
-            "Fields: `result_class`, `correctness_status`, `novelty_status`, "
-            "`significance_status`, `statement_fidelity_status`, `evidence`, and "
-            "`limitations`. Use `result_class=literature_review` for a bounded "
-            "review or survey; literature reviews may use `novelty_status=not_applicable`. "
-            "`evidence` and `limitations` are JSON string arrays.\n\n"
+            "`replan_requested`.\n"
+            "End with `RESEARCH_RESULT=<JSON>` over evidence you inspected. "
+            "`evidence` and `limitations` are JSON string arrays; a survey is "
+            "`literature_review` with `novelty_status` `known` or `not_applicable`. "
+            "Every field below takes one listed value verbatim — any other value "
+            "voids the whole result, however well it describes the work:\n"
+            + "".join(
+                f"{_field}: {' '.join(_choices)}\n"
+                for _field, _choices in RESULT_FIELD_CHOICES
+            )
+            + "\n"
         )
     # Live search-altitude facts (NO verdict) so the reviewer can SEE the
     # floor history when judging forward_progress — i.e. distinguish "this
@@ -599,11 +629,15 @@ def render_reviewer_prompt(
         + MODEL_INTEGRITY_BOUNDARY
         + "\n\n## Reviewer role\n"
         "Judge the objective against real evidence. Bounded work may finish before "
-        "the project. Use `done` for verified completion, `continue` for agent-fixable "
-        "gaps, and `blocked` only for external dependencies. You are strictly read-only. "
+        "the project. Use `done` only for checkable evidence satisfying the current "
+        "scope, `continue` for an agent-fixable in-scope gap, `replan_requested` for a "
+        "new mission, replacement route, or boundary change, and `blocked` only for "
+        "operator/external dependencies. You do not change the work under review: not "
+        "its sources, not its artifacts, not its build. Recording your own verdict "
+        "through a command your vertical gives you for that purpose is the review, not "
+        "a change to it. "
         "Use tools only in proportion to unresolved uncertainty and stop when the "
-        "verdict is determined; do not reread equivalent records or repeat verified "
-        "checks without a contradiction. Externally derived work needs primary-source "
+        "verdict is determined. Externally derived work needs primary-source "
         "grounding and its project implication. Community implementations alone are "
         "insufficient for claim-critical semantics. Return `replan_requested` when missing "
         "grounding may change the mechanism; do not demand new research for local-only work "
@@ -666,10 +700,7 @@ def render_reviewer_prompt(
         "unless code-hot-path and live resource/wait evidence plus phase "
         "timing/profiling or a controlled counterfactual explain a material share of "
         "elapsed time; otherwise request the missing diagnostics.\n"
-        "Use done only for checkable evidence satisfying the current scope; use continue "
-        "for an agent-fixable in-scope gap; use replan_requested for a new mission, "
-        "replacement route, or boundary change; use blocked only for operator/external "
-        "dependencies. A timeout, failed test, oversized benchmark, unavailable optional "
+        "A timeout, failed test, oversized benchmark, unavailable optional "
         "backend, or choice among reversible diagnostics is technical: provide a concrete "
         "NEXT_ACTION with AUTHORITY_IMPACT=technical and do NOT ask the operator. Local "
         "work may be done while PLAN_SIGNAL=reconsider.\n"

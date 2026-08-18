@@ -135,7 +135,7 @@ def test_main_reviewer_never_edits_skills_directly(tmp_path) -> None:
     assert "Reviewer self-evolution" not in control
     assert "Reviewer self-evolution" not in treatment
     assert str((tmp_path / "skills" / "reviewer").resolve()) not in treatment
-    assert "strictly read-only" in treatment
+    assert "You do not change the work under review" in treatment
 
 
 def test_reviewer_protected_resource_evidence_requires_a_traceable_mutation(

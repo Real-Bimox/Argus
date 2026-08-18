@@ -590,6 +590,82 @@ def test_nonterminal_empty_plan_replays_unassessed_current_stage_review(
     )
 
 
+def test_bounded_continuous_campaign_replays_deferred_stage_review(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A bounded staged campaign still traverses stages.
+
+    ``open_ended`` decides whether a Planner ``project_done`` is honoured, not
+    whether stages may advance; gating the replay on it meant no vertical whose
+    completion gate is not ``certified`` could ever leave its first stage. The
+    item carries ``stage_certification="deferred"`` — a Planner node that held
+    the stage rather than closing it — which is precisely the reviewed evidence
+    this replay exists to recover.
+    """
+    supervisor, backend, sink = _make_supervisor(
+        tmp_path,
+        monkeypatch,
+        terminal_stage_done=False,
+        split_memory=True,
+    )
+    supervisor.config.open_ended = False
+    backend.manager_action = "advance"
+    backend.manager_target_stage = "solve"
+    project = Path(supervisor.config.project_worktree)
+    _write_reviewed_math_scope_state(project)
+    item = supervisor.memory.backlog.add(
+        BacklogItem.new(
+            title="Define the mathematical scope",
+            objective="State the admissible conjecture class and completion bar.",
+            tags=["planner", "scope:bounded", "bounded_dag_node"],
+        )
+    )
+    mission_path = create_mission_context(
+        life_dir=supervisor.memory.project_root,
+        mission_id=item.id,
+        stage="scope",
+        objective=item.objective,
+        scope="bounded",
+    )
+    record_reviewed_handoff(
+        mission_context_path=mission_path,
+        round_index=1,
+        engineer_summary="",
+        review=SimpleNamespace(
+            status="done",
+            reason="The scope checklist is satisfied by the current artifacts.",
+            next_action="",
+            operator_question="",
+        ),
+        checkpoint_path=None,
+    )
+    supervisor.memory.backlog.mark_done(
+        item.id,
+        outcome={
+            "execution_status": "completed",
+            "review_status": "done",
+            "stage_certification": "deferred",
+            "interruption_kind": "none",
+            "resumable": False,
+        },
+    )
+
+    assert supervisor._plan_next_work() == PLAN_RETRY
+
+    state = json.loads((project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
+    assert state["current_stage"] == "solve"
+    stored = next(row for row in supervisor.memory.backlog.all() if row.id == item.id)
+    assert stored.outcome["stage_certification"] == "certified"
+    assert any(
+        event.get("type") == "life.manager.stage_decision"
+        and event.get("action") == "advance"
+        and event.get("trigger") == "reviewed_stage_empty_plan_reconciliation"
+        and event.get("recovered_item_id") == item.id
+        for event in sink.events
+    )
+
+
 def test_review_only_item_is_never_replayed_into_stage_writer(
     tmp_path: Path,
     monkeypatch,

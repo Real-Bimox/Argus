@@ -63,7 +63,13 @@ def test_vertical_prompt_keeps_math_routes_inside_builtin_math():
     assert "do not replace them with task-specific aliases" in prompt
     assert "Planner literature/proof/experiment tasks stay inside `math`" in prompt
     assert "not new verticals" in prompt
-    assert len(prompt) <= 7_500
+    # A ratchet, not a model limit. 56a02152 simplified this prompt and pinned a
+    # ceiling so it would not quietly regrow; the number is "a little above
+    # whatever it costs today", and it should be raised only for content that
+    # earns its space. It moved 7_500 -> 8_100 for the three requirement lines
+    # (PRECISE_CONSTRAINTS / EXCLUSIONS / AMBIGUITIES, 544 chars), which carry
+    # the operator's own words into the contract. Keep the headroom small.
+    assert len(prompt) <= 8_100
 
 
 def test_vertical_prompts_do_not_treat_one_paper_reading_as_research_pipeline():

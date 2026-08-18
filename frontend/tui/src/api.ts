@@ -119,6 +119,7 @@ export interface Turn {
   role: string;
   text: string;
   ts?: number;
+  message_id?: string;
 }
 
 export interface ApiOptions {

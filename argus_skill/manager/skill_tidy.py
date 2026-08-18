@@ -15,6 +15,48 @@ _TEAM_ROLES = ("manager", "planner", "engineer", "reviewer")
 _MAX_CANDIDATE_FILES = 8
 _MAX_CANDIDATE_CHARS = 12_000
 
+#: Names from this repository's own verification surface.
+#:
+#: A mission's success verdict is evidence about the work. It is not evidence
+#: about a procedure that operated on the machinery which computed the verdict,
+#: because that procedure's only witness is the thing it altered. Run 13 is the
+#: worked example: an Engineer blocked at a goal gate called
+#: ``complete_final_stage`` directly, the forced completion made the mission
+#: read as success, and the post-mission reviewer -- correctly following its
+#: instruction that a done verdict is verified evidence -- promoted the
+#: technique into the cross-project profile library, where every future
+#: Engineer in every future project would have loaded it. The candidate it
+#: promoted said, in as many words, "before calling ``complete_final_stage``,
+#: ensure ``research/PIPELINE_STATE.json`` in the project state root has a
+#: resolved math objective mode".
+#:
+#: So a candidate naming any of these is withheld from the evidence bundle
+#: rather than argued about, and anything reaching the shared library that
+#: names one is quarantined afterwards. Both, because the reviewer can write
+#: such a skill from the mission result alone without ever seeing a candidate.
+#:
+#: This is a text filter and text filters are evadable: a paraphrase that never
+#: names a symbol passes. It is worth having anyway -- the run-13 candidate did
+#: not paraphrase, because nothing was hiding. An agent that repairs a gate and
+#: writes down how believes it did the right thing, and says so plainly. What
+#: this stops is the honest version travelling silently to every later project.
+#: The evadable version is the host-side receipt problem, which is a different
+#: and larger piece of work.
+_VERIFIER_SURFACE = (
+    "complete_final_stage",
+    "advance_stage",
+    "allow_early_completion",
+    "stage_machine",
+    "stage-certificates.json",
+    "PIPELINE_STATE.json",
+    "vertical_completion_certificate_status",
+    "_staged_goal_completion_issue",
+    "staged_goal_gate_incomplete",
+    "adopt_operator_objective",
+)
+
+_QUARANTINE_DIRNAME = "_uncertified"
+
 _ZERO_SHARED = {
     "to_shared": 0,
     "to_vertical_shared": 0,
@@ -22,7 +64,22 @@ _ZERO_SHARED = {
     "cached": 0,
     "stayed": 0,
     "errors": 0,
+    "quarantined": 0,
 }
+
+
+def names_the_verifier(text: str) -> str:
+    """The first verification-surface name in ``text``, or empty.
+
+    Public because it is the predicate, not an implementation detail: a caller
+    that wants to know whether a piece of writing is certifiable by the verdict
+    of the mission it came from asks this.
+    """
+    haystack = text or ""
+    for marker in _VERIFIER_SURFACE:
+        if marker in haystack:
+            return marker
+    return ""
 
 
 def _emit(on_event: Any, event: dict[str, Any]) -> None:
@@ -80,6 +137,24 @@ def _candidate_evidence(root: Path | None) -> str:
             relative = path.relative_to(root)
         except (OSError, ValueError):
             continue
+        marker = names_the_verifier(text)
+        if marker:
+            # Withheld rather than shown-and-forbidden. A reviewer that reads a
+            # plausible, well-written repair procedure and is then told not to
+            # act on it is being asked to hold a line under argument; one that
+            # never sees it is not. The line is still stated in the prompt, for
+            # the case where the mission result alone is enough to reconstruct
+            # the procedure.
+            rendered.append(
+                f"- {relative.as_posix()}\n"
+                "<withheld_candidate>\n"
+                f"This candidate names {marker!r}, part of the machinery that "
+                "produced this mission's verdict. The verdict cannot certify a "
+                "procedure that acted on it, so the candidate is not evidence "
+                "here and its text is not shown. It stays in the project layer.\n"
+                "</withheld_candidate>"
+            )
+            continue
         excerpt = text[:remaining]
         if not excerpt:
             continue
@@ -116,14 +191,22 @@ def _team_learning_prompt(
         f"Mission result: {mission_result[:2000] or '(not supplied)'}\n\n"
         "Decide whether the mission demonstrated a durable role procedure "
         "that would materially improve later sessions. A successful mission with a "
-        "canonical done verdict verifies only that mission's accepted output, not every "
-        "causal attribution in its summary or candidate Skill. Promote a causal rule "
-        "only when the supplied evidence includes phase attribution/profiling or a "
-        "controlled comparison that supports it; end-to-end correlation is insufficient. "
-        "A project candidate that abstracts task-specific details into a broadly reusable "
-        "procedure may be promoted after that one success when its evidence is sufficient. "
-        "Do not reject it merely because it came from one session, and do not require "
-        "novelty beyond improving future execution. For a failure, write "
+        "canonical done verdict verifies only that mission's accepted output: it is "
+        "verified evidence about the work, not about every causal attribution in its "
+        "summary or candidate Skill, and not about a procedure that acted on the "
+        "machinery which produced the verdict. Promote a causal rule only when the "
+        "supplied evidence includes phase attribution/profiling or a controlled "
+        "comparison that supports it; end-to-end correlation is insufficient. A "
+        "candidate whose procedure edits stage, gate, certificate, objective, or "
+        "pipeline state — or otherwise operates on what a completion check reads — was "
+        "certified by the very thing it altered, and one success says nothing about "
+        "whether it was right. Make no profile edit from such a procedure however well "
+        "it appeared to work, and do not restate it in your own words; say in your "
+        "final message that you saw one and stopped. A project candidate that abstracts "
+        "task-specific details into a broadly reusable procedure may be promoted after "
+        "that one success when its evidence is sufficient. Do not reject it merely "
+        "because it came from one session, and do not require novelty beyond improving "
+        "future execution. For a failure, write "
         "only when the root cause is concretely verified or recent session evidence shows "
         "the same mechanism/assumption failing repeatedly. Capture a reusable detection, "
         "research, stopping, or recovery procedure—not the task-specific outcome. A "
@@ -269,8 +352,12 @@ def propagate_after_mission(
         for path, signature in after.items()
         if path in before and before[path] != signature
     ]
+    quarantined = _quarantine_uncertified(shared, (*created, *updated), on_event)
+    created = [path for path in created if path not in quarantined]
+    updated = [path for path in updated if path not in quarantined]
     counts["to_shared"] = len(created)
     counts["updated"] = len(updated)
+    counts["quarantined"] = len(quarantined)
     counts["stayed"] = int(not created and not updated)
     _emit(on_event, {
         "type": "team.learning.review.completed",
@@ -278,9 +365,67 @@ def propagate_after_mission(
         "mission_success": mission_success,
         "created": len(created),
         "updated": len(updated),
+        "quarantined": len(quarantined),
         "paths": [str(path) for path in (*created, *updated)],
     })
     return counts
 
 
-__all__ = ["propagate_after_mission", "propagate_runtime_skills_to_shared"]
+def _quarantine_uncertified(
+    shared: Path, written: Iterable[Path], on_event: Any
+) -> set[Path]:
+    """Move anything naming the verifier out of the loaded library.
+
+    The withholding in ``_candidate_evidence`` keeps the reviewer from seeing
+    such a procedure; this catches the case where it did not need to. The
+    mission result is in the prompt, and a result that says "unblocked the
+    scope gate by completing the stage against the project state root" carries
+    the whole procedure — a reviewer can write the skill from that alone.
+
+    Moved, not deleted. The destination is outside every role directory, so
+    nothing loads it, and it stays readable: a promotion refused here is a
+    finding about the run, and a finding that deletes its own evidence is not
+    much of one. An operator who reads it and disagrees can move it back.
+    """
+    quarantined: set[Path] = set()
+    for path in written:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        marker = names_the_verifier(text)
+        if not marker:
+            continue
+        destination = shared / _QUARANTINE_DIRNAME / path.name
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            path.replace(destination)
+        except OSError as exc:  # noqa: PERF203 — one failure must not stop the rest
+            log.warning("could not quarantine %s: %s", path, exc)
+            continue
+        quarantined.add(path)
+        _emit(on_event, {
+            "type": "team.learning.promotion.quarantined",
+            "agent_layer": "manager",
+            "path": str(path),
+            "moved_to": str(destination),
+            "marker": marker,
+            "reason": (
+                "a procedure that operates on the completion machinery cannot be "
+                "certified by a verdict that machinery produced"
+            ),
+        })
+        log.warning(
+            "quarantined a promoted Skill naming %r: %s -> %s",
+            marker,
+            path,
+            destination,
+        )
+    return quarantined
+
+
+__all__ = [
+    "names_the_verifier",
+    "propagate_after_mission",
+    "propagate_runtime_skills_to_shared",
+]

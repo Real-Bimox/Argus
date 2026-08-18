@@ -61,6 +61,9 @@ _DECISION_KEYS = (
     "RATIONALE",
     "EXECUTION_TASK",
     "STAGES",
+    "PRECISE_CONSTRAINTS",
+    "EXCLUSIONS",
+    "AMBIGUITIES",
     "LIVE_VIEW_PATHS",
     "LIVE_VIEW_TITLE",
     "LIVE_VIEW_REASON",
@@ -83,6 +86,7 @@ def _decision_fields(raw_text: str) -> dict[str, Any] | None:
         legacy_json_object,
         read_key_values,
         read_list,
+        read_list_semicolon,
         read_optional,
     )
 
@@ -107,6 +111,19 @@ def _decision_fields(raw_text: str) -> dict[str, Any] | None:
             pass
     if "STAGES" in values:
         fields["stages"] = list(read_list(values, "STAGES"))
+    # The three requirement lines. `_stated_requirements` reads them off this
+    # dict and wants real lists, the same shape a volunteered JSON object
+    # supplies, so one reader serves both doors. Absent stays absent: "the
+    # Manager did not answer" and "the Manager answered none" reach the
+    # contract differently, and only the second may clear a standing clause.
+    #
+    # `;` only, not `read_list`'s `;|`. These lines carry the operator's own
+    # words, and `|` is absolute value: run 17 stated the constraint
+    # `sum_{i=1}^5 |z_i|^2 = 5` and the contract recorded three clauses reading
+    # `constraint sum_{i=1}^5`, `z_i` and `^2 = 5`.
+    for key in ("PRECISE_CONSTRAINTS", "EXCLUSIONS", "AMBIGUITIES"):
+        if key in values:
+            fields[key.lower()] = list(read_list_semicolon(values, key))
     paths = read_list(values, "LIVE_VIEW_PATHS")
     if paths:
         fields["live_view"] = {
@@ -259,6 +276,10 @@ class VerticalDecision:
     # not given, it belongs in `ambiguities` — a question for the operator, not
     # a guess.
     precise_constraints: tuple[str, ...] = ()
+    # What the operator ruled out. Kept beside the constraints rather than
+    # folded into them: `render_contract` gives exclusions their own heading,
+    # and "do not do X" read as a requirement is the opposite instruction.
+    exclusions: tuple[str, ...] = ()
     ambiguities: tuple[str, ...] = ()
     # Raw validated Manager response, applied only when the decision commits.
     rendering_response: str = ""
@@ -361,8 +382,10 @@ def parse_fast_vertical_decision(
     )
 
 
-def _stated_requirements(obj: dict) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """The operator-stated constraints and the open questions, as Manager saw them.
+def _stated_requirements(
+    obj: dict,
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    """The operator-stated constraints, exclusions and open questions.
 
     Bounded and de-duplicated but otherwise passed through verbatim. The harness
     must not reword a constraint: the operator's phrasing is the thing that was
@@ -381,7 +404,7 @@ def _stated_requirements(obj: dict) -> tuple[tuple[str, ...], tuple[str, ...]]:
             )
         )[:12]
 
-    return _clean("precise_constraints"), _clean("ambiguities")
+    return _clean("precise_constraints"), _clean("exclusions"), _clean("ambiguities")
 
 
 def parse_research_target_level(
@@ -473,7 +496,7 @@ def parse_vertical_decision(
         )[:100]
         if name != "research":
             target_venue = ""
-        stated, ambiguities = _stated_requirements(obj)
+        stated, exclusions, ambiguities = _stated_requirements(obj)
         if name and name in known:
             adapted_stages: tuple[str, ...] = ()
             raw_stages = obj.get("stages")
@@ -512,6 +535,7 @@ def parse_vertical_decision(
                 research_target_level=target_level,
                 target_venue=target_venue,
                 precise_constraints=stated,
+                exclusions=exclusions,
                 ambiguities=ambiguities,
             )
         return None
@@ -523,7 +547,7 @@ def parse_vertical_decision(
         )
         if proposal is None:
             return None
-        stated, ambiguities = _stated_requirements(obj)
+        stated, exclusions, ambiguities = _stated_requirements(obj)
         return VerticalDecision(
             choice="new",
             vertical=proposal.name,
@@ -534,6 +558,7 @@ def parse_vertical_decision(
             live_view_decided=live_view_decided,
             execution_task=execution_task,
             precise_constraints=stated,
+            exclusions=exclusions,
             ambiguities=ambiguities,
         )
     return None

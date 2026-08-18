@@ -274,9 +274,11 @@ class Reviewer:
             )
         parsed = _find_decision_in_messages(result.agent_messages)
         if parsed is None:
+            from ._parsing import describe_unparsed_verdict
+
             return ReviewDecision(
                 status="continue",
-                reason="Reviewer output did not contain a valid named verdict footer.",
+                reason=describe_unparsed_verdict(result.agent_messages),
                 next_action=(
                     "Continue implementation and end the next review with STATUS, "
                     "REASON, NEXT_ACTION, and the remaining named verdict fields."

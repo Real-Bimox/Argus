@@ -441,8 +441,13 @@ class PlanningCycleMixin(
             if (
                 item.status != "done"
                 or self._item_skips_stage_transition(item)
+                # ``deferred`` is a Planner node that held the stage instead of
+                # closing it — exactly the reviewed evidence this replay exists
+                # to recover. ``intentionally_skipped`` stays excluded: there
+                # the stage writer was suppressed on purpose and the verdict is
+                # not the campaign's to reuse.
                 or str(outcome.get("stage_certification") or "")
-                != "not_assessed"
+                not in {"not_assessed", "deferred"}
             ):
                 continue
             handoff_root = handoff_base / "handoffs" / item.id
@@ -492,8 +497,21 @@ class PlanningCycleMixin(
         return None
 
     def _reconcile_reviewed_stage_empty_plan(self, verdict: Any) -> str:
-        """Replay real current-stage review evidence to the Manager after upgrade."""
-        if not getattr(self.config, "open_ended", False):
+        """Replay real current-stage review evidence to the Manager.
+
+        Gated on ``continuous``, not ``open_ended``. ``open_ended`` answers a
+        different question — whether a Planner ``project_done`` should be
+        honoured or ignored — and using it here made stage traversal a
+        privilege of never-finishing campaigns. A bounded staged campaign is
+        still continuous (see ``front_door``'s ``inferred_continuous``): its
+        Planner keeps cycling, so "not done, and no task left to propose" is
+        exactly the campaign-level moment when this stage's planned work has
+        drained and the Manager should be asked. Without this, a vertical whose
+        completion gate is not ``certified`` — 26 of the 28 shipped ones —
+        could never leave its first stage, because the only other route is a
+        per-mission ``stage_closing`` contract that the Host downgrades away.
+        """
+        if not getattr(self.config, "continuous", False):
             return ""
         recovered = self._latest_unassessed_review_for_current_stage()
         if recovered is None:
@@ -509,7 +527,9 @@ class PlanningCycleMixin(
             planner_verdict=None,
             project_root=root,
             on_event=getattr(self.sink, "handle_event", None),
-            open_ended=True,
+            # The real value, not a literal: a bounded campaign reaching this
+            # path must not be described to the Manager as open-ended.
+            open_ended=bool(getattr(self.config, "open_ended", False)),
             continuous_objective=self.config.continuous_objective,
             mission_scope=mission_scope,
         )

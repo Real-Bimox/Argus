@@ -406,6 +406,45 @@ def _parse_named_verdict(text: str) -> ReviewDecision | None:
     )
 
 
+def describe_unparsed_verdict(messages: list[str]) -> str:
+    """Say what was wrong with an unreadable verdict, in the operator's terms.
+
+    ``_find_decision_in_messages`` returns ``None`` for three unrelated
+    failures — no ``STATUS`` line, a ``STATUS`` outside the allowed set, and a
+    verdict with no rationale — and the caller reported all three as "did not
+    contain a valid named verdict footer". In testbed run 15 (``s-f0dbba19``)
+    that sentence was printed against a reply whose footer was entirely there:
+    eighteen named fields parsed, and only ``STATUS`` was missed, because the
+    model had welded it to the end of the preceding sentence. The operator was
+    told to ask for something they had already been given.
+
+    The welding itself is handled upstream now, in
+    :func:`argus_skill.core.role_reply._split_glued_keys`. This is for whatever
+    the next unreadable reply turns out to be.
+    """
+    from ..core.role_reply import read_block, read_key_values
+
+    text = "\n".join(str(m or "") for m in messages).strip()
+    if not text:
+        return "Reviewer produced no output to read a verdict from."
+    values = read_key_values(text, _VERDICT_KEYS)
+    status = str(values.get("STATUS") or "").strip().lower()
+    if not status:
+        seen = ", ".join(sorted(values)) or "none"
+        return (
+            "Reviewer output had no readable STATUS line "
+            f"(named fields that did parse: {seen})."
+        )
+    if status not in _STATUSES:
+        return (
+            f"Reviewer STATUS={status!r} is not one of "
+            f"{', '.join(sorted(_STATUSES))}."
+        )
+    if not read_block(text, "REASON", _VERDICT_KEYS).strip():
+        return f"Reviewer STATUS={status} carried no REASON; a verdict needs one."
+    return "Reviewer output did not contain a valid named verdict footer."
+
+
 def _find_decision_in_messages(
     messages: list[str],
     *,
@@ -421,4 +460,8 @@ def _find_decision_in_messages(
     return None
 
 
-__all__ = ["_find_decision_in_messages", "parse_decision_text"]
+__all__ = [
+    "_find_decision_in_messages",
+    "describe_unparsed_verdict",
+    "parse_decision_text",
+]

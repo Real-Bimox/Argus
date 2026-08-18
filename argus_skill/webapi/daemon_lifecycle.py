@@ -32,6 +32,7 @@ from ..core.session import (
 from ..daemon.life_worker import (
     LifeWorkerConfig,
     _acquire_daemon_spawn_lock,
+    _launcher_failure_message,
     _release_daemon_spawn_lock,
     _workspace_start_error,
 )
@@ -363,7 +364,19 @@ def start_project_daemon(
     if startup_recovery_diagnostic:
         result["startup_retried"] = True
     if rc == 3:
-        result["error"] = _workspace_start_error(config) or (
+        # ``startup_diagnostic`` first, because rc=3 is an admission refusal and
+        # the refusal itself names what is holding the directory — the owning
+        # pid, its session and project, and the three ways out. The generic
+        # strings below say only that *something* owns it, which is the half of
+        # the answer the operator cannot act on. ``_launcher_failure_message``
+        # keeps a framework-formatted refusal whole rather than collapsing it to
+        # its last line, which for the lease message left "- or start this
+        # objective in a different directory" and nothing else.
+        result["error"] = (
+            _launcher_failure_message(startup_diagnostic, rc)
+            if startup_diagnostic
+            else ""
+        ) or _workspace_start_error(config) or (
             "workdir changed or is already owned by another active session"
         )
         log.error(

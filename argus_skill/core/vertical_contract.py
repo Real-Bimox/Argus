@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 VERTICAL_CONTRACT_VERSION = 1
 _COMPLETION_GATES = frozenset({"none", "metric", "certified"})
@@ -18,6 +18,32 @@ _MISSION_KINDS = frozenset({"custom", "optimize", "research", "software"})
 
 class VerticalContractError(ValueError):
     """A vertical is present but does not implement the framework contract."""
+
+
+class MissionPrelude(Protocol):
+    """What a vertical's ``prepare_mission`` has to accept.
+
+    Written as a Protocol rather than a ``Callable[...]`` alias because the
+    argument *names* are the contract now: this hook is forwarded by keyword
+    (see ``VerticalContract.prepare_mission``), so a provider that renames a
+    parameter is a broken provider, and a bare ``Callable[..., str]`` would say
+    nothing about which names it must use.
+
+    ``mission`` is the backlog item this prelude is being built for --
+    ``life.memory.BacklogItem``, annotated loosely because ``core`` is the layer
+    underneath ``life`` and must not acquire an upward import for a value it
+    only forwards. Verticals sit above both and are free to import the real
+    type; ``verticals/math/context_projection.py`` does.
+    """
+
+    def __call__(
+        self,
+        *,
+        stage: str,
+        project_root: Path,
+        state_root: Path,
+        mission: Any,
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -52,12 +78,21 @@ class VerticalContract:
     checklist_optional_stages: frozenset[str] = frozenset()
     stage_aliases: dict[str, str] | None = None
     search_altitude: Callable[[object], str] | None = None
-    mission_prelude: Callable[[str, Path, Path], str] | None = None
+    mission_prelude: MissionPrelude | None = None
     library_preparer: Callable[[VerticalLibraryContext], None] | None = None
     stage_completion_validator: Callable[[str, Path], object] | None = None
     planner_task_validator: Callable[[str, Path, Any], object] | None = None
+    # Optional: records the operator's stated objective at project setup, for a
+    # vertical that cannot pick a completion bar on its own. See
+    # ``adopt_operator_objective``.
+    operator_objective_adopter: Callable[[Path, str], object] | None = None
     stage_checks: dict[str, tuple[tuple[str, str], ...]] | None = None
     stage_primary_deliverables: dict[str, tuple[str, ...]] | None = None
+    # Stages whose Engineer round runs with live web search enabled. ``None``
+    # means "this vertical declares nothing", which is NOT the same as an
+    # explicitly declared empty set ("never search"): the former keeps the
+    # framework default, the latter overrides it off.
+    engineer_live_search_stages: frozenset[str] | None = None
 
     @property
     def assurance_level(self) -> str:
@@ -85,6 +120,19 @@ class VerticalContract:
 
     def primary_deliverables(self, stage: str) -> tuple[str, ...]:
         return tuple((self.stage_primary_deliverables or {}).get(stage, ()))
+
+    def live_search_stages(self, default: frozenset[str]) -> frozenset[str]:
+        """Stages in which THIS vertical's Engineer runs with live web search.
+
+        Core owns ``default`` and never enumerates vertical stage names: a
+        vertical whose pipeline has no research stage would otherwise never
+        reach a live-search stage at all. Stage names are vertical-local, so
+        each vertical declares its own set and two verticals sharing a stage
+        name (``review``) never leak into each other.
+        """
+        if self.engineer_live_search_stages is None:
+            return default
+        return self.engineer_live_search_stages
 
     def completion_issues(self, stage: str, project_root: Path) -> tuple[str, ...]:
         if self.stage_completion_validator is None:
@@ -116,16 +164,86 @@ class VerticalContract:
             if str(issue).strip()
         )
 
+    def adopt_operator_objective(self, project_root: Path, request: str) -> bool:
+        """Let the vertical record the operator's stated objective, if it wants one.
+
+        Most verticals declare no adopter and this is a no-op. It exists for a
+        vertical whose completion rule depends on a choice that cannot be
+        guessed from the request alone — ``math`` has two opposite bars
+        (``targeted`` vs ``exploratory``) and refuses every stage until one is
+        selected. Without a hook the only way to select it was a host CLI, so
+        the vertical was unusable through the product: a math project created
+        through the real front door could not close a single stage.
+
+        Core deliberately does not learn what the choice *is*. It hands the
+        vertical the operator's own request text at the one moment that text is
+        known and the project is being set up, and the vertical decides whether
+        the text says anything it can use. Returns whether an adopter ran at
+        all, not whether it wrote anything — an adopter that correctly declines
+        to overwrite an existing choice is not a failure.
+        """
+        if self.operator_objective_adopter is None:
+            return False
+        self.operator_objective_adopter(project_root, str(request or ""))
+        return True
+
     def prepare_mission(
         self,
         *,
         stage: str,
         project_root: Path,
         state_root: Path,
+        mission: Any,
     ) -> str:
+        """Text a vertical wants prepended to *this* mission's instruction.
+
+        ``mission`` is the claimed backlog item. Without it every mission in a
+        stage receives a byte-identical block, so a vertical can only say
+        things about the stage -- which is the same as saying them once in a
+        role banner. It is what lets a vertical answer "what does this
+        particular task need to know".
+
+        Forwarded by keyword, not positionally, which makes the parameter
+        *names* part of the contract. The alternative -- appending ``mission``
+        positionally, so a three-argument provider fails on arity instead --
+        was considered and rejected: positional forwarding lets a provider that
+        merely *reorders* its parameters take ``stage`` where it meant
+        ``project_root``, silently, both being plausible strings, and that is a
+        wrong answer rather than a failure. Keyword forwarding closes it.
+
+        Be clear about what the price of that is, because it is steeper than
+        "an error message". This hook is called unguarded from
+        ``life/supervisor/_mission_execution_runtime.py``; a ``TypeError``
+        here propagates through ``_run_one`` and ``tick`` to ``run``, which
+        fails the item, emits ``life.supervisor.error``, sets ``stopped_by =
+        "supervisor_error"`` and **breaks the run loop**. So a stale
+        out-of-tree provider does not degrade a project, it halts it, on every
+        restart, from the first mission. That is still the better trade than
+        the alternatives -- the failure is immediate, deterministic, and its
+        message names the argument to add, whereas a vertical quietly demoted
+        to stage-blind emits nothing at all and stays wrong for the life of the
+        project -- but a reader weighing a change here should weigh the real
+        cost, not a rhetorical one.
+
+        This is deliberately *not* softened by inspecting the provider's
+        signature and only passing ``mission`` when it is accepted. That would
+        keep stale providers running at the price of making them permanently
+        and invisibly stage-blind, which is the failure mode with no error
+        message and no end.
+
+        One inconsistency to know about, pre-existing and left alone: a
+        provider that returns a non-``str`` is dropped silently by the last
+        line here, while one that raises takes the run down. Two malformed
+        providers, two opposite blast radii.
+        """
         if self.mission_prelude is None:
             return ""
-        value = self.mission_prelude(stage, project_root, state_root)
+        value = self.mission_prelude(
+            stage=stage,
+            project_root=project_root,
+            state_root=state_root,
+            mission=mission,
+        )
         return value if isinstance(value, str) else ""
 
 
@@ -229,6 +347,13 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         raise VerticalContractError(
             f"vertical {name!r} has a non-callable planner task validator"
         )
+    operator_objective_adopter = getattr(provider, "adopt_operator_objective", None)
+    if operator_objective_adopter is not None and not callable(
+        operator_objective_adopter
+    ):
+        raise VerticalContractError(
+            f"vertical {name!r} has a non-callable operator objective adopter"
+        )
     raw_stage_checks = getattr(provider, "STAGE_CHECKS", {}) or {}
     if not isinstance(raw_stage_checks, dict):
         raise VerticalContractError(f"vertical {name!r} stage checks are not a mapping")
@@ -284,6 +409,38 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         )
         for stage, values in raw_primary_deliverables.items()
     }
+    raw_live_search_stages = getattr(provider, "ENGINEER_LIVE_SEARCH_STAGES", None)
+    engineer_live_search_stages: frozenset[str] | None = None
+    if raw_live_search_stages is not None:
+        # Declared-empty ("never search") and absent ("use the caller's
+        # baseline") are different answers, so nothing here may silently DROP an
+        # element: a stray blank string would otherwise turn a typo into a
+        # permanent, unreported "live search off".
+        if isinstance(raw_live_search_stages, str) or not isinstance(
+            raw_live_search_stages, (list, tuple, set, frozenset)
+        ):
+            raise VerticalContractError(
+                f"vertical {name!r} live search stages are not a collection of stages"
+            )
+        declared: set[str] = set()
+        for stage in raw_live_search_stages:
+            if not isinstance(stage, str):
+                raise VerticalContractError(
+                    f"vertical {name!r} live search stage {stage!r} is not a string"
+                )
+            normalized = stage.strip().lower()
+            if not normalized:
+                raise VerticalContractError(
+                    f"vertical {name!r} declares a blank live search stage"
+                )
+            declared.add(normalized)
+        engineer_live_search_stages = frozenset(declared)
+        unknown_live_search = sorted(engineer_live_search_stages - set(stage_order))
+        if unknown_live_search:
+            raise VerticalContractError(
+                f"vertical {name!r} declares live search for unknown stages: "
+                f"{', '.join(unknown_live_search)}"
+            )
     return VerticalContract(
         name=str(name or "").strip().lower(),
         stage_order=stage_order,
@@ -330,13 +487,16 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         ),
         stage_completion_validator=stage_completion_validator,
         planner_task_validator=planner_task_validator,
+        operator_objective_adopter=operator_objective_adopter,
         stage_checks=stage_checks,
         stage_primary_deliverables=stage_primary_deliverables,
+        engineer_live_search_stages=engineer_live_search_stages,
     )
 
 
 __all__ = [
     "VERTICAL_CONTRACT_VERSION",
+    "MissionPrelude",
     "VerticalContract",
     "VerticalContractError",
     "VerticalLibraryContext",

@@ -131,10 +131,19 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
     Idempotent over an ACTIVE campaign: when a task record already exists and a
     teammate is mid-flight or waiting on it (``claimed``/``running``/``blocked``), its
     ownership/liveness fields are PRESERVED and only the static spec fields
-    (title/objective/target/priority/...) are refreshed. Re-running ``form`` on a
-    live fleet therefore never de-owns a task a Curator teammate is working —
-    which would otherwise defeat the pool's double-spawn guard. Takes the board
-    lock so the read-merge can't race a concurrent claim/heartbeat/reassign.
+    (title/objective/acceptance_check/target/priority/...) are refreshed.
+    Re-running ``form`` on a live fleet therefore never de-owns a task a Curator
+    teammate is working — which would otherwise defeat the pool's double-spawn
+    guard. Takes the board lock so the read-merge can't race a concurrent
+    claim/heartbeat/reassign.
+
+    The record is rebuilt field by field rather than copied from the spec, and
+    what that buys is lifecycle integrity: ``state``, ``owner``, ``claim_ts``,
+    ``heartbeat_ts`` and ``attempts`` belong to the board and to the Curator, so
+    a spec that sets them is ignored rather than trusted. It is not a schema
+    guard on the descriptive half of the record — the fields above are simply the
+    ones the lead had a way to say. Widening that half is admissible; widening it
+    to anything the board itself acts on is not.
     """
     with _store.locked(_lock(root)):
         for spec in tasks:
@@ -143,6 +152,19 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
                 "task_id": tid,
                 "title": spec.get("title", ""),
                 "objective": spec.get("objective", ""),
+                # This task's done condition, carried verbatim and never read
+                # here. Every other mission in this runtime has one — the
+                # Planner writes it, the Manager's DAG carries it, the
+                # supervisor puts it in front of the Reviewer — and a board task
+                # was the single mission shape with no way to state one. It is
+                # the field a per-mission hook consults first
+                # (``verticals._base.vertical_mission_prelude`` is handed this
+                # record as the mission), so with no slot for it, a dispatched
+                # teammate could only be briefed off prose meant for a human.
+                # The board neither parses nor matches on the string: what a
+                # well-formed one says is the vertical's business, and stays
+                # there.
+                "acceptance_check": str(spec.get("acceptance_check", "") or ""),
                 # The target this task contributes to. Several tasks (breadth + depth
                 # re-forms) can share one target, so the leaderboard aggregates by
                 # target, not task_id. Defaults to task_id.

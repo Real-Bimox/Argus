@@ -415,6 +415,16 @@ def build_vertical_decision_prompt(
         "EXECUTION_TASK=<complete standalone objective>\n"
         "RATIONALE=<why no existing vertical fits + what you found>\n"
         "CONFIDENCE=<0.0-1.0>\n"
+        "Both shapes also take these three lines, `;`-separated, each item in "
+        "the operator's own words:\n"
+        "PRECISE_CONSTRAINTS=<mechanically checkable requirements the operator "
+        "stated — a number, a baseline, a budget, a named tool — or none>\n"
+        "EXCLUSIONS=<what the operator ruled out, or none>\n"
+        "AMBIGUITIES=<what the request leaves open where a wrong guess would "
+        "waste the project, or none>\n"
+        "Never invent a constraint: one nobody asked for becomes a goal nobody "
+        "agreed to. Where a number is clearly needed but was not given, that is "
+        "an ambiguity, not a guess.\n"
     )
 
 
@@ -1019,9 +1029,12 @@ def build_stage_decision_prompt(
         "- HOLD when any checklist work remains, or the evidence is weak/unclear.\n"
         "- ROLL BACK only when an EARLIER stage's evidence is missing, stale, or "
         "unreliable (say which one and why).\n"
-        "- For a finite objective, COMPLETE at the current stage when its checklist "
-        "is certified, the operator objective is satisfied, and every later stage "
-        "is inapplicable. For an open-ended campaign, do not COMPLETE. Reviewer "
+        "- For a finite objective whose current stage is the LAST one, COMPLETE "
+        "when its checklist is certified and the operator objective is "
+        "satisfied. From any earlier stage, ADVANCE instead, however finished "
+        "the objective looks: completion is only legal at the last stage, and "
+        "the harness steps one stage per turn with each gate running on the way "
+        "past. For an open-ended campaign, do not COMPLETE. Reviewer "
         "certification is evidence, not an automatic completion decision.\n"
         "- Stage names recorded in `research/GROUND_TRUTH.md` are dated "
         "observations, not live stage invariants. A legal pipeline transition "
@@ -1032,7 +1045,23 @@ def build_stage_decision_prompt(
         "Explain your reasoning however is clearest, then state the verdict on "
         "these lines at the end. Only these lines are read:\n"
         f"{response_schema}"
-        "For HOLD, set TARGET_STAGE to the current stage."
+        # The policy bullet above says to COMPLETE *at the current stage*, but
+        # that reads as guidance about WHEN to complete; this line is the format
+        # contract, and it used to pin TARGET_STAGE for HOLD only. So a Manager
+        # that correctly decided to complete would fill TARGET_STAGE with the
+        # stage it considered the objective completed *through*, and
+        # ``parse_stage_decision`` silently downgraded the verdict to HOLD with
+        # ``illegal_complete_target``. Testbed runs 11 and 12 both did exactly
+        # that: ``ACTION=complete`` / ``TARGET_STAGE=review`` against
+        # ``current_stage=scope``, so the stage never advanced in either run
+        # even though both campaigns completed and delivered.
+        #
+        # Pinning it here then produced run 15, which obeyed the instruction and
+        # was refused for completing from a non-final stage. Both shapes are now
+        # executed as a one-step advance, so neither the obedient nor the
+        # improvising Manager loses its verdict; this line only keeps the trace
+        # exact.
+        "For HOLD and for COMPLETE, set TARGET_STAGE to the current stage."
     )
 
 

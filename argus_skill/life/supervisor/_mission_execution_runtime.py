@@ -89,18 +89,15 @@ class MissionExecutionRuntimeMixin:
         if "framework_maintenance" not in {
             str(tag or "").strip().lower() for tag in item.tags
         }:
-            from ...skills.vertical_select import resolve_vertical
-            from ...verticals._base import load_vertical_contract
+            from ...verticals._base import vertical_mission_prelude
 
             vertical_state_root = Path(self._artifact_root())
-            contract = load_vertical_contract(
-                resolve_vertical(vertical_state_root),
-                project_root=vertical_state_root,
-            )
-            block = contract.prepare_mission(
-                stage=state.pipeline_stage_at_start,
+            block = vertical_mission_prelude(
+                vertical_root=vertical_state_root,
                 project_root=resolved_mission_workdir,
                 state_root=self.memory.root,
+                stage=state.pipeline_stage_at_start,
+                mission=item,
             )
             if block:
                 state.prelude = (

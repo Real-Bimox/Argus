@@ -55,6 +55,7 @@ from ._life_worker_admission import (  # noqa: F401 — re-exported, see __all__
     _active_daemon_count,
     _active_workspace_owner,
     _daemon_global_root,
+    _launcher_failure_message,
     _max_active_daemons,
     _release_daemon_spawn_lock,
     _release_daemon_workspace_lease,

@@ -406,6 +406,11 @@ If you are an agent enthusiast, deploy Argus locally and make the complete loop 
 
 A Vertical gives your field its own stages, Skills, datasets, tools, evidence expectations, evaluation methods, and completion criteria. Planning and review can then follow the real standards of your domain instead of a generic process.
 
+The `math` vertical is the worked example: three stages, a content-addressed
+evidence store, Lean-backed mechanical verification, and an explicit rule for
+which kind of check is allowed to settle which kind of question. See
+**[mathematical research](docs/research-mathematics.md)**.
+
 ### Use another agent as the outer layer
 
 GitHub Copilot, Pi, Codex, Claude Code, OpenCode, Grok Build, OpenClaw, or Hermes can be the environment from which you invoke Argus, inspect its state, operate its local CLI or Web/API surface, and continue improving the deployment.

@@ -380,6 +380,8 @@ export ARGUS_SKILL_AUTONOMY_MODE=autonomous
 
 Vertical 可以为你的领域提供专属阶段、Skill、数据集、工具、证据要求、评测方法与完成标准。规划与审查将遵循该领域真正重要的规范，而不是一套通用流程。
 
+`math` vertical 是已实现的完整范例：三阶段流程、内容寻址的证据库、Lean 机械验证，以及"哪一类检查才有资格判定哪一类问题"的明确规则。详见 **[mathematical research](docs/research-mathematics.md)**（英文）。
+
 ### 让其他 Agent 成为外层入口
 
 你可以通过 GitHub Copilot、Pi、Codex、Claude Code、OpenCode、Grok Build、OpenClaw 或 Hermes 调用 Argus、检查状态、操作本地 CLI 或 Web/API，并继续迭代自己的部署。

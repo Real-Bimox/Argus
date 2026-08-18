@@ -43,14 +43,14 @@ class PlanningContextMixin:
 
     def _planner_task_tags(self, task: Any) -> list[str]:
         scope = self._normalize_planner_scope(getattr(task, "scope", ""))
-        if scope == PLANNER_SCOPE_FINAL_SUBMISSION and not self._effective_final_certification_gate(
+        if scope == PLANNER_SCOPE_FINAL_SUBMISSION and not self._final_submission_scope_applies(
             self._artifact_root()
         ):
-            # ``final_submission`` is a paper-only transport scope. A Planner
-            # may still choose it for another vertical's terminal review task,
-            # but persisting that tag makes ``tick()`` retire the task as stale
-            # and re-plan it forever. Normalize at the enqueue boundary; the
-            # old skip path remains as migration support for persisted rows.
+            # ``final_submission`` is a terminal-gate transport scope. A Planner
+            # may still choose it for a vertical that has no terminal gate at
+            # all, and persisting that tag makes ``tick()`` retire the task as
+            # stale and re-plan it forever. Normalize at the enqueue boundary;
+            # the old skip path remains as migration support for persisted rows.
             scope = PLANNER_SCOPE_BOUNDED
         tags = ["planner", f"scope:{scope}"]
         if scope == PLANNER_SCOPE_BOUNDED:
@@ -355,24 +355,79 @@ class PlanningContextMixin:
         """
         if not self.config.final_certification_gate:
             return False
-        from ...skills.vertical_select import (
-            VerticalResolutionError,
-            resolve_vertical,
-        )
+        from ...skills.vertical_select import resolve_vertical_if_decided
         from ...verticals._base import load_vertical_contract
 
-        try:
-            vertical = resolve_vertical(workdir)
-        except VerticalResolutionError:
-            # The Manager has not decided + persisted the vertical yet. An
-            # undecided mission is definitionally not at its final-submission
-            # gate, so the gate does not apply (keep running); it is NOT a silent
-            # default to research — resolve_vertical still raised loudly, we just
-            # treat "no vertical yet" as "gate not satisfied" for THIS check.
+        vertical = resolve_vertical_if_decided(workdir)
+        if vertical is None:
+            # The Manager has not decided + persisted a vertical on this root.
+            # An undecided mission is definitionally not at its final-submission
+            # gate, so the gate does not apply and the project keeps running.
+            #
+            # This asks ``resolve_vertical_if_decided`` rather than
+            # ``resolve_vertical`` because the latter does not raise for an
+            # undecided project — it logs and answers ``research``, whose
+            # completion gate is ``certified``. Reading that fallback here would
+            # turn "nobody has decided yet" into "the paper gate applies",
+            # which is exactly backwards, and would do it silently. Today every
+            # production caller passes a state root that does carry the
+            # decision, and ``config.final_certification_gate`` is itself
+            # computed from a persisted certified vertical, so the fallback was
+            # masked twice over rather than being safe.
             return False
         return load_vertical_contract(
             vertical, project_root=workdir
         ).completion_gate == "certified"
+
+    def _final_submission_scope_applies(self, workdir: object) -> bool:
+        """Whether ``scope:final_submission`` can ever be satisfied here.
+
+        Two gates consume that scope, and each is keyed on a different part of
+        the vertical contract:
+
+        * ``_journal_has_final_certification`` guards the full-paper pipeline
+          and reads ``completion_gate == "certified"``.
+        * ``_research_project_done_issue`` guards a persisted research target
+          and reads a non-empty ``research_target_levels``.
+
+        Both are cleared by exactly one artifact — the journal entry
+        ``_mission_execution_settlement`` writes for a succeeded mission whose
+        ``item_scope`` is ``final_submission``. Keying the enqueue-time
+        downgrade on the *first* gate alone therefore stranded every vertical
+        that declares research targets without a certified completion gate:
+        ``math`` and ``materials`` demand a scope the enqueue boundary refuses
+        to persist, so no project in either could reach ``project_done``.
+        Testbed runs 8, 9 and 10 all died here — once fixes #45 and #46 landed
+        the Planner did emit ``TASK_SCOPE=final_submission``, and the item was
+        still enqueued as ``scope:bounded``.
+
+        The bounded verticals this downgrade was written to protect
+        (``software``, a ``perf_tuning`` data domain, and friends) declare
+        neither, so they still normalize to ``bounded`` exactly as before.
+
+        The research-target arm reads the Manager-*decided* vertical only, with
+        no compatibility fallback. ``resolve_vertical`` answers ``research`` for
+        an undecided project, and a stale default ``research`` state inferring
+        its way into a paper-final task is the precise accident this downgrade
+        exists to prevent. An undecided project is therefore already covered by
+        the certification-gate arm above, on the same fallback, and does not
+        need a second inferred route in.
+        """
+        if self._effective_final_certification_gate(workdir):
+            return True
+        from ...core.research_contract import research_target_contract
+        from ...skills.vertical_select import resolve_vertical_if_decided
+        from ...verticals._base import load_vertical_contract
+
+        vertical = resolve_vertical_if_decided(workdir)
+        if vertical is None:
+            return False
+        return research_target_contract(
+            supported_levels=load_vertical_contract(
+                vertical, project_root=workdir
+            ).research_target_levels,
+            selected_level=None,
+        ).required
 
     def _final_submission_signature(self) -> str:
         from ..terminal_state import build_project_state_signature
@@ -802,12 +857,29 @@ class PlanningContextMixin:
         if state is None:
             return ""
         diagnostic = str(state.get("diagnostic") or "")
+        # Both diagnostics are satisfied by exactly one thing, and it is the
+        # same thing: ``_mission_execution_settlement`` writes the certified
+        # journal entry these gates read only for a mission that succeeded,
+        # carried ``item_scope == final_submission``, and was certified by the
+        # Reviewer. ``research_target_incomplete`` used to fall through to the
+        # "harness does not prescribe a task" branch — telling the Planner to
+        # use its judgement about a gate that accepts one prescribed action and
+        # nothing else. Testbed run 8 (s-fed750c2) burned four missions
+        # guessing, each independently reviewed ``done`` and each rejected;
+        # run 9 (s-1828745c) answered instead by escalating into
+        # self-maintenance and patching the Planner's own source.
+        prescribes_final_submission = diagnostic in {
+            "final_certification_missing",
+            "research_target_incomplete",
+        }
         task_instruction = (
             "The missing invariant is final independent certification. Author the "
             "next executable certification task with "
             "`TASK_SCOPE=final_submission`, so its successful Reviewer verdict can "
-            "be recorded as project-final evidence."
-            if diagnostic == "final_certification_missing"
+            "be recorded as project-final evidence. A task left at the default "
+            "bounded scope cannot satisfy this gate, however complete the work "
+            "behind it already is."
+            if prescribes_final_submission
             else (
                 "You decide which tasks, if any, are appropriate; the harness does "
                 "not prescribe a repair or delivery task."
