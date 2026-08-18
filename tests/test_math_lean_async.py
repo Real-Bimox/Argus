@@ -685,7 +685,7 @@ def test_reclaim_writes_the_certificate_and_the_ledger_evidence(
     capsys,
 ) -> None:
     """``--claim`` is given once, at submit, and honoured once, at reclaim."""
-    from argus_skill.research_math import load_state
+    from argus_skill.proof_ledger import load_state
 
     lean_bin = _instant_lean(tmp_path)
 
@@ -723,7 +723,7 @@ def test_a_reclaim_refused_for_drift_records_nothing_in_the_claim_ledger(
     capsys,
 ) -> None:
     """The refusal has to reach the ledger, not only the artifact directory."""
-    from argus_skill.research_math import load_state
+    from argus_skill.proof_ledger import load_state
 
     root = _project(tmp_path / "p")
     source, fidelity = _formalized(root)

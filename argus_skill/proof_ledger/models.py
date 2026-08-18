@@ -40,7 +40,7 @@ back. ``RetiredAssumption`` and the history walk in ``store.MathState`` close
 that path, because it is the direction with a motive behind it.
 
 Nothing here imports anything from Argus. That is checked mechanically by
-``tests/research_math/test_research_math_kernel.py``; the package is meant to
+``tests/proof_ledger/test_proof_ledger_kernel.py``; the package is meant to
 be liftable into its own repository unchanged.
 """
 from __future__ import annotations

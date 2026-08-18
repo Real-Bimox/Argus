@@ -508,7 +508,7 @@ def test_the_refutation_line_names_a_channel_that_exists() -> None:
     verbatim into "to refuted: mechanical or computational evidence may say
     this is false", which is a role's answer to "how do I kill this claim".
     """
-    from argus_skill.research_math.assessment import PRODUCIBLE_TIERS, REFUTING_TIERS
+    from argus_skill.proof_ledger.assessment import PRODUCIBLE_TIERS, REFUTING_TIERS
     from argus_skill.verticals.math.context_projection import _reachable_tiers
 
     rendered = _reachable_tiers(REFUTING_TIERS)
@@ -524,7 +524,7 @@ def test_the_refutation_line_names_a_channel_that_exists() -> None:
 
 
 def test_a_fully_reachable_set_renders_plainly() -> None:
-    from argus_skill.research_math.assessment import KERNEL_TIERS
+    from argus_skill.proof_ledger.assessment import KERNEL_TIERS
     from argus_skill.verticals.math.context_projection import _reachable_tiers
 
     assert _reachable_tiers(KERNEL_TIERS) == "mechanical"
@@ -536,8 +536,8 @@ def test_producible_tiers_matches_the_documented_producers() -> None:
     ``PRODUCIBLE_TIERS`` is hand-maintained; this pins it to the module whose
     docstring is the record of which producers exist.
     """
-    from argus_skill.research_math.assessment import PRODUCIBLE_TIERS
-    from argus_skill.research_math.models import EvidenceTier
+    from argus_skill.proof_ledger.assessment import PRODUCIBLE_TIERS
+    from argus_skill.proof_ledger.models import EvidenceTier
 
     assert EvidenceTier.COMPUTATIONAL not in PRODUCIBLE_TIERS
     assert EvidenceTier.MECHANICAL in PRODUCIBLE_TIERS

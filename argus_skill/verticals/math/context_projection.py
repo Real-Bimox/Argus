@@ -45,7 +45,7 @@ aimed at a projector bug points an autonomous agent at a healthy
 ``MATH_STATE.json``.
 
 This module is an adapter and lives on the vertical side deliberately.
-``argus_skill/research_math/`` imports nothing from Argus so it can be lifted
+``argus_skill/proof_ledger/`` imports nothing from Argus so it can be lifted
 out; a projector that reads ``BacklogItem`` is exactly the Argus-shaped code
 that would stop it.
 """
@@ -56,7 +56,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ...research_math import (
+from ...proof_ledger import (
     DISCHARGING_TIERS,
     KERNEL_TIERS,
     REFUTING_TIERS,
@@ -237,7 +237,7 @@ def project_mission_context(*, project_root: Path | str, mission: Any) -> str:
 def _scrub(text: str, project_root: Path | str) -> str:
     """Strip the host's absolute paths out of a message bound for a prompt.
 
-    ``research_math`` formats its errors with the real path, which differs by
+    ``proof_ledger`` formats its errors with the real path, which differs by
     host and by worktree. Leaving it in would make two identical failures render
     differently and would leak the operator's directory layout into the prompt.
     """
@@ -328,7 +328,7 @@ def _reachable_tiers(names: frozenset) -> str:
     (a role that knows a counterexample refutes will otherwise go looking for
     the command that records one).
     """
-    from ...research_math.assessment import PRODUCIBLE_TIERS
+    from ...proof_ledger import PRODUCIBLE_TIERS
 
     reachable = names & PRODUCIBLE_TIERS
     unreachable = names - PRODUCIBLE_TIERS

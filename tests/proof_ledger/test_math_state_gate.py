@@ -1,6 +1,6 @@
 """The completion gate reads the claim ledger.
 
-``research_math`` derives ``closed_kernel`` and ``conditional_kernel``, and
+``proof_ledger`` derives ``closed_kernel`` and ``conditional_kernel``, and
 until this wiring nothing consulted the answer: a stage could finish with a
 ledger that contradicted itself. These tests pin the seam and, deliberately,
 its limits — the gate blocks on *structural* defects and stays out of the
@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from argus_skill.research_math import (
+from argus_skill.proof_ledger import (
     ClaimVersion,
     ContextVersion,
     MathState,

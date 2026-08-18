@@ -484,7 +484,7 @@ def test_no_verify_key_is_backward_compatible(tmp_path: Path, monkeypatch) -> No
 
 def _math_project(tmp_path: Path, *claim_ids: str) -> Path:
     """A project root the math vertical will actually project from."""
-    from argus_skill.research_math import (
+    from argus_skill.proof_ledger import (
         ClaimVersion,
         ContextVersion,
         MathState,

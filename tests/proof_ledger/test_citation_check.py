@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from argus_skill.research_math import (
+from argus_skill.proof_ledger import (
     CitationStatus,
     ClaimStatus,
     EvidenceTier,
@@ -793,9 +793,9 @@ def test_an_assumption_with_no_recorded_filer_is_not_downgraded(
     honestly and cannot now be re-obtained against a filer nobody wrote down.
     The CLI requires ``--by``, so the gap does not grow.
     """
-    from argus_skill.research_math import ExternalAssumption
-    from argus_skill.research_math.assessment import assess_citation
-    from argus_skill.research_math.models import EvidenceRecord
+    from argus_skill.proof_ledger import ExternalAssumption
+    from argus_skill.proof_ledger.assessment import assess_citation
+    from argus_skill.proof_ledger.models import EvidenceRecord
 
     legacy = ExternalAssumption(
         assumption_id="rh",

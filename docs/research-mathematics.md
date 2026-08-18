@@ -100,9 +100,21 @@ only.
 
 ## 3. The evidence kernel
 
-The `argus_skill/research_math` package is the vertical-agnostic core. It
-knows nothing about Lean, about literature, or about the stage machine; it
-knows about claims, evidence, and what follows from them.
+The `argus_skill/proof_ledger` package is the core. It knows nothing about
+Lean, about literature, or about the stage machine; it knows about claims,
+evidence, and what follows from them. It also imports nothing from Argus and
+nothing outside the standard library, which is enforced by an AST sweep in
+`tests/proof_ledger/test_proof_ledger_kernel.py` — it is meant to lift out into
+its own repository without edits.
+
+Host-neutral is not domain-neutral, and it is worth being precise about which
+half is which. The record layer below — the digest binding, the append-only
+store, the derived-never-stored status — has nothing mathematical in it. The
+decision layer does: the kernel and discharging tiers are both `{MECHANICAL}`,
+and a claim is granted kernel status only if it carries a formal statement. A
+domain whose claims cannot be formalised can import this package and will then
+never close a route. What the package is built to be reused for is another
+domain that discharges claims against a mechanical checker.
 
 ### 3.1 What is recorded
 

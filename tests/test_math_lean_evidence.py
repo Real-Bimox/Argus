@@ -1536,7 +1536,7 @@ def test_a_raced_run_records_nothing_in_the_claim_ledger(
     three — a record citing a compile that describes different text is exactly
     the citation the archive exists to make trustworthy.
     """
-    from argus_skill.research_math import load_state
+    from argus_skill.proof_ledger import load_state
     from argus_skill.verticals.math.math_state import main as state_main
 
     lean_bin = _bare_lean(tmp_path, monkeypatch)

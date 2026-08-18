@@ -59,7 +59,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ...research_math import (
+from ...proof_ledger import (
     CitationStatus,
     ExternalAssumption,
     MathStateError,

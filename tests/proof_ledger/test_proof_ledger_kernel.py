@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from argus_skill.research_math import (
+from argus_skill.proof_ledger import (
     CitationStatus,
     ClaimStatus,
     ClaimVersion,
@@ -892,7 +892,7 @@ def test_a_route_that_needs_nothing_proved_is_not_a_route() -> None:
 
 # -- the boundary that lets this package leave ------------------------------
 
-_PACKAGE = Path(__file__).parents[2] / "argus_skill" / "research_math"
+_PACKAGE = Path(__file__).parents[2] / "argus_skill" / "proof_ledger"
 
 
 def _sources() -> list[Path]:
@@ -901,7 +901,7 @@ def _sources() -> list[Path]:
     return files
 
 
-def test_research_math_imports_nothing_from_argus() -> None:
+def test_proof_ledger_imports_nothing_from_argus() -> None:
     """The package has to be liftable into its own repository unchanged.
 
     Any import of Manager, Planner, Engineer, Reviewer, the backlog or the
@@ -928,7 +928,7 @@ def test_research_math_imports_nothing_from_argus() -> None:
     assert offenders == []
 
 
-def test_research_math_imports_nothing_outside_the_standard_library() -> None:
+def test_proof_ledger_imports_nothing_outside_the_standard_library() -> None:
     """A third-party dependency is the other way a package fails to travel."""
     offenders: list[str] = []
     for path in _sources():

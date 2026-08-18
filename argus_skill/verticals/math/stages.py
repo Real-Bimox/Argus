@@ -206,7 +206,7 @@ def _math_state_issues(project_root: Path) -> tuple[str, ...]:
     bound to a statement the claim no longer carries, is exactly the kind of
     drift that makes a status mean less than it reads.
 
-    Until this call the ledger was advisory: ``research_math`` derived
+    Until this call the ledger was advisory: ``proof_ledger`` derived
     ``closed_kernel`` and ``conditional_kernel`` and nothing consulted the
     answer, so a project could finish a stage with a ledger contradicting
     itself. ``StateIssue.rendered()`` was written for this — it produces the
@@ -231,7 +231,7 @@ def _math_state_issues(project_root: Path) -> tuple[str, ...]:
     the same way, so the caller cannot tell which found what, and does not need
     to.
     """
-    from ...research_math import MathStateError, load_state, state_path
+    from ...proof_ledger import MathStateError, load_state, state_path
     from .math_state import certificate_issues
 
     try:
@@ -271,7 +271,7 @@ def _citation_delivery_issues(project_root: Path) -> tuple[str, ...]:
     cannot be obtained is restated in prose, which drops the claim to ``uncited``
     and says so in the open rather than leaving a lookup nobody can perform.
     """
-    from ...research_math import MathStateError, load_state, state_path
+    from ...proof_ledger import MathStateError, load_state, state_path
     from .citation_check import DELIVERABLE_STATUSES
 
     try:

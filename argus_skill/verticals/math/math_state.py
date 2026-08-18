@@ -1,6 +1,6 @@
 """The write path into the research-math kernel, and the one thing it refuses.
 
-``argus_skill/research_math/`` can express everything a mathematics project
+``argus_skill/proof_ledger/`` can express everything a mathematics project
 believes and derive what that adds up to. Until this module there was no way to
 put anything into it from a real run: the package had a store, an assessment,
 and no writer, so ``research/MATH_STATE.json`` was a file that only tests ever
@@ -50,11 +50,11 @@ than merely unfalsifiable. That is the whole difference between this and
 program insists on.
 
 **Where this lives, and why not in the kernel.** ``argparse`` is standard
-library, so this CLI could have lived inside ``research_math/`` and travelled
+library, so this CLI could have lived inside ``proof_ledger/`` and travelled
 with it. Two things decided against it. The first is the lock: every command
 below is a read-modify-write over one JSON file, so without one, two rounds
 writing at once lose one of the two writes — and the only lock in this
-repository is ``core/file_lock.py``, which ``research_math/`` may not import
+repository is ``core/file_lock.py``, which ``proof_ledger/`` may not import
 without giving up the property its whole design is built on. A hand-rolled
 ``fcntl``/``msvcrt`` fork inside the kernel would be a second, weaker copy of
 something this repository already has one of, and the kernel's own store
@@ -90,7 +90,7 @@ from pathlib import Path
 from typing import Any
 
 from ...core.file_lock import exclusive_file_lock
-from ...research_math import (
+from ...proof_ledger import (
     STATE_RELPATH,
     ClaimVersion,
     ContextVersion,
@@ -126,7 +126,7 @@ __all__ = [
 #: The tiers a command may take from an agent. Exactly the one whose checker is
 #: the agent. Widening this set is the change that would make ``closed_kernel``
 #: reachable by typing, so it is asserted by name in
-#: ``tests/research_math/test_math_state_cli.py``.
+#: ``tests/proof_ledger/test_math_state_cli.py``.
 AGENT_WRITABLE_TIERS = frozenset({EvidenceTier.JUDGEMENT})
 
 #: Where the state file lives, rendered the way a message should refer to it.
