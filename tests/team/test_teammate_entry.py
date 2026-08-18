@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from argus_skill.team import task_board as tb
 from argus_skill.team import teammate_entry as te
 
@@ -285,7 +287,7 @@ def test_operator_wait_blocks_without_failing_and_can_resume(
     assert tb.claim_top(root, "t1::w2", now=2.0)["task_id"] == "t1::a"
 
 
-def test_reform_preserves_blocked_owner_and_question(tmp_path: Path) -> None:
+def test_reform_rejects_changed_blocked_spec_and_preserves_question(tmp_path: Path) -> None:
     root = tmp_path / ".argus_team" / "t1"
     _form_claim(root)
     tb.block_for_operator(
@@ -296,17 +298,24 @@ def test_reform_preserves_blocked_owner_and_question(tmp_path: Path) -> None:
         last_thread_id="thread-1",
     )
 
-    tb.form(
-        root,
-        [{"task_id": "t1::a", "objective": "updated objective", "owns_paths": ["a/**"]}],
-    )
+    with pytest.raises(ValueError, match="materially changed spec"):
+        tb.form(
+            root,
+            [
+                {
+                    "task_id": "t1::a",
+                    "objective": "updated objective",
+                    "owns_paths": ["a/**"],
+                }
+            ],
+        )
 
     task = tb.snapshot(root)[0]
     assert task["state"] == "blocked"
     assert task["owner"] == "t1::w1"
     assert task["pending_question"] == "Approve access"
     assert task["last_thread_id"] == "thread-1"
-    assert task["objective"] == "updated objective"
+    assert task["objective"] == "do a"
 
 
 def test_reform_preserves_answer_while_resumed_task_is_pending(tmp_path: Path) -> None:
