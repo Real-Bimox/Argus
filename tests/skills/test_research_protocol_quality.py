@@ -14,8 +14,6 @@ _AMBITION_SKILLS = (
     "engineer/research-brief-to-experiment-plan.md",
     "engineer/idea-feasibility-derisk.md",
     "engineer/final-paper-review.md",
-    "reviewer/experiment-plan-review.md",
-    "reviewer/experiment-results-review.md",
     "reviewer/academic-paper-peer-review-benchmark.md",
 )
 
@@ -169,6 +167,53 @@ def test_research_smokes_require_discriminative_power_before_rejection() -> None
         assert "inconclusive" in text
     assert "baseline ceiling/floor saturation" in research["research.signal_derisk"]
     assert "predeclared power and headroom" in research["research.signal_derisk"]
+
+
+def test_idea_selection_precedes_probe_inside_one_milestone() -> None:
+    creator = _skill("engineer/idea-creator.md")
+    probe = _skill("engineer/idea-feasibility-derisk.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
+    brief = _skill("engineer/research-brief-to-experiment-plan.md")
+    research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
+    planner = (
+        Path(__file__).parents[2]
+        / "argus_skill"
+        / "roles"
+        / "prompts"
+        / "planner.py"
+    ).read_text(encoding="utf-8")
+
+    assert "Complete this selection" in creator
+    assert "Only after Step 1 has selected" in creator
+    assert "After an idea has passed method-reasonableness selection" in probe
+    assert "selection-before-probe" in pipeline
+    assert "earlier dependency" in brief
+    assert "Before any probe is designed or executed" in research["research.thesis"]
+    assert "final single thesis" in research["research.thesis"]
+    assert "Only after research.thesis" in research["research.signal_derisk"]
+    normalized_planner = " ".join(planner.split())
+    assert "selection must precede probe design and execution" in normalized_planner
+    assert "Author the frozen evidence question" in normalized_planner
+    assert "does not yet choose the single final paper thesis" in creator
+    assert "must not silently change the frozen premise" in creator
+
+
+def test_experiment_review_does_not_repeat_idea_selection() -> None:
+    plan_review = _skill("reviewer/experiment-plan-review.md")
+    results_review = _skill("reviewer/experiment-results-review.md")
+
+    assert "Do not re-rank its novelty" in plan_review
+    assert "not repeating upstream idea selection" in results_review
+    assert "Do not re-rank or re-litigate" in results_review
+    assert "engineering and protocol validity" in results_review
+    assert "decide publication value" in results_review
+    assert "`pass` means the experiment is engineering-valid" in " ".join(
+        results_review.split()
+    )
+    assert '"idea_status": "untested|inconclusive|supported|refuted"' in results_review
+    assert "research/ideas/<id>/EVIDENCE.json" in _skill(
+        "engineer/idea-creator.md"
+    )
 
 
 def test_research_protocol_rejects_unsupported_magic_thresholds() -> None:
