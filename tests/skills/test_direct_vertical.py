@@ -74,7 +74,7 @@ def test_manager_prompt_separates_capability_from_execution_mode() -> None:
     assert "capability VERTICAL and independent execution WORKFLOW" in prompt
     assert "`direct` for one coherent Engineer work package" in prompt
     assert "no task work or Live View" in prompt
-    assert "EXECUTION_TASK=" in prompt
+    assert "Omit EXECUTION_TASK for a standalone existing route" in prompt
 
 
 def test_manager_prompt_routes_short_repair_to_software_direct() -> None:
