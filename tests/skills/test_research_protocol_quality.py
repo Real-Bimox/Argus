@@ -168,3 +168,18 @@ def test_research_smokes_require_discriminative_power_before_rejection() -> None
         assert "inconclusive" in text
     assert "baseline ceiling/floor saturation" in research["research.signal_derisk"]
     assert "predeclared power and headroom" in research["research.signal_derisk"]
+
+
+def test_research_protocol_rejects_unsupported_magic_thresholds() -> None:
+    brief = _skill("engineer/research-brief-to-experiment-plan.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
+    plan_review = _skill("reviewer/experiment-plan-review.md")
+    results_review = _skill("reviewer/experiment-results-review.md")
+    plan = {item.id: item.statement for item in STAGE_CHECKLISTS["plan"]}
+
+    for text in (brief, pipeline, plan_review, results_review):
+        assert "round-number" in text
+        assert "utility" in text
+    assert "unsupported round-number gains" in plan["plan.experiment"]
+    assert "continuous evidence" in brief
+    assert "cost-quality frontier" in results_review

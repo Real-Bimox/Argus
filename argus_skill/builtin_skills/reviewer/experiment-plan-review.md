@@ -48,6 +48,12 @@ post-training plans — omit `rl_config_sanity` from the output for non-RL plans
     exercise the mechanism, the baseline must have metric headroom, and the
     cases/repeats must be able to resolve the predeclared contrast; otherwise
     the plan can produce only inconclusive evidence.
+   - Does every numeric keep/reject cutoff have an external basis in utility,
+    risk, an accepted standard, prior evidence, theory, or prospective
+    sensitivity? Preregistration does not legitimize an unsupported
+    round-number percentage. Without a justified cutoff, require a continuous
+    effect estimate, uncertainty analysis, and cost-quality tradeoff instead
+    of a binary gate.
 
 4. **Benchmark adequacy**
    - Does every final empirical claim include at least one appropriate public
@@ -60,7 +66,8 @@ post-training plans — omit `rl_config_sanity` from the output for non-RL plans
 5. **Feasibility and scope**
    - Can the experiments be completed with available compute in reasonable time?
    - Is the scope appropriate for the target venue (not too narrow, not too broad)?
-   - Are there clear success/failure criteria defined before running?
+   - Are interpretation and stopping criteria defined before running without
+     inventing an arbitrary minimum gain?
 
 6. **RL training-configuration sanity** *(score only if the method is RL/preference post-training — PPO/GRPO/RLVR/DPO/reasoning RL; skip for non-RL plans)*
 

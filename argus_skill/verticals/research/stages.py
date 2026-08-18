@@ -117,8 +117,11 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             statement=(
                 "Experiment plan states the hypothesis, the proposed method, the "
                 "baselines (including the strongest feasible prior work), the "
-                "ablations, the metrics, the success threshold, and the compute / "
-                "API budget."
+                "ablations, the metrics, the interpretation and stopping criteria, "
+                "and the compute / API budget. Numeric keep/reject cutoffs require "
+                "an external utility, risk, domain-standard, prior-evidence, theory, "
+                "or prospective-sensitivity basis; unsupported round-number gains "
+                "must not become binary gates."
             ),
             evidence_hint="research/EXPERIMENT_PLAN.md",
         ),

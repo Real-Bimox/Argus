@@ -104,6 +104,15 @@ Scale follows the claim. Do not impose universal benchmark, task, model, seed,
 duration, or effect-size counts. Every empirical paper claim needs authentic
 public evidence; synthetic diagnostics may supplement but not replace it.
 
+A numeric success/failure cutoff needs a defensible external basis: user
+utility or risk, an accepted domain standard, prior evidence, a theoretical
+prediction, or a prospective power/sensitivity target. Preregistration alone
+does not justify an unsupported round-number improvement or error cap. When no
+such cutoff exists, predeclare the estimand, expected direction, matched
+budgets, uncertainty analysis, and effect-cost tradeoff; interpret the
+continuous evidence rather than turning it into an automatic keep/kill gate.
+Missing an arbitrary target is not evidence that an idea failed.
+
 ## 6. Advise the Planner
 
 End the research brief with the current scientific case for the thesis, the
