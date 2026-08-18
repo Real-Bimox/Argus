@@ -403,7 +403,7 @@ def build_vertical_decision_prompt(
         "Investigate freely as needed for routing/risk. Read-only: "
         "Manager owns direction, Planner the file plan. Use manager_tool_root, not "
         "/app. Clear built-ins need no implementation/test inspection solely to route. "
-        "Stop when sound; no implementation or Live View.\n\n"
+        "Stop when sound; no task work or Live View.\n\n"
         "## Built-in verticals (PREFER one of these when it fits the Task)\n"
         f"{menu}\n\n"
         "## Optional built-in research domains\n"
