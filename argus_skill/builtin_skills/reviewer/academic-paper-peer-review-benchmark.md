@@ -48,6 +48,9 @@ Score each dimension 1–5.
    - Does the result add a method, mechanism, theory, reliable diagnosis,
      evaluation capability, data resource, negative finding, or useful boundary?
    - Is the contribution distinguished from the closest prior work?
+   - Is it technically nontrivial (not prompt/schema/wrapper/scale), grounded in
+     claim-relevant formal or causal predictions without decorative math, and
+     consequential beyond a local product metric?
 
 2. **Claim-evidence alignment**
    - Does every headline, numerical, comparative, causal, or generalization claim
@@ -133,6 +136,8 @@ and no hard blocker.
 - private infrastructure/secrets leaked into rendered prose;
 - paper value depends only on relabeling a weak result rather than a genuine
   insight.
+- shallow prompt/schema/wrapper/scale contributions, decorative claimed theory,
+  or no field-level consequence beyond a local metric;
 - the paper proposes a method as its contribution while its own evidence defeats
   that method, without a separate insight strong enough to justify publication;
 - underperformance is treated as scientific evidence without a credible
