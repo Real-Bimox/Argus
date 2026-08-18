@@ -7,6 +7,14 @@ description: "Structured brainstorming frameworks for discovering research ideas
 
 Ten complementary frameworks for moving from vague curiosity to concrete research proposals.
 
+## Ambition standard
+
+For publishable/doctoral work, require a **nontrivial technical core, verified
+originality, claim-relevant formal/causal grounding, and field-level
+consequence**. Feasibility cannot rescue prompt/schema/wrapper/scale variants or
+decorative mathematics. Prefer an idea that changes what the field believes or
+builds over an easy local metric win.
+
 ## When to Use
 
 - Starting a new research direction
@@ -153,6 +161,7 @@ If you can't fill this → the idea isn't ready.
 | Simplicity Test | Simpler approach works → simplify |
 | Stakeholder Check | No clear beneficiary → drop |
 | Feasibility | Clearly infeasible → park for later |
+| Ambition standard | Shallow, already done, ungrounded, or locally trivial → drop |
 
 ### Phase 3: Refine (top 1)
 1. Write two-sentence pitch

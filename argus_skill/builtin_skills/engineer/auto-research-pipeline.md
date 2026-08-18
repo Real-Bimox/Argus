@@ -28,6 +28,10 @@ experiment or honest failure report is not automatically a paper.
 
 ## Non-negotiable research bar
 
+- Publishable/doctoral work requires a nontrivial technical core, verified
+  originality, claim-relevant formal/causal grounding, and field-level
+  consequence. Feasibility cannot rescue prompt/schema/wrapper/scale variants or
+  decorative mathematics.
 - Ground the question in primary literature, official artifacts, and the
   strongest relevant prior work.
 - State one clear thesis or research question and the result that would support,
@@ -156,6 +160,8 @@ certifies an independently defensible publication thesis.
   frontier.
 - Write `research/RESEARCH_BRIEF.md` and preserve rejected ideas with their real
   observations in the existing project history.
+- Do not lock an idea until the ambition standard survives independent
+  prior-art attack and adversarial review.
 - Run the cheapest faithful falsification or characterization probe of the
   binding premise.
 - Store the probe without a routing verdict; the Planner decides what it changes.

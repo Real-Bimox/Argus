@@ -102,6 +102,9 @@ The reviewer ranks clusters by:
 A publishable/doctoral candidate cannot enter the serious shortlist unless all
 four questions have evidence-backed answers:
 
+**Standard:** nontrivial technical core, verified originality, claim-relevant
+formal/causal grounding, and field-level consequence.
+
 1. **Hard technical core:** What is technically difficult, and what nontrivial
    mechanism solves it? If a prompt, JSON format, generic verifier, or workflow
    wrapper captures the whole idea, reject it.

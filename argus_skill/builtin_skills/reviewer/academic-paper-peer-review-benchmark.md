@@ -19,6 +19,9 @@ not by itself create publication value.
 
 ## Reviewer stance
 
+- For publishable/doctoral work, require a nontrivial technical core, verified
+  originality, claim-relevant formal/causal grounding, and field-level
+  consequence.
 - Be skeptical about unsupported claims, not biased toward positive results.
 - Do not reward a PDF merely for existing.
 - Do not automatically accept or reject a contribution by result sign. For a

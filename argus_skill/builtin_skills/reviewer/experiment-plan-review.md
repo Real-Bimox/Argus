@@ -11,6 +11,9 @@ Review an experiment plan as a senior ML researcher would before approving compu
 - You are approving a GPU/API budget request, not reviewing a finished paper.
 - A bad plan wastes weeks of compute. Be strict on design, lenient on prose.
 - If the plan would produce unconvincing evidence even if executed perfectly, reject it.
+- Publishable/doctoral plans require a nontrivial technical core, verified
+  originality, claim-relevant formal/causal grounding, and field-level
+  consequence; feasibility cannot rescue a shallow idea.
 
 ## Review dimensions
 
@@ -140,6 +143,8 @@ Return JSON:
 ## Hard blockers (auto-fail regardless of score)
 - No baselines defined at all
 - Proposed method is a known standard technique with no novel mechanism
+- Prompt/schema/wrapper/scale variant, decorative theory, or no field-level
+  consequence beyond a local metric
 - Ablation compares trained model vs untrained/random (not a fair ablation)
 - No evaluation metrics defined
 - Unjustified custom infrastructure that changes the comparison while claiming

@@ -11,6 +11,11 @@ Before committing substantial compute, obtain one real observation about the
 idea's binding premise on available models, data, or systems. This is a source of
 information, not a routing gate.
 
+For publishable/doctoral work, a successful probe does not waive the ambition
+standard: nontrivial technical core, verified originality, claim-relevant
+formal/causal grounding, and field-level consequence. Wiring success or easy
+feasibility cannot promote a shallow idea.
+
 ## How to work
 
 1. Read the research brief and identify the uncertain premise whose answer would
