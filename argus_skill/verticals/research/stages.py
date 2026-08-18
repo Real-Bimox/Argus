@@ -92,7 +92,10 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "the thesis. "
                 "Record what the probe established — untested / inconclusive / "
                 "supported / refuted — separately from whether it ran; infrastructure "
-                "failures and under-powered runs leave it unresolved, never negative. "
+                "failures, baseline ceiling/floor saturation, tasks that do not "
+                "exercise the mechanism, and under-powered runs leave it unresolved, "
+                "never negative. A comparative tie refutes the premise only when the "
+                "probe had predeclared power and headroom to distinguish the methods. "
                 "`argus_skill.skills.signal_derisk validate` is available only for "
                 "the default scalar-comparison shape and never decides quality."
             ),
@@ -812,8 +815,9 @@ REQUIRE_INDEPENDENT_REVIEW = True
 
 _REVIEWER_ENGINEERING_AUDIT = (
     "For experiment claims, inspect the relevant implementation and raw rows once, "
-    "then reuse that reviewed evidence until a dependency changes. Distinguish the "
-    "method result from infrastructure or evaluator failure.\n"
+    "then reuse them until a dependency changes. Separate method results from "
+    "infrastructure/evaluator failure; ceilinged, floored, or underpowered "
+    "comparisons are inconclusive.\n"
 )
 
 

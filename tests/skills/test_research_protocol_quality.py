@@ -147,3 +147,18 @@ def test_research_smokes_reject_label_leakage_before_model_calls() -> None:
     assert "removing or permuting hidden labels" in (
         benchmark["benchmark.evaluator_authentic"]
     )
+
+
+def test_research_smokes_require_discriminative_power_before_rejection() -> None:
+    probe = _skill("engineer/idea-feasibility-derisk.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
+    runner = _skill("engineer/research-experiment-runner.md")
+    plan_review = _skill("reviewer/experiment-plan-review.md")
+    results_review = _skill("reviewer/experiment-results-review.md")
+    research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
+
+    for text in (probe, pipeline, runner, plan_review, results_review):
+        assert "headroom" in text
+        assert "inconclusive" in text
+    assert "baseline ceiling/floor saturation" in research["research.signal_derisk"]
+    assert "predeclared power and headroom" in research["research.signal_derisk"]

@@ -177,6 +177,11 @@ that would overturn the claim.
   and keep/reject comparison. Run independent finalist probes concurrently.
   Do not serialize "repair research canon," "build smoke harness," and "judge
   smoke" into separate missions when one coherent milestone can do them.
+- Before using a comparative probe for keep/reject, verify that it can distinguish
+  the candidate from the baseline: the tasks exercise the proposed mechanism,
+  the baseline has metric headroom, and the cases/repeats can resolve the
+  predeclared contrast. A ceilinged, floored, too-easy, or underpowered tie is
+  inconclusive; redesign the probe instead of rejecting the method from it.
 - Before paid/model-backed execution, verify that candidate predictions cannot
   read gold labels or scorer-derived fields and that baselines receive the same
   decision-time information.

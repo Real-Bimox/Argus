@@ -10,8 +10,8 @@ def test_research_reviewer_requires_engineering_audit() -> None:
 
     assert "For experiment claims" in banner
     assert "implementation and raw rows" in banner
-    assert "infrastructure or evaluator failure" in banner
-    assert "reuse that reviewed evidence until a dependency changes" in banner
+    assert "infrastructure/evaluator failure" in banner
+    assert "underpowered comparisons are inconclusive" in banner
     assert len(banner) < 260
 
 
