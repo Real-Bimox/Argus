@@ -88,11 +88,12 @@ def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
     assert "Never restart a second" in discovery
     assert "A single model call" in discovery
     assert "written cross-examination" in discovery
-    assert "at least four of the twelve routes" in discovery
+    assert "at least four routes" in discovery
     assert "network/statistical physics" in normalized_discovery
-    assert "12-route portfolio" in research["research.thesis"]
-    assert "adversarial meta-review" in research["research.thesis"]
-    assert "at least four independent routes" in research["research.thesis"]
+    assert "Canonical 12-route" in research["research.idea_portfolio"]
+    assert "broad paper idea lock" in research["research.idea_portfolio"]
+    assert "Fresh proponent" in research["research.adversarial_selection"]
+    assert "before probes" in research["research.adversarial_selection"]
 
 
 def test_research_idea_selection_requires_ambition_without_decorative_math() -> None:
@@ -110,7 +111,7 @@ def test_research_idea_selection_requires_ambition_without_decorative_math() -> 
     assert "theoretical_foundation" in creator
     thesis = research["research.thesis"]
     assert "nontrivial technical core" in thesis
-    assert "formal/causal predictions" in thesis
+    assert "formal or causal predictions" in thesis
     assert "decorative math" in thesis
     assert "feasibility rescue" in thesis
     assert "shallow prompt/schema/wrapper/scale" in peer_review

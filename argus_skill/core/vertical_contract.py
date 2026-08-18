@@ -6,7 +6,7 @@ view instead of probing module attributes or branching on vertical names.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -59,6 +59,7 @@ class VerticalLibraryContext:
     runner: Any
     model: str | None
     emit: Callable[[dict], None]
+    required_skill_paths: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

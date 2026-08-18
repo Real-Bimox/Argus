@@ -15,7 +15,7 @@ consequence**. Feasibility cannot rescue prompt/schema/wrapper/scale variants or
 decorative mathematics. Prefer an idea that changes what the field believes or
 builds over an easy local metric win.
 
-For an open-ended Agent paper, deliberately explore foundation-first routes
+For a broad publishable/doctoral Agent paper, deliberately explore foundation-first routes
 rather than waiting for theory to be added after selection. Start from a
 measured Agent failure, then independently test whether probability or learning
 theory, information theory, control/dynamical systems, causal inference, game

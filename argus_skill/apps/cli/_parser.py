@@ -212,6 +212,13 @@ def build_parser() -> argparse.ArgumentParser:
              "planner certifies project_done (default: open-ended — the agent "
              "keeps generating new work forever)",
     )
+    daemon_grp.add_argument(
+        "--mission-width",
+        type=int,
+        default=2,
+        help="concurrent mission workers: 0 pauses, 1 is serial, N enables "
+             "path-disjoint parallel Planner tasks (default: 2)",
+    )
 
     cockpit_grp = parser.add_argument_group("cockpit")
     cockpit_grp.add_argument(

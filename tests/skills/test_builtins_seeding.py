@@ -190,6 +190,61 @@ def test_seeding_retires_existing_obsolete_skill(
     assert not obsolete.exists()
 
 
+def test_seeding_refreshes_a_known_unmodified_legacy_builtin(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import argus_skill.skills.builtins as builtins
+
+    relative = "engineer/example.md"
+    old = "old factory body\n"
+    new = "new factory body\n"
+    destination = tmp_path / relative
+    destination.parent.mkdir(parents=True)
+    destination.write_text(old, encoding="utf-8")
+    monkeypatch.setattr(
+        builtins,
+        "iter_builtin_skill_texts",
+        lambda: iter(((relative, new),)),
+    )
+    monkeypatch.setattr(
+        builtins,
+        "_LEGACY_BUILTIN_SEED_HASHES",
+        {relative: hashlib.sha256(old.encode()).hexdigest()},
+    )
+
+    changed = builtins.seed_builtin_skills(tmp_path)
+
+    assert changed[relative] is True
+    assert destination.read_text(encoding="utf-8") == new
+
+
+def test_seeding_refreshes_manifest_owned_builtin_but_preserves_user_edit(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import argus_skill.skills.builtins as builtins
+
+    relative = "engineer/example.md"
+    bodies = iter(("factory v1\n", "factory v2\n", "factory v3\n"))
+    monkeypatch.setattr(
+        builtins,
+        "iter_builtin_skill_texts",
+        lambda: iter(((relative, next(bodies)),)),
+    )
+
+    builtins.seed_builtin_skills(tmp_path)
+    builtins.seed_builtin_skills(tmp_path)
+    destination = tmp_path / relative
+    assert destination.read_text(encoding="utf-8") == "factory v2\n"
+
+    destination.write_text("operator edit\n", encoding="utf-8")
+    changed = builtins.seed_builtin_skills(tmp_path)
+
+    assert changed[relative] is False
+    assert destination.read_text(encoding="utf-8") == "operator edit\n"
+
+
 def test_quant_skills_are_owned_by_the_quant_vertical(tmp_path) -> None:
     seed_builtin_skills_for_vertical(tmp_path, "quant", overwrite=True)
     for rel in QUANT_SKILLS:
@@ -222,6 +277,19 @@ def test_seed_for_vertical_overwrites_stub_with_real_body(tmp_path) -> None:
     assert "BacktestExecutor" in (
         tmp_path / "engineer" / "quant-factor-loop.md"
     ).read_text(encoding="utf-8")
+
+
+def test_seed_for_vertical_preserves_operator_edit_without_overwrite(
+    tmp_path,
+) -> None:
+    path = tmp_path / "engineer" / "quant-factor-loop.md"
+    path.parent.mkdir(parents=True)
+    path.write_text("operator-owned quant workflow\n", encoding="utf-8")
+
+    changed = seed_builtin_skills_for_vertical(tmp_path, "quant")
+
+    assert changed["engineer/quant-factor-loop.md"] is False
+    assert path.read_text(encoding="utf-8") == "operator-owned quant workflow\n"
 
 
 def test_seed_for_vertical_keeps_cross_vertical_skills(tmp_path) -> None:

@@ -176,7 +176,7 @@ that would overturn the claim.
   observations in the existing project history.
 - Do not lock an idea until the ambition standard survives independent
   prior-art attack and adversarial review.
-- For an open-ended Agent paper, at least four routes in the 12-route portfolio
+- For a broad publishable/doctoral Agent paper, at least four portfolio routes
   must independently search for load-bearing mathematical or physical
   foundations. Cover distinct relevant lenses rather than variants of one
   analogy, and require each route to derive an algorithm, bound, impossibility

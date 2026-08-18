@@ -54,6 +54,24 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             ),
         ),
         ChecklistItem(
+            id="research.idea_portfolio",
+            statement=(
+                "Canonical 12-route team portfolio passed before broad paper idea lock."
+            ),
+            evidence_hint=(
+                "research/ideation/routes + team tasks/shards"
+            ),
+        ),
+        ChecklistItem(
+            id="research.adversarial_selection",
+            statement=(
+                "Fresh proponent, assassin, and meta-review passed before probes."
+            ),
+            evidence_hint=(
+                "research/ideation/debates + team provenance"
+            ),
+        ),
+        ChecklistItem(
             id="research.brief",
             statement=(
                 "A research brief frames the problem, the gap in prior work, and "
@@ -64,16 +82,10 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.thesis",
             statement=(
-                "Broad paper idea lock follows a 12-route "
-                "portfolio and adversarial meta-review. For an open-ended Agent paper, "
-                "at least four independent routes search distinct mathematical or "
-                "physical foundations and derive an algorithm, bound, impossibility "
-                "result, scaling law, threshold, or measurable prediction rather than "
-                "an analogy. The thesis has a nontrivial "
-                "technical core, verified originality, claim-relevant formal/causal "
-                "predictions, field-level consequence, falsifier, and justified "
-                "budget; reject prompt/schema/wrapper/scale variants, decorative math, "
-                "or feasibility rescue."
+                "The selected thesis has a nontrivial technical core, verified "
+                "originality, claim-relevant formal or causal predictions, field-level "
+                "consequence, falsifier, and justified budget. Reject prompt/schema/"
+                "wrapper/scale variants, decorative math, or feasibility rescue."
             ),
             evidence_hint=(
                 "research/RESEARCH_BRIEF.md and research/ideation/{routes,debates}/"
@@ -551,6 +563,14 @@ def get_stage_checklist(stage: str) -> tuple[ChecklistItem, ...]:
     return STAGE_CHECKLISTS.get(str(stage).strip().lower(), ())
 
 
+def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
+    if str(stage or "").strip().lower() != "research":
+        return ()
+    from .idea_portfolio import idea_portfolio_completion_issues
+
+    return idea_portfolio_completion_issues(project_root)
+
+
 
 RESEARCH_TARGET_LEVELS = ("exploratory", "publishable", "doctoral")
 
@@ -851,5 +871,6 @@ __all__ = [
     "WORKFLOW_MODE",
     "REQUIRE_INDEPENDENT_REVIEW",
     "role_banner",
+    "stage_completion_issues",
     "completion_gate",
 ]

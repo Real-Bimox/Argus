@@ -27,7 +27,10 @@ from argus_skill.reviewer import Reviewer
 #   * the root-cause evidence bar (~370 chars) — a threshold miss is not a
 #     diagnosis, so a dominant-stage or replacement-architecture claim needs
 #     profiling or a counterfactual behind it.
-NON_MEASURED_BUDGET = 9_500
+# 9_500 -> 10_050 for the two independent Research ideation gates. The
+# deterministic validator carries the detailed contract; the repeated Reviewer
+# prompt adds only the concise portfolio/adversarial checklist entries.
+NON_MEASURED_BUDGET = 10_050
 
 
 def _build(measured: bool, monkeypatch) -> str:

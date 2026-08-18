@@ -37,7 +37,24 @@ class MissionExecutionMixin(
         # Atomic claim: flip pending → running in one rewrite. If the
         # head moved between the budget peek and now (concurrent writer
         # or user `/rm`), bail; the next tick will re-evaluate.
-        claimed = self.memory.backlog.claim_next()
+        parallel_worker = getattr(self.config, "parallel_worker", False)
+        coordinate_claims = getattr(
+            self.config,
+            "coordinate_parallel_claims",
+            False,
+        )
+        claimed = (
+            self.memory.backlog.claim_next(
+                parallel_only=parallel_worker,
+                respect_running=coordinate_claims,
+                expected_id=item.id,
+                owner=str(
+                    getattr(self.config, "worker_id", "primary") or "primary"
+                ),
+            )
+            if parallel_worker or coordinate_claims
+            else self.memory.backlog.claim_next()
+        )
         if claimed is None or claimed.id != item.id:
             if claimed is not None:
                 # Roll back so the next tick sees it again. running →

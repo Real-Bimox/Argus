@@ -52,6 +52,34 @@ def test_parse_planner_task_ignores_legacy_workdir_and_quality_controls() -> Non
     )
 
 
+def test_parse_planner_emits_disjoint_parallel_task_batch() -> None:
+    verdict = parse_planner_text(
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=two independent evidence tracks remain",
+            "TASK_KEY=route-a",
+            "TASK_DEPS=",
+            "TASK_TITLE=Investigate route A",
+            "TASK_OBJECTIVE=Write route A.",
+            "TASK_PARALLEL_SAFE=true",
+            "TASK_OWNS_PATHS=research/routes/a.md",
+            "TASK_KEY=route-b",
+            "TASK_DEPS=",
+            "TASK_TITLE=Investigate route B",
+            "TASK_OBJECTIVE=Write route B.",
+            "TASK_PARALLEL_SAFE=true",
+            "TASK_OWNS_PATHS=research/routes/b.md",
+        ])
+    )
+
+    assert [task.key for task in verdict.new_tasks] == ["route-a", "route-b"]
+    assert all(task.parallel_safe for task in verdict.new_tasks)
+    assert [task.owns_paths for task in verdict.new_tasks] == [
+        ["research/routes/a.md"],
+        ["research/routes/b.md"],
+    ]
+
+
 def test_parse_status_summary_aliases() -> None:
     verdict = parse_planner_text(
         "STATUS=completed\nSUMMARY=Implementation and verification finished."
@@ -229,7 +257,7 @@ def test_parse_task_scope_accepts_final_certification_annotation() -> None:
     assert parse_task_scope("final_submission (certification)") == "final_submission"
 
 
-def test_parse_planner_task_ignores_legacy_dependency_controls() -> None:
+def test_parse_planner_task_rejects_malformed_dependency_controls() -> None:
     verdict = parse_planner_text(
         "\n".join([
             "PROJECT_DONE=false",
@@ -245,9 +273,8 @@ def test_parse_planner_task_ignores_legacy_dependency_controls() -> None:
         ])
     )
 
-    assert verdict.error == ""
-    assert verdict.new_tasks[0].deps == []
-    assert verdict.new_tasks[0].scope == "bounded"
+    assert verdict.error == "invalid planner task dependency identifier"
+    assert verdict.new_tasks == []
 
 
 class _Runner:

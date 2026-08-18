@@ -8,6 +8,7 @@ teammates can never own the same task.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -117,6 +118,8 @@ _LIVE_OWNERSHIP_FIELDS = (
     "owner",
     "claim_ts",
     "heartbeat_ts",
+    "claim_seq",
+    "finish_seq",
     "attempts",
     "reason",
     "pending_question",
@@ -201,6 +204,9 @@ def _task_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
         "last_thread_id": "",
         "claim_ts": 0.0,
         "heartbeat_ts": 0.0,
+        "claim_seq": 0,
+        "finish_seq": 0,
+        "finished_ts": 0.0,
         "attempts": 0,
         "priority": int(spec.get("priority", 100)),
     }
@@ -392,6 +398,17 @@ def claim_top(root: Path, member_id: str, *, now: float) -> dict[str, Any] | Non
         task["owner"] = member_id
         task["claim_ts"] = now
         task["heartbeat_ts"] = now
+        task["claim_seq"] = 1 + max(
+            (
+                max(
+                    int(row.get("claim_seq", 0) or 0),
+                    int(row.get("finish_seq", 0) or 0),
+                )
+                for row in tasks
+            ),
+            default=0,
+        )
+        task["finish_seq"] = 0
         _write_task(root, task["task_id"], task)
         return task
 
@@ -423,11 +440,31 @@ def _mutate(root: Path, task_id: str, **changes: Any) -> None:
 
 
 def complete(root: Path, task_id: str, *, shard: str = "") -> None:
-    _mutate(root, task_id, state="done", result_shard=shard)
+    with _store.locked(_lock(root)):
+        tasks = _load_all(root)
+        task = next((row for row in tasks if row["task_id"] == task_id), None)
+        if task is None:
+            return
+        task.update(
+            state="done",
+            result_shard=shard,
+            finished_ts=time.time(),
+            finish_seq=1 + max(
+                (
+                    max(
+                        int(row.get("claim_seq", 0) or 0),
+                        int(row.get("finish_seq", 0) or 0),
+                    )
+                    for row in tasks
+                ),
+                default=0,
+            ),
+        )
+        _write_task(root, task_id, task)
 
 
 def fail(root: Path, task_id: str, *, reason: str = "") -> None:
-    _mutate(root, task_id, state="failed", reason=reason)
+    _mutate(root, task_id, state="failed", reason=reason, finished_ts=time.time())
 
 
 def block_for_operator(

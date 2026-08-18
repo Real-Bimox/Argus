@@ -117,6 +117,8 @@ class TaskSpec:
     # the substantive repair and its independent recertification in one unit.
     stage_repair: bool = False
     allow_skill_changes: bool = False
+    parallel_safe: bool = False
+    owns_paths: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -498,14 +500,15 @@ _GLOBAL_KEY_VALUE_KEYS = (
     "EXPIRES_AT",
 )
 _TASK_KEY_VALUE_FIELDS = (
-    # Legacy delimiter only: it starts a new minimal task block but is not
-    # retained as task metadata.
     "KEY",
+    "DEPS",
     "TITLE",
     "OBJECTIVE",
     "ACCEPTANCE_CHECK",
     "NON_GOALS",
     "SCOPE",
+    "PARALLEL_SAFE",
+    "OWNS_PATHS",
 )
 _KEY_VALUE_LINE = re.compile(
     r"^(?:[-*]\s*)?(?:ARGUS_)?(?P<key>(?:"
@@ -545,7 +548,7 @@ def _planner_key_values(text: str) -> tuple[dict[str, str], list[dict[str, str]]
         if key == "TASK_KEY":
             if current_task is not None:
                 tasks.append(current_task)
-            current_task = {}
+            current_task = {"TASK_KEY": value}
         elif key.startswith("TASK_"):
             if current_task is None:
                 current_task = {}
@@ -710,11 +713,10 @@ def _build_no_task_repair_prompt(
         "- Re-inspect current project reality as needed; do not fabricate tasks or "
         "scientific work.\n"
         f"{completion_rule}"
-        "- If work remains and is legal in the current stage, end with exactly one "
-        "task: `PROJECT_DONE=false`, `REASON=...`, `TASK_TITLE=...`, and "
-        "`TASK_OBJECTIVE=...`. Optionally add `TASK_ACCEPTANCE_CHECK=...` and "
-        "`TASK_NON_GOALS=item|item`. Do not emit workdir, dependency, context, "
-        "review, stage, or Skill control fields; the Host owns them.\n"
+        "- If work remains, emit TASK_TITLE=..., TASK_OBJECTIVE=..., and TASK_KEY; "
+        "repeat only for independent actions. Parallel blocks require "
+        "TASK_PARALLEL_SAFE=true and disjoint TASK_OWNS_PATHS. Do not emit "
+        "review, stage, or Skill control fields.\n"
         "- If the project is intentionally blocked on a live external condition, "
         "use `WAITING=true` with a durable blocker fingerprint, recheck condition, "
         "and recheck token instead of emitting tasks.\n"
@@ -813,6 +815,21 @@ def parse_planner_text(text: str) -> PlannerVerdict:
         objective = row.get("TASK_OBJECTIVE", "").strip()
         if not title or not objective:
             continue
+        key = row.get("TASK_KEY", "").strip()
+        raw_deps = row.get("TASK_DEPS", "").strip()
+        deps = [dep.strip() for dep in raw_deps.split(",") if dep.strip()]
+        if (
+            key and re.fullmatch(r"[A-Za-z0-9_.:-]+", key) is None
+        ) or any(
+            re.fullmatch(r"[A-Za-z0-9_.:-]+", dep) is None
+            for dep in deps
+        ):
+            return PlannerVerdict(
+                project_done=False,
+                reason="planner emitted an invalid TASK_KEY or TASK_DEPS value",
+                raw_text=text,
+                error="invalid planner task dependency identifier",
+            )
         try:
             scope = parse_task_scope(row.get("TASK_SCOPE", ""))
         except ValueError:
@@ -828,6 +845,16 @@ def parse_planner_text(text: str) -> PlannerVerdict:
                     if item.strip()
                 ],
                 scope=scope,
+                key=key,
+                deps=deps,
+                parallel_safe=_key_value_bool(
+                    row.get("TASK_PARALLEL_SAFE", "")
+                ),
+                owns_paths=[
+                    path.strip()
+                    for path in row.get("TASK_OWNS_PATHS", "").split("|")
+                    if path.strip()
+                ],
             )
         )
 

@@ -392,10 +392,16 @@ class _VerticalDecisionMixin:
         persisted_domain = (
             vertical_select.resolve_domain_if_decided(self.project_root) or ""
         )
-        from ..core.research_contract import resolve_research_target_level
+        from ..core.research_contract import (
+            resolve_research_direction_mode,
+            resolve_research_target_level,
+        )
 
         persisted_research_target_level = (
             resolve_research_target_level(self.project_root) or ""
+        )
+        persisted_research_direction_mode = (
+            resolve_research_direction_mode(self.project_root) or ""
         )
 
         def finalize(decision: VerticalDecision) -> VerticalDecision:
@@ -491,6 +497,9 @@ class _VerticalDecisionMixin:
                     persisted_research_target_level=(
                         persisted_research_target_level
                     ),
+                    persisted_research_direction_mode=(
+                        persisted_research_direction_mode
+                    ),
                 )
                 if (
                     fast_route is not None
@@ -506,6 +515,9 @@ class _VerticalDecisionMixin:
                             adaptation_reason=fast_route.rationale,
                             execution_task=task.strip(),
                             research_target_level=fast_route.research_target_level,
+                            research_direction_mode=(
+                                fast_route.research_direction_mode
+                            ),
                             target_venue=fast_route.target_venue,
                         )
                     ))
@@ -577,6 +589,9 @@ class _VerticalDecisionMixin:
                 persisted_domain=persisted_domain,
                 persisted_research_target_level=(
                     persisted_research_target_level
+                ),
+                persisted_research_direction_mode=(
+                    persisted_research_direction_mode
                 ),
             )
             if route_decision is None:
@@ -823,6 +838,7 @@ class _VerticalDecisionMixin:
                 vertical,
                 domain=decision.domain or None,
                 research_target_level=decision.research_target_level or None,
+                research_direction_mode=decision.research_direction_mode or None,
                 workflow_mode=decision.workflow_mode,
                 target_venue=decision.target_venue or None,
             )

@@ -57,6 +57,7 @@ _DECISION_KEYS = (
     "WORKFLOW_MODE",
     "CONFIDENCE",
     "RESEARCH_TARGET_LEVEL",
+    "RESEARCH_DIRECTION_MODE",
     "TARGET_VENUE",
     "RATIONALE",
     "EXECUTION_TASK",
@@ -95,7 +96,14 @@ def _decision_fields(raw_text: str) -> dict[str, Any] | None:
         return legacy_json_object(raw_text)
 
     fields: dict[str, Any] = {}
-    for key in ("CHOICE", "VERTICAL", "NAME", "WORKFLOW_MODE", "RESEARCH_TARGET_LEVEL"):
+    for key in (
+        "CHOICE",
+        "VERTICAL",
+        "NAME",
+        "WORKFLOW_MODE",
+        "RESEARCH_TARGET_LEVEL",
+        "RESEARCH_DIRECTION_MODE",
+    ):
         if key in values:
             fields[key.lower()] = read_optional(values, key)
     for key in ("DOMAIN", "TARGET_VENUE", "RATIONALE", "EXECUTION_TASK"):
@@ -210,6 +218,39 @@ def _resolve_research_target(
     ):
         return None
     return target_level
+
+
+def _resolve_research_direction(
+    obj: dict,
+    *,
+    name: str,
+    target_level: str,
+    same_persisted_identity: bool,
+    persisted_research_direction_mode: str,
+) -> str | None:
+    from ..core.research_contract import normalize_research_direction_mode
+
+    if name != "research":
+        return ""
+    prior_direction = normalize_research_direction_mode(
+        persisted_research_direction_mode
+    )
+    direction = normalize_research_direction_mode(
+        obj.get("research_direction_mode")
+    )
+    if (
+        same_persisted_identity
+        and prior_direction == "broad"
+        and direction == "locked"
+    ):
+        return None
+    if direction is None and same_persisted_identity:
+        direction = prior_direction
+    if direction == "locked" and not prior_direction:
+        direction = "broad"
+    if direction is None:
+        direction = "broad" if target_level in {"publishable", "doctoral"} else "locked"
+    return direction
 
 
 def _resolve_existing_domain(
@@ -354,6 +395,7 @@ class VerticalDecision:
     # Optional research success bar, decided from the operator's requested
     # outcome rather than re-inferred by Planner/Reviewer/Life independently.
     research_target_level: str = ""
+    research_direction_mode: str = ""
     # Publication venue explicitly named by the operator for research work.
     # Empty means "not explicitly selected"; venue discovery remains a separate
     # bounded research operation rather than a keyword guess in the harness.
@@ -390,6 +432,7 @@ class FastVerticalRoute:
     confidence: float = 0.0
     rationale: str = ""
     research_target_level: str = ""
+    research_direction_mode: str = ""
     target_venue: str = ""
 
 
@@ -404,6 +447,7 @@ def parse_fast_vertical_decision(
     persisted_workflow_mode: str = "",
     persisted_domain: str = "",
     persisted_research_target_level: str = "",
+    persisted_research_direction_mode: str = "",
 ) -> FastVerticalRoute | None:
     """Parse a tool-free route; invalid output fails closed to grounding."""
     obj = _decision_fields(raw_text)
@@ -466,6 +510,15 @@ def parse_fast_vertical_decision(
     )
     if target_level is None:
         return None
+    direction_mode = _resolve_research_direction(
+        obj,
+        name=name,
+        target_level=target_level,
+        same_persisted_identity=same_persisted_identity,
+        persisted_research_direction_mode=persisted_research_direction_mode,
+    )
+    if direction_mode is None:
+        return None
     target_venue = " ".join(
         str(obj.get("target_venue") or "").strip().split()
     )[:100]
@@ -479,6 +532,7 @@ def parse_fast_vertical_decision(
         confidence=confidence,
         rationale=rationale,
         research_target_level=target_level,
+        research_direction_mode=direction_mode,
         target_venue=target_venue,
     )
 
@@ -538,6 +592,7 @@ def parse_vertical_decision(
     persisted_workflow_mode: str = "",
     persisted_domain: str = "",
     persisted_research_target_level: str = "",
+    persisted_research_direction_mode: str = "",
 ) -> VerticalDecision | None:
     """Validate the Manager's vertical-decision JSON; fail-closed to ``None``.
 
@@ -603,6 +658,15 @@ def parse_vertical_decision(
         )
         if target_level is None:
             return None
+        direction_mode = _resolve_research_direction(
+            obj,
+            name=name,
+            target_level=target_level,
+            same_persisted_identity=same_persisted_identity,
+            persisted_research_direction_mode=persisted_research_direction_mode,
+        )
+        if direction_mode is None:
+            return None
         target_venue = " ".join(
             str(obj.get("target_venue") or "").strip().split()
         )[:100]
@@ -645,6 +709,7 @@ def parse_vertical_decision(
                 live_view_decided=live_view_decided,
                 execution_task=execution_task,
                 research_target_level=target_level,
+                research_direction_mode=direction_mode,
                 target_venue=target_venue,
                 precise_constraints=stated,
                 exclusions=exclusions,

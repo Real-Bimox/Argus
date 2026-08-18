@@ -90,6 +90,7 @@ def _windows_daemon_command(config: Any) -> list[str]:
         command.append("--resume-continuous")
     if not config.continuous_open_ended:
         command.append("--bounded")
+    command.extend(["--mission-width", str(getattr(config, "mission_width", 2))])
     return command
 
 

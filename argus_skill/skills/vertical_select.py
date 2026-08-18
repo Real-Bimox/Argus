@@ -480,6 +480,7 @@ def persist_vertical(
     *,
     domain: str | None = None,
     research_target_level: str | None = None,
+    research_direction_mode: str | None = None,
     workflow_mode: str | None = None,
     target_venue: str | None = None,
 ) -> None:
@@ -592,6 +593,28 @@ def persist_vertical(
         ):
             payload.pop("research_target_level", None)
             payload.pop("research_target_set_at", None)
+    if research_direction_mode is not None:
+        from ..core.research_contract import normalize_research_direction_mode
+
+        if vert != "research":
+            raise ValueError("research_direction_mode requires vertical='research'")
+        normalized_direction = normalize_research_direction_mode(
+            research_direction_mode
+        )
+        if normalized_direction is None:
+            raise ValueError(
+                f"invalid research direction mode: {research_direction_mode!r}"
+            )
+        previous_direction = normalize_research_direction_mode(
+            payload.get("research_direction_mode")
+        )
+        if previous_direction == "broad" and normalized_direction == "locked":
+            raise ValueError(
+                "broad research direction cannot be downgraded to locked"
+            )
+        payload["research_direction_mode"] = normalized_direction
+    elif vert != "research":
+        payload.pop("research_direction_mode", None)
 
     # SEED-ONLY, NEVER RESET. Stage authority belongs to the reviewer agent
     # (see docstring). Write an initial stage only when none exists yet — leave

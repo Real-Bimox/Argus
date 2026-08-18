@@ -34,6 +34,8 @@ def test_dependency_blocks_claim_until_done(tmp_path: Path) -> None:
     tb.complete(tmp_path, "a", shard="shards/a.jsonl")
     got = tb.claim_top(tmp_path, "tm-2", now=3.0)
     assert got is not None and got["task_id"] == "b"
+    first = {task["task_id"]: task for task in tb.snapshot(tmp_path)}["a"]
+    assert first["claim_seq"] < first["finish_seq"] < got["claim_seq"]
 
 
 def test_claim_top_never_double_claims(tmp_path: Path) -> None:
