@@ -45,3 +45,15 @@ def test_live_checklist_requires_thesis_and_implementation_adequacy() -> None:
     assert "selective argument" in analysis["analysis.thesis"]
     assert "same thesis" in draft["draft.tex"]
     assert "weak result cannot be rescued" in review["review.publication_value"]
+
+
+def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
+    discovery = _skill("engineer/idea-discovery.md")
+    research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
+
+    assert "pool-set --root <team_root> --width 12 --state running" in discovery
+    assert "A single model call" in discovery
+    assert "written cross-examination" in discovery
+    assert "research.idea_portfolio" in research
+    assert "12-route candidate portfolio" in research["research.idea_portfolio"]
+    assert "research.adversarial_selection" in research
