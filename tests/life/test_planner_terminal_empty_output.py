@@ -590,6 +590,103 @@ def test_nonterminal_planning_replays_unassessed_current_stage_review_first(
     )
 
 
+def test_newer_replan_review_blocks_older_stage_replay(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    backend = _EmptyThenTaskPlannerRunner()
+    supervisor, backend, _sink = _make_supervisor(
+        tmp_path,
+        monkeypatch,
+        terminal_stage_done=False,
+        backend=backend,
+        split_memory=True,
+    )
+    project = Path(supervisor.config.project_worktree)
+    _write_reviewed_math_scope_state(project)
+    older = supervisor.memory.backlog.add(
+        BacklogItem.new(
+            title="Define the mathematical scope",
+            objective="State the admissible conjecture class and completion bar.",
+            tags=["planner", "scope:bounded", "stage:scope"],
+        )
+    )
+    older_mission = create_mission_context(
+        life_dir=supervisor.memory.project_root,
+        mission_id=older.id,
+        stage="scope",
+        objective=older.objective,
+        scope="bounded",
+    )
+    record_reviewed_handoff(
+        mission_context_path=older_mission,
+        round_index=1,
+        engineer_summary="",
+        review=SimpleNamespace(
+            status="done",
+            reason="The previous scope evidence passed.",
+            next_action="",
+            operator_question="",
+        ),
+        checkpoint_path=None,
+    )
+    supervisor.memory.backlog.mark_done(
+        older.id,
+        outcome={
+            "execution_status": "completed",
+            "review_status": "done",
+            "stage_certification": "deferred",
+            "interruption_kind": "none",
+            "resumable": False,
+        },
+    )
+    newer = supervisor.memory.backlog.add(
+        BacklogItem.new(
+            title="Challenge the mathematical scope",
+            objective="Test whether the accepted scope evidence remains valid.",
+            tags=["planner", "scope:bounded", "stage:scope"],
+        )
+    )
+    newer_mission = create_mission_context(
+        life_dir=supervisor.memory.project_root,
+        mission_id=newer.id,
+        stage="scope",
+        objective=newer.objective,
+        scope="bounded",
+    )
+    record_reviewed_handoff(
+        mission_context_path=newer_mission,
+        round_index=1,
+        engineer_summary="",
+        review=SimpleNamespace(
+            status="continue",
+            reason="The newer evidence invalidates the previous scope decision.",
+            next_action="Repair the scope evidence.",
+            operator_question="",
+        ),
+        checkpoint_path=None,
+    )
+    supervisor.memory.backlog.update(
+        newer.id,
+        status="failed",
+        finished_ts=time.time() + 1,
+        outcome={
+            "execution_status": "ended",
+            "review_status": "continue",
+            "stage_certification": "deferred",
+            "interruption_kind": "none",
+            "resumable": False,
+        },
+    )
+
+    assert supervisor._plan_next_work() is True
+
+    assert backend.planner_calls == 2
+    assert backend.manager_calls == 0
+    state = json.loads((project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
+    assert state["current_stage"] == "scope"
+
+
 def test_bounded_continuous_campaign_replays_deferred_stage_review(
     tmp_path: Path,
     monkeypatch,
