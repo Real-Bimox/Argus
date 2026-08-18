@@ -306,6 +306,62 @@ def build_steer_confirmation_prompt(text: str, *, active_mission: bool) -> str:
     )
 
 
+def build_fast_vertical_decision_prompt(
+    task: str,
+    *,
+    verticals_with_purpose: dict[str, str],
+    domains_with_purpose: dict[str, str] | None = None,
+    existing_data_domains: Sequence[str] = (),
+    research_target_verticals: Sequence[str] = (),
+) -> str:
+    """Render the compact, tool-free first-pass Manager prompt."""
+    menu = (
+        "\n".join(
+            f"  - `{name}`: {purpose}"
+            for name, purpose in verticals_with_purpose.items()
+        )
+        or "  (none)"
+    )
+    domain_menu = (
+        "\n".join(
+            f"  - `{name}`: {purpose}"
+            for name, purpose in (domains_with_purpose or {}).items()
+        )
+        or "  (none)"
+    )
+    existing = ", ".join(f"`{value}`" for value in existing_data_domains) or "(none)"
+    targeted = ", ".join(f"`{value}`" for value in research_target_verticals) or "(none)"
+    return (
+        "You are the Manager making a fast, tool-free front-door judgment. Choose "
+        "an existing capability only when the Task makes the fit clear. If routing, "
+        "authority, scope, system risk, repository context, or a new capability is "
+        "uncertain, choose grounded so you can investigate freely in the next call. "
+        "Do not plan implementation.\n\n"
+        "## Built-in verticals\n"
+        f"{menu}\n\n"
+        "## Optional research domains\n"
+        f"{domain_menu}\n\n"
+        f"## Existing project domains\n{existing}\n\n"
+        "Choose workflow_mode=direct for one coherent Engineer package; use staged "
+        "for dependent phases or multiple evidence tracks. Domain is only an optional "
+        "research specialization. Never invent an alias for an existing capability.\n\n"
+        f"Research-target verticals: {targeted}. Use exploratory, publishable, or "
+        "doctoral only when the Task states that success bar; otherwise none. Never "
+        "infer a publication venue.\n\n"
+        "## Task\n"
+        f"{(task or '').strip()}\n\n"
+        "Return named lines only.\n"
+        "CHOICE=existing|grounded\n"
+        "VERTICAL=<existing name, or none>\n"
+        "DOMAIN=<research domain, or none>\n"
+        "WORKFLOW_MODE=direct|staged\n"
+        "CONFIDENCE=<0.0-1.0>\n"
+        "RESEARCH_TARGET_LEVEL=<exploratory|publishable|doctoral, or none>\n"
+        "TARGET_VENUE=<explicit venue, or none>\n"
+        "RATIONALE=<brief strategic judgment or needed investigation>\n"
+    )
+
+
 def build_vertical_decision_prompt(
     task: str,
     *,
@@ -344,8 +400,10 @@ def build_vertical_decision_prompt(
     return (
         "Choose the capability VERTICAL and independent execution WORKFLOW. "
         "A vertical is a stable reusable staged capability, not a Planner DAG.\n\n"
-        "Inspect routing evidence with at most 3 targeted operations, each <80 lines and "
-        "<16k characters total. No repeated/broadened search; no task work or Live View.\n\n"
+        "Investigate freely as needed for routing/risk. Read-only: "
+        "Manager owns direction, Planner the file plan. Use manager_tool_root, not "
+        "/app. Clear built-ins need no implementation/test inspection solely to route. "
+        "Stop when sound; no implementation or Live View.\n\n"
         "## Built-in verticals (PREFER one of these when it fits the Task)\n"
         f"{menu}\n\n"
         "## Optional built-in research domains\n"
@@ -390,20 +448,19 @@ def build_vertical_decision_prompt(
         "a serious survey, or a PDF alone does not imply publication intent. Other "
         "verticals use none. TARGET_VENUE is an explicitly named venue for research "
         "or none; never infer a venue or submission search from the topic.\n\n"
-        "Return the named lines below; prose is ignored. EXECUTION_TASK must stand "
-        "alone and preserve every requested action, deliverable, order, and stop "
-        "condition. Do not replace the goal with cleanup, docs, hashes, provenance, "
-        "or extra validation. A requested reversible download/build/conversion/run "
-        "authorizes a real attempt before claiming an external blocker. Do not "
-        "delete/overwrite existing files merely because new outputs are constrained.\n\n"
+        "Return named lines; prose ignored. Omit EXECUTION_TASK for a standalone "
+        "existing route; Host preserves Task verbatim. Include it only for contextual "
+        "shorthand or a new capability, and preserve every requested action and exact "
+        "path/command/order/stop. Planner owns implementation. Do not replace the goal "
+        "with cleanup, docs, hashes, provenance, or extra validation. A requested "
+        "reversible action authorizes a real attempt before claiming an external blocker.\n\n"
         "CHOICE=existing\n"
         "VERTICAL=<one of the names above>\n"
         "STAGES=<none, or the complete revised stage skeleton for an underfit "
         "existing project data domain>\n"
         "DOMAIN=<built-in research domain, or none>\n"
         "WORKFLOW_MODE=<direct|staged>\n"
-        "EXECUTION_TASK=<complete standalone objective>\n"
-        "RATIONALE=<why it fits, citing what you found in the repo>\n"
+        "RATIONALE=<strategic judgment/evidence for Planner, no file plan>\n"
         "RESEARCH_TARGET_LEVEL=<exploratory|publishable|doctoral when the "
         "vertical declares a target contract, otherwise none>\n"
         "TARGET_VENUE=<explicit venue for research, or none>\n"
@@ -412,7 +469,6 @@ def build_vertical_decision_prompt(
         "VERTICAL=<a new lowercase a-z0-9_ slug, distinct from every name above>\n"
         "STAGES=<stage1>; <stage2>; <stage3>\n"
         "WORKFLOW_MODE=<direct|staged>\n"
-        "EXECUTION_TASK=<complete standalone objective>\n"
         "RATIONALE=<why no existing vertical fits + what you found>\n"
         "CONFIDENCE=<0.0-1.0>\n"
         "Both shapes also take these three lines, `;`-separated, each item in "
@@ -1095,6 +1151,7 @@ __all__ = [
     "SKILL_PLACEMENT_BATCH",
     "STAGE_DECISION",
     "assemble_manager_prompt",
+    "build_fast_vertical_decision_prompt",
     "build_quick_reply_prompt",
     "build_front_door_prompt",
     "build_maintenance_prompt",

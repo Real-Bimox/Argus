@@ -7,6 +7,7 @@ machine is delegated to :mod:`._exec`.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
@@ -35,6 +36,63 @@ _RUNNER_HARD_IDLE_ENV = "ARGUS_SKILL_RUNNER_HARD_IDLE_SECONDS"
 _RUNNER_DEFAULT_SOFT_IDLE_SECONDS = 10 * 60
 _RUNNER_DEFAULT_STALLED_IDLE_SECONDS = 30 * 60
 _RUNNER_DEFAULT_HARD_IDLE_SECONDS = 45 * 60
+
+
+class _RepeatedToolCallGuard:
+    """Interrupt a provider turn repeating one identical tool call."""
+
+    def __init__(self, limit: int = 3) -> None:
+        self.limit = limit
+        self._lock = threading.Lock()
+        self.reset()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._last_signature = ""
+            self._repeat_count = 0
+            self._reason = ""
+
+    def observe(self, stream: str, line: str) -> None:
+        if stream != "stdout":
+            return
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            return
+        message = event.get("message")
+        if not isinstance(message, dict):
+            return
+        content = message.get("content")
+        if not isinstance(content, list):
+            return
+        with self._lock:
+            if event.get("type") != "assistant":
+                return
+            for item in content:
+                if not isinstance(item, dict) or item.get("type") != "tool_use":
+                    continue
+                signature = json.dumps(
+                    {
+                        "name": item.get("name"),
+                        "input": item.get("input"),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                if signature == self._last_signature:
+                    self._repeat_count += 1
+                else:
+                    self._last_signature = signature
+                    self._repeat_count = 1
+                if self._repeat_count >= self.limit:
+                    self._reason = (
+                        "repeated tool call detected: the same tool and arguments "
+                        f"were requested {self._repeat_count} consecutive times"
+                    )
+
+    def interrupt_reason(self) -> str:
+        with self._lock:
+            return self._reason
 
 
 def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
@@ -137,6 +195,7 @@ class AgentCliBackend:
         # propagate to the supervisor's stop logic.
         self._auth_failure_detected: bool = False
         self._usage = UsageAccumulator()
+        self._repeated_tool_call_guard = _RepeatedToolCallGuard()
         self._usage_context_lock = threading.Lock()
         self._usage_project_root: Path | None = None
         self._usage_global_root: Path | None = None
@@ -281,6 +340,7 @@ class AgentCliBackend:
         run_label: str,
         resume_thread_id: str | None = None,
     ) -> RunnerResult:
+        self._repeated_tool_call_guard.reset()
         return _exec.execute(
             self,
             prompt=prompt,
@@ -316,6 +376,7 @@ class AgentCliBackend:
         self._io_logger.close(call_id)
 
     def _stream_event_callback(self, stream: str, line: str) -> None:
+        self._repeated_tool_call_guard.observe(stream, line)
         self._io_logger.stream_event_callback(
             stream,
             line,
@@ -331,10 +392,15 @@ class AgentCliBackend:
         # hooks, add_dirs, plugin_dirs, etc.). Forward the fields
         # argus-skill exposes; the watchdog hooks are propagated when set
         # so an outer supervisor can interrupt the codex subprocess.
-        interrupt_provider = _compose_interrupt_providers(
+        interrupt_providers = [
             self._default_interrupt_reason_provider,
             options.external_interrupt_reason_provider,
-        )
+        ]
+        if self._backend_name == "claude":
+            interrupt_providers.append(
+                self._repeated_tool_call_guard.interrupt_reason
+            )
+        interrupt_provider = _compose_interrupt_providers(*interrupt_providers)
         soft_idle = (
             self._default_watchdog_soft_idle_seconds
             if options.watchdog_soft_idle_seconds is None

@@ -183,7 +183,7 @@ def test_environment_cannot_force_vertical(tmp_path, monkeypatch) -> None:
 
     assert decision.vertical == "research"
     assert [call["run_label"] for call in runner.calls] == [
-        "manager-classify-grounded"
+        "manager-classify-fast"
     ]
 
 
@@ -348,7 +348,11 @@ def test_vertical_commit_persists_generic_research_target_contract(
     assert state["research_target_set_at"] > 0
 
 
-def test_vertical_decision_can_be_committed_after_external_revision_check(tmp_path):
+def test_vertical_decision_can_be_committed_after_external_revision_check(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
     mgr = Manager(project_root=tmp_path, runner=_existing("research"))
     agents_path = tmp_path / "AGENTS.md"
     original_agents = "# AGENTS.md\n\noperator-owned text\n"
@@ -528,7 +532,9 @@ def test_root_task_id_scopes_manager_stage_call(tmp_path):
 
 def test_grounded_vertical_decision_rewrites_task_without_unrequested_rendering(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
     runner = _DecisionRunner({
         "choice": "existing",
         "vertical": "research",
@@ -563,8 +569,8 @@ def test_vertical_decision_pins_manager_model(tmp_path, monkeypatch) -> None:
     assert decision.workflow_mode == "direct"
     assert runner.last_options.model == "gpt-5.5"
     assert runner.calls[0]["options"].external_interrupt_reason_provider is None
-    assert "multiple evidence tracks/alternatives" in runner.calls[0]["prompt"]
-    assert "One final report can still be staged" in runner.calls[0]["prompt"]
+    assert runner.calls[0]["options"].sandbox_mode == "read-only"
+    assert "fast, tool-free front-door judgment" in runner.calls[0]["prompt"]
 
 
 def test_software_planner_requirement_overrides_direct_route(
@@ -581,7 +587,7 @@ def test_software_planner_requirement_overrides_direct_route(
     assert decision.vertical == "software"
     assert decision.workflow_mode == "staged"
     assert [call["run_label"] for call in runner.calls] == [
-        "manager-classify-grounded"
+        "manager-classify-fast"
     ]
 
 
@@ -597,13 +603,15 @@ def test_argus_maintenance_skips_duplicate_manager_grounding_by_default(
     assert decision.vertical == "argus_maintenance"
     assert "## Manager project grounding" not in decision.execution_task
     assert [call["run_label"] for call in runner.calls] == [
-        "manager-classify-grounded"
+        "manager-classify-fast"
     ]
 
 
 def test_vertical_decision_always_uses_repository_grounded_route(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
     class _GroundedRunner:
         _backend_name = "copilot"
 
@@ -642,8 +650,11 @@ def test_vertical_decision_always_uses_repository_grounded_route(
     assert runner.calls[0]["options"].force_safe_mode is True
     assert runner.calls[0]["options"].dangerous_yolo is False
     assert "--available-tools=" not in runner.calls[0]["options"].extra_args
-    assert "Inspect routing evidence" in runner.calls[0]["prompt"]
-    assert "at most 3 targeted operations" in runner.calls[0]["prompt"]
+    assert "Investigate freely as needed" in runner.calls[0]["prompt"]
+    assert "Manager owns direction, Planner the file plan" in runner.calls[0]["prompt"]
+    assert "preserve every requested action and exact path/command" in runner.calls[0]["prompt"]
+    assert "Planner owns implementation" in runner.calls[0]["prompt"]
+    assert "at most one targeted" not in runner.calls[0]["prompt"]
 
 
 def test_fast_route_environment_cannot_restore_tool_free_shortcut(
@@ -681,6 +692,7 @@ def test_empty_workspace_builtin_research_does_not_require_ceremonial_tool_use(
                     "workflow_mode": "staged",
                     "execution_task": "Write the requested survey and compile its PDF.",
                     "rationale": "explicit built-in research task in an empty workspace",
+                    "confidence": 0.95,
                     "research_target_level": "exploratory",
                 }),
                 tool_activity_observed=False,
@@ -693,12 +705,14 @@ def test_empty_workspace_builtin_research_does_not_require_ceremonial_tool_use(
 
     assert decision.vertical == "research"
     assert decision.workflow_mode == "direct"
-    assert runner.calls == ["manager-classify-grounded"]
+    assert runner.calls == ["manager-classify-fast"]
 
 
 def test_company_due_diligence_cannot_enter_publication_workflow(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
     runner = _DecisionRunner({
         "choice": "existing",
         "vertical": "research",
@@ -721,9 +735,11 @@ def test_company_due_diligence_cannot_enter_publication_workflow(
     assert "never `research`/`staged`" in runner.calls[0]["prompt"]
 
 
-def test_repository_sensitive_no_tool_route_retries_once_and_can_recover(
+def test_builtin_repository_route_accepts_host_snapshot_without_tool_retry(
     tmp_path,
+    monkeypatch,
 ) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
     (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
 
     class _RetryRunner:
@@ -740,7 +756,7 @@ def test_repository_sensitive_no_tool_route_retries_once_and_can_recover(
                     "execution_task": "Repair the repository.",
                     "rationale": "Python repository repair",
                 }),
-                tool_activity_observed=len(self.calls) == 2,
+                tool_activity_observed=False,
             )
 
     runner = _RetryRunner()
@@ -749,15 +765,75 @@ def test_repository_sensitive_no_tool_route_retries_once_and_can_recover(
     )
 
     assert decision.vertical == "software"
-    assert runner.calls == [
-        "manager-classify-grounded",
-        "manager-classify-grounded-retry",
-    ]
+    assert runner.calls == ["manager-classify-grounded"]
 
 
-def test_vertical_decision_rejects_repeated_no_tool_repository_route(
+def test_standalone_task_is_preserved_when_manager_omits_execution_task(
     tmp_path,
 ) -> None:
+    task = "Repair the parser without changing tests."
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "vertical": "software",
+        "workflow_mode": "direct",
+        "rationale": "The standalone task is already a bounded software mission.",
+    })
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(task)
+
+    assert decision.execution_task == task
+    assert decision.adaptation_reason.startswith("The standalone task")
+
+
+def test_manager_retries_once_after_repeated_failed_tool_loop(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+
+    class ToolLoopResult(_DecisionResult):
+        exit_code = 143
+        fatal_error = (
+            "External interrupt: repeated tool call detected: "
+            "the same tool and arguments were requested 3 consecutive times"
+        )
+
+    class ToolLoopRunner:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        def run_exec(self, *, prompt, options, run_label, resume_thread_id=None):
+            self.calls.append({"prompt": prompt, "run_label": run_label})
+            if len(self.calls) == 1:
+                return ToolLoopResult("")
+            return _DecisionResult(json.dumps({
+                "choice": "existing",
+                "vertical": "software",
+                "workflow_mode": "direct",
+                "execution_task": "Repair the repository without changing tests.",
+                "rationale": "The Host snapshot identifies a bounded Python repair.",
+            }), tool_activity_observed=False)
+
+    runner = ToolLoopRunner()
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "Repair the repository without changing tests."
+    )
+
+    assert decision.vertical == "software"
+    assert [call["run_label"] for call in runner.calls] == [
+        "manager-classify-grounded",
+        "manager-classify-tool-loop-retry",
+    ]
+    assert "manager_tool_root=" in runner.calls[0]["prompt"]
+    assert "Tool-loop correction" in runner.calls[1]["prompt"]
+
+
+def test_vertical_decision_rejects_repeated_no_tool_new_vertical_route(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
     (tmp_path / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
 
     class _NoToolRunner:
@@ -768,11 +844,13 @@ def test_vertical_decision_rejects_repeated_no_tool_repository_route(
             self.calls.append(run_label)
             return _DecisionResult(
                 json.dumps({
-                    "choice": "existing",
-                    "vertical": "software",
-                    "workflow_mode": "direct",
-                    "execution_task": "Repair the repository.",
-                    "rationale": "claimed repository fit without inspection",
+                    "choice": "new",
+                    "vertical": "custom_runtime",
+                    "stages": ["measure", "implement", "verify"],
+                    "workflow_mode": "staged",
+                    "execution_task": "Build the requested custom runtime.",
+                    "rationale": "claimed a new project capability without inspection",
+                    "confidence": 0.8,
                 }),
                 tool_activity_observed=False,
             )
@@ -783,7 +861,7 @@ def test_vertical_decision_rejects_repeated_no_tool_repository_route(
         match="did not inspect repository tools",
     ):
         Manager(project_root=tmp_path, runner=runner).decide_vertical(
-            "Repair the repository."
+            "Build a project-specific runtime not covered by a built-in capability."
         )
     assert runner.calls == [
         "manager-classify-grounded",
@@ -899,6 +977,7 @@ def test_grounded_route_prompt_cap_fails_before_model_call(
     tmp_path,
     monkeypatch,
 ) -> None:
+    monkeypatch.setenv("ARGUS_SKILL_MANAGER_FAST_ROUTE", "0")
     monkeypatch.setenv("ARGUS_SKILL_MANAGER_GROUNDED_ROUTE_MAX_PROMPT_CHARS", "1")
     runner = _DecisionRunner({
         "choice": "grounded",

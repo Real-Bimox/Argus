@@ -260,17 +260,18 @@ def test_fast_vertical_parser_sends_new_or_uncertain_work_to_grounding() -> None
     assert route.needs_grounding is True
 
 
-def test_grounded_vertical_prompt_has_bounded_inspection_and_no_rendering_work() -> None:
+def test_grounded_vertical_prompt_preserves_manager_agency_and_planner_boundary() -> None:
     prompt = build_vertical_decision_prompt(
         "Build a novel controller whose repository structure is unknown.",
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "at most 3 targeted operations" in prompt
-    assert "<16k characters total" in prompt
-    assert "no task work or Live View" in prompt
+    assert "Investigate freely as needed" in prompt
+    assert "need no implementation/test inspection solely to route" in prompt
+    assert "Manager owns direction, Planner the file plan" in prompt
     assert "presentations" not in prompt
-    assert "EXECUTION_TASK=<complete standalone objective>" in prompt
+    assert "Omit EXECUTION_TASK for a standalone existing route" in prompt
+    assert "Include it only for contextual shorthand or a new capability" in prompt
 
 
 def test_read_only_repository_audit_avoids_maintenance_meta_review() -> None:

@@ -2039,6 +2039,7 @@ def test_resume_with_explicit_new_objective_runs_manager_handoff(
             execution_task="new manager-clean objective",
             choice="existing",
             vertical="research",
+            adaptation_reason="Preserve the established research direction.",
         )
 
     monkeypatch.setattr(
@@ -2065,9 +2066,11 @@ def test_resume_with_explicit_new_objective_runs_manager_handoff(
     class FakeSupervisor:
         def __init__(self, *args: object, **kwargs: object) -> None:
             self.config: Any = kwargs["config"]
+            self._vertical_resolved = False
 
         def run(self) -> dict[str, Any]:
             seen["objective"] = self.config.continuous_objective
+            seen["vertical_resolved"] = self._vertical_resolved
             self.config.stop_event.set()
             return {"stopped_by": "backlog_empty"}
 
@@ -2089,7 +2092,18 @@ def test_resume_with_explicit_new_objective_runs_manager_handoff(
     assert calls == ["new raw objective"]
     assert commit_kwargs[0]["force_stage_reset"] is True
     assert seen["objective"] == "new manager-clean objective"
+    assert seen["vertical_resolved"] is True
     assert read_continuous_state(tmp_path).objective == "new manager-clean objective"
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "events.jsonl").read_text().splitlines()
+    ]
+    completed = [
+        event
+        for event in events
+        if event.get("type") == "life.manager.intent.completed"
+    ]
+    assert completed[-1]["reason"] == "Preserve the established research direction."
 
 
 def test_resume_with_additive_objective_preserves_existing_pipeline_stage(
@@ -2905,6 +2919,41 @@ def test_open_ended_daemon_stays_resident_after_project_done(
     worker._rf_main_loop(rf_state)
 
     assert calls == 2
+
+
+def test_daemon_stop_does_not_log_drain_failure(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    worker = LifeWorker(
+        LifeWorkerConfig(
+            life_dir=tmp_path,
+            backend="memory",
+            project_workdir=tmp_path,
+            poll_interval=0.0,
+        )
+    )
+    worker._self_maintenance = None
+    worker._curator = None
+
+    class FakeSupervisor:
+        _missions_started = 0
+        _planning_cycles = 0
+
+        def run(self):
+            worker._stop.set()
+            raise RuntimeError("interrupted work")
+
+    rf_state = SimpleNamespace(
+        runtime_root=tmp_path,
+        cfg=worker.config,
+        runner=SimpleNamespace(manager=None),
+        sup=FakeSupervisor(),
+    )
+
+    worker._rf_main_loop(rf_state)
+
+    assert "drain pass raised" not in caplog.text
 
 
 def test_operator_stop_freezes_adopted_generation_before_reload(

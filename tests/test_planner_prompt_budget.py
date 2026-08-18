@@ -83,6 +83,8 @@ def test_math_scope_prompt_is_compact_and_deduplicated(
         "compact and move state-specific guidance behind structured triggers"
     )
     assert prompt.count(objective) == 1
+    assert "## Manager mission brief (authoritative)\n" + objective in prompt
+    assert "## Original operator request (immutable anchor)" not in prompt
     assert "Argus planner role skill:" not in prompt
     assert "waiting_contract" not in prompt
     assert prompt.count("PROJECT_DONE=false") == 1

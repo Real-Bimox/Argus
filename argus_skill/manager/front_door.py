@@ -575,7 +575,10 @@ class PreparedManagerHandoff:
                 "",
             ),
             "stages": list(getattr(division, "stages", []) or []),
-            "reason": getattr(division, "headline", lambda: "")(),
+            "reason": (
+                str(getattr(self.decision, "adaptation_reason", "") or "").strip()
+                or getattr(division, "headline", lambda: "")()
+            ),
             "text": (
                 "manager routed TEAM · "
                 f"{getattr(division, 'vertical', '')} · {workflow_mode} · {lifetime}"
