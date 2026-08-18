@@ -26,7 +26,12 @@ A loss is a root-cause and research-value decision point.
    optimization/tuning, model/data capacity, evaluator semantics, fair budgets,
    dropped failures, and diagnostics tied to the proposed mechanism.
 2. **Classify the cause:** misconfigured, under-engineered, unfair comparison,
-   genuine method failure, or infeasible under the available resources.
+   inconclusive due to insufficient discriminative power, genuine method
+   failure, or infeasible under the available resources.
+   Before claiming genuine failure, verify that the tasks exercised the proposed
+   mechanism, the baseline had metric headroom, and the cases/repeats could
+   resolve the predeclared contrast. A ceilinged/floored or underpowered tie is
+   inconclusive, not a negative method result.
 3. **Choose the next action by evidence and information gain:**
    - repair or optimize when a concrete credible change could give the idea a
      fairer test;
@@ -80,6 +85,8 @@ Score each 1–5. Score 3+ on all dimensions = pass.
 5. **Baseline competitiveness**
    - Did baselines actually run and produce reasonable numbers (not all zeros)?
    - Is there at least one baseline that is competitive (not trivially weak)?
+   - Did the baseline leave enough headroom for the comparison to distinguish
+     methods, rather than saturating on an easy task slice?
    - Would a reviewer say "this baseline is too weak to be meaningful"?
    - Are published results from prior work included where available?
 
@@ -117,6 +124,8 @@ Return JSON:
 - No domain-appropriate uncertainty or evidential justification for the headline result
 - Unfair ablation: comparing trained component vs untrained/random component
 - All baselines at 0% or trivially broken
+- A ceilinged/floored or underpowered tie is used to reject the method instead of
+  being classified as inconclusive and redesigned
 - Headline claim contradicts the actual numbers
 - Missing a planned benchmark/condition with no explanation
 - Reporting only the best cherry-picked metric while hiding others

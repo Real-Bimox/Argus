@@ -44,6 +44,10 @@ post-training plans — omit `rl_config_sanity` from the output for non-RL plans
    - Do online/intervention claims compare executable methods with the same
      decision-time information? Historical executed traces and post-hoc judges
      are diagnostics, not equivalent online baselines.
+   - Can the planned comparison distinguish the claimed effect? The tasks must
+    exercise the mechanism, the baseline must have metric headroom, and the
+    cases/repeats must be able to resolve the predeclared contrast; otherwise
+    the plan can produce only inconclusive evidence.
 
 4. **Benchmark adequacy**
    - Does every final empirical claim include at least one appropriate public
@@ -156,6 +160,9 @@ Return JSON:
   or scorer-derived fields
 - An online prevention/intervention claim uses only observational traces or a
   post-hoc judge as its baseline
+- A keep/reject comparison is designed around an evidently ceilinged/floored
+  baseline, an easy proxy that does not exercise the mechanism, or too little
+  evidence to distinguish the predeclared effect
 - Unjustified custom infrastructure that changes the comparison while claiming
   to test only a model/method contribution. Custom infrastructure is allowed
   when it is necessary for or part of the research contribution and is validated

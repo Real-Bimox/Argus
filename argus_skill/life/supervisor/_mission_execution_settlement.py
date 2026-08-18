@@ -612,6 +612,16 @@ class MissionExecutionSettlementMixin:
                 ),
                 outcome=outcome_dimensions,
             )
+        elif replan_requested and bool(
+            (getattr(outcome, "final_planner_report", None) or {}).get(
+                "forward_progress"
+            )
+        ):
+            self.memory.backlog.mark_failed(
+                item.id,
+                error=state.stop_reason or "completed work requires a replacement plan",
+                outcome=outcome_dimensions,
+            )
         elif replan_requested:
             # Bounded convergence guard. A refuted node that keeps returning
             # replan_requested with no intervening forward progress

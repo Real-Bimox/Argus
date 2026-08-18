@@ -22,7 +22,10 @@ feasibility cannot promote a shallow idea.
    most change the plan.
 2. Choose the cheapest faithful probe that can inform it. Use real public data or
    the actual system when the claim depends on them; do not replace the premise
-   with an easy toy proxy.
+   with an easy toy proxy. For a comparative claim, require discriminative
+   headroom: the task slice must exercise the proposed mechanism, the baseline
+   must not already saturate at the metric ceiling or floor, and the planned
+   cases/repeats must be able to resolve the predeclared contrast.
 3. Record the setup before running: model/system identity, data slice, comparator
    or control, metric/observation, and the limitations of the probe.
 4. Before any paid or model-backed call, inspect the prediction boundary:
@@ -47,6 +50,8 @@ feasibility cannot promote a shallow idea.
 Do not emit PASS/FAIL, force a pivot, or automatically schedule another direction.
 The Planner reads the stored observation with the rest of the project and decides
 what it changes. A wiring smoke test is not evidence for the scientific thesis.
+A tie from an easy, ceilinged/floored, or underpowered probe is inconclusive:
+redesign the probe rather than treating it as evidence that the method failed.
 
 ## Integrity
 

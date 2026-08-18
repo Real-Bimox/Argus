@@ -117,6 +117,12 @@ human cohort, or systems measurement.
    - `inconclusive`: evidence cannot answer the question;
    - `infeasible_under_budget`: a fair test is outside the current allocation.
 
+Classify a comparison as `inconclusive`, not `supported_negative`, when the
+baseline has no metric headroom because candidate and baseline saturate at the
+ceiling/floor, the task slice does not exercise the claimed mechanism, or the
+cases/repeats cannot resolve the predeclared contrast. Redesign the next probe;
+do not rerun the same non-discriminative comparison.
+
 Before `supported_negative` or `supported_boundary`, perform an implementation
 adequacy audit: reference parity, executed configuration, evaluator semantics,
 optimization/tuning, data, and resource sufficiency. A concrete under-engineering

@@ -1179,6 +1179,50 @@ def test_consecutive_replans_are_bounded_and_escalated(tmp_path, monkeypatch) ->
     assert _row().status == "failed"
 
 
+def test_replan_after_forward_progress_is_not_redispatched(tmp_path) -> None:
+    class _ProgressThenReplanRunner:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def execute(self, **kwargs: Any) -> _Outcome:
+            self.calls += 1
+            outcome = _Outcome(
+                success=False,
+                status="replan_requested",
+                stop_reason="bounded probe completed; redesign the next mission",
+            )
+            outcome.final_planner_report = {
+                "forward_progress": True,
+                "plan_signal": "reconsider",
+            }
+            return outcome
+
+    mem = LifeMemory.open(tmp_path / "life")
+    runner = _ProgressThenReplanRunner()
+    sup = LifeSupervisor(
+        memory=mem,
+        runner=runner,
+        sink=_RecordingSink(mem.root),
+        config=LifeSupervisorConfig(
+            budget=LifeBudget(global_daily_cap_usd=0.0, max_missions=2),
+            poll_interval_seconds=0.01,
+        ),
+    )
+    item = mem.backlog.add(BacklogItem.new(
+        title="bounded probe",
+        objective="measure the premise once, then choose replacement work",
+    ))
+
+    result = sup.tick()
+
+    assert result is not None and result["status"] == "replan_requested"
+    stored = next(row for row in mem.backlog.all() if row.id == item.id)
+    assert stored.status == "failed"
+    assert runner.calls == 1
+    assert sup.tick() is None
+    assert runner.calls == 1
+
+
 def test_large_replan_threshold_uses_persisted_streak(
     tmp_path,
     monkeypatch,
