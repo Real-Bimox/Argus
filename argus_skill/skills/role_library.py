@@ -20,6 +20,7 @@ class RoleSkillLibraries:
     own_paths: list[Path] = field(default_factory=list)
     reference_paths: list[Path] = field(default_factory=list)
     native_paths: list[Path] = field(default_factory=list)
+    required_paths: list[Path] = field(default_factory=list)
     block: str = ""
 
 
@@ -50,7 +51,29 @@ def _pool_paths(roots: list[Path], pools: frozenset[str]) -> list[Path]:
     return paths
 
 
-def render_skill_library_paths(skill_store: object | None, *, role: str) -> str:
+def _required_paths(
+    roots: list[Path],
+    relative_paths: tuple[str, ...],
+) -> list[Path]:
+    required: list[Path] = []
+    for relative in relative_paths:
+        candidate = Path(relative)
+        if candidate.is_absolute() or ".." in candidate.parts:
+            raise ValueError(f"required Skill path must be relative: {relative!r}")
+        for root in roots:
+            path = root / candidate
+            if path.is_file():
+                required.append(path)
+                break
+    return required
+
+
+def render_skill_library_paths(
+    skill_store: object | None,
+    *,
+    role: str,
+    required_relative_paths: tuple[str, ...] = (),
+) -> str:
     roots = skill_library_roots(skill_store)
     if not roots:
         return ""
@@ -65,10 +88,19 @@ def render_skill_library_paths(skill_store: object | None, *, role: str) -> str:
         lines.append(
             f"{index}. `{root}` (OWN: {own}; REFERENCE only: {references})"
         )
+    required = _required_paths(roots, required_relative_paths)
+    required_block = (
+        "\nRequired for this mission (open these bodies before repository work):\n"
+        + "\n".join(f"- `{path}`" for path in required)
+        + "\n"
+        if required
+        else ""
+    )
     return (
         "## Skill libraries (on-demand)\n"
         f"Role: {role}. Order: project → vertical/domain → global; OWN > REFERENCE.\n"
         + "\n".join(lines)
+        + required_block
         + "\n\nYour first action, before any repository tool, is one native Skill decision: "
         "inspect the available descriptions (not every body), and immediately open "
         "only the body whose description clearly names this task's operation or "
@@ -86,12 +118,14 @@ def role_skill_libraries(
     *,
     role: str,
     on_event: Callable[[dict], None] | None = None,
+    required_relative_paths: tuple[str, ...] = (),
 ) -> RoleSkillLibraries:
     roots = skill_library_roots(skill_store)
     own_paths = _pool_paths(roots, ROLE_SKILL_POOLS.get(role, frozenset({role})))
     reference_paths = _pool_paths(
         roots, ROLE_CROSS_READ_POOLS.get(role, frozenset())
     )
+    required_paths = _required_paths(roots, required_relative_paths)
     if on_event is not None and roots:
         on_event(
             {
@@ -100,6 +134,7 @@ def role_skill_libraries(
                 "paths": [str(path) for path in roots],
                 "own_paths": [str(path) for path in own_paths],
                 "reference_paths": [str(path) for path in reference_paths],
+                "required_paths": [str(path) for path in required_paths],
                 "precedence": "project,vertical,global",
                 "discovery": "native-or-path-fallback",
                 "text": "Skill library paths supplied for on-demand discovery",
@@ -111,7 +146,12 @@ def role_skill_libraries(
         own_paths=own_paths,
         reference_paths=reference_paths,
         native_paths=[*own_paths, *reference_paths],
-        block=render_skill_library_paths(skill_store, role=role),
+        required_paths=required_paths,
+        block=render_skill_library_paths(
+            skill_store,
+            role=role,
+            required_relative_paths=required_relative_paths,
+        ),
     )
 
 

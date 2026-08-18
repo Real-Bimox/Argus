@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 RESEARCH_TARGET_LEVELS = ("exploratory", "publishable", "doctoral")
+RESEARCH_DIRECTION_MODES = ("broad", "locked")
 RESULT_CLASSES = (
     "known_result",
     "finite_verification",
@@ -102,6 +103,22 @@ def resolve_research_target_level(project_root: object) -> str | None:
     if not isinstance(payload, dict):
         return None
     return normalize_research_target_level(payload.get("research_target_level"))
+
+
+def normalize_research_direction_mode(value: Any) -> str | None:
+    mode = str(value or "").strip().lower()
+    return mode if mode in RESEARCH_DIRECTION_MODES else None
+
+
+def resolve_research_direction_mode(project_root: object) -> str | None:
+    path = Path(str(project_root)).joinpath(*_STATE_RELPATH)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return normalize_research_direction_mode(payload.get("research_direction_mode"))
 
 
 def research_target_contract(
@@ -352,6 +369,7 @@ __all__ = [
     "ACCEPTED_SIGNIFICANCE",
     "CORRECTNESS_STATUSES",
     "NOVELTY_STATUSES",
+    "RESEARCH_DIRECTION_MODES",
     "RESEARCH_TARGET_LEVELS",
     "RESULT_CLASSES",
     "RESULT_FIELD_CHOICES",
@@ -360,6 +378,7 @@ __all__ = [
     "ResearchTargetContract",
     "adapt_legacy_research_result_payload",
     "normalize_research_result",
+    "normalize_research_direction_mode",
     "normalize_research_target_level",
     "research_completion_issue",
     "research_pause_status",
@@ -367,5 +386,6 @@ __all__ = [
     "research_target_contract",
     "research_target_env_override",
     "resolve_research_target_level",
+    "resolve_research_direction_mode",
     "resolve_research_target_set_at",
 ]

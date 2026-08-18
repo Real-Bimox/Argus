@@ -69,7 +69,7 @@ def test_vertical_prompt_keeps_math_routes_inside_builtin_math():
     # earns its space. It moved 7_500 -> 8_100 for the three requirement lines
     # (PRECISE_CONSTRAINTS / EXCLUSIONS / AMBIGUITIES, 544 chars), which carry
     # the operator's own words into the contract. Keep the headroom small.
-    assert len(prompt) <= 8_100
+    assert len(prompt) <= 8_200
 
 
 def test_vertical_prompts_do_not_treat_one_paper_reading_as_research_pipeline():
@@ -307,6 +307,68 @@ def test_vertical_parser_recovers_required_persisted_research_target() -> None:
     assert decision is not None
     assert decision.domain == "chemistry"
     assert decision.research_target_level == "publishable"
+    assert decision.research_direction_mode == "broad"
+
+
+def test_vertical_parser_preserves_operator_locked_research_hypothesis() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "research_target_level": "publishable",
+            "research_direction_mode": "locked",
+            "execution_task": "test the operator's fixed hypothesis",
+        }),
+        known_verticals=VERTICALS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_research_target_level="publishable",
+        persisted_research_direction_mode="locked",
+    )
+
+    assert decision is not None
+    assert decision.research_direction_mode == "locked"
+
+
+def test_vertical_parser_does_not_trust_fresh_model_locked_claim() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "research_target_level": "publishable",
+            "research_direction_mode": "locked",
+            "execution_task": "find a paper idea",
+        }),
+        known_verticals=VERTICALS,
+        research_target_verticals=("research",),
+    )
+
+    assert decision is not None
+    assert decision.research_direction_mode == "broad"
+
+
+def test_vertical_parser_rejects_downgrading_persisted_broad_research() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "research_target_level": "publishable",
+            "research_direction_mode": "locked",
+            "execution_task": "continue the paper",
+        }),
+        known_verticals=VERTICALS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_research_target_level="publishable",
+        persisted_research_direction_mode="broad",
+    )
+
+    assert decision is None
 
 
 def test_vertical_parser_rejects_changed_persisted_research_domain() -> None:

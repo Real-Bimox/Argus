@@ -307,6 +307,7 @@ def daemon_dict(status: DaemonStatus, *, life_dir: Path | None = None) -> dict[s
         },
         "backend": status.backend,
         "global_daily_cap_usd": budget.global_daily_cap_usd,
+        "mission_width": status.mission_width,
         "read_status": "error" if status.status_read_error else "ok",
         "read_error": status.status_read_error,
         "protocol": {
@@ -352,6 +353,7 @@ def daemon_error_dict(exc: BaseException) -> dict[str, Any]:
         },
         "backend": None,
         "global_daily_cap_usd": global_daily,
+        "mission_width": None,
         "read_status": "error",
         "read_error": str(exc or type(exc).__name__)[:500],
         "protocol": {"name": "", "major": None, "minor": None},

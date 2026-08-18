@@ -690,6 +690,7 @@ class BacklogItem:
     tags: list[str] = field(default_factory=list)
     notes: str = ""
     started_ts: float | None = None
+    running_owner: str = ""
     finished_ts: float | None = None
     last_error: str = ""
     # Set when this item's reviewer verdict was "blocked" with a
@@ -771,6 +772,10 @@ class BacklogItem:
     # absolute worktree; ordinary Planner tasks use a project-relative nested
     # Git root, which becomes the campaign root after host validation.
     execution_workdir: str = ""
+    # Only explicitly disjoint Planner tasks may be claimed by auxiliary mission
+    # workers. The primary worker remains able to execute every backlog item.
+    parallel_safe: bool = False
+    owns_paths: list[str] = field(default_factory=list)
     outcome: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -798,6 +803,8 @@ class BacklogItem:
         authorization_id: str = "",
         authorization_action: str = "",
         execution_workdir: str = "",
+        parallel_safe: bool = False,
+        owns_paths: list[str] | None = None,
         acceptance_check: str = "",
         plan_hypothesis: str = "",
         goal_contribution: str = "",
@@ -834,6 +841,12 @@ class BacklogItem:
             authorization_id=str(authorization_id),
             authorization_action=str(authorization_action),
             execution_workdir=str(execution_workdir),
+            parallel_safe=bool(parallel_safe),
+            owns_paths=[
+                str(path).strip()
+                for path in (owns_paths or [])
+                if str(path).strip()
+            ],
             acceptance_check=str(acceptance_check or "").strip(),
             plan_hypothesis=str(plan_hypothesis or "").strip(),
             goal_contribution=str(goal_contribution or "").strip(),
@@ -865,6 +878,7 @@ class BacklogItem:
             tags=list(row.get("tags", [])),
             notes=str(row.get("notes", "")),
             started_ts=row.get("started_ts"),
+            running_owner=str(row.get("running_owner", "")),
             finished_ts=row.get("finished_ts"),
             last_error=str(row.get("last_error", "")),
             pending_question=str(row.get("pending_question", "")),
@@ -919,6 +933,12 @@ class BacklogItem:
             authorization_id=str(row.get("authorization_id", "")),
             authorization_action=str(row.get("authorization_action", "")),
             execution_workdir=str(row.get("execution_workdir", "")),
+            parallel_safe=bool(row.get("parallel_safe", False)),
+            owns_paths=[
+                str(path).strip()
+                for path in (row.get("owns_paths", []) or [])
+                if str(path).strip()
+            ],
             outcome=(
                 {str(key): value for key, value in row.get("outcome", {}).items()}
                 if isinstance(row.get("outcome"), dict)
@@ -975,6 +995,56 @@ class Backlog:
             item.status == "pending"
             and not str(item.pending_question or "").strip()
             and all(d in done for d in item.deps)
+        )
+
+    @staticmethod
+    def _paths_overlap(left: str, right: str) -> bool:
+        left_parts = tuple(
+            part.casefold()
+            for part in left.replace("\\", "/").strip("/").split("/")
+            if part and part != "."
+        )
+        right_parts = tuple(
+            part.casefold()
+            for part in right.replace("\\", "/").strip("/").split("/")
+            if part and part != "."
+        )
+        if not left_parts or not right_parts:
+            return True
+        common = min(len(left_parts), len(right_parts))
+        return left_parts[:common] == right_parts[:common]
+
+    @classmethod
+    def _parallel_worker_can_claim(
+        cls,
+        candidate: BacklogItem,
+        items: Iterable[BacklogItem],
+    ) -> bool:
+        if not candidate.parallel_safe or not candidate.owns_paths:
+            return False
+        if any(
+            Path(path).is_absolute()
+            or not Path(path).parts
+            or ".." in Path(path).parts
+            or any(char in path for char in "*?[]{}!")
+            for path in candidate.owns_paths
+        ):
+            return False
+        forbidden = {"stage_closing", "framework_maintenance"}
+        tags = {
+            str(tag).strip().lower().replace("-", "_")
+            for tag in candidate.tags
+        }
+        if tags & forbidden:
+            return False
+        running = [item for item in items if item.status == "running"]
+        if any(not item.parallel_safe or not item.owns_paths for item in running):
+            return False
+        return not any(
+            cls._paths_overlap(candidate_path, running_path)
+            for item in running
+            for candidate_path in candidate.owns_paths
+            for running_path in item.owns_paths
         )
 
     @staticmethod
@@ -1549,7 +1619,14 @@ class Backlog:
             self._save(items)
             return item
 
-    def claim_next(self) -> BacklogItem | None:
+    def claim_next(
+        self,
+        *,
+        parallel_only: bool = False,
+        respect_running: bool = False,
+        expected_id: str = "",
+        owner: str = "",
+    ) -> BacklogItem | None:
         """Atomically pick the head *ready* pending item and flip it to ``running``.
 
         Replaces the ``next_pending()`` + ``mark_running()`` pair so the
@@ -1575,14 +1652,30 @@ class Backlog:
             cascaded = self._cascade_blocked(items)
             done = self._done_ids(items)
             ready = [it for it in items if self._is_ready(it, done)]
+            if parallel_only or (
+                respect_running
+                and any(item.status == "running" for item in items)
+            ):
+                ready = [
+                    item
+                    for item in ready
+                    if self._parallel_worker_can_claim(item, items)
+                ]
             if not ready:
                 if cascaded:
                     self._save(items)
                 return None
             ready.sort(key=lambda it: (it.priority, it.ts))
-            head = ready[0]
+            head = (
+                next((item for item in ready if item.id == expected_id), None)
+                if expected_id
+                else ready[0]
+            )
+            if head is None:
+                return None
             head.status = "running"
             head.started_ts = time.time()
+            head.running_owner = str(owner)
             self._save(items)
             return head
 
@@ -1823,7 +1916,12 @@ class Backlog:
         out.sort(key=lambda it: (it.priority, it.ts))
         return out
 
-    def next_pending(self) -> BacklogItem | None:
+    def next_pending(
+        self,
+        *,
+        parallel_only: bool = False,
+        respect_running: bool = False,
+    ) -> BacklogItem | None:
         """Head of the *ready* queue (deps all ``done``), or ``None``.
 
         Kept named ``next_pending`` for the existing supervisor call
@@ -1840,6 +1938,15 @@ class Backlog:
             changed = self._cascade_blocked(items)
             done = self._done_ids(items)
             ready = [item for item in items if self._is_ready(item, done)]
+            if parallel_only or (
+                respect_running
+                and any(item.status == "running" for item in items)
+            ):
+                ready = [
+                    item
+                    for item in ready
+                    if self._parallel_worker_can_claim(item, items)
+                ]
             if changed:
                 self._save(items)
             ready.sort(key=lambda item: (item.priority, item.ts))
@@ -2170,7 +2277,11 @@ def request_running_item_abort(
     )
 
 
-def consume_running_item_abort(life_dir: Path | str | None) -> str | None:
+def consume_running_item_abort(
+    life_dir: Path | str | None,
+    *,
+    target_item_id: str = "",
+) -> str | None:
     """Consume a valid abort request while its exact target remains running."""
     if not life_dir:
         return None
@@ -2182,6 +2293,17 @@ def consume_running_item_abort(life_dir: Path | str | None) -> str | None:
     raw = ""
     consumed_path: Path | None = None
     for path in paths:
+        if target_item_id:
+            try:
+                preview = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if (
+                not isinstance(preview, dict)
+                or str(preview.get("target_item_id") or "").strip()
+                != target_item_id
+            ):
+                continue
         claimed = path.with_name(
             f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.claimed"
         )
@@ -2217,6 +2339,8 @@ def consume_running_item_abort(life_dir: Path | str | None) -> str | None:
         return None
     item_id = str(payload.get("target_item_id") or "").strip()
     if not item_id:
+        return None
+    if target_item_id and item_id != target_item_id:
         return None
     try:
         target = next(

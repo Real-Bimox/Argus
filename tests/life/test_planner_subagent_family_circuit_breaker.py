@@ -407,7 +407,7 @@ def test_duplicate_prerequisite_key_maps_to_existing_backlog_item(
         verdict,
         project_worktree=project_root,
     )
-    supervisor.memory.backlog.add(
+    parent = supervisor.memory.backlog.add(
         BacklogItem.new(
             title="Prepare inputs",
             objective="Prepare the validated input bundle.",
@@ -421,7 +421,7 @@ def test_duplicate_prerequisite_key_maps_to_existing_backlog_item(
     items = supervisor.memory.backlog.all()
     child = next(item for item in items if item.title == "Run child analysis")
     assert result is True
-    assert child.deps == []
+    assert child.deps == [parent.id]
 
 
 def test_recent_no_progress_failure_still_quarantines_expanded_task_signature(

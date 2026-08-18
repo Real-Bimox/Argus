@@ -357,6 +357,7 @@ def build_fast_vertical_decision_prompt(
         "WORKFLOW_MODE=direct|staged\n"
         "CONFIDENCE=<0.0-1.0>\n"
         "RESEARCH_TARGET_LEVEL=<exploratory|publishable|doctoral, or none>\n"
+        "RESEARCH_DIRECTION_MODE=<broad|locked; locked only if operator fixed hypothesis>\n"
         "TARGET_VENUE=<explicit venue, or none>\n"
         "RATIONALE=<brief strategic judgment or needed investigation>\n"
     )
@@ -464,6 +465,7 @@ def build_vertical_decision_prompt(
         "RATIONALE=<strategic judgment/evidence for Planner, no file plan>\n"
         "RESEARCH_TARGET_LEVEL=<exploratory|publishable|doctoral when the "
         "vertical declares a target contract, otherwise none>\n"
+        "RESEARCH_DIRECTION_MODE=<broad|locked; locked only if operator fixed hypothesis>\n"
         "TARGET_VENUE=<explicit venue for research, or none>\n"
         "Or, for a new domain:\n"
         "CHOICE=new\n"

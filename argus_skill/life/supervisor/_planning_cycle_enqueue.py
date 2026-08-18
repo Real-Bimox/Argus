@@ -324,6 +324,16 @@ class PlanningCycleEnqueueMixin:
                 or ""
             )
             canonical_context_refs = list(getattr(task, "context_refs", []) or [])
+            canonical_owns_paths = [
+                str(path).strip().replace("\\", "/").strip("/")
+                for path in (getattr(task, "owns_paths", []) or [])
+                if (
+                    str(path).strip()
+                    and not Path(str(path)).is_absolute()
+                    and Path(str(path)).parts
+                    and ".." not in Path(str(path)).parts
+                )
+            ]
             canonical_stage_closing = bool(
                 canonical_scope == PLANNER_SCOPE_FINAL_SUBMISSION
                 or getattr(task, "stage_repair", False)
@@ -344,6 +354,12 @@ class PlanningCycleEnqueueMixin:
                 require_independent_review=canonical_require_review,
                 skip_stage_transition=False,
                 allow_skill_changes=False,
+                parallel_safe=bool(
+                    getattr(task, "parallel_safe", False)
+                    and canonical_owns_paths
+                    and not canonical_stage_closing
+                ),
+                owns_paths=canonical_owns_paths,
             )
             from ...skills.stage_machine import current_stage
             from ...skills.vertical_select import resolve_vertical
@@ -577,6 +593,8 @@ class PlanningCycleEnqueueMixin:
                 execution_workdir=str(
                     getattr(task, "execution_workdir", "") or ""
                 ),
+                parallel_safe=bool(getattr(task, "parallel_safe", False)),
+                owns_paths=list(getattr(task, "owns_paths", []) or []),
                 non_goals=list(getattr(task, "non_goals", []) or []),
                 original_objective=str(
                     getattr(self.config, "continuous_objective", "") or ""

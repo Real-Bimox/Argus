@@ -781,6 +781,7 @@ def _daemon_status_payload(config: Any, *, started_at_iso: str) -> dict[str, Any
             else ""
         ),
         "global_daily_cap_usd": config.global_daily_cap_usd,
+        "mission_width": int(getattr(config, "mission_width", 1)),
         **daemon_protocol_metadata(),
     }
 
@@ -796,6 +797,7 @@ class DaemonStatus:
     backend: str | None = None
     life_backend: str | None = None
     global_daily_cap_usd: float | None = None
+    mission_width: int | None = None
     protocol_name: str = ""
     protocol_major: int | None = None
     protocol_minor: int | None = None
@@ -928,6 +930,7 @@ def read_daemon_status(life_dir: Path | None = None) -> DaemonStatus:
     life_backend: str | None = None
     project_workdir = ""
     global_daily_cap_usd: float | None = None
+    mission_width: int | None = None
     protocol_name = ""
     protocol_major: int | None = None
     protocol_minor: int | None = None
@@ -951,6 +954,9 @@ def read_daemon_status(life_dir: Path | None = None) -> DaemonStatus:
             raw_global_daily = data.get("global_daily_cap_usd")
             if raw_global_daily is not None:
                 global_daily_cap_usd = float(raw_global_daily)
+            raw_mission_width = data.get("mission_width")
+            if raw_mission_width is not None:
+                mission_width = int(raw_mission_width)
             protocol = data.get("protocol")
             if isinstance(protocol, dict):
                 protocol_name = str(protocol.get("name") or "")
@@ -986,6 +992,7 @@ def read_daemon_status(life_dir: Path | None = None) -> DaemonStatus:
         backend=backend,
         life_backend=life_backend,
         global_daily_cap_usd=global_daily_cap_usd,
+        mission_width=mission_width,
         protocol_name=protocol_name,
         protocol_major=protocol_major,
         protocol_minor=protocol_minor,

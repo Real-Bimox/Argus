@@ -27,6 +27,7 @@ class LifeWorkerConfig:
     engineer_reasoning_effort: str = "xhigh"
     reviewer_reasoning_effort: str = "high"
     global_daily_cap_usd: float = 0.0
+    mission_width: int = 2
     planner_task_iteration_max_cycles: int = 6
     # See LifeSupervisorConfig.subagent_family_failure_streak_limit /
     # ..._window_hours (life/supervisor/_config.py) for the circuit breaker
@@ -61,6 +62,11 @@ class LifeWorkerConfig:
     # stderr after the integer return code comes back.
     last_spawn_error: str = field(default="", init=False, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        self.mission_width = int(self.mission_width)
+        if self.mission_width < 0:
+            raise ValueError("mission_width must be zero or a positive integer")
+
 def config_payload(config: LifeWorkerConfig) -> dict[str, Any]:
     return {
         "life_dir": str(config.life_dir),
@@ -73,6 +79,7 @@ def config_payload(config: LifeWorkerConfig) -> dict[str, Any]:
         "engineer_reasoning_effort": config.engineer_reasoning_effort,
         "reviewer_reasoning_effort": config.reviewer_reasoning_effort,
         "global_daily_cap_usd": config.global_daily_cap_usd,
+        "mission_width": config.mission_width,
         "planner_task_iteration_max_cycles": config.planner_task_iteration_max_cycles,
         "subagent_family_failure_streak_limit": config.subagent_family_failure_streak_limit,
         "subagent_family_failure_window_hours": config.subagent_family_failure_window_hours,
@@ -127,6 +134,7 @@ def config_from_payload(data: dict[str, Any]) -> LifeWorkerConfig:
             data.get("reviewer_reasoning_effort") or "high"
         ),
         global_daily_cap_usd=_number("global_daily_cap_usd", 30.0),
+        mission_width=int(data.get("mission_width", 2)),
         planner_task_iteration_max_cycles=int(
             data.get("planner_task_iteration_max_cycles") or 6
         ),

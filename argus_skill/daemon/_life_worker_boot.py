@@ -15,6 +15,7 @@ import logging
 import os
 import time
 from contextlib import nullcontext
+from dataclasses import replace
 from typing import Any
 
 from ..core.runtime_env import configure_framework_python_env
@@ -73,6 +74,7 @@ class _RunForeverState:
 
         # Set by ``_rf_build_supervisor``.
         self.sup: Any = None
+        self.supervisors: list[Any] = []
 
 
 class LifeWorkerBootMixin:
@@ -597,3 +599,47 @@ class LifeWorkerBootMixin:
         )
         if rf_state.manager_handoff_resolved:
             rf_state.sup._vertical_resolved = True
+        effective_width = (
+            0
+            if rf_state.cfg.mission_width == 0
+            else (1 if rf_state.cfg.backend == "memory" else rf_state.cfg.mission_width)
+        )
+        if effective_width == 0:
+            rf_state.supervisors = []
+            return
+        rf_state.supervisors = [rf_state.sup]
+        if effective_width == 1:
+            return
+        rf_state.sup.config.coordinate_parallel_claims = True
+
+        from ..apps._runtime import build_life_runner
+
+        helper_cfg = replace(
+            sup_cfg,
+            continuous=False,
+            continuous_objective="",
+            continuous_config_provider=None,
+            planner_cycle_gate=None,
+            post_mission_hook=None,
+            user_inbox=None,
+            parallel_worker=True,
+            holds_stage_authority=False,
+        )
+        for index in range(1, effective_width):
+            ns = _runner_namespace(rf_state.cfg)
+            ns.stop_event = self._mission_stop
+            helper_runner = build_life_runner(ns)
+            worker_config = replace(
+                helper_cfg,
+                worker_id=f"parallel-{index}",
+            )
+            rf_state.supervisors.append(
+                LifeSupervisor(
+                    memory=rf_state.mem,
+                    runner=helper_runner,
+                    sink=rf_state.sink,
+                    config=worker_config,
+                    engineer_model=rf_state.cfg.engineer_model,
+                    reviewer_model=rf_state.cfg.reviewer_model,
+                )
+            )

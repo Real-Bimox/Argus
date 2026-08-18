@@ -21,6 +21,24 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
 
     if resolve_research_target_level(context.workdir) == "exploratory":
         return
+    from .idea_portfolio import ensure_idea_portfolio, portfolio_required
+
+    if context.stage == "research" and portfolio_required(context.workdir):
+        context.required_skill_paths.extend((
+            "engineer/idea-discovery.md",
+            "engineer/agent-team-lead.md",
+        ))
+        team_root = ensure_idea_portfolio(
+            context.workdir,
+            direction=context.direction,
+        )
+        context.emit({
+            "type": "idea.portfolio.formed",
+            "team_root": str(team_root),
+            "width": 12,
+            "route_count": 12,
+            "text": "formed durable 12-route idea portfolio with adversarial selection",
+        })
     if (
         _enabled("ARGUS_SKILL_VENUE_RESEARCH")
         and context.stage in _VENUE_STAGES

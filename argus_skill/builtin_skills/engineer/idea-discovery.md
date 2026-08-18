@@ -21,7 +21,7 @@ boundary finding may close that gap.
 
 ## Workflow
 
-### Step 0 — fan out before an open-ended paper chooses a direction
+### Step 0 — fan out before a broad paper direction chooses a thesis
 
 For a `publishable` or `doctoral` paper mission that starts from a broad
 direction rather than an operator-locked hypothesis, use `agent-team-lead` to
@@ -36,7 +36,7 @@ form a 12-route ideation portfolio before ranking anything:
    source trail. Each route must identify the closest work, a non-obvious gap,
    the strongest kill argument, and a faithful public-benchmark or real-trace
    probe.
-   For an open-ended Agent paper, reserve at least four of the twelve routes for
+   For a broad publishable/doctoral Agent paper, reserve at least four routes for
    independent foundation-first searches across relevant areas such as
    probability and learning theory, information theory, control and dynamical
    systems, causal inference, game theory, formal methods, or network/statistical
@@ -281,7 +281,7 @@ candidates against pilot budgets and selects 1–3 to pilot in parallel.
 
 ## Output contract
 
-For open-ended publishable/doctoral paper ideation, preserves the 12 raw route
+For broad publishable/doctoral paper ideation, preserves the 12 raw route
 reports under `research/ideation/routes/` and the adversarial exchanges under
 `research/ideation/debates/`. Writes `research/IDEA_CANDIDATES.md` ranked by
 novelty × research value × falsifiability × feasibility within the operator's

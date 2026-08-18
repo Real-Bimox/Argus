@@ -73,11 +73,11 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   should happen next in plain language.
 - Credentials, paid/irreversible work, scope expansion, and future operator
   approval require `WAITING=true` plus `OPERATOR_ACTION_REQUIRED=true`.
-- When work remains, delegate exactly one next action with:
-  `PROJECT_DONE=false`, `REASON=...`, `TASK_TITLE=...`, and
-  `TASK_OBJECTIVE=...`. Add `TASK_ACCEPTANCE_CHECK=...` or
-  `TASK_NON_GOALS=item|item` only when useful. The Host owns workdir, scope,
-  dependencies, review, stage transitions, context discovery, and Skill learning.
+- Work: set `PROJECT_DONE=false`, `REASON=...`; emit one
+  `TASK_KEY`/`TASK_DEPS`/`TASK_TITLE`/`TASK_OBJECTIVE` block, repeating only if
+  independent. Parallel requires `TASK_PARALLEL_SAFE=true` and disjoint
+  `TASK_OWNS_PATHS`; `TASK_ACCEPTANCE_CHECK` is optional. The Host owns workdir, scope,
+  review, stage transitions, context and Skill.
 - Write TASK_TITLE and TASK_OBJECTIVE in the operator objective's language.
 - End with named lines, not JSON. Use `WAITING=true` only for a real external
   blocker. Never poll a watched durable task; emit no
