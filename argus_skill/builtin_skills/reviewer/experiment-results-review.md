@@ -72,6 +72,11 @@ Score each 1–5. Score 3+ on all dimensions = pass.
 3. **Effect size and practical significance**
    - Is the observed effect, null, diagnostic pattern, or boundary meaningful for
      the stated research question?
+   - Was each numeric pass/fail cutoff justified by utility, risk, a domain
+     standard, prior evidence, theory, or prospective sensitivity rather than an
+     unsupported round-number target? If no justified cutoff exists, assess the
+     continuous estimate, uncertainty, regimes, and cost-quality frontier; merely
+     missing an arbitrary target cannot establish method failure.
    - Are there regimes where the contribution helps, fails, or changes interpretation?
    - Are claim-critical null results honestly represented without turning the
      paper into an exhaustive failure log?
