@@ -36,6 +36,14 @@ form a 12-route ideation portfolio before ranking anything:
    source trail. Each route must identify the closest work, a non-obvious gap,
    the strongest kill argument, and a faithful public-benchmark or real-trace
    probe.
+   For an open-ended Agent paper, reserve at least four of the twelve routes for
+   independent foundation-first searches across relevant areas such as
+   probability and learning theory, information theory, control and dynamical
+   systems, causal inference, game theory, formal methods, or network/statistical
+   physics. Each such route must start from a concrete Agent failure and derive
+   an algorithm, bound, impossibility result, scaling law, threshold, or
+   quantitative prediction. A borrowed analogy or renamed physical quantity is
+   not a foundation.
 3. Form all missing tasks, then set the team pool with
    `pool-set --root <team_root> --width 12 --state running`. The lead continues
    venue and source verification while the Curator supervises the portfolio.
@@ -92,10 +100,11 @@ The reviewer ranks clusters by:
   system mechanism, formal object, or causal explanation rather than a prompt,
   schema, wrapper, or larger sweep?
 - **Theoretical foundation** — are the objects, assumptions, invariants, and
-  predicted consequences explicit enough to derive or falsify? Require a real
-  mathematical derivation or theorem when the claim is mathematical, and a real
-  physical model only when the domain is physical; decorative equations do not
-  add depth.
+  predicted consequences explicit enough to derive or falsify? Prefer
+  load-bearing mathematics that determines the mechanism or predicts a bound,
+  threshold, scaling law, or failure regime. A physical model must map Agent
+  variables and interactions to measurable quantities and yield a distinct
+  prediction; decorative equations or analogy do not add depth.
 - **Feasibility** — is there a credible staged execution plan within the
   operator's resources and time budget? Discover available capabilities and
   honor explicit limits; do not impose a universal wall-clock cutoff.
@@ -117,9 +126,10 @@ formal/causal grounding, and field-level consequence.
    method plus renamed components.
 3. **Genuine foundation:** State the formal or causal model, assumptions,
    invariants, and derived predictions. A theoretical claim needs an actual
-   derivation/proof obligation; an empirical systems claim needs a mechanism
-   whose predictions distinguish it from simpler explanations. Never add physics
-   or mathematics for appearance.
+   derivation/proof obligation that changes the algorithm, falsifier, or expected
+   evidence; an empirical systems claim needs a mechanism whose predictions
+   distinguish it from simpler explanations. Never add physics or mathematics
+   for appearance.
 4. **Frontier significance:** If the idea works, what general scientific belief,
    design principle, or capability changes? A local product metric, convenient
    implementation, or benchmark-only win is insufficient without a broader
@@ -194,8 +204,9 @@ evaluation, benchmark/data contribution, negative result, or boundary finding>
 **Hard technical core**: <the nontrivial algorithm/system/formal mechanism; why a
 prompt, schema, wrapper, or scale-up is insufficient>
 
-**Formal or causal foundation**: <objects, assumptions, invariants, derivation or
-mechanism-specific predictions; no decorative math>
+**Formal or causal foundation**: <objects, assumptions, invariants, and the
+derived algorithm/bound/threshold/scaling law/falsifier; if using physics, map
+Agent variables to measurable quantities; no decorative math>
 
 **Reference comparison + target**: <the strongest relevant published/standard
 reference, the public benchmark(s), and what outcome would support or refute the

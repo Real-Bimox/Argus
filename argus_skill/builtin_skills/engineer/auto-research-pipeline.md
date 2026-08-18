@@ -170,6 +170,12 @@ that would overturn the claim.
   observations in the existing project history.
 - Do not lock an idea until the ambition standard survives independent
   prior-art attack and adversarial review.
+- For an open-ended Agent paper, at least four routes in the 12-route portfolio
+  must independently search for load-bearing mathematical or physical
+  foundations. Cover distinct relevant lenses rather than variants of one
+  analogy, and require each route to derive an algorithm, bound, impossibility
+  result, scaling law, threshold, or quantitative prediction tied to measurable
+  Agent behavior.
 - Reuse a completed independent route portfolio; do not start another breadth
   sweep under new route names.
 - Validate each finalist in one decision-sized milestone that owns the nearest
