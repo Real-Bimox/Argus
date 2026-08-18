@@ -438,6 +438,13 @@ class PlanningCycleMixin(
         )
         for item in items:
             outcome = item.outcome if isinstance(item.outcome, dict) else {}
+            item_stage = self._item_pipeline_stage(item)
+            if (
+                (item_stage and item_stage != stage)
+                or not str(outcome.get("review_status") or "").strip()
+                or str(outcome.get("interruption_kind") or "none") != "none"
+            ):
+                continue
             if (
                 item.status != "done"
                 or self._item_skips_stage_transition(item)
@@ -449,20 +456,20 @@ class PlanningCycleMixin(
                 or str(outcome.get("stage_certification") or "")
                 not in {"not_assessed", "deferred"}
             ):
-                continue
+                return None
             handoff_root = handoff_base / "handoffs" / item.id
             try:
                 mission = json.loads(
                     (handoff_root / "mission.json").read_text(encoding="utf-8")
                 )
             except (OSError, TypeError, ValueError):
-                continue
+                return None
             if (
                 not isinstance(mission, dict)
                 or str(mission.get("mission_id") or "") != item.id
                 or str(mission.get("stage") or "").strip().lower() != stage
             ):
-                continue
+                return None
             for handoff_path in sorted(
                 handoff_root.glob("round-[0-9][0-9][0-9][0-9].json"),
                 reverse=True,
@@ -494,6 +501,7 @@ class PlanningCycleMixin(
                     ),
                     str(mission.get("scope") or ""),
                 )
+            return None
         return None
 
     def _reconcile_reviewed_stage_empty_plan(self, verdict: Any) -> str:
