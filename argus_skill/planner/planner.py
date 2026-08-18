@@ -765,6 +765,20 @@ def parse_planner_text(text: str) -> PlannerVerdict:
         condition = values.get("RECHECK_CONDITION", "").strip()
         token = values.get("RECHECK_TOKEN", "").strip()
         if fingerprint and condition and token:
+            operator_action_required = _key_value_bool(
+                values.get("OPERATOR_ACTION_REQUIRED", "")
+            )
+            wait_mode = (
+                values.get("WAIT_MODE", "poll") or "poll"
+            ).strip().lower()
+            wake_on = tuple(
+                item.strip()
+                for item in values.get("WAKE_ON", "").split(",")
+                if item.strip()
+            )
+            if operator_action_required and wait_mode == "poll":
+                wait_mode = "event"
+                wake_on = wake_on or ("authorization",)
             waiting_contract = WaitingContract(
                 blocker_fingerprint=fingerprint,
                 recheck_condition=condition,
@@ -779,13 +793,9 @@ def parse_planner_text(text: str) -> PlannerVerdict:
                 stage_reconciliation_required=_key_value_bool(
                     values.get("STAGE_RECONCILIATION_REQUIRED", "")
                 ),
-                operator_action_required=_key_value_bool(
-                    values.get("OPERATOR_ACTION_REQUIRED", "")
-                ),
-                wait_mode=values.get("WAIT_MODE", "poll") or "poll",
-                wake_on=tuple(
-                    item.strip() for item in values.get("WAKE_ON", "").split(",") if item.strip()
-                ),
+                operator_action_required=operator_action_required,
+                wait_mode=wait_mode,
+                wake_on=wake_on,
                 watched_paths=tuple(
                     item.strip()
                     for item in values.get("WATCHED_PATHS", "").split(",")

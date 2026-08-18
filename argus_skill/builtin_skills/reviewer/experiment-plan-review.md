@@ -39,6 +39,11 @@ post-training plans — omit `rl_config_sanity` from the output for non-RL plans
    - Are ablations designed to isolate the proposed mechanism (not compare trained vs untrained)?
    - Are metrics appropriate for the task?
    - Is there a plan for statistical significance testing?
+   - Is gold information isolated to scoring? Candidate and baseline predictions
+     must not read labels, expected outcomes, or scorer-derived fields.
+   - Do online/intervention claims compare executable methods with the same
+     decision-time information? Historical executed traces and post-hoc judges
+     are diagnostics, not equivalent online baselines.
 
 4. **Benchmark adequacy**
    - Does every final empirical claim include at least one appropriate public
@@ -147,6 +152,10 @@ Return JSON:
   consequence beyond a local metric
 - Ablation compares trained model vs untrained/random (not a fair ablation)
 - No evaluation metrics defined
+- Candidate or baseline prediction code can read gold labels, expected outcomes,
+  or scorer-derived fields
+- An online prevention/intervention claim uses only observational traces or a
+  post-hoc judge as its baseline
 - Unjustified custom infrastructure that changes the comparison while claiming
   to test only a model/method contribution. Custom infrastructure is allowed
   when it is necessary for or part of the research contribution and is validated

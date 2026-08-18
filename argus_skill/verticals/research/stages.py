@@ -221,8 +221,13 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "pipeline loads the cited public source records, constructs the "
                 "prespecified observation-level outcome, retains exclusions and "
                 "failures, and computes the reported estimate and uncertainty from "
-                "those records. Never invent an evaluator, gold label, participant, "
-                "visit, or task merely to satisfy this item."
+                "those records. Candidate and baseline prediction paths cannot read "
+                "gold labels, expected outcomes, or scorer-derived fields; removing "
+                "or permuting hidden labels must not change predictions. Online "
+                "intervention claims require executable comparisons with the same "
+                "decision-time information, not only historical traces or post-hoc "
+                "judges. Never invent an evaluator, gold label, participant, visit, "
+                "or task merely to satisfy this item."
             ),
             evidence_hint=(
                 "computational: evaluator source + official scorer outputs; "
