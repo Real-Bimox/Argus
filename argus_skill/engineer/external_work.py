@@ -372,6 +372,6 @@ def render_external_work_advisory(
             "If all remaining work depends on one RUNNING_HEALTHY item, end your response with one JSON line:",
             '    {"wait_for": "external_work", "wait_id": "<work_id>"}',
             'Use "subagent" instead of "external_work" for a listed subagent.',
-            "Argus will pause progress clocks for one declared cadence. File growth alone never counts as progress.",
+            "Argus will monitor it without spending another Engineer round. File growth alone never counts as progress.",
         ])
     return "\n".join(lines)
