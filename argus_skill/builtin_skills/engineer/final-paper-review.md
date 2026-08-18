@@ -31,17 +31,19 @@ to make review easier.
 1. **Research value:** identify the strongest accept argument. A transparent run or
    polished artifact is not enough; the paper needs a capable method, useful
    system, theorem, reliable diagnosis, or genuinely decision-relevant boundary.
-2. **Claim honesty:** check headline claims against the actual results. Preserve
-   adverse comparisons, nulls, uncertainty, and limitations. A negative result is
-   publishable only when it teaches something that stands on its own.
+2. **Claim honesty:** check headline claims against the complete internal evidence.
+   The manuscript should select the strongest valid evidence for its thesis and
+   disclose adverse comparisons, nulls, uncertainty, or limitations when they
+   materially affect that thesis—not recite every exploratory run. A negative
+   result is publishable only when it teaches something that stands on its own.
 3. **Comparisons and uncertainty:** require the controls, baselines, ablations, or
    formal arguments needed to interpret the thesis, in proportion to its scope.
 4. **Literature:** verify material premises and nearest competitors from primary
    sources. Do not reward citation volume or bibliography ceremony.
 5. **Writing:** the paper should sound like researchers explaining a concrete
-   problem and result, not a pipeline reporting its own compliance. Remove local
-   paths, role names, gate language, evidence-span narration, and repetitive
-   defensive caveats.
+   problem and arguing for an insight, not a pipeline reporting its compliance or
+   a chronological list of experiments. Remove local paths, role names, gate
+   language, evidence-span narration, and repetitive defensive caveats.
 6. **Presentation:** inspect the actual PDF for venue format, anonymity, readable
    figures and tables, references, and serious layout defects.
 
@@ -50,6 +52,9 @@ to make review easier.
 - Fix substantive source issues directly when they fit the mission.
 - If a claim needs new experiments or analysis, say exactly what scientific gap
   remains instead of manufacturing prose or metadata.
+- If a selected method is weak because it was not faithfully developed or tested,
+  route back to targeted implementation/experiment repair instead of polishing a
+  failure narrative.
 - Use model/vision review tools only when they answer a real doubt. Their generated
   JSON is advisory and never a required deliverable.
 - Compile and inspect the final PDF after source or layout changes.

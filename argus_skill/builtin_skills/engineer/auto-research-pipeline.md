@@ -37,7 +37,8 @@ experiment or honest failure report is not automatically a paper.
 - State one clear thesis or research question and the result that would support,
   weaken, or refute it.
 - Preserve negative, contradictory, and failed evidence in the internal audit
-  trail. Paper selection remains a scientific judgment.
+  trail. The manuscript selectively presents the strongest valid evidence for its
+  thesis plus claim-critical contrary evidence; it is not an experiment diary.
 - Do not manufacture novelty, benchmarks, labels, results, citations, or
   provenance.
 - Final empirical evidence must include at least one appropriate public
@@ -131,6 +132,13 @@ not automatic write-up. Preserve the result; optimize, repair, or pivot accordin
 to the diagnosed cause and expected information gain. Draft only after Reviewer
 certifies an independently defensible publication thesis.
 
+After an idea is selected, do not use a weak first result as an excuse to write a
+negative paper. Give the core mechanism a faithful, competitive implementation;
+diagnose concrete failures; make targeted improvements; and rerun decisive tests
+while credible fixes remain. This is scientific development, not permission to
+change labels, discard seeds, switch metrics after inspection, or hide evidence
+that would overturn the claim.
+
 ## Research figure contract
 
 - Use the research vertical's Research Visualization Router for every figure.
@@ -199,19 +207,24 @@ certifies an independently defensible publication thesis.
 
 - Regenerate all aggregates from raw artifacts.
 - Map claims to evidence.
-- Keep claim-critical losing, null, and contradictory comparisons visible in the
-  evidence record and paper. Keep secondary dead ends in audit artifacts or an
-  appendix instead of dumping every run into the main story.
+- Keep all valid losing, null, and contradictory comparisons in the evidence
+  record. In the paper, include those that materially bear on the thesis; keep
+  secondary dead ends in audit artifacts or an appendix instead of dumping every
+  run into the main story.
 - Select one defensible thesis before drafting. If no strong thesis survives,
-  return to research/plan.
+  return to implementation, experiments, or research/plan as the diagnosed cause
+  requires.
 - Produce the required data and conceptual figures through the Research
   Visualization Router; image-2 is conditional on capability and renderer choice.
 
 ### 6. Draft
 
 - Use the selected `research/VENUE_PROFILE.json` and official author kit.
-- Write the paper around one supported insight. Do not introduce a method as the
-  contribution and then center the manuscript on why it failed.
+- Write the paper as an argument for one supported insight, not a report of what
+  experiments happened. Select the most probative valid evidence, organize it by
+  the questions needed to establish the thesis, and omit nonessential run
+  chronology. Do not introduce a method as the contribution and then center the
+  manuscript on why it failed.
 - Do not pad to a historical EMNLP/AAAI shape.
 
 ### 7. Review
