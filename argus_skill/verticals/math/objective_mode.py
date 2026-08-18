@@ -231,7 +231,7 @@ def adopt_operator_objective(project_root: object, request: str) -> MathObjectiv
     the operator never sees. So a math project created through the real product
     could not close a single stage, and the only remedy was to shell into the
     host and run a module CLI. Every testbed run that appeared to work did so
-    because ``math-docs/testbed_launch.py`` wrote the mode before the Manager
+    because a development-time launch harness wrote the mode before the Manager
     was ever invoked — a harness self-described as "not a fixture".
 
     "The operator decides" was implemented as "an operator with shell access

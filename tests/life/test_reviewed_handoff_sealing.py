@@ -36,12 +36,12 @@ from argus_skill.core.task_frontier import (
     load_task_frontier,
     save_task_frontier,
 )
-from argus_skill.life.context_packet import FRONTIER_FILENAME
 from argus_skill.engineer.runner import (
     EngineerConfig,
     SupervisedConfig,
     SupervisedEngineer,
 )
+from argus_skill.life.context_packet import FRONTIER_FILENAME
 from argus_skill.reviewer import ReviewerConfig
 
 

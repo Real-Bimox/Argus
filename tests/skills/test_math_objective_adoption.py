@@ -10,8 +10,8 @@ webapi, daemon or any UI called it, and no agent prompt named the concept.
 So a math project created through the real front door could not close a single
 stage, and the only remedy was shell access to the host to run a module CLI.
 "The operator decides" had been implemented as "an operator with shell access
-decides". Every testbed run that appeared to work did so because
-``math-docs/testbed_launch.py`` wrote the mode before the Manager was ever
+decides". Every testbed run that appeared to work did so because a
+development-time launch harness wrote the mode before the Manager was ever
 invoked; scanning every recorded run's ``events.jsonl`` for an in-product
 objective write returned nothing.
 

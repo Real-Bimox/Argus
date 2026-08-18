@@ -37,7 +37,6 @@ from argus_skill.daemon import self_maintenance
 from argus_skill.skills import stage_machine
 from argus_skill.skills.vertical_select import persist_vertical
 
-
 # --- the canary must not be a downgrade -------------------------------------
 
 
