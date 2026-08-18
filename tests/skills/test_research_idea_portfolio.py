@@ -296,6 +296,33 @@ def test_quorum_selector_can_choose_best_not_earliest(tmp_path: Path) -> None:
     assert pool.read(selection_root)["state"] == "draining"
 
 
+def test_default_resulting_critical_path_is_below_one_hour(tmp_path: Path) -> None:
+    _pipeline(tmp_path)
+    root = ensure_idea_portfolio(tmp_path, direction="agent reliability")
+    reviewed = _complete_quorum(tmp_path, root)
+    ensure_idea_portfolio(tmp_path, direction="agent reliability")
+    selection_root = _selection_root(tmp_path)
+    base = task_board.snapshot(root)
+    selection = task_board.snapshot(selection_root)
+
+    route_timeout = next(
+        task["timeout_s"] for task in base if task["role"] == "idea-route"
+    )
+    review_timeout = next(
+        task["timeout_s"] for task in base if task["role"] == "idea-review"
+    )
+    selector_timeout = next(
+        task["timeout_s"] for task in selection if task["role"] == "idea-selector"
+    )
+    probe_timeout = next(
+        task["timeout_s"] for task in selection if task["role"] == "idea-probe"
+    )
+
+    assert reviewed
+    assert route_timeout + review_timeout + selector_timeout + probe_timeout == 3000
+    assert 3000 < 3600
+
+
 def test_refuted_smoke_cannot_block_quorum_selected_idea(tmp_path: Path) -> None:
     _pipeline(tmp_path)
     root = ensure_idea_portfolio(tmp_path, direction="agent reliability")
