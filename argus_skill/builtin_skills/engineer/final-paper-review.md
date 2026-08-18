@@ -11,6 +11,11 @@ Decide whether the current paper is genuinely ready for its selected venue. The
 Reviewer is the authority. This skill does not produce an assurance memo, a
 reviewer-question bundle, or a second machine verdict.
 
+For publishable/doctoral work, confirm the paper still exhibits a nontrivial
+technical core, verified originality, claim-relevant formal/causal grounding,
+and field-level consequence. Polished experiments cannot rescue a shallow
+prompt/schema/wrapper/scale contribution or decorative mathematics.
+
 ## Read
 
 - `paper/main.tex` and the rendered `paper/main.pdf`;

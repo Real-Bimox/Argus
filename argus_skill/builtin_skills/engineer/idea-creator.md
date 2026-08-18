@@ -12,6 +12,11 @@ budget. The probe budget is set by the operator and project, not a universal
 wall-clock threshold. The reviewer rules on whether the resulting positive,
 negative, diagnostic, or boundary evidence is scientifically valuable.
 
+For publishable/doctoral selection, the ambition standard is a nontrivial
+technical core, verified originality, claim-relevant formal/causal grounding,
+and field-level consequence. Feasibility is a separate gate, not compensation
+for weakness in one of these four.
+
 ## When to invoke
 
 - `research/IDEA_CANDIDATES.md` exists

@@ -11,6 +11,9 @@ Review experiment results as a senior ML researcher would before allowing the te
 - You are deciding whether these results are worth writing up, not whether the paper is well-written.
 - Weak results honestly presented are better than strong results from flawed methodology.
 - If the results wouldn't survive peer review scrutiny, say so now — not after the paper is written.
+- Results may support a paper only when the contribution retains a nontrivial
+  technical core, verified originality, claim-relevant formal/causal grounding,
+  and field-level consequence. A benchmark win does not create ambition.
 
 ## When the method did NOT beat the baseline
 
@@ -107,6 +110,8 @@ Return JSON:
 - Headline claim contradicts the actual numbers
 - Missing a planned benchmark/condition with no explanation
 - Reporting only the best cherry-picked metric while hiding others
+- Results are used to promote a shallow prompt/schema/wrapper/scale variant,
+  decorative theory, or finding with no field-level consequence
 
 ## Infrastructure validity
 Flag infrastructure only when it invalidates the comparison, measurement, or

@@ -5,6 +5,19 @@ from pathlib import Path
 from argus_skill.verticals.research.stages import STAGE_CHECKLISTS
 
 _SKILLS = Path(__file__).parents[2] / "argus_skill" / "builtin_skills"
+_AMBITION_SKILLS = (
+    "engineer/research-ideation.md",
+    "engineer/idea-discovery.md",
+    "engineer/idea-creator.md",
+    "engineer/novelty-check.md",
+    "engineer/auto-research-pipeline.md",
+    "engineer/research-brief-to-experiment-plan.md",
+    "engineer/idea-feasibility-derisk.md",
+    "engineer/final-paper-review.md",
+    "reviewer/experiment-plan-review.md",
+    "reviewer/experiment-results-review.md",
+    "reviewer/academic-paper-peer-review-benchmark.md",
+)
 
 
 def _skill(relative: str) -> str:
@@ -75,3 +88,24 @@ def test_research_idea_selection_requires_ambition_without_decorative_math() -> 
     assert "decorative math" in thesis
     assert "feasibility rescue" in thesis
     assert "shallow prompt/schema/wrapper/scale" in peer_review
+
+
+def test_research_selection_and_review_skills_share_the_ambition_standard() -> None:
+    for path in _AMBITION_SKILLS:
+        text = " ".join(_skill(path).split())
+        assert "nontrivial technical core" in text, path
+        assert "verified originality" in text, path
+        assert "formal/causal grounding" in text, path
+        assert "field-level consequence" in text, path
+
+
+def test_manager_and_planner_prompts_preserve_the_ambition_standard() -> None:
+    root = Path(__file__).parents[2] / "argus_skill" / "roles" / "prompts"
+    manager = (root / "manager.py").read_text(encoding="utf-8")
+    planner = (root / "planner.py").read_text(encoding="utf-8")
+
+    for prompt in (manager, planner):
+        assert "nontrivial " in prompt and "technical core" in prompt
+        assert "verified originality" in prompt
+        assert "formal/causal" in prompt
+        assert "field-level significance" in prompt

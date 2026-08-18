@@ -12,6 +12,11 @@ artifacts or an experiment matrix for its own sake; it is a defensible thesis an
 the cheapest credible route to determine whether that thesis can become a strong
 paper.
 
+For publishable/doctoral work, require a nontrivial technical core, verified
+originality, claim-relevant formal/causal grounding, and field-level
+consequence. Feasibility cannot rescue a shallow prompt/schema/wrapper/scale
+variant or decorative mathematics.
+
 ## 1. Ground the problem
 
 Use primary literature, official benchmarks/data, and relevant released code.
@@ -45,6 +50,8 @@ serious candidate ask:
 - What observation would falsify the binding premise?
 - What alternative explanation must the design distinguish?
 - What engineering capability must exist for the idea to receive a fair test?
+- What general belief, design principle, or capability changes if the thesis is
+  true?
 
 Record rejected alternatives only when they affected the decision; do not create
 a rejection quota.

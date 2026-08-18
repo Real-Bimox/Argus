@@ -11,6 +11,12 @@ The fastest way to kill a paper is to spend a month on an experiment
 that was published 3 months ago by someone else. This skill runs that
 check **before** the experiment plan locks in.
 
+For publishable/doctoral work, novelty is one part of the ambition standard:
+nontrivial technical core, verified originality, claim-relevant formal/causal
+grounding, and field-level consequence. A new combination of known parts, new
+name, new prompt, or new benchmark setting is not verified originality unless
+it creates a mechanism or insight the closest work lacks.
+
 ## When to invoke
 
 After `idea-discovery` produces IDEA_CANDIDATES.md and before
@@ -30,6 +36,8 @@ technical claims** the idea would need to be novel:
 - What is the mechanism / key insight?
 - What's measured to validate it?
 - What's the headline number / comparison?
+- What formal/causal prediction and field-level consequence distinguish it from
+  a recombination or local engineering improvement?
 
 ### Phase B — per-claim literature search
 
