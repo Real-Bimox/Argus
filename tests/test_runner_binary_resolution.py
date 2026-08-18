@@ -80,6 +80,27 @@ def test_qoder_runner_uses_qodercli_binary(tmp_path: Path, monkeypatch) -> None:
     _assert_same_path(AgentCliRunner(backend=BACKEND_QODER).agent_bin, executable)
 
 
+def test_runner_skips_inaccessible_path_candidate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    blocked = tmp_path / "blocked-bin"
+    blocked.mkdir()
+    blocked_candidate = blocked / "claude"
+    original_is_file = Path.is_file
+
+    def guarded_is_file(path: Path) -> bool:
+        if path == blocked_candidate:
+            raise PermissionError("private launcher target")
+        return original_is_file(path)
+
+    monkeypatch.setattr(Path, "is_file", guarded_is_file)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    monkeypatch.setenv("PATH", str(blocked))
+
+    assert resolve_runner_bin("claude") is None
+
+
 def test_opencode_runner_resolves_standard_install_directory(
     tmp_path: Path,
     monkeypatch,
