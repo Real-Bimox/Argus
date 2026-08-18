@@ -82,6 +82,17 @@ body {
   -webkit-app-region: drag;
 }
 
+/* Native Windows caption buttons occupy the non-client frame, not renderer
+ * coordinates. Keep this fallback only for legacy overlay builds; otherwise a
+ * second 38px bar wastes vertical space and can cover settings controls. */
+:root[data-argus-desktop='true'][data-argus-desktop-native-frame='true'] body {
+  padding-top: 0;
+}
+
+:root[data-argus-desktop='true'][data-argus-desktop-native-frame='true'] .window-titlebar {
+  display: none;
+}
+
 .window-titlebar-mark {
   width: 14px;
   height: 14px;
@@ -516,6 +527,10 @@ button {
 
 :root[data-argus-desktop='true'] .wizard {
   top: 38px;
+}
+
+:root[data-argus-desktop='true'][data-argus-desktop-native-frame='true'] .wizard {
+  top: 0;
 }
 
 .wizard[hidden] {

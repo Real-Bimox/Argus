@@ -1,10 +1,23 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell, WebContentsView } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  nativeTheme,
+  Notification,
+  shell,
+  Tray,
+  WebContentsView,
+} from 'electron';
 import { BackendSupervisor, type BackendStatus } from './backend';
 import { exportDiagnostics } from './diagnostics';
 import { createLogger } from './logger';
 import { installApplicationMenu } from './menu';
 import { LatestNavigation } from './navigation';
+import { shouldHideWindowOnClose, shouldStopBackendOnQuit } from './windowLifecycle';
 import { redactSensitiveText } from './redaction';
 import {
   detectPiConfiguration,
@@ -38,12 +51,82 @@ let settingsView: WebContentsView | null = null;
 let supervisor: BackendSupervisor | null = null;
 let desktopSettings: DesktopSettings | null = null;
 let quitting = false;
+let windowsSessionEnding = false;
+let stopBackendAndQuitRequested = false;
 let cockpitLoaded = false;
+let tray: Tray | null = null;
+const deliveredNotificationIds = new Set<string>();
+
+interface DeliveryNotificationInput {
+  deliveryId: string;
+  title: string;
+  summary: string;
+  path?: string;
+}
+
+function normalizeDeliveryNotification(input: unknown): DeliveryNotificationInput | null {
+  if (!input || typeof input !== 'object') return null;
+  const row = input as Record<string, unknown>;
+  const deliveryId = typeof row.deliveryId === 'string' ? row.deliveryId.trim().slice(0, 300) : '';
+  if (!deliveryId) return null;
+  const title = typeof row.title === 'string' ? row.title.trim().slice(0, 240) : '';
+  const summary = typeof row.summary === 'string' ? row.summary.trim().slice(0, 1_000) : '';
+  const path = typeof row.path === 'string' ? row.path.trim().slice(0, 1_000) : '';
+  return {
+    deliveryId,
+    title: title || 'Argus',
+    summary,
+    ...(path ? { path } : {})
+  };
+}
+
+function rememberDeliveredNotification(id: string): boolean {
+  if (deliveredNotificationIds.has(id)) return false;
+  deliveredNotificationIds.add(id);
+  while (deliveredNotificationIds.size > 100) {
+    const oldest = deliveredNotificationIds.values().next().value;
+    if (typeof oldest !== 'string') break;
+    deliveredNotificationIds.delete(oldest);
+  }
+  return true;
+}
+
+function desktopIcon(): Electron.NativeImage {
+  const path = app.isPackaged
+    ? join(process.resourcesPath, 'icon.ico')
+    : join(app.getAppPath(), 'resources', 'icon.ico');
+  const icon = nativeImage.createFromPath(path);
+  return icon.isEmpty() ? nativeImage.createFromPath(app.getPath('exe')) : icon;
+}
+
+function requestStopBackendAndQuit(): Promise<void> {
+  if (quitting) return Promise.resolve();
+  stopBackendAndQuitRequested = true;
+  app.quit();
+  return Promise.resolve();
+}
+
+function createTray(): void {
+  if (tray) return;
+  const icon = desktopIcon();
+  if (icon.isEmpty()) {
+    log.warn('desktop tray icon is unavailable; background backend remains launchable by reopening Argus');
+    return;
+  }
+  tray = new Tray(icon);
+  tray.setToolTip('Argus · 后台运行');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '显示 Argus', click: () => void revealMainWindow() },
+    { label: '隐藏窗口', click: () => mainWindow?.hide() },
+    { type: 'separator' },
+    { label: '停止本地后端并退出', click: () => void requestStopBackendAndQuit() }
+  ]));
+  tray.on('click', () => void revealMainWindow());
+}
 
 const log = createLogger();
 const mainNavigation = new LatestNavigation();
 const settingsNavigation = new LatestNavigation();
-const TITLEBAR_HEIGHT = 38;
 
 function releaseIdentity(): DesktopReleaseIdentity {
   const development = process.env.ARGUS_DESKTOP_DEV === '1' || !app.isPackaged;
@@ -65,27 +148,16 @@ function resolvedTheme(settings: DesktopSettings): 'light' | 'dark' {
 
 function appearanceColors(settings: DesktopSettings): {
   background: string;
-  titlebar: string;
-  symbols: string;
 } {
   const dark = resolvedTheme(settings) === 'dark';
   return {
-    background: dark ? '#0d0e12' : '#f9fafb',
-    // Fixed equivalents of the Web workbench panel/blue title-bar mix.
-    titlebar: dark ? '#1b222e' : '#e8effb',
-    symbols: dark ? '#f4f7fb' : '#151922'
+    background: dark ? '#0d0e12' : '#f9fafb'
   };
 }
 
 function applyWindowAppearance(window: BrowserWindow, settings: DesktopSettings): void {
   nativeTheme.themeSource = settings.appearanceTheme;
-  const colors = appearanceColors(settings);
-  window.setBackgroundColor(colors.background);
-  window.setTitleBarOverlay({
-    color: colors.titlebar,
-    symbolColor: colors.symbols,
-    height: TITLEBAR_HEIGHT
-  });
+  window.setBackgroundColor(appearanceColors(settings).background);
 }
 
 function appearancePayload(settings: DesktopSettings): {
@@ -102,7 +174,7 @@ function createWindow(): BrowserWindow {
   if (desktopSettings) nativeTheme.themeSource = desktopSettings.appearanceTheme;
   const colors = desktopSettings
     ? appearanceColors(desktopSettings)
-    : { background: '#f9fafb', titlebar: '#e8effb', symbols: '#151922' };
+    : { background: '#f9fafb' };
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -111,12 +183,9 @@ function createWindow(): BrowserWindow {
     show: false,
     backgroundColor: colors.background,
     title: 'Argus',
-    titleBarStyle: 'hidden',
-    titleBarOverlay: {
-      color: colors.titlebar,
-      symbolColor: colors.symbols,
-      height: TITLEBAR_HEIGHT
-    },
+    // Keep Windows caption buttons in the native non-client frame. A hidden
+    // title-bar overlay shares renderer coordinates with cockpit controls and
+    // made the right-side file switcher impossible to click at some DPI sizes.
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -130,9 +199,30 @@ function createWindow(): BrowserWindow {
   if (desktopSettings) applyWindowAppearance(window, desktopSettings);
   window.once('ready-to-show', () => window.show());
   window.on('resize', syncSettingsViewBounds);
+  window.on('query-session-end', () => {
+    // Windows Restart Manager (used by NSIS during upgrades) and OS shutdown
+    // must bypass close-to-tray. A normal WM_CLOSE still hides the window.
+    windowsSessionEnding = true;
+    quitting = true;
+    tray?.destroy();
+    tray = null;
+  });
+  window.on('session-end', () => {
+    windowsSessionEnding = true;
+    quitting = true;
+    app.exit(0);
+  });
+  window.on('close', (event) => {
+    if (!shouldHideWindowOnClose(quitting, windowsSessionEnding)) return;
+    event.preventDefault();
+    closeSettingsView();
+    window.hide();
+    log.info('desktop window hidden; owned backend remains available in the background');
+  });
   window.on('closed', () => {
     mainNavigation.cancel();
     closeSettingsView();
+    cockpitLoaded = false;
     mainWindow = null;
   });
 
@@ -205,7 +295,7 @@ async function showSetupWizard(): Promise<void> {
 
   const colors = desktopSettings
     ? appearanceColors(desktopSettings)
-    : { background: '#f9fafb', titlebar: '#e8effb', symbols: '#151922' };
+    : { background: '#f9fafb' };
   const view = new WebContentsView({
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -313,6 +403,27 @@ async function showCockpit(
     // throw), so it is safe to return ownership to the launcher.
     cockpitLoaded = false;
     throw error;
+  }
+}
+
+/** Restore a hidden shell, or recreate one while preserving its backend. */
+async function revealMainWindow(): Promise<void> {
+  const existing = mainWindow;
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    return;
+  }
+  mainWindow = createWindow();
+  if (
+    supervisor?.currentStatus.state === 'ready'
+    && desktopSettings?.setupComplete
+    && desktopSettings.runnerConfigured
+  ) {
+    await showCockpit(desktopSettings);
+  } else {
+    await showLauncher();
   }
 }
 
@@ -477,6 +588,32 @@ function registerIpc(): void {
       }
     }
   });
+  ipcMain.handle('argus:notify-delivery', (event, input: unknown) => {
+    // The cockpit is a local authenticated document, but the main process
+    // still treats delivery data as display-only untrusted input. It never
+    // opens a path or executes a command from this IPC payload.
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+      return false;
+    }
+    const delivery = normalizeDeliveryNotification(input);
+    if (!delivery || !rememberDeliveredNotification(delivery.deliveryId)) return false;
+    const backgrounded = mainWindow.isMinimized() || !mainWindow.isFocused();
+    if (!backgrounded || !Notification.isSupported()) return false;
+    const notification = new Notification({
+      title: `Argus · ${delivery.title}`,
+      body: delivery.summary || '任务已完成，点击打开交付成果。',
+      silent: false,
+    });
+    notification.on('click', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.send('argus:open-delivery', delivery);
+    });
+    notification.show();
+    return true;
+  });
   ipcMain.handle('argus:quit', () => app.quit());
 }
 
@@ -527,9 +664,9 @@ async function startBackend(settings: DesktopSettings): Promise<void> {
 }
 
 app.on('second-instance', () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  mainWindow.focus();
+  void revealMainWindow().catch((error) => {
+    log.error('failed to reveal background Argus window', safeErrorDetail(error));
+  });
 });
 
 if (hasSingleInstanceLock) {
@@ -537,6 +674,7 @@ if (hasSingleInstanceLock) {
   const settings = loadSettings();
   desktopSettings = settings;
   registerIpc();
+  createTray();
   mainWindow = createWindow();
   installApplicationMenu(
     {
@@ -550,7 +688,8 @@ if (hasSingleInstanceLock) {
         return true;
       },
       exportDiagnostics: () => exportDiagnostics(log),
-      openSetup: showSetupWizard
+      openSetup: showSetupWizard,
+      stopBackendAndQuit: requestStopBackendAndQuit
     },
     () => mainWindow
   );
@@ -558,12 +697,9 @@ if (hasSingleInstanceLock) {
   await startBackend(settings);
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      mainWindow = createWindow();
-      void showLauncher().catch((error) => {
-        log.error('failed to restore Argus launcher', safeErrorDetail(error));
-      });
-    }
+    void revealMainWindow().catch((error) => {
+      log.error('failed to restore background Argus window', safeErrorDetail(error));
+    });
   });
   }).catch((error) => {
     const detail = safeErrorDetail(error);
@@ -580,8 +716,14 @@ if (hasSingleInstanceLock) {
 
 app.on('before-quit', (event) => {
   if (quitting) return;
-  event.preventDefault();
   quitting = true;
+  tray?.destroy();
+  tray = null;
+  // Closing the Desktop shell normally detaches its verified backend so
+  // long-running Argus work survives. Only the explicit stop-and-quit action
+  // asks the supervisor to terminate that owned process tree.
+  if (!shouldStopBackendOnQuit(stopBackendAndQuitRequested)) return;
+  event.preventDefault();
   void (async () => {
     await supervisor?.stop();
     app.exit(0);
@@ -589,5 +731,7 @@ app.on('before-quit', (event) => {
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
+  // A hidden/closed shell must not turn a 7×24 backend into a terminal task.
+  // Relaunching Argus or clicking the tray recreates the window and adopts the
+  // same authenticated local backend.
 });

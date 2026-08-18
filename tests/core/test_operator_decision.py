@@ -4,6 +4,7 @@ import pytest
 
 from argus_skill.core.operator_decision import (
     build_operator_decision,
+    parse_agent_operator_options,
     selected_decision_text,
 )
 from argus_skill.life.memory import Backlog, BacklogItem
@@ -100,6 +101,17 @@ def test_missing_agent_options_stays_freeform_without_host_choices() -> None:
     with pytest.raises(ValueError, match="requires an answer"):
         selected_decision_text(card, "custom", "")
     assert selected_decision_text(card, "custom", "Wait for access") == "Wait for access"
+
+
+def test_markdown_wrapped_operator_options_remain_structured() -> None:
+    options = parse_agent_operator_options(
+        "`OPERATOR_QUESTION=Choose A or B`\n"
+        "`OPERATOR_OPTIONS=route-a :: Use A :: Continue with A; "
+        "route-b :: Use B :: Continue with B`"
+    )
+
+    assert [option["id"] for option in options] == ["route-a", "route-b"]
+    assert [option["label"] for option in options] == ["Use A", "Use B"]
 
 
 def test_backlog_persists_and_resolves_card_with_continuation(tmp_path) -> None:

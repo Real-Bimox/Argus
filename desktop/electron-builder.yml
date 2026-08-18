@@ -8,6 +8,8 @@ files:
 extraResources:
   - from: build/argus-backend
     to: argus-backend
+  - from: resources/icon.ico
+    to: icon.ico
 win:
   target:
     - target: nsis
@@ -18,6 +20,7 @@ win:
         - x64
   icon: resources/icon.ico
 nsis:
+  include: resources/installer.nsh
   oneClick: false
   allowToChangeInstallationDirectory: true
   perMachine: false

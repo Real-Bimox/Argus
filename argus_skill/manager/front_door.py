@@ -173,15 +173,28 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
         if cached is not None:
             chat_state.pop("manager_runner", None)
             chat_state.pop("manager_runner_workdir", None)
+        from ..apps._runtime_construction import _resolve_role_runner_backend_name
+
+        runner_backend = backend or "codex"
+        engineer_backend = _resolve_role_runner_backend_name(
+            "engineer",
+            runner_backend,
+        )
+        reviewer_backend = _resolve_role_runner_backend_name(
+            "reviewer",
+            runner_backend,
+        )
         ns = argparse.Namespace(
-            backend=backend or "codex",
+            backend=runner_backend,
             engineer_model=resolve_role_model(
                 "engineer",
                 role_env="ARGUS_SKILL_ENGINEER_MODEL",
+                backend=engineer_backend,
             ),
             reviewer_model=resolve_role_model(
                 "reviewer",
                 role_env="ARGUS_SKILL_REVIEWER_MODEL",
+                backend=reviewer_backend,
             ),
             engineer_reasoning_effort=os.environ.get(
                 "ARGUS_SKILL_ENGINEER_REASONING_EFFORT", "xhigh"
@@ -210,10 +223,18 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
         from ..apps._runtime import build_life_runner
 
         runner = build_life_runner(ns)
-        manager_backend = getattr(runner, "_backend", None)
-        set_acp_scope = getattr(manager_backend, "set_acp_scope", None)
-        if callable(set_acp_scope):
-            set_acp_scope(f"manager:{chat_state.get('session_id') or workspace_key}")
+        acp_scope = f"manager:{chat_state.get('session_id') or workspace_key}"
+        backends: list[Any] = []
+        for backend in (
+            getattr(runner, "_backend", None),
+            getattr(runner, "manager_backend", None),
+        ):
+            if backend is not None and not any(backend is item for item in backends):
+                backends.append(backend)
+        for backend in backends:
+            set_acp_scope = getattr(backend, "set_acp_scope", None)
+            if callable(set_acp_scope):
+                set_acp_scope(acp_scope)
     except Exception as exc:  # noqa: BLE001 — retry on the next operator turn
         # Not cached (a transient build failure must not disable triage for the
         # rest of the session), but not silent either. Everything below this
@@ -992,6 +1013,20 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
         f"Request: {_fallback_request_excerpt(body)}"
     )
 
+    def _empty_reply_for_outcome() -> str:
+        outcome = getattr(runner, "last_chat_outcome", None)
+        stop_reason = _redact_live_text(
+            getattr(outcome, "stop_reason", "")
+        ).strip()
+        if not stop_reason:
+            return empty_reply
+        return (
+            "[Manager reply unavailable] The SELF turn stopped before producing an "
+            f"assistant message: {stop_reason}. No task was dispatched and the "
+            "current mission was not changed. "
+            f"Request: {_fallback_request_excerpt(body)}"
+        )
+
     def _redact_live_text(text: Any) -> str:
         return redact_secrets_text(str(text or ""), known_values=known_secret_values())
 
@@ -1130,7 +1165,7 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
         if runner.chat_reply_if_conversational(**triage_kwargs):
             if not quick_reply:
                 chat_state["last_thread_id"] = getattr(runner, "last_thread_id", None)
-            return captured[0] if captured else empty_reply
+            return captured[0] if captured else _empty_reply_for_outcome()
     except TypeError:
         # Older runner without phase_cb / route support — retry without them
         # (fail-soft; the older runner will classify route internally).
@@ -1140,7 +1175,7 @@ def manager_triage(mem: Any, body: str, chat_state: dict[str, Any],
                 seed_thread_id=chat_state.get("last_thread_id"),
             ):
                 chat_state["last_thread_id"] = getattr(runner, "last_thread_id", None)
-                return captured[0] if captured else empty_reply
+                return captured[0] if captured else _empty_reply_for_outcome()
         except Exception as exc:  # noqa: BLE001 — triage failure
             if is_pre_provider_refusal_error(exc):
                 return _pre_provider_refusal_reply(exc, body)

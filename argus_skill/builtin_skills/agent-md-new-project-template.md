@@ -80,8 +80,8 @@ Routing rule: if the blocker is "paper is too short", "format looks fake", "refe
 
 ## Operator goal
 - Primary paper goal: [write the target research problem and deliverable]
-- Target venue/scope: explicit operator venue, otherwise live-select a relevant
-  CCF-A conference whose deadline has not passed and build its venue profile
+- Target venue/scope: explicit operator venue; if absent, do not infer or search
+  for one unless the operator explicitly requests venue discovery
 - Success condition: the L2 reviewer certifies `done` against the full pipeline checklist (scope: final_submission) plus a current PDF/submission package
 - Non-goals: [write what must not be optimized, copied, or claimed]
 - Allowed compute/API budget: [write limits and stop conditions]

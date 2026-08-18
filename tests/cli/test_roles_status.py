@@ -6,6 +6,7 @@ Deterministic: every test passes an explicit ``env`` and writes a synthetic
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -71,8 +72,9 @@ def test_backend_display_falls_back_when_codex_binary_is_missing(
     tmp_path,
     monkeypatch,
 ):
-    copilot = tmp_path / "copilot"
-    copilot.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    copilot = tmp_path / ("copilot.cmd" if os.name == "nt" else "copilot")
+    script = "@echo off\r\nexit /b 0\r\n" if os.name == "nt" else "#!/bin/sh\nexit 0\n"
+    copilot.write_text(script, encoding="utf-8")
     copilot.chmod(0o755)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))
@@ -120,6 +122,13 @@ def test_grok_backend_has_display_label():
     config = resolve_role_config("manager", env=env)
     assert config.backend == "grok"
     assert config.backend_label == "Grok Build"
+
+
+def test_qoder_backend_has_display_label():
+    env = {"ARGUS_SKILL_LIFE_BACKEND": "qoder"}
+    config = resolve_role_config("manager", env=env)
+    assert config.backend == "qoder"
+    assert config.backend_label == "Qoder"
 
 
 def test_memory_backend_preserved():
@@ -286,6 +295,30 @@ def test_completed_venue_call_is_not_active(tmp_path):
     assert engineer.active is False
     assert engineer.status == "done"
     assert engineer.label == "researching target venue done"
+
+
+def test_mission_completion_closes_orphaned_inflight_role_call(tmp_path):
+    now = time.time()
+    _write_events(
+        tmp_path,
+        [
+            {
+                "type": "agent.io.start",
+                "call_id": "orphaned-manager-call",
+                "run_label": "manager-classify-grounded",
+                "ts": now - 220,
+            },
+            {
+                "type": "life.mission.completed",
+                "item_id": "mission-1",
+                "status": "done",
+                "success": True,
+                "ts": now - 1,
+            },
+        ],
+    )
+
+    assert role_activity(tmp_path, now=now)["manager"].active is False
 
 
 def test_activity_has_only_one_fresh_active_role(tmp_path):

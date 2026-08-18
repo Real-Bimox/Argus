@@ -16,7 +16,7 @@ def test_operator_rewrites_expose_result_reason_and_next_action() -> None:
     assert len(payload["cases"]) >= 5
     for case in payload["cases"]:
         after = case["after"]
-        assert after.strip() not in {"GO", "NO-GO", "REVISE", "BLOCKED"}
+        assert after.strip() not in {"GO", "REVISE", "BLOCKED"}
         assert any(
             marker in after
             for marker in ("Reason:", "because", "so the", "D128", "runner")

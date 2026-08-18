@@ -5,7 +5,7 @@ module only exposes the lead's durable control-plane operations: form/refresh a
 backlog, inspect it, change pool intent, and dissolve the campaign.  It does not
 provide a second manual spawn/reap path.
 
-Verbs: form / status / dissolve / pool-set.
+Verbs: form / status / resume / dissolve / pool-set.
 """
 from __future__ import annotations
 
@@ -89,6 +89,11 @@ def cmd_dissolve(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_resume(a: argparse.Namespace) -> int:
+    task_board.resume(Path(a.root), a.task_id, answer=a.answer)
+    return 0
+
+
 def cmd_pool_set(a: argparse.Namespace) -> int:
     doc = pool.update(
         Path(a.root),
@@ -122,6 +127,15 @@ def _build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser("status", help="show roster and task-board state")
     status.add_argument("--root", required=True)
     status.set_defaults(fn=cmd_status)
+
+    resume = sub.add_parser(
+        "resume",
+        help="answer and requeue one task waiting for operator input",
+    )
+    resume.add_argument("--root", required=True)
+    resume.add_argument("--task-id", required=True)
+    resume.add_argument("--answer", required=True)
+    resume.set_defaults(fn=cmd_resume)
 
     dissolve = sub.add_parser(
         "dissolve",

@@ -354,6 +354,7 @@ def test_operator_answer_rewires_pending_dependents(tmp_path: Path) -> None:
     assert continuation.authorization_id == "maintenance-auth"
     assert continuation.authorization_action == "repair"
     assert continuation.manager_decision == blocked.manager_decision
+    assert "review:required" in continuation.tags
     stored_downstream = next(item for item in b.all() if item.id == downstream.id)
     assert stored_downstream.deps == [continuation.id]
     assert b.claim_next().id == continuation.id

@@ -2,13 +2,18 @@
 
 ## Session experiment
 
-Production remains unchanged by default:
+Production uses a backend-aware default on every supported platform:
 
 ```text
-ARGUS_SKILL_ROLE_SESSION_POLICY=fresh
+ARGUS_SKILL_ROLE_SESSION_POLICY=auto
 ```
 
-The same mission can be replayed with three policies:
+`auto` selects bounded `rolling` sessions for resumable native CLIs (Pi, Codex,
+Claude/Qoder, Copilot, OpenCode, and Grok) and remains `fresh` for fresh-only
+runners such as DeepSeek Harness. This is an Argus runtime default, not a
+machine-local Pi setting.
+
+The same mission can also be run with explicit policies:
 
 - `fresh`: one provider session per role turn;
 - `mission`: one isolated provider session per mission and role;
@@ -29,7 +34,12 @@ revision, repository map, referenced/inspected paths, latest decisive output,
 open checkpoint items, checkpoint pointer, provider thread id, and counters. It
 never contains a transcript or another role's private context. Capsules are
 runtime-owned and atomically replaced. A fresh-only backend reads the same capsule
-and checkpoint paths without needing provider resume support.
+and checkpoint paths without needing provider resume support. Mission context
+initializes an empty checkpoint placeholder atomically, without overwriting later
+role-authored state. The checkpoint remains optional recovery metadata: a missing,
+concurrently deleted, unreadable, or unwritable checkpoint/capsule emits a
+persistence warning and never changes an otherwise successful Engineer, Reviewer,
+or Planner result.
 
 Every role call emits `role.session.turn` with policy, fresh/resumed/rotated
 action, rotation reason, prompt size, token usage, wall time, and capsule path.

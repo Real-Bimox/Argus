@@ -29,6 +29,19 @@ def test_release_digest_covers_runtime_and_frontend_build_inputs() -> None:
         "frontend/web/package-lock.json",
         "frontend/web/vite.config.ts",
         "frontend/web/index.html",
+        "desktop/src/main/index.ts",
+        "desktop/src/renderer/style.css",
+        "desktop/backend_entry.py",
+        "desktop/package-lock.json",
+        "argus_doctor.py",
+        ".agents/plugins/marketplace.json",
+        ".claude-plugin/marketplace.json",
+        "plugins/argus/.codex-plugin/plugin.json",
+        "plugins/argus/.claude-plugin/plugin.json",
+        "plugins/argus/skills/argus-run/SKILL.md",
+        "plugins/argus/bin/argus-plugin-mcp",
+        "plugins/argus/install.sh",
+        "plugins/argus/install.ps1",
     }.issubset(included)
     assert "frontend/web/dist/index.html" not in included
     assert "frontend/tui/bundle/argus.mjs" not in included

@@ -23,6 +23,43 @@ from ._planning_cycle_verdict import PlanningCycleVerdictMixin
 
 log = logging.getLogger(__name__)
 
+_LIVE_WAIT_OBSERVE_MARKERS = (
+    "observe only",
+    "observe the existing",
+    "observe the current",
+    "只观察",
+    "观察现有",
+)
+_LIVE_WAIT_STOP_MARKERS = (
+    "remains live, stop",
+    "still running, stop",
+    "stop without",
+    "record current live status and stop",
+    "仍在运行则停止",
+)
+_INDEPENDENT_WORK_MARKERS = (
+    "independently implement",
+    "independently continue",
+    "regardless of",
+    "in parallel",
+    "while the task runs",
+    "while the job runs",
+    "同时",
+    "并行",
+    "无论",
+)
+_OPERATOR_WAIT_MARKERS = (
+    "operator",
+    "credential",
+    "authorization",
+    "approval",
+    "human input",
+    "人工",
+    "凭据",
+    "授权",
+    "批准",
+)
+
 
 class PlanningCycleMixin(
     PlanningCycleIntakeMixin,
@@ -30,6 +67,207 @@ class PlanningCycleMixin(
     PlanningCycleCompletionMixin,
     PlanningCycleEnqueueMixin,
 ):
+    def _waitable_subagent_jobs(self) -> list[Any]:
+        try:
+            from ...engineer.external_work import scan_external_work
+
+            return [
+                job
+                for job in scan_external_work(self._project_workdir())
+                if job.source == "subagent" and job.waitable
+            ]
+        except Exception:  # noqa: BLE001 - liveness discovery is fail-soft
+            log.debug("failed to inspect waitable subagents", exc_info=True)
+            return []
+
+    @staticmethod
+    def _text_references_live_subagents(text: str, jobs: list[Any]) -> bool:
+        text = " ".join(str(text or "").split()).casefold()
+        return any(job.work_id.casefold() in text for job in jobs)
+
+    @staticmethod
+    def _text_is_monitor_only(text: str) -> bool:
+        text = " ".join(str(text or "").split()).casefold()
+        if any(marker in text for marker in _OPERATOR_WAIT_MARKERS):
+            return False
+        if any(marker in text for marker in _INDEPENDENT_WORK_MARKERS):
+            return False
+        if any(marker in text for marker in _LIVE_WAIT_OBSERVE_MARKERS):
+            return True
+        has_status_probe = (
+            "argus_skill.tools.subagent status" in text
+            or "subagent status --task-id" in text
+            or "check its status" in text
+            or "检查其状态" in text
+        )
+        return has_status_probe and any(
+            marker in text for marker in _LIVE_WAIT_STOP_MARKERS
+        )
+
+    @classmethod
+    def _task_only_waits_for_live_subagents(
+        cls,
+        task: Any,
+        jobs: list[Any],
+    ) -> bool:
+        reference_text = " ".join(
+            str(value or "")
+            for value in (
+                getattr(task, "title", ""),
+                getattr(task, "objective", ""),
+                getattr(task, "acceptance_check", ""),
+            )
+        )
+        monitor_text = " ".join(
+            str(value or "")
+            for value in (
+                getattr(task, "objective", ""),
+                getattr(task, "acceptance_check", ""),
+            )
+        )
+        return cls._text_references_live_subagents(
+            reference_text,
+            jobs,
+        ) and cls._text_is_monitor_only(monitor_text)
+
+    def _live_subagent_event_wait_contract(
+        self,
+        jobs: list[Any],
+    ) -> Any | None:
+        if not jobs:
+            return None
+        from ...planner import WaitingContract
+
+        rows = sorted(
+            (
+                job.work_id,
+                job.run_id or f"started:{job.started_at:.6f}",
+            )
+            for job in jobs
+        )
+        token = hashlib.sha256(repr(rows).encode("utf-8")).hexdigest()
+        job_ids = ", ".join(row[0] for row in rows)
+        observed_revision = self._planner_waiting_observed_revision(
+            wake_on=["subagent_state"],
+            watched_paths=[],
+        )
+        revalidated_rows = sorted(
+            (
+                job.work_id,
+                job.run_id or f"started:{job.started_at:.6f}",
+            )
+            for job in self._waitable_subagent_jobs()
+        )
+        if rows != revalidated_rows:
+            return None
+        return WaitingContract(
+            blocker_fingerprint=f"live-subagents:{token[:24]}",
+            recheck_condition=f"durable task state changes: {job_ids}",
+            recheck_token=token,
+            wait_mode="event",
+            wake_on=("subagent_state",),
+            observed_revision=observed_revision,
+        )
+
+    def _normalize_live_subagent_wait(self, verdict: Any) -> Any:
+        jobs = self._waitable_subagent_jobs()
+        if not jobs:
+            return verdict
+        source = ""
+        waiting = bool(getattr(verdict, "waiting", False))
+        existing_contract = getattr(verdict, "waiting_contract", None)
+        if waiting:
+            waiting_text = " ".join(
+                str(value or "")
+                for value in (
+                    getattr(verdict, "waiting_reason", ""),
+                    getattr(verdict, "reason", ""),
+                    getattr(existing_contract, "blocker_fingerprint", ""),
+                    getattr(existing_contract, "recheck_condition", ""),
+                    getattr(existing_contract, "recheck_token", ""),
+                )
+            ).casefold()
+            references_live_job = self._text_references_live_subagents(
+                waiting_text,
+                jobs,
+            )
+            monitor_only_wait = self._text_is_monitor_only(waiting_text)
+            if references_live_job and monitor_only_wait and existing_contract is None:
+                source = "missing_wait_contract"
+            elif existing_contract is not None:
+                wake_on = set(getattr(existing_contract, "wake_on", ()) or ())
+                existing_wait_mode = str(
+                    getattr(existing_contract, "wait_mode", "poll") or "poll"
+                ).strip().lower()
+                subagent_event_contract = (
+                    existing_wait_mode == "event"
+                    and bool(
+                        {"subagent_state", "subagent_terminal"}.intersection(
+                            wake_on
+                        )
+                    )
+                )
+                if (
+                    references_live_job
+                    and (monitor_only_wait or subagent_event_contract)
+                    and not bool(
+                        getattr(existing_contract, "operator_action_required", False)
+                    )
+                    and not bool(
+                        getattr(
+                            existing_contract,
+                            "stage_reconciliation_required",
+                            False,
+                        )
+                    )
+                ):
+                    if existing_wait_mode != "event":
+                        source = "poll_wait_contract"
+                    elif not str(
+                        getattr(existing_contract, "observed_revision", "") or ""
+                    ):
+                        source = "unvalidated_event_wait_contract"
+        else:
+            tasks = list(getattr(verdict, "new_tasks", []) or [])
+            if tasks and all(
+                self._task_only_waits_for_live_subagents(task, jobs)
+                for task in tasks
+            ):
+                source = "status_only_task"
+        if not source:
+            return verdict
+        contract = self._live_subagent_event_wait_contract(jobs)
+        if contract is None:
+            return verdict
+        reason = (
+            "healthy durable work is already self-watched; waiting for a real "
+            "state change instead of scheduling an LLM status probe"
+        )
+        self._emit(
+            {
+                "type": "life.planner.external_poll_suppressed",
+                "cycle": self._planning_cycles,
+                "source": source,
+                "work_ids": [job.work_id for job in jobs],
+                "recheck_token": contract.recheck_token,
+                "suppressed_task_titles": [
+                    str(getattr(task, "title", "") or "")
+                    for task in list(getattr(verdict, "new_tasks", []) or [])
+                ],
+            }
+        )
+        from dataclasses import replace
+
+        return replace(
+            verdict,
+            project_done=False,
+            reason=reason,
+            new_tasks=[],
+            waiting=True,
+            waiting_reason=reason,
+            waiting_contract=contract,
+        )
+
     def _independent_overlap_task(self, verdict: Any) -> Any | None:
         """Turn a live-job wait into one useful, non-conflicting mission."""
         if not bool(getattr(verdict, "waiting", False)):
@@ -41,19 +279,12 @@ class PlanningCycleMixin(
         contract = getattr(verdict, "waiting_contract", None)
         if bool(getattr(contract, "operator_action_required", False)):
             return None
-        root = self._artifact_root()
-        try:
-            from ...engineer.external_work import scan_external_work
-
-            watched = [
-                job
-                for job in scan_external_work(root)
-                if job.source == "subagent" and job.waitable
-            ]
-        except Exception:  # noqa: BLE001 - overlap is a throughput optimization
+        if str(getattr(contract, "wait_mode", "") or "").strip().lower() == "event":
             return None
+        watched = self._waitable_subagent_jobs()
         if not watched:
             return None
+        root = self._artifact_root()
         title = "Advance independent work while background job runs"
         try:
             if any(
@@ -380,6 +611,19 @@ class PlanningCycleMixin(
         explicitly_requested = bool(
             getattr(contract, "stage_reconciliation_required", False)
         )
+        wake_on = set(getattr(contract, "wake_on", ()) or ())
+        if (
+            str(getattr(contract, "wait_mode", "") or "").strip().lower()
+            == "event"
+            and not explicitly_requested
+            and str(getattr(contract, "blocker_fingerprint", "") or "").startswith(
+                "live-subagents:"
+            )
+            and bool(wake_on)
+            and wake_on <= {"subagent_state", "subagent_terminal"}
+        ):
+            self._planner_waits_since_reconciliation = 0
+            return ""
 
         root = self._artifact_root()
         from ...skills.stage_machine import current_stage

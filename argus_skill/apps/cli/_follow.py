@@ -330,7 +330,7 @@ def _format_follow_agent_message(layer: str, text: str, *, full: bool = False) -
     body = _clean_follow_text(
         strip_named_lines(
             text,
-            ("MILESTONE_STATUS", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
+            ("MILESTONE_STATUS", "NEXT_OWNER", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
         ),
         limit=None,
     )

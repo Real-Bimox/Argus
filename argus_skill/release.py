@@ -51,6 +51,28 @@ def _source_files(root: Path) -> Iterable[Path]:
         "frontend/*/tsconfig*.json",
         "frontend/web/*.config.*",
         "frontend/web/index.html",
+        ".agents/plugins/marketplace.json",
+        ".claude-plugin/marketplace.json",
+        "plugins/argus/**/*.md",
+        "plugins/argus/**/*.json",
+        "plugins/argus/**/*.yaml",
+        "plugins/argus/bin/*",
+        "plugins/argus/install.sh",
+        "plugins/argus/install.ps1",
+        # Desktop and frozen-backend sources are part of the Windows release
+        # unit. Including them prevents an Electron-only change from claiming
+        # the same identity as a prior bundled backend/cockpit pair.
+        "desktop/src/**/*",
+        "desktop/resources/**/*",
+        "desktop/scripts/**/*",
+        "desktop/backend_entry.py",
+        "desktop/argus_backend.spec",
+        "desktop/electron-builder.yml",
+        "desktop/electron.vite.config.ts",
+        "desktop/package.json",
+        "desktop/package-lock.json",
+        "desktop/tsconfig.json",
+        "argus_doctor.py",
         "pyproject.toml",
     )
     tracked = _git_tracked_files(root)

@@ -91,6 +91,29 @@ export interface MissionOutcomeDimensions {
   resumable: boolean;
 }
 
+/** One safe, workspace-relative file selected for a completed delivery. */
+export interface DeliveryTarget {
+  path: string;
+  label: string;
+  source: string;
+  why: string;
+}
+
+/** Durable receipt shared by the completion event, chat card, and preview. */
+export interface DeliveryReceipt {
+  schema_version: number;
+  delivery_id: string;
+  kind: 'task_completed' | 'submission_certified' | string;
+  item_id: string;
+  title: string;
+  summary: string;
+  status: string;
+  review_status: string;
+  delivered_at: number;
+  primary_target: DeliveryTarget | null;
+  targets: DeliveryTarget[];
+}
+
 export interface ContinuousState {
   enabled: boolean;
   open_ended?: boolean;
@@ -289,7 +312,7 @@ export interface MissionStorageView {
 }
 
 export interface MissionView {
-  schema_version: 5;
+  schema_version: 6;
   bootstrapped?: boolean;
   mission: {
     id: string;
@@ -325,6 +348,7 @@ export interface MissionView {
   achievement: MissionAchievement | null;
   review: { status: string; reason: string; rejected_attempts: number };
   frontier: { change: string; summary: string; updated_at: number };
+  delivery: DeliveryReceipt | null;
   outcome: Partial<MissionOutcomeDimensions>;
   last_event_ts: number;
   updated_at: number;
@@ -435,7 +459,7 @@ export interface ArtifactInfo {
   mime: string;
   size: number;
   mtime: number | null;
-  source?: 'manager_live' | 'reviewer_evidence' | 'research_registered';
+  source?: 'manager_live' | 'reviewer_evidence' | 'research_registered' | 'delivery';
   group_title?: string;
   /** Included by the single-artifact endpoint for text/HTML files only. */
   preview?: string;

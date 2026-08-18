@@ -53,6 +53,7 @@ from ._registry import (
     _read_task,
     _registry_path,
     _run_dir_from_command,
+    _task_log_dir,
     _write_task,
     reconcile_terminal_task,
 )

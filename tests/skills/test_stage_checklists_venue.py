@@ -34,7 +34,8 @@ def test_missing_venue_blocks_instead_of_defaulting_to_emnlp(
         "draft", role="reviewer", project_root=_project(tmp_path / "a", None)
     )
     assert "`venue.profile`" in unresolved
-    assert "CCF-A" in unresolved
+    assert "do not infer or search for one" in unresolved
+    assert "CCF-A" not in unresolved
     assert "Anonymous EMNLP Submission" not in unresolved
 
 

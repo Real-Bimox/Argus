@@ -397,7 +397,7 @@ def test_explicit_authorization_persists_current_blocker_and_never_dispatches(
     identity = store.campaign_identity()
     evidence = workdir / "research" / "RESULT.json"
     evidence.parent.mkdir()
-    evidence.write_text('{"decision":"NO_GO"}', encoding="utf-8")
+    evidence.write_text('{"decision":"rejected"}', encoding="utf-8")
     validator = workdir / "tests" / "test_terminal_contract.py"
     validator.parent.mkdir()
     validator.write_text("def test_contract(): pass\n", encoding="utf-8")
@@ -844,6 +844,8 @@ def test_frontdoor_classifier_failure_never_dispatches_unclassified_message(
 
     assert result["kind"] == "chat"
     assert result["reply"].startswith("[not dispatched]")
+    assert "Manager backend" in result["reply"]
+    assert "argus doctor --deep" in result["reply"]
     assert LifeMemory.open(life).backlog.all() == []
 
 
@@ -1542,8 +1544,9 @@ def test_explicit_pending_answer_continues_without_a_model_call(
     assert "Inherited blocked mission objective" in continuation.objective
     assert continuation.iterate is False
     assert continuation.tags == [
-        "paper", "operator-reply", "manager-approved",
+        "paper", "operator-reply", "manager-approved", "review:required",
     ]
+    assert continuation.manager_decision == {"routed": True}
     assert "MANAGER OPERATOR-ANSWER DECISION" in (
         life / "inbox.jsonl"
     ).read_text(encoding="utf-8")

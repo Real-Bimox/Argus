@@ -516,6 +516,7 @@ class SkillLoopExecuteMixin:
             )
         effective_require_independent_review = bool(
             require_independent_review
+            or _env_flag("ARGUS_SKILL_REQUIRE_INDEPENDENT_REVIEW", False)
             or (
                 active_contract.requires_independent_review
                 if active_contract is not None
@@ -565,10 +566,10 @@ class SkillLoopExecuteMixin:
             "require_post_task_learning": bool(
                 getattr(self, "_role_memory_maintenance_enabled", True)
             ),
-            "wiki_enabled": _env_flag("ARGUS_SKILL_WIKI", default=False),
+            "wiki_enabled": _env_flag("ARGUS_SKILL_WIKI", default=True),
             "auto_init_wiki": _env_flag(
                 "ARGUS_SKILL_AUTO_INIT_WIKI",
-                default=False,
+                default=True,
             ),
             "dangerous_yolo": not safe_mode,
             "full_auto": safe_mode,
@@ -1088,6 +1089,7 @@ class SkillLoopExecuteMixin:
         final_review_status = ""
         final_review_next_action = ""
         review_source = ""
+        final_frontier_report: dict = {}
         final_planner_report: dict = {}
         plan_challenge: dict = {}
         rounds_list = getattr(outcome, "rounds", None) or []
@@ -1111,6 +1113,9 @@ class SkillLoopExecuteMixin:
                 final_review_next_action = str(
                     getattr(_final_review, "next_action", "") or ""
                 ).strip()
+                raw_frontier = getattr(_final_review, "frontier_report", {}) or {}
+                if isinstance(raw_frontier, dict):
+                    final_frontier_report = dict(raw_frontier)
                 raw_report = getattr(_final_review, "planner_report", {}) or {}
                 if isinstance(raw_report, dict):
                     final_planner_report = dict(raw_report)
@@ -1164,6 +1169,7 @@ class SkillLoopExecuteMixin:
         ex_state.final_review_status = final_review_status
         ex_state.final_review_next_action = final_review_next_action
         ex_state.review_source = review_source
+        ex_state.final_frontier_report = final_frontier_report
         ex_state.final_planner_report = final_planner_report
         ex_state.plan_challenge = plan_challenge
         ex_state.final_submission_certified = final_submission_certified
@@ -1285,7 +1291,7 @@ class SkillLoopExecuteMixin:
         summary_lines = []
         visible_engineer_message = strip_named_lines(
             engineer_message,
-            ("MILESTONE_STATUS", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
+            ("MILESTONE_STATUS", "NEXT_OWNER", "OPERATOR_QUESTION", "OPERATOR_OPTIONS"),
         )
         for line in visible_engineer_message.splitlines():
             cleaned = line.strip()
@@ -1325,6 +1331,7 @@ class SkillLoopExecuteMixin:
                 if rounds
                 else None
             ),
+            final_frontier_report=ex_state.final_frontier_report,
             final_planner_report=ex_state.final_planner_report,
             plan_challenge=ex_state.plan_challenge,
         )

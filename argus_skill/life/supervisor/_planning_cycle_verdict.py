@@ -297,6 +297,8 @@ class PlanningCycleVerdictMixin:
             self._enter_idle_backoff()
             return PLAN_ERROR
 
+        if revision_request is None:
+            verdict = self._normalize_live_subagent_wait(verdict)
         verdict = self._defer_project_done_for_operator_external_blocker(verdict)
 
         overlap_task = self._independent_overlap_task(verdict)

@@ -11,6 +11,7 @@ emission.
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,6 +39,18 @@ from ._helpers import (
 from ._planning_cycle_helpers import _PlanCycleState, _revision_reason
 
 log = logging.getLogger(__name__)
+
+
+def _independent_review_forced() -> bool:
+    return os.environ.get(
+        "ARGUS_SKILL_REQUIRE_INDEPENDENT_REVIEW", ""
+    ).strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _stage_closing_forced() -> bool:
+    return os.environ.get(
+        "ARGUS_SKILL_FORCE_STAGE_CLOSING", ""
+    ).strip().casefold() in {"1", "true", "yes", "on"}
 
 
 class PlanningCycleEnqueueMixin:
@@ -314,8 +327,11 @@ class PlanningCycleEnqueueMixin:
             canonical_stage_closing = bool(
                 canonical_scope == PLANNER_SCOPE_FINAL_SUBMISSION
                 or getattr(task, "stage_repair", False)
+                or _stage_closing_forced()
             )
-            canonical_require_review = canonical_stage_closing
+            canonical_require_review = (
+                canonical_stage_closing or _independent_review_forced()
+            )
             task = replace(
                 task,
                 scope=canonical_scope,
@@ -584,8 +600,11 @@ class PlanningCycleEnqueueMixin:
 
     @staticmethod
     def _manager_decision_evidence(intent: Any) -> dict[str, Any]:
+        # Planner nodes are already subdivisions of the standing
+        # Manager-approved campaign. Mark that inherited authority even when
+        # the compact intent event has no optional routing fields.
         if not isinstance(intent, dict):
-            return {}
+            intent = {}
         evidence = {
             "vertical": str(intent.get("vertical") or "").strip(),
             "stage": str(
@@ -600,8 +619,7 @@ class PlanningCycleEnqueueMixin:
             ).strip(),
         }
         evidence = {key: value for key, value in evidence.items() if value}
-        if evidence:
-            evidence["routed"] = True
+        evidence["routed"] = True
         return evidence
 
     def _pc_record_revision_rejection(

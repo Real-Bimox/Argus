@@ -25,7 +25,7 @@ flowchart TD
     U[Operator message] --> F[Manager front door]
     F -->|SELF| S[Manager SELF turn]
     S --> SR[Reply]
-    SR --> SL{Five completed user turns?}
+    SR --> SL{Five operator turns since last SELF review?}
     SL -->|Yes| SLR[Isolated SELF learning review]
     SL -->|No| IDLE[Ready]
     SLR --> IDLE
@@ -135,10 +135,88 @@ contract does not require one.
   twice.
 - Separate project daemons have separate workspaces, backlogs, transcripts, and
   output files.
+- An uncaught Argus orchestration exception opens a durable runtime-failure
+  circuit keyed by exception type, Argus call site, and normalized runtime path.
+  Pending work and Planner calls are held under that same loaded release instead
+  of repeatedly spending Agent turns. A release/source/checkpoint-contract change
+  or a reviewed canary closes the circuit.
 
 Explicit pause stops the current mission and daemon while preserving the goal
 and backlog. An explicit resume that runs commands or changes artifacts is TEAM
 work; it is not executed inline as a SELF reply.
+
+### Manager model boundary and required prewarm
+
+These are runtime design invariants:
+
+- Every ordinary free-text operator message, including a pure greeting, remains
+  model-classified. Explicit slash commands, authoritative item-specific
+  pending-question answers, duplicate-request replay, and the deterministic
+  "choose a specific item" guard when several questions are pending retain their
+  existing control paths. The Host must not add keyword, regex, or local
+  canned-reply routing for otherwise ordinary prose to bypass the Manager model.
+- Selecting an active project starts best-effort background prewarm from both
+  Web and TUI. Prewarm initializes ACP processes without spending a model turn;
+  the lean front door also initializes its logical session. Full SELF creates
+  its logical session on the first prompt. The eventual message still receives
+  a real model decision.
+- The active Manager session has two intentionally distinct warm transports:
+  the lean front-door classifier and the full SELF transport. The classifier
+  uses the compact model/effort and no tools; full SELF uses the configured
+  Manager model, effort, workspace, and tool policy.
+- ACP scope is `manager:<session-id>` and must be propagated to both the default
+  backend and any separate Manager-role backend. When ACP and the corresponding
+  label are enabled, prewarm must target the same backend and exact client key
+  later used by the message. Prewarm honors
+  `ARGUS_SKILL_COPILOT_ACP` and `ARGUS_SKILL_COPILOT_ACP_LABELS`; a disabled or
+  excluded path starts no unused ACP client. Two identical classifier processes
+  for one session indicate a scope/prewarm bug.
+- Prewarm is limited to an active project and must not rotate or close a live
+  Manager state concurrently. It runs asynchronously: a message sent
+  immediately after project selection may race it. Successful completed prewarm
+  removes process startup cost; it does not promise to remove the first full
+  SELF logical-session creation or the model/tool reasoning time of a complex
+  answer.
+- Operator-facing replies identify only as Argus Manager. They never expose the
+  backing provider/model/CLI as the product identity and do not narrate Skill
+  matching, tool selection, search plans, or intermediate checks unless the
+  operator asks for that process.
+- Prewarm logs and status surfaces must not contain prompts, operator messages,
+  credentials, tokens, or tool payloads. If the Manager backend is unavailable,
+  classification fails closed, queues no task, and points the operator to
+  `argus doctor --deep`.
+
+On the local Copilot ACP benchmark used for this contract, fixing scope reuse
+reduced an eight-second-prewarmed `你好` turn from 8.146 seconds to 3.937 seconds
+and reduced duplicate classifier processes from two to one. This measurement is
+diagnostic evidence, not a universal latency promise.
+
+### Durable long commands and supervisor dialogue
+
+- On POSIX, a command expected to run for more than two minutes is submitted to
+  `argus_skill.tools.subagent`; a provider-native background task or a
+  session-owned background shell is never its durable owner.
+- `direct` is the default mode for deterministic commands such as builds,
+  evaluations, and test suites. It adds no Supervisor model calls.
+- `supervised` is used only when an experiment needs semantic monitoring,
+  early-stop judgment, or a persisted discussion with the Engineer.
+- A successful handoff requires the submit JSON receipt to contain
+  `state=submitted`, `task_id`, `run_id`, and `check_with`. `check_with` uses the
+  active Argus Python executable and is directly executable in a later turn.
+  CHECKPOINT.md records these fields only when another round must observe the
+  run.
+- A supervised concern moves the task to `state=discussing`. Status returns an
+  `ACTION_REQUIRED` message, a durable discussion path, and an executable
+  `reply_with` command. The Engineer reads the concern and replies through that
+  command before relaunching. The only exception is an explicit
+  `--override-discussion "<reason>"` break-glass submit, whose reason is recorded
+  durably. Supervisor and Engineer turns are appended to the same durable
+  transcript, with heartbeat and terminal resolution recorded.
+- Native Windows launches a detached Argus-owned worker for durable `direct`
+  and `supervised` subagents. The worker persists registry/log state outside the
+  provider turn, records its PID, applies CPU admission, and uses identity-checked
+  process-tree cleanup. POSIX retains its process-group implementation; WSL2 is
+  optional rather than required for Windows durability.
 
 ## 4. Verticals and workflows
 
@@ -160,21 +238,38 @@ outcome genuinely requires dependent phases or independent evidence tracks.
 Missing scope, manifest, checkpoint, Wiki, or report files are not automatic
 reasons to delay substantive work.
 
-## 5. SELF and TEAM evolution
+## 5. Learning, Wiki, and framework self-maintenance
+
+Argus has four distinct evolution mechanisms. SELF and TEAM learning maintain
+reusable Skills; the Wiki stores durable project facts; framework
+self-maintenance repairs or adopts Argus runtime code. These names are not
+interchangeable: a `manager.self_maintenance.*` event is not a SELF learning
+review.
 
 ### SELF evolution
 
-- Trigger: after every five completed user turns.
-- Input: bounded recent conversation evidence.
+- Events: `self.learning.review.started`, `self.learning.review.completed`, and
+  `self.learning.review.failed`.
+- Trigger: after a successful SELF/chat reply when at least five operator turns
+  have accumulated since the previous SELF review.
+- Execution: an asynchronous post-answer review that never delays or changes the
+  answer that triggered it.
+- Input: at most the latest twelve transcript turns.
 - Learns: stable terminology, interpretation rules, reply preferences, and
-  reusable SELF procedures.
-- Destination: profile `skills/self/`.
+  reusable SELF answer/tool procedures.
+- Excludes: one-off history, transient paths and process IDs, unresolved
+  failures, secrets, and generic advice.
+- Destination: at most one related Skill under profile `skills/self/`.
 - First use: the next applicable turn in the same session.
 - Reuse: later tasks and later sessions using the same profile.
 
 ### TEAM evolution
 
+- Events: `team.learning.review.started`, `team.learning.review.completed`, and
+  `team.learning.review.failed`.
 - Trigger: after a TEAM mission settles.
+- Execution: an isolated post-mission learning review after the canonical
+  mission result is already final.
 - Success rule: one canonical successful mission is verified evidence for a
   reusable project candidate.
 - Failure rule: learn only from a verified root cause or a repeated failure
@@ -185,6 +280,45 @@ reasons to delay substantive work.
   `manager/`, `planner/`, `engineer/`, or `reviewer/`.
 - First use: the next applicable mission.
 - Reuse: later tasks and later sessions using the same profile.
+
+### Project Wiki
+
+- Events include `wiki.initialized`, `wiki.created`, and `wiki.updated`.
+- Purpose: declarative project knowledge, not execution procedure.
+- Contains: project architecture and contracts, support and limitation
+  matrices, stable environment constraints, and scope-qualified measurements.
+- Excludes: procedures and checklists (Skills), task history, handoffs,
+  evaluator results, and transient runtime metadata.
+- Root: `.autors/<semantic-project>/wiki/`, with `INDEX.md` and semantic pages
+  under `pages/`.
+- Bootstrap: when Wiki support and automatic initialization are enabled, the
+  runtime creates the root before the first mission; an existing root is always
+  discovered and reused.
+- Use: roles read `INDEX.md` for progressive disclosure and edit the relevant
+  page and index directly during reviewed work.
+- Scope: project workspace. Wiki facts do not silently become profile Skills.
+
+### Framework self-maintenance
+
+- Event family: `manager.self_maintenance.*`, deliberately separate from
+  `self.learning.review.*`.
+- Trigger: observed supervisor/Planner/Wiki-hook failures may request an
+  immediate audit; otherwise the daemon audits on a recovery interval (30
+  minutes by default).
+- Input: a bounded, deduplicated set of runtime observations plus upstream
+  update availability.
+- Decision: Manager chooses `no_action`, evidence-bound `repair`, or `adopt`.
+- Execution: repairs run in a private framework worktree with explicit affected
+  paths and an acceptance check. Upstream adoption also uses a private worktree.
+- Safety: the change must pass independent review and canary validation before
+  handoff/publication; the maintenance role does not push, merge, or publish.
+- Source capability: worktree repair is advertised only when the loaded framework
+  root is a clean Git checkout with a committed HEAD. A frozen Desktop `_internal`
+  tree is never treated as source and never reaches worktree preparation; it
+  reports `maintenance_mode=release_update` and waits for a verified release built
+  from a separate source repository.
+- Scope: Argus framework source and runtime release state. It does not learn user
+  preferences and does not write SELF Skills or project Wiki pages.
 
 ### Cross-role visibility
 
@@ -215,9 +349,13 @@ Consequences:
 | --- | --- | --- | --- | --- |
 | SELF review | Cannot change the reply that triggered it | Available | Available | Only if the profile is copied or synced |
 | TEAM review | Cannot change the settled mission | Available | Available | Only if the profile is copied or synced |
+| Wiki edit | Available to later turns after the edit | Available | Available when the same project workspace is reused | Only if the project workspace is copied or synced |
+| Framework self-maintenance | Never mutates the active turn in place | Available only after reviewed canary adoption | Available through the adopted runtime revision | Available only when that runtime revision is installed |
 | Custom vertical promotion | Applies after review | Available | Available | Only if learned vertical data is copied or synced |
 
-Learning is profile-scoped, not silently cloud-synchronized.
+SELF and TEAM Skills are profile-scoped, Wiki knowledge is project-scoped, and
+framework self-maintenance is runtime-revision-scoped. None is silently
+cloud-synchronized.
 
 ## 6. Restrained execution and token efficiency
 
@@ -244,9 +382,15 @@ Implemented controls:
 
 Token controls:
 
-- A context-free first SELF reply may use the lean quick path.
+- The active project prewarms both the lean classifier and full SELF ACP
+  transports without spending a model turn.
+- A context-free first SELF reply may use the lean quick path, but still remains
+  model-classified.
 - Follow-up SELF turns and turns with learned Skills use the persistent
   Skill-aware Manager session so speed does not discard context.
+- Deterministic long commands use durable `direct` mode and therefore do not pay
+  periodic Supervisor model calls. `supervised` is reserved for semantic
+  monitoring or discussion.
 - Planner does not run a second planning pass for a preplanned backlog node.
 - Reviewer receives the mission objective and necessary evidence rather than a
   full project transcript.
@@ -348,9 +492,19 @@ Web UI, Manager model, and daemon:
 | Formal domain plus Git metadata correction | `software` wins because the requested action is history maintenance |
 | Legacy attachment metadata | Removed SHA/integrity fields are stripped during read |
 | Greeting followed by first TEAM task, including after Web restart | Greeting does not claim a title; the substantive task names the session |
+| Web or TUI activates a project | Lean classifier and full SELF ACP transports prewarm under the same `manager:<session-id>` scope |
+| Manager uses an explicit role-specific runner binary | Prewarm and message reuse the same Manager ACP client; no duplicate classifier process |
+| Pure greeting | Still model-classified; reply identifies as Argus Manager and does not expose provider identity |
+| First full SELF inspection after completed prewarm | SELF process is initialized; the logical session and model/tool work may still add latency |
+| Deterministic command longer than two minutes | Durable `direct` receipt returns promptly and the command survives the submitting turn |
+| Supervised experiment raises a concern | Status exposes `reply_with`; Engineer reply and Supervisor response persist in one discussion transcript |
+| Detached subagent requested on native Windows | Argus-owned worker returns a durable submitted receipt and survives the provider turn |
 | Default identity template | Excluded from model prompts until the operator edits it |
 | Operator pause | Not captured or replayed as a failure lesson |
 | Planner acceptance check | No unconditional-success or tautological checks |
+| Successful Pi turn with no `CHECKPOINT.md` | Mission remains successful; empty open-item metadata and a persistence warning only when needed |
+| Same uncaught runtime exception under rephrased missions | One durable circuit opens; later Planner/Engineer dispatch waits for changed runtime facts |
+| Frozen Desktop framework repair request | Reports release-update mode and never runs `git rev-parse` against `_internal` |
 
 ## 10. Project lifecycle
 

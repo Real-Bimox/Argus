@@ -1078,6 +1078,18 @@ class PlanningContextMixin:
                     }
                 )
             revision["subagent_terminal"] = terminal_rows
+        if "subagent_state" in wake_sources:
+            from ...engineer.external_work import scan_external_work
+
+            revision["subagent_state"] = [
+                {
+                    "work_id": status.work_id,
+                    "run_id": status.run_id,
+                    "state": status.state.value,
+                }
+                for status in scan_external_work(project_root)
+                if status.source == "subagent"
+            ]
         blob = json.dumps(revision, sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -1183,6 +1195,87 @@ class PlanningContextMixin:
         wait_mode = str(getattr(contract, "wait_mode", "poll") or "poll")
         wake_on = [str(value) for value in getattr(contract, "wake_on", ())]
         watched_paths = [str(value) for value in getattr(contract, "watched_paths", ())]
+        contract_observed_revision = str(
+            getattr(contract, "observed_revision", "") or ""
+        )
+        supported_wake_sources = {
+            "authorization",
+            "manager_stage",
+            "artifact_revision",
+            "subagent_terminal",
+            "subagent_state",
+        }
+        unsupported_wake_sources = sorted(
+            set(wake_on).difference(supported_wake_sources)
+        )
+        if wait_mode == "event" and unsupported_wake_sources:
+            self._emit(
+                {
+                    "type": EventType.LIFE_PLANNER_ERROR,
+                    "error": "event wait has unsupported wake source",
+                    "unsupported_wake_sources": unsupported_wake_sources,
+                    "blocker_fingerprint": blocker_fingerprint,
+                    "recheck_token": recheck_token,
+                }
+            )
+            return None
+        if wait_mode == "event" and not wake_on:
+            self._emit(
+                {
+                    "type": EventType.LIFE_PLANNER_ERROR,
+                    "error": "event wait has no deterministic wake source",
+                    "blocker_fingerprint": blocker_fingerprint,
+                    "recheck_token": recheck_token,
+                }
+            )
+            return None
+        if (
+            wait_mode == "event"
+            and "artifact_revision" in wake_on
+            and not watched_paths
+        ):
+            self._emit(
+                {
+                    "type": EventType.LIFE_PLANNER_ERROR,
+                    "error": "artifact event wait has no watched paths",
+                    "blocker_fingerprint": blocker_fingerprint,
+                    "recheck_token": recheck_token,
+                }
+            )
+            return None
+        if (
+            wait_mode == "event"
+            and {"subagent_state", "subagent_terminal"}.intersection(wake_on)
+            and not contract_observed_revision
+        ):
+            self._emit(
+                {
+                    "type": EventType.LIFE_PLANNER_ERROR,
+                    "error": "subagent event wait lacks host-observed revision",
+                    "blocker_fingerprint": blocker_fingerprint,
+                    "recheck_token": recheck_token,
+                }
+            )
+            return None
+        current_observed_revision = self._planner_waiting_observed_revision(
+            wake_on=wake_on,
+            watched_paths=watched_paths,
+        )
+        if (
+            contract_observed_revision
+            and current_observed_revision != contract_observed_revision
+        ):
+            self._emit(
+                {
+                    "type": EventType.LIFE_PLANNER_WAITING_WOKEN,
+                    "blocker_fingerprint": blocker_fingerprint,
+                    "recheck_token": recheck_token,
+                    "wake_reason": "revision_changed_before_persist",
+                    "observed_revision": contract_observed_revision,
+                    "current_revision": current_observed_revision,
+                }
+            )
+            return None
         wait_id = hashlib.sha256(
             (
                 self._planner_waiting_objective_fingerprint()
@@ -1248,9 +1341,8 @@ class PlanningContextMixin:
             ),
             **control_binding,
             "wait_id": wait_id,
-            "observed_revision": self._planner_waiting_observed_revision(
-                wake_on=wake_on,
-                watched_paths=watched_paths,
+            "observed_revision": (
+                contract_observed_revision or current_observed_revision
             ),
             "first_observed_at": (
                 float(previous.get("first_observed_at") or now) if same_condition else now

@@ -35,6 +35,55 @@ class IdleCycleMixin:
     def _artifact_root(self) -> Path:
         raise NotImplementedError
 
+    def _runtime_failure_circuit_block(
+        self,
+        *,
+        item: Any | None = None,
+    ) -> dict[str, Any] | None:
+        """Hold dispatch while the same loaded runtime owns an open circuit."""
+        item_tags = {
+            str(tag).strip().lower()
+            for tag in (getattr(item, "tags", None) or [])
+            if str(tag).strip()
+        }
+        if item_tags & {"framework_maintenance", "runtime_failure_canary"}:
+            return None
+        try:
+            from ..runtime_failure_circuit import active_runtime_failure_circuit
+
+            circuit = active_runtime_failure_circuit(self.memory.root)
+        except Exception:  # noqa: BLE001 - a corrupt advisory file must not crash host
+            log.exception("failed to inspect runtime failure circuit")
+            return None
+        if circuit is None:
+            return None
+        fingerprint = str(circuit.get("fingerprint") or "")
+        reason = (
+            "runtime failure circuit is open; install or canary a changed Argus "
+            f"runtime before dispatching more work ({fingerprint})"
+        )
+        if self._should_journal_idle_repeat("runtime_failure_circuit"):
+            self._emit({
+                "type": EventType.LIFE_RUNTIME_FAILURE_CIRCUIT_BLOCKED,
+                "item_id": str(getattr(item, "id", "") or ""),
+                "fingerprint": fingerprint,
+                "exception_type": circuit.get("exception_type"),
+                "callsite": circuit.get("callsite"),
+                "normalized_error": circuit.get("normalized_error"),
+                "occurrence_count": circuit.get("occurrence_count"),
+                "runtime_identity": circuit.get("runtime_identity"),
+                "operator_alert": True,
+                "reason": reason,
+            })
+            self._emit_status(reason)
+        return {
+            "status": "infra_blocked",
+            "item_id": str(getattr(item, "id", "") or ""),
+            "reason": reason,
+            "fingerprint": fingerprint,
+            "recoverable": True,
+        }
+
     def _drain_user_inbox(self, *, max_messages: int = 10) -> list[str]:
         """Pull all pending operator nudges from the configured inbox.
 

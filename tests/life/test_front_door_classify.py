@@ -10,7 +10,6 @@ import pytest
 from argus_skill.life.router import (
     ConfigIntent,
     build_front_door_prompt,
-    classify_config_intent,
     classify_front_door,
 )
 
@@ -47,7 +46,9 @@ def _exec_sequence(*answers: str):
 def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     prompt = build_front_door_prompt("你好", active_mission=True)
 
-    assert len(prompt) <= 7_000
+    assert len(prompt) <= 4_000
+    assert "substantive or multi-source research" in prompt
+    assert "company due diligence" in prompt
     assert all(
         label in prompt
         for label in (
@@ -491,19 +492,6 @@ def test_nonzero_exit_is_safe_default() -> None:
         ),
     )
     assert (intent, control, route) == (None, None, "complex")
-
-
-def test_config_parse_parity_with_classify_config_intent() -> None:
-    # The shared _parse_config_line means the merged path and the standalone
-    # classifier must produce the SAME ConfigIntent for the same SET line.
-    line = "SET effort engineer,reviewer high"
-    merged, _, _ = classify_front_door(
-        "x",
-        run_exec=_exec(f"CONFIG: {line}\nCONTROL: NONE\nROUTE: TEAM"),
-    )
-    # standalone uses its own (non-merged) prompt, so a plain run_exec here.
-    standalone = classify_config_intent("x", run_exec=lambda p: _FakeResult(line))
-    assert merged == standalone == ConfigIntent("effort", ("engineer", "reviewer"), "high")
 
 
 def test_prefixes_are_case_insensitive() -> None:

@@ -91,6 +91,26 @@ def test_engineer_reasoning_is_hidden_by_default() -> None:
     assert rendered == ""
 
 
+def test_engineer_handoff_fields_are_hidden() -> None:
+    rendered = render_event_for_terminal(
+        {
+            "type": "engineer.progress",
+            "kind": "assistant_message",
+            "text": (
+                "Artifact complete.\n"
+                "MILESTONE_STATUS=done\n"
+                "NEXT_OWNER=reviewer\n"
+                "OPERATOR_QUESTION=none\n"
+                "OPERATOR_OPTIONS=none"
+            ),
+        },
+        theme=_PLAIN,
+    )
+    assert "Artifact complete." in rendered
+    assert "NEXT_OWNER" not in rendered
+    assert "OPERATOR_" not in rendered
+
+
 def test_review_verdict_colors() -> None:
     done = render_event_for_terminal(
         {

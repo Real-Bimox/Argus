@@ -26,7 +26,9 @@ def test_manager_engineer_and_planner_share_direct_wiki_contract(
         task="implement the next increment",
         skill_text="",
         next_action=None,
+        require_post_task_learning=True,
         project_root=tmp_path,
+        project_skill_dir=tmp_path / "skills" / "engineer",
     )
     planner = Planner._build_planner_prompt(
         continuous_objective="research the system",
@@ -48,6 +50,9 @@ def test_manager_engineer_and_planner_share_direct_wiki_contract(
     assert "related attempts repeatedly fail" in engineer
     assert "primary papers, official implementations" in engineer
     assert "Record durable findings in the Wiki" in engineer
+    assert "support/limitation matrices" in engineer
+    assert "Procedures and checklists belong in Skills" in engineer
+    assert "route durable project facts" in engineer
     assert "external algorithm" in planner
     assert "starting context, not a" in planner
     assert "fresh paper/source/issue/hardware investigation" in planner

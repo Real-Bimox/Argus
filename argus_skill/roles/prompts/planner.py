@@ -41,12 +41,19 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   verification step. Engineer owns intermediate analysis, implementation,
   experiments, iteration, and the keep/reject decision. Keep conditional branches
   in one objective: measure the real signal; if viable, build and benchmark the
-  minimal implementation; otherwise reject it with evidence. Prefer early decisive
-  real-system evidence over reference-code polish or serial micro-candidates.
+  minimal implementation; otherwise classify the attempt with evidence and continue
+  with the next legal action. Prefer early decisive real-system evidence over
+  reference-code polish or serial micro-candidates.
 - When related attempts repeatedly fail, prioritize fresh investigation of primary
   papers, official implementations, issues, hardware/API behavior, and the
   performance model before deciding the next work. Use that evidence to reassess
   assumptions and implementation architecture.
+- An end-to-end threshold miss only shows that this run missed its target. Before
+  naming a root cause, dominant/bottleneck stage, or replacement architecture, require code
+  hot-path inspection plus live resource/wait evidence and either phase
+  timing/profiling or a controlled counterfactual explaining a material share of
+  elapsed time. Otherwise delegate diagnosis and state that attribution is
+  inconclusive.
 - `PROJECT_DONE=true` requires the operator goal and hard criteria with no
   high-impact work left. Empty backlog or one failed thesis is evidence, not a routing command
   or completion. Integrity and reproducibility are admission constraints, not
@@ -58,7 +65,10 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   manifests/provenance, or duplicate verification unless explicitly requested,
   required by an external interface, or proven necessary to unblock that action.
   Optional hardening never keeps a finite objective alive after its requested
-  outcome and acceptance criteria are satisfied.
+  outcome and acceptance criteria are satisfied. A failed attempt does not complete
+  a broader objective. Never use a bare launch verdict in a reason, task, or
+  acceptance check. Say what happened, why the evidence supports it, and what
+  should happen next in plain language.
 - Credentials, paid/irreversible work, scope expansion, and future operator
   approval require `WAITING=true` plus `OPERATOR_ACTION_REQUIRED=true`.
 - When work remains, delegate exactly one next action with:
@@ -68,8 +78,10 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   dependencies, review, stage transitions, context discovery, and Skill learning.
 - Write TASK_TITLE and TASK_OBJECTIVE in the operator objective's language.
 - End with named lines, not JSON. Use `WAITING=true` only for a real external
-  blocker. If an explicit final-certification instruction is present, additionally
-  use `TASK_SCOPE=final_submission`; ordinary tasks omit it.
+  blocker. Never poll a watched durable task; emit no
+  `TASK_*` block and set `BLOCKER_FINGERPRINT`, `RECHECK_CONDITION`,
+  `RECHECK_TOKEN`, `WAIT_MODE=event`, and `WAKE_ON=subagent_state`. If explicit
+  final certification is requested, also use `TASK_SCOPE=final_submission`.
 """
 
 _EXTERNAL_TARGET_CONTRACT = (
@@ -590,6 +602,58 @@ def build_continuous_prompt(
     )
 
 
+def build_continuous_resume_prompt(
+    *,
+    continuous_objective: str,
+    journal_tail: str,
+    planning_cycle: int,
+    runtime_change_summary: str = "",
+    mission: Any | None = None,
+    project_root: Path | str | None = None,
+    state_root: Path | str | None = None,
+) -> str:
+    """Render only the changing Planner delta for a resumable role session.
+
+    The prior same-role turn already contains the immutable Planner contract,
+    vertical policy, and tool boundary.  Repeating that large preamble on every
+    cycle defeats provider prompt caching; this delta still carries the current
+    stage/checklist, durable objective, journal, and fresh runtime facts.
+    """
+    from ...core.project import resolve_project_root
+    from .registry import resolve_role_prompt
+
+    workspace = resolve_project_root(project_root)
+    state = resolve_project_root(state_root) if state_root is not None else workspace
+    prompt_context = resolve_role_prompt(continuous_request(state))
+    skill_block = ""
+    if mission is not None:
+        try:
+            libraries = mission.libraries()
+            skill_block = str(getattr(libraries, "block", "") or "")
+        except Exception:  # noqa: BLE001 - a resume delta must remain available
+            skill_block = ""
+    return _join_prompt_blocks(
+        "## Continued Planner cycle\n"
+        "You are resuming your own bounded Planner session. The original role "
+        "contract remains binding; do not replay old exploration or re-author "
+        "the static policy. Current state below supersedes stale session facts.",
+        str(prompt_context.role_banner or ""),
+        "## Current workflow stage\n"
+        f"- current: `{prompt_context.stage}`\n"
+        f"- sequence: {', '.join(prompt_context.stage_order) or '(none)'}\n"
+        + str(prompt_context.stage_checklist or ""),
+        skill_block,
+        "## Original operator request (immutable anchor)\n" + continuous_objective.strip(),
+        "## Journal of completed work (most recent last)\n"
+        + (journal_tail.strip() or "(no completed work yet — this is the first cycle)"),
+        "## Current reality (authoritative over the journal above)\n"
+        + (runtime_change_summary.strip() or "(no additional runtime context)"),
+        f"This is planning cycle #{planning_cycle + 1}.",
+        "Inspect only what is needed to choose the next concrete task or a real "
+        "blocker, then finish with the existing key-value completion footer.",
+    )
+
+
 __all__ = [
     "BOUNDED_DAG",
     "CONTINUOUS",
@@ -598,6 +662,7 @@ __all__ = [
     "PLAN_PREVIEW",
     "build_bounded_dag_prompt",
     "build_continuous_prompt",
+    "build_continuous_resume_prompt",
     "continuous_request",
     "preview_request",
 ]

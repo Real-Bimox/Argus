@@ -30,21 +30,24 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 import uuid
+import weakref
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
+import portalocker
+
 from ..core.event_catalog import EventType, canonical_event_type
 
-fcntl: Any
-try:  # pragma: no cover - platform-specific import
-    import fcntl
-except ImportError:  # pragma: no cover - Windows fallback
-    fcntl = None
+_BACKLOG_THREAD_LOCKS: weakref.WeakValueDictionary[str, threading.Lock] = (
+    weakref.WeakValueDictionary()
+)
+_BACKLOG_THREAD_LOCKS_GUARD = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -446,6 +449,7 @@ class EventJournal:
         r'"(?:type|canonical_type)"\s*:\s*"(?:user\.note|'
         r'mission\.(?:started|completed)|life\.(?:mission|planner|budget|lifecycle)\.[^"]+)"'
     )
+    _TOTAL_COST_CACHE_MAX_ENTRIES = 32
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -613,7 +617,10 @@ class EventJournal:
                             total += cost
             except OSError:
                 continue
+        self._total_cost_cache.pop(ts, None)
         self._total_cost_cache[ts] = (signature, total)
+        while len(self._total_cost_cache) > self._TOTAL_COST_CACHE_MAX_ENTRIES:
+            del self._total_cost_cache[next(iter(self._total_cost_cache))]
         return total
 
 
@@ -1098,27 +1105,17 @@ class Backlog:
     @contextmanager
     def _locked(self) -> Iterator[None]:
         """Serialize backlog read-modify-write operations across processes."""
+        key = os.path.normcase(str(self._lock_path.resolve()))
+        with _BACKLOG_THREAD_LOCKS_GUARD:
+            thread_lock = _BACKLOG_THREAD_LOCKS.setdefault(key, threading.Lock())
         self._lock_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._lock_path.open("a+b") as fh:
-            if fcntl is not None:  # POSIX
-                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        with thread_lock:
+            with self._lock_path.open("a+b") as fh:
+                portalocker.lock(fh, portalocker.LOCK_EX)
                 try:
                     yield
                 finally:
-                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
-            else:  # pragma: no cover - Windows fallback
-                import msvcrt
-
-                lock = getattr(msvcrt, "locking")
-                lk_lock = getattr(msvcrt, "LK_LOCK")
-                lk_unlock = getattr(msvcrt, "LK_UNLCK")
-                fh.seek(0)
-                lock(fh.fileno(), lk_lock, 1)
-                try:
-                    yield
-                finally:
-                    fh.seek(0)
-                    lock(fh.fileno(), lk_unlock, 1)
+                    portalocker.unlock(fh)
 
     # --- write ---
     def add(self, item: BacklogItem) -> BacklogItem:
@@ -1426,11 +1423,19 @@ class Backlog:
                     )
                     for goal in non_goals
                 ]
+            inherited_manager_decision = dict(blocked.manager_decision)
+            if decision:
+                inherited_manager_decision["routed"] = True
             continuation = BacklogItem.new(
                 title=blocked.title,
                 objective=objective,
                 priority=blocked.priority,
-                tags=[*blocked.tags, "operator-reply", "manager-approved"],
+                tags=list(dict.fromkeys([
+                    *blocked.tags,
+                    "operator-reply",
+                    "manager-approved",
+                    "review:required",
+                ])),
                 notes=f"Continues blocked item {blocked.id}.",
                 iterate=blocked.iterate,
                 iteration_max_cycles=blocked.iteration_max_cycles,
@@ -1454,7 +1459,7 @@ class Backlog:
                 expected_regressions=blocked.expected_regressions,
                 decision_rule=blocked.decision_rule,
                 non_goals=non_goals,
-                manager_decision=dict(blocked.manager_decision),
+                manager_decision=inherited_manager_decision,
             )
             blocked.status = "failed"
             blocked.finished_ts = time.time()

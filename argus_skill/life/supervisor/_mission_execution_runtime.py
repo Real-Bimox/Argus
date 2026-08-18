@@ -462,6 +462,28 @@ class MissionExecutionRuntimeMixin:
         except Exception as exc:  # noqa: BLE001
             state.exc_str = f"{type(exc).__name__}: {exc}"
             log.exception("life supervisor: mission raised")
+            try:
+                from ..runtime_failure_circuit import record_runtime_failure_circuit
+
+                circuit = record_runtime_failure_circuit(
+                    self.memory.root,
+                    exc,
+                    item_id=item.id,
+                )
+                self._emit({
+                    "type": EventType.LIFE_RUNTIME_FAILURE_CIRCUIT_OPENED,
+                    "item_id": item.id,
+                    "fingerprint": circuit.get("fingerprint"),
+                    "exception_type": circuit.get("exception_type"),
+                    "callsite": circuit.get("callsite"),
+                    "normalized_error": circuit.get("normalized_error"),
+                    "occurrence_count": circuit.get("occurrence_count"),
+                    "runtime_identity": circuit.get("runtime_identity"),
+                    "newly_opened": circuit.get("newly_opened"),
+                    "operator_alert": True,
+                })
+            except Exception:  # noqa: BLE001 - circuit failure cannot hide original
+                log.exception("failed to persist mission runtime failure circuit")
         state.elapsed = time.time() - state.t0
 
     # ------------------------------------------------------------------

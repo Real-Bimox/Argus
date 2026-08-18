@@ -1,6 +1,6 @@
 {
   "name": "argus-tui",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Ink terminal frontend for the argus-skill autonomous-research daemon. A client of the argus-skill webapi (events over WS, snapshots/commands over REST).",
   "type": "module",
@@ -17,7 +17,7 @@
     "start": "node dist/tui/src/cli.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "ansi-escapes": "^7.3.0",

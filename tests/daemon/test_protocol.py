@@ -54,8 +54,11 @@ def test_daemon_status_reports_copilot_when_codex_is_missing(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    copilot = tmp_path / "copilot"
-    copilot.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    copilot = tmp_path / ("copilot.cmd" if os.name == "nt" else "copilot")
+    copilot.write_text(
+        "@exit /b 0\n" if os.name == "nt" else "#!/bin/sh\nexit 0\n",
+        encoding="utf-8",
+    )
     copilot.chmod(0o755)
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("PATH", str(tmp_path))

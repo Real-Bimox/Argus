@@ -14,8 +14,19 @@ from argus_skill.skills.vertical_select import persist_vertical
 # rather than prose creep. The existing text was compressed first: the opening,
 # the failed-attempt paragraph, and the closing options list are all shorter
 # than they were. Compress again before raising these further.
-MATH_SCOPE_BUDGET = 9_700
-MATURE_MATH_SCOPE_BUDGET = 15_400
+#
+# Raised again from 9_700 / 15_400 for two blocks the testbed runs paid for,
+# both about work the planner can only place in `scope`:
+#   * settle known results before dispatch — several workers on one goal cannot
+#     see each other's searches, so a lookup done in `scope` costs once and the
+#     same lookup done in `solve` costs once per worker; finding nothing is
+#     recorded as a result too;
+#   * two genuinely different attacks are two routes, an OR, and the test of
+#     "different" is that they fail for different reasons — two routes dying to
+#     the same obstruction were one route.
+# Neither restates existing text. Compress before raising a third time.
+MATH_SCOPE_BUDGET = 10_400
+MATURE_MATH_SCOPE_BUDGET = 16_200
 
 
 def _build_math_scope_prompt(
@@ -76,7 +87,9 @@ def test_math_scope_prompt_is_compact_and_deduplicated(
     assert "waiting_contract" not in prompt
     assert prompt.count("PROJECT_DONE=false") == 1
     assert "not a routing command" in prompt
-    assert "Integrity and reproducibility are admission constraints" in prompt
+    assert prompt.count(
+        "Integrity and reproducibility are admission constraints"
+    ) == 1
     assert "delegate implementation to Engineer" in prompt
     assert "JSON matching the provided schema" not in prompt
 

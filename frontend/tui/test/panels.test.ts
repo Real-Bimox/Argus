@@ -17,7 +17,11 @@ import {
   slashMenuVisibleRows,
   slashMenuWindow,
 } from '../src/components/SlashMenu.js';
-import { DaemonReplacementPicker } from '../src/components/DaemonReplacementPicker.js';
+import {
+  daemonReplacementInputIntent,
+  DaemonReplacementPicker,
+  type DaemonReplacementState,
+} from '../src/components/DaemonReplacementPicker.js';
 import { CostGauge } from '../src/components/CostGauge.js';
 import { MissionCockpit } from '../src/components/MissionCockpit.js';
 import { PendingDecisionPrompt } from '../src/components/PendingDecisionPrompt.js';
@@ -344,6 +348,33 @@ test('daemon replacement picker shows running work and state-preservation promis
   assert.match(output, /running held-out benchmark/);
   assert.match(output, /checkpoints, skills, and wiki stay/);
   assert.match(output, /saved\./);
+});
+
+test('daemon replacement modal gives Ctrl-C/Ctrl-D exit priority even while busy', () => {
+  const state: DaemonReplacementState = {
+    targetProject: 's-new',
+    running: [],
+    limit: 1,
+    activeCount: 1,
+    selection: 0,
+    resumeContinuous: false,
+    busy: true,
+    error: '',
+  };
+
+  assert.equal(
+    daemonReplacementInputIntent(state, 'c', { ctrl: true, return: true }),
+    'exit',
+  );
+  assert.equal(
+    daemonReplacementInputIntent(state, 'd', { ctrl: true, downArrow: true }),
+    'exit',
+  );
+  assert.equal(daemonReplacementInputIntent(state, '', { return: true }), null);
+  assert.equal(
+    daemonReplacementInputIntent({ ...state, busy: false }, '', { return: true }),
+    'replace',
+  );
 });
 
 test('request quotas render alongside monetary spend', async () => {

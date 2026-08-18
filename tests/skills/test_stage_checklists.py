@@ -570,7 +570,7 @@ def test_run_stage_checklist_demands_score_variance() -> None:
 def test_run_stage_checklist_has_generic_method_diagnosis_recall() -> None:
     """The run stage must carry a DOMAIN-AGNOSTIC recall item that makes the
     agent consult the matched method-specific diagnosis skill before killing an
-    idea on a no-go — RL specifics live in the evolvable skill, not here. This
+    idea on a rejected attempt — RL specifics live in the evolvable skill, not here. This
     guards against the framework re-acquiring hardcoded RL-knob prose.
     """
 

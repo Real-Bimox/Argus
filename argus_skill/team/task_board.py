@@ -7,9 +7,14 @@ teammates can never own the same task.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
+from ..core.portable_filename import (
+    legacy_hashed_filename_components,
+    portable_filename_component,
+)
 from . import _store
 
 
@@ -27,11 +32,49 @@ def _task_filename(task_id: str) -> str:
     invalid = not task_id or task_id in {".", ".."} or any(c in task_id for c in "/\\\0")
     if invalid:
         raise ValueError(f"invalid task_id for task board path: {task_id!r}")
-    return f"{task_id}.json"
+    component = portable_filename_component(task_id, windows=os.name == "nt")
+    return f"{component}.json"
 
 
 def _path(root: Path, task_id: str) -> Path:
     return _tasks_dir(root) / _task_filename(task_id)
+
+
+def _legacy_paths(root: Path, task_id: str) -> tuple[Path, ...]:
+    directory = _tasks_dir(root)
+    return tuple(
+        directory / f"{component}.json"
+        for component in legacy_hashed_filename_components(task_id)
+    )
+
+
+def _read_task(root: Path, task_id: str) -> dict[str, Any] | None:
+    records: list[tuple[int, bool, dict[str, Any]]] = []
+    canonical = _path(root, task_id)
+    for path in (_path(root, task_id), *_legacy_paths(root, task_id)):
+        task = _store.read_json(path, default=None)
+        if isinstance(task, dict) and str(task.get("task_id") or "") == task_id:
+            try:
+                modified = path.stat().st_mtime_ns
+            except OSError:
+                modified = 0
+            records.append((modified, path == canonical, task))
+    if not records:
+        return None
+    return max(records, key=lambda item: item[:2])[2]
+
+
+def _write_task(root: Path, task_id: str, task: dict[str, Any]) -> None:
+    path = _path(root, task_id)
+    _store.atomic_write_json(path, task)
+    for legacy in _legacy_paths(root, task_id):
+        legacy_task = _store.read_json(legacy, default=None)
+        if (
+            legacy != path
+            and isinstance(legacy_task, dict)
+            and str(legacy_task.get("task_id") or "") == task_id
+        ):
+            legacy.unlink(missing_ok=True)
 
 
 def _load_all(root: Path) -> list[dict[str, Any]]:
@@ -41,28 +84,52 @@ def _load_all(root: Path) -> list[dict[str, Any]]:
     # Atomic writes use hidden ``.tmp-*.json`` siblings. If a process dies
     # between temp creation and replace, the leftover file must not become a
     # second claimable copy of the same logical task.
-    out = [
-        _store.read_json(p, default=None)
-        for p in sorted(d.glob("*.json"))
-        if not p.name.startswith(".")
-    ]
-    return [t for t in out if isinstance(t, dict)]
+    tasks: dict[str, tuple[int, bool, dict[str, Any]]] = {}
+    for path in sorted(d.glob("*.json")):
+        if path.name.startswith("."):
+            continue
+        task = _store.read_json(path, default=None)
+        if not isinstance(task, dict):
+            continue
+        task_id = str(task.get("task_id") or "")
+        if not task_id:
+            continue
+        canonical = path == _path(root, task_id)
+        try:
+            modified = path.stat().st_mtime_ns
+        except OSError:
+            modified = 0
+        candidate = (modified, canonical, task)
+        if task_id not in tasks or candidate[:2] > tasks[task_id][:2]:
+            tasks[task_id] = candidate
+    return [task for _modified, _canonical, task in tasks.values()]
 
 
-# Liveness/ownership fields that belong to a teammate ACTIVELY working a task.
+# Liveness/ownership fields that belong to a teammate working or waiting on a task.
 # A re-form of an already-running campaign (operator re-runs ``team form`` while
 # the Curator has teammates in flight) must NOT reset these to the pending
 # defaults: doing so silently de-owns the task, drops ``count_in_flight`` to 0,
 # and lets the pool double-spawn a second teammate into the SAME workdir on the
 # next reap. The static spec fields are always refreshed from the new spec.
-_LIVE_OWNERSHIP_FIELDS = ("state", "owner", "claim_ts", "heartbeat_ts", "attempts")
+_LIVE_OWNERSHIP_FIELDS = (
+    "state",
+    "owner",
+    "claim_ts",
+    "heartbeat_ts",
+    "attempts",
+    "reason",
+    "pending_question",
+    "operator_options",
+    "operator_answer",
+    "last_thread_id",
+)
 
 
 def form(root: Path, tasks: list[dict[str, Any]]) -> None:
     """Create (or refresh) the task records for a team from partial specs.
 
     Idempotent over an ACTIVE campaign: when a task record already exists and a
-    teammate is mid-flight on it (``state`` is ``claimed``/``running``), its
+    teammate is mid-flight or waiting on it (``claimed``/``running``/``blocked``), its
     ownership/liveness fields are PRESERVED and only the static spec fields
     (title/objective/acceptance_check/target/priority/...) are refreshed.
     Re-running ``form`` on a live fleet therefore never de-owns a task a Curator
@@ -117,19 +184,35 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
                 "owner": "",
                 "result_shard": spec.get("result_shard", ""),
                 "reason": "",
+                "pending_question": "",
+                "operator_options": [],
+                "operator_answer": str(spec.get("operator_answer", "") or ""),
+                "last_thread_id": "",
                 "claim_ts": 0.0,
                 "heartbeat_ts": 0.0,
                 "attempts": 0,
                 "priority": int(spec.get("priority", 100)),
             }
-            prior = _store.read_json(_path(root, tid), default=None)
-            if isinstance(prior, dict) and prior.get("state") in ("claimed", "running"):
+            prior = _read_task(root, tid)
+            if prior is None and len(str(tid).encode("utf-8")) > 120:
+                raise ValueError("task_id exceeds 120 UTF-8 bytes")
+            if isinstance(prior, dict) and prior.get("state") in (
+                "claimed",
+                "running",
+                "blocked",
+            ):
                 # A teammate is mid-flight on this task — keep its ownership and
                 # only refresh the static spec fields rebuilt above.
                 for field in _LIVE_OWNERSHIP_FIELDS:
                     if field in prior:
                         task[field] = prior[field]
-            _store.atomic_write_json(_path(root, tid), task)
+            elif (
+                isinstance(prior, dict)
+                and prior.get("state") == "pending"
+                and prior.get("operator_answer")
+            ):
+                task["operator_answer"] = prior["operator_answer"]
+            _write_task(root, tid, task)
 
 
 def _done_ids(tasks: list[dict[str, Any]]) -> set[str]:
@@ -157,7 +240,7 @@ def claim_top(root: Path, member_id: str, *, now: float) -> dict[str, Any] | Non
         task["owner"] = member_id
         task["claim_ts"] = now
         task["heartbeat_ts"] = now
-        _store.atomic_write_json(_path(root, task["task_id"]), task)
+        _write_task(root, task["task_id"], task)
         return task
 
 
@@ -169,22 +252,22 @@ def count_in_flight(root: Path) -> int:
 def heartbeat(root: Path, task_id: str, *, now: float) -> None:
     """Refresh liveness; first heartbeat promotes ``claimed`` -> ``running``."""
     with _store.locked(_lock(root)):
-        task = _store.read_json(_path(root, task_id), default=None)
+        task = _read_task(root, task_id)
         if not isinstance(task, dict):
             return
         task["heartbeat_ts"] = now
         if task["state"] == "claimed":
             task["state"] = "running"
-        _store.atomic_write_json(_path(root, task_id), task)
+        _write_task(root, task_id, task)
 
 
 def _mutate(root: Path, task_id: str, **changes: Any) -> None:
     with _store.locked(_lock(root)):
-        task = _store.read_json(_path(root, task_id), default=None)
+        task = _read_task(root, task_id)
         if not isinstance(task, dict):
             return
         task.update(changes)
-        _store.atomic_write_json(_path(root, task_id), task)
+        _write_task(root, task_id, task)
 
 
 def complete(root: Path, task_id: str, *, shard: str = "") -> None:
@@ -193,6 +276,51 @@ def complete(root: Path, task_id: str, *, shard: str = "") -> None:
 
 def fail(root: Path, task_id: str, *, reason: str = "") -> None:
     _mutate(root, task_id, state="failed", reason=reason)
+
+
+def block_for_operator(
+    root: Path,
+    task_id: str,
+    *,
+    question: str,
+    options: list[dict[str, Any]] | None = None,
+    reason: str = "",
+    last_thread_id: str = "",
+) -> None:
+    """Park a task without making it claimable until an explicit answer resumes it."""
+
+    _mutate(
+        root,
+        task_id,
+        state="blocked",
+        reason=reason,
+        pending_question=question,
+        operator_options=list(options or []),
+        last_thread_id=last_thread_id,
+    )
+
+
+def resume(root: Path, task_id: str, *, answer: str) -> None:
+    """Apply an operator answer and return one blocked task to the Curator queue."""
+
+    answer = answer.strip()
+    if not answer:
+        raise ValueError("operator answer must not be empty")
+    with _store.locked(_lock(root)):
+        task = _store.read_json(_path(root, task_id), default=None)
+        if not isinstance(task, dict):
+            raise KeyError(task_id)
+        if task.get("state") != "blocked" or not task.get("pending_question"):
+            raise ValueError(f"task is not waiting for an operator answer: {task_id}")
+        task.update(
+            state="pending",
+            owner="",
+            reason="",
+            pending_question="",
+            operator_options=[],
+            operator_answer=answer,
+        )
+        _store.atomic_write_json(_path(root, task_id), task)
 
 
 def reassign_stale(
@@ -219,7 +347,7 @@ def reassign_stale(
                 task["state"] = "pending"
                 task["owner"] = ""
                 task["attempts"] = int(task.get("attempts", 0)) + 1
-                _store.atomic_write_json(_path(root, task["task_id"]), task)
+                _write_task(root, task["task_id"], task)
                 reassigned.append(task["task_id"])
     return reassigned
 

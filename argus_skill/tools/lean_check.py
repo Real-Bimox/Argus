@@ -436,9 +436,18 @@ def _resolve_executable(name: str, override: str | None = None) -> str | None:
         if configured_home
         else Path.home() / ".elan"
     )
-    candidate = elan_home / "bin" / name
-    if candidate.is_file() and os.access(candidate, os.X_OK):
-        return str(candidate.resolve())
+    elan_bin = elan_home / "bin"
+    candidates = [elan_bin / name]
+    if os.name == "nt" and not Path(name).suffix:
+        # ELAN installs ``lean.exe``/``lake.exe`` on Windows. Unlike a PATH
+        # lookup, probing a concrete Path does not apply PATHEXT for us.
+        candidates.extend(
+            elan_bin / f"{name}{suffix}"
+            for suffix in (".exe", ".cmd", ".bat", ".com")
+        )
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate.resolve())
     return None
 
 

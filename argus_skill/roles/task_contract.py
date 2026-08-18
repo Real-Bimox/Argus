@@ -13,7 +13,8 @@ EFFECTIVE_TASK_CONTRACT = (
     "manifests/provenance, or speculative hardening unless the operator or an interface "
     "requires it. Naming outputs never authorizes deleting, moving, or overwriting pre-existing "
     "files. Validate once; do not repeat the same passing assertion. On same-level conflict, "
-    "report `ambiguous_objective`."
+    "report `ambiguous_objective`. Never stop at a bare launch verdict; say what "
+    "failed, why, and what should happen next in plain language."
 )
 
 NATIVE_WINDOWS_SHELL_CONTRACT = (

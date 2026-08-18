@@ -104,6 +104,8 @@ def test_engineer_learning_targets_engineer_bucket(tmp_path) -> None:
     assert "hashes/checksums, manifests/provenance" in prompt
     assert "never authorizes deleting, moving, or overwriting pre-existing" in prompt
     assert "do not repeat the same passing assertion" in prompt
+    assert "Do not turn task-specific hypotheses, causal attributions" in prompt
+    assert "controlled comparison verified the causal rule" in prompt
 
 
 def test_main_reviewer_never_edits_skills_directly(tmp_path) -> None:

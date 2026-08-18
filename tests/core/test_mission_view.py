@@ -154,7 +154,7 @@ def test_v3_snapshot_rebuilds_to_include_completion_summary(tmp_path: Path) -> N
         backlog=[],
     )
 
-    assert view["schema_version"] == 5
+    assert view["schema_version"] == 6
     assert view["mission"]["summary"] == (
         "Created RESULT.txt and verified its exact contents."
     )
@@ -179,7 +179,7 @@ def test_v4_snapshot_migrates_without_discarding_projected_state(tmp_path: Path)
         backlog=[],
     )
 
-    assert view["schema_version"] == 5
+    assert view["schema_version"] == 6
     assert view["mission"]["id"] == "kept"
     assert view["routing"]["route"] == ""
 

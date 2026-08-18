@@ -345,3 +345,55 @@ def test_loop_skips_idea_search_when_paper_mode_is_not_explicit(tmp_path):
 
     assert "idea.search.started" not in [e.get("type") for e in events]
     assert "idea-search" not in [label for label, _prompt, _opts in backend.history]
+
+
+def test_loop_skips_academic_bootstraps_for_exploratory_research(tmp_path):
+    """Exploratory investigations must not infer a venue or seed paper ideas."""
+    import json
+
+    from argus_skill import SkillLoop, SkillLoopConfig
+    from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
+
+    (tmp_path / "research").mkdir()
+    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+        json.dumps({
+            "vertical": "research",
+            "current_stage": "research",
+            "workflow_mode": "staged",
+            "research_target_level": "exploratory",
+        }),
+        encoding="utf-8",
+    )
+
+    backend = MemoryBackend()
+    backend.queue("matcher", CannedResponse(message='{"matched": []}'))
+    backend.queue("distiller", CannedResponse(message=""))
+    backend.queue("engineer-r1", CannedResponse(message="done."))
+    backend.queue("reviewer", CannedResponse(message=json.dumps({
+        "status": "done",
+        "reason": "investigation complete",
+        "next_action": "none",
+        "round_summary_markdown": "# Review\n",
+        "completion_summary_markdown": "Done.",
+    })))
+
+    events: list = []
+    loop = SkillLoop(
+        skills_dir=tmp_path / "skills",
+        engineer_runner=backend,
+        reviewer_runner=backend,
+        config=SkillLoopConfig(
+            max_rounds=2,
+            paper_mission=True,
+            continuous_objective="investigate a company",
+        ),
+        on_event=events.append,
+    )
+    loop.run("investigate a company", workdir=tmp_path)
+
+    types = [event.get("type") for event in events]
+    labels = [label for label, _prompt, _opts in backend.history]
+    assert "venue.research.started" not in types
+    assert "idea.search.started" not in types
+    assert "venue-research" not in labels
+    assert "idea-search" not in labels

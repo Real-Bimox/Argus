@@ -100,7 +100,7 @@ def test_run_one_mission_has_no_hard_self_sigkill_timer(tmp_path: Path, monkeypa
 
     ok = te.run_one_engineer_mission("obj", cwd=str(tmp_path), life_dir=tmp_path / "life",
                                      max_rounds=1, timeout_s=10.0)
-    assert ok is True
+    assert ok.success is True
     assert intervals == [10.0]  # ONLY the soft watchdog; no hard self-kill timer
     # A teammate's cwd is the project root, so the Manager's stage-transition
     # pass would write the campaign's research/PIPELINE_STATE.json from a worker
@@ -148,7 +148,7 @@ def test_teammate_restores_checkpoint_env_when_setup_fails(
 
     assert te.run_one_engineer_mission(
         "obj", cwd=str(tmp_path), life_dir=tmp_path / "life", timeout_s=0.01
-    ) is False
+    ).success is False
     assert os.environ["ARGUS_SKILL_CHECKPOINT_PERSIST"] == "1"
 
 
@@ -239,6 +239,180 @@ def test_teammate_inherits_leaderboard_block_in_objective(tmp_path: Path, monkey
              "--cwd", str(tmp_path)])
     # the fresh teammate sees what's already been tried, plus its own objective
     assert "persistent" in captured["obj"] and "optimize kA" in captured["obj"]
+
+
+def test_operator_wait_blocks_without_failing_and_can_resume(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    waiting = te.TeammateMissionResult(
+        False,
+        "blocked",
+        "operator choice required",
+        "Choose A or B",
+        ({"id": "a", "label": "A", "description": "Use A"},),
+        "thread-1",
+    )
+    monkeypatch.setattr(te, "run_one_engineer_mission", lambda *a, **k: waiting)
+
+    rc = te.main(
+        [
+            "--root",
+            str(root),
+            "--member-id",
+            "t1::w1",
+            "--task-id",
+            "t1::a",
+            "--cwd",
+            str(tmp_path),
+        ]
+    )
+
+    task = {row["task_id"]: row for row in tb.snapshot(root)}["t1::a"]
+    assert rc == 0
+    assert task["state"] == "blocked"
+    assert task["owner"] == "t1::w1"
+    assert task["pending_question"] == "Choose A or B"
+    assert task["last_thread_id"] == "thread-1"
+    assert tb.count_in_flight(root) == 0
+
+    tb.resume(root, "t1::a", answer="Use A")
+    resumed = {row["task_id"]: row for row in tb.snapshot(root)}["t1::a"]
+    assert resumed["state"] == "pending"
+    assert resumed["owner"] == ""
+    assert resumed["operator_answer"] == "Use A"
+    assert tb.claim_top(root, "t1::w2", now=2.0)["task_id"] == "t1::a"
+
+
+def test_reform_preserves_blocked_owner_and_question(tmp_path: Path) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    tb.block_for_operator(
+        root,
+        "t1::a",
+        question="Approve access",
+        reason="authorization required",
+        last_thread_id="thread-1",
+    )
+
+    tb.form(
+        root,
+        [{"task_id": "t1::a", "objective": "updated objective", "owns_paths": ["a/**"]}],
+    )
+
+    task = tb.snapshot(root)[0]
+    assert task["state"] == "blocked"
+    assert task["owner"] == "t1::w1"
+    assert task["pending_question"] == "Approve access"
+    assert task["last_thread_id"] == "thread-1"
+    assert task["objective"] == "updated objective"
+
+
+def test_reform_preserves_answer_while_resumed_task_is_pending(tmp_path: Path) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    tb.block_for_operator(root, "t1::a", question="Choose", reason="waiting")
+    tb.resume(root, "t1::a", answer="Use A")
+
+    tb.form(
+        root,
+        [{"task_id": "t1::a", "objective": "refreshed", "owns_paths": ["a/**"]}],
+    )
+
+    task = tb.snapshot(root)[0]
+    assert task["state"] == "pending"
+    assert task["operator_answer"] == "Use A"
+
+
+def test_resumed_operator_answer_is_passed_to_new_teammate(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    tb.block_for_operator(root, "t1::a", question="Choose", reason="waiting")
+    tb.resume(root, "t1::a", answer="Proceed with A")
+    assert tb.claim_top(root, "t1::w2", now=2.0)
+    captured: dict[str, str] = {}
+
+    def run(objective: str, **_kwargs):
+        captured["objective"] = objective
+        return te.TeammateMissionResult(True, "done")
+
+    monkeypatch.setattr(te, "run_one_engineer_mission", run)
+    assert te.main(
+        [
+            "--root",
+            str(root),
+            "--member-id",
+            "t1::w2",
+            "--task-id",
+            "t1::a",
+            "--cwd",
+            str(tmp_path),
+        ]
+    ) == 0
+    assert "Proceed with A" in captured["objective"]
+
+
+def test_team_cli_status_and_resume_preserve_wait_state(
+    tmp_path: Path, capsys
+) -> None:
+    from argus_skill.tools import team as team_tool
+
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    tb.block_for_operator(root, "t1::a", question="Choose route", reason="waiting")
+
+    assert team_tool.main(["status", "--root", str(root)]) == 0
+    status = json.loads(capsys.readouterr().out)
+    task = status["tasks"][0]
+    assert task["state"] == "blocked"
+    assert task["owner"] == "t1::w1"
+    assert task["pending_question"] == "Choose route"
+
+    assert team_tool.main(
+        [
+            "resume",
+            "--root",
+            str(root),
+            "--task-id",
+            "t1::a",
+            "--answer",
+            "Use route A",
+        ]
+    ) == 0
+    resumed = tb.snapshot(root)[0]
+    assert resumed["state"] == "pending"
+    assert resumed["operator_answer"] == "Use route A"
+
+
+def test_fatal_mission_still_marks_failed(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    monkeypatch.setattr(
+        te,
+        "run_one_engineer_mission",
+        lambda *a, **k: te.TeammateMissionResult(
+            False, "error", "backend exited nonzero"
+        ),
+    )
+
+    assert te.main(
+        [
+            "--root",
+            str(root),
+            "--member-id",
+            "t1::w1",
+            "--task-id",
+            "t1::a",
+            "--cwd",
+            str(tmp_path),
+        ]
+    ) == 1
+    task = {row["task_id"]: row for row in tb.snapshot(root)}["t1::a"]
+    assert task["state"] == "failed"
+    assert task["reason"] == "backend exited nonzero"
 
 
 def _setup_verify(tmp_path: Path, monkeypatch, signed: dict):

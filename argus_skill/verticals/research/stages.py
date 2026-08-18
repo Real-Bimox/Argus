@@ -576,10 +576,11 @@ def _unresolved_venue_checklist(
         "### venue resolution\n"
         f"- [ ] `venue.profile` — {error}. `target_venue` must name a real "
         "publication venue, not planning commentary. If no venue was specified, "
-        "live-search domain-appropriate CCF-A conferences whose deadline has not "
-        "passed, record the official CCF/CFP/deadline evidence in "
-        "`research/VENUE_SELECTION.md`, and write `research/VENUE_PROFILE.json` "
-        f"from the selected official author kit. {instruction}"
+        "do not infer or search for one; ask the operator to name a venue or "
+        "explicitly request venue discovery. For an explicit venue, record its "
+        "official CFP/deadline evidence in `research/VENUE_SELECTION.md` and write "
+        "`research/VENUE_PROFILE.json` from its official author kit. "
+        f"{instruction}"
     )
 
 

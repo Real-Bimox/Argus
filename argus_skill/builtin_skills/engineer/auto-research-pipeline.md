@@ -52,19 +52,14 @@ cycle and official author kit.
 
 If the venue is unspecified:
 
-1. Use live web search at runtime.
-2. Identify CCF-A conferences relevant to the paper's actual AI subfield whose
-   main/research-track submission deadline has not passed at the current UTC
-   time.
-3. Verify CCF classification, scope, exact deadline/time zone, and official
-   author kit from primary sources.
-4. Write `research/VENUE_SELECTION.md` with candidates, sources, deadline
-   status, scope fit, selection, and rejection reasons.
-5. Set the descriptive `target_venue` field and write
-   `research/VENUE_PROFILE.json`.
+1. Do not infer, search for, or select a venue.
+2. Keep venue-dependent draft/review/submission work blocked.
+3. Ask the operator to name a venue or explicitly request venue discovery.
 
-Never silently default to EMNLP, AAAI, or any closed conference. Venue-dependent
-draft/review/submission work remains blocked until a current profile exists.
+Only when the operator explicitly requests venue discovery may the task compare
+candidates using current primary sources. Do not restrict that comparison to any
+ranking or classification system unless the operator requested it. Never
+silently default to a conference.
 
 ## Resource policy
 

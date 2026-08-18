@@ -20,7 +20,9 @@ projects (no ``session.json``) are still listable/resumable by their id.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import secrets
 import time
 from collections.abc import Callable, Iterable, Iterator
@@ -33,6 +35,7 @@ from .file_lock import exclusive_file_lock
 
 SESSION_META_FILE = "session.json"
 _SESSION_PREFIX = "s-"
+_LOCK_PATH_BUDGET = 240
 
 
 def new_session_id() -> str:
@@ -150,7 +153,15 @@ def migrate_legacy_session_workdir(
 
 def _meta_path(global_root: Path | None, sid: str) -> Path:
     root = global_root if global_root is not None else core_paths.global_root()
-    return core_paths.session_state_root(sid, root=root) / SESSION_META_FILE
+    return _filesystem_path(
+        core_paths.session_state_root(sid, root=root) / SESSION_META_FILE
+    )
+
+
+def _filesystem_path(path: Path) -> Path:
+    if os.name == "nt" and len(str(path.absolute())) >= _LOCK_PATH_BUDGET:
+        return Path("\\\\?\\" + str(path.absolute()))
+    return path
 
 
 def normalize_session_name(value: str, *, limit: int = 80) -> str:
@@ -158,12 +169,26 @@ def normalize_session_name(value: str, *, limit: int = 80) -> str:
     return " ".join((value or "").split())[:limit]
 
 
+def _session_lock_path(root: Path, directory: str, lock_name: str) -> Path:
+    """Return a readable lock path, hashing only when Windows paths need it."""
+    parent = root / directory
+    candidate = parent / f"{lock_name}.lock"
+    if (
+        len(candidate.name) <= 120
+        and len(str(candidate.absolute())) < _LOCK_PATH_BUDGET
+    ):
+        return candidate
+    digest = hashlib.sha256(lock_name.encode("utf-8", errors="surrogatepass")).hexdigest()
+    prefix = lock_name[:24].rstrip(" .") or "session"
+    return parent / f"{prefix}-{digest[:24]}.lock"
+
+
 @contextmanager
 def session_meta_lock(global_root: Path | None, sid: str) -> Iterator[None]:
     """Serialize session lifecycle changes without placing the lock in its directory."""
     root = Path(global_root) if global_root is not None else core_paths.global_root()
     lock_name = core_paths.session_state_root(sid, root=root).name
-    path = root / ".session-locks" / f"{lock_name}.lock"
+    path = _session_lock_path(root, ".session-locks", lock_name)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as handle:
         with exclusive_file_lock(handle, lock_name=f"session metadata lock for {sid}"):
@@ -175,7 +200,7 @@ def session_lifecycle_lock(global_root: Path | None, sid: str) -> Iterator[None]
     """Serialize directory-level create/delete/restore/work mutations for one SID."""
     root = Path(global_root) if global_root is not None else core_paths.global_root()
     lock_name = core_paths.session_state_root(sid, root=root).name
-    path = root / ".session-lifecycle-locks" / f"{lock_name}.lock"
+    path = _session_lock_path(root, ".session-lifecycle-locks", lock_name)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a+b") as handle:
         with exclusive_file_lock(handle, lock_name=f"session lifecycle lock for {sid}"):
@@ -319,20 +344,23 @@ def list_sessions(
         return []
     out: list[SessionMeta] = []
     for d in projects.iterdir():
-        if not d.is_dir():
+        filesystem_dir = _filesystem_path(d)
+        if not filesystem_dir.is_dir():
             continue
         meta = read_session_meta(global_root, d.name)
         if meta is None:
             # Legacy project: synthesise minimal meta so it's resumable.
-            mtime = _legacy_last_active(d)
+            mtime = _legacy_last_active(filesystem_dir)
             obj = ""
             try:
-                cj = json.loads((d / "continuous.json").read_text(encoding="utf-8"))
+                cj = json.loads(
+                    (filesystem_dir / "continuous.json").read_text(encoding="utf-8")
+                )
                 obj = str(cj.get("objective", "") or "")
             except Exception:  # noqa: BLE001
                 pass
             meta = SessionMeta(id=d.name, created=mtime, last_active=mtime, objective=obj)
-        if not include_empty and not _session_is_meaningful(d, meta):
+        if not include_empty and not _session_is_meaningful(filesystem_dir, meta):
             continue
         out.append(meta)
     out.sort(key=lambda m: m.last_active, reverse=True)

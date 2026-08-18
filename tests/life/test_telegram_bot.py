@@ -167,6 +167,11 @@ def test_free_text_reports_manager_handoff_failure(
         raise ManagerHandoffError("safe handoff unavailable")
 
     monkeypatch.setattr(front_door, "manager_bounded_handoff", fail_handoff)
+    monkeypatch.setattr(
+        front_door,
+        "manager_triage",
+        lambda *_args, **_kwargs: None,
+    )
     router.dispatch("write paper; Manager owns the sidebar")
 
     assert LifeMemory.open(life_dir).backlog.all() == []

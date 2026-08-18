@@ -144,6 +144,19 @@ class _Turn:
         self.last_event = "prompt_started"
 
 
+def _terminate_windows_acp_tree(
+    process: subprocess.Popen[str],
+    *,
+    identity_check: Callable[[], bool],
+) -> bool:
+    from ..daemon.state import _terminate_windows_process_tree
+
+    return _terminate_windows_process_tree(
+        process.pid,
+        identity_check=identity_check,
+    )
+
+
 class CopilotAcpClient:
     """One warm ``copilot --acp`` subprocess + a JSON-RPC/stdio client.
 
@@ -197,7 +210,18 @@ class CopilotAcpClient:
         with self._start_lock:
             if self._alive and self._proc is not None and self._proc.poll() is None:
                 return
-            self._spawn()
+            stale = self._proc
+            if stale is not None and stale.poll() is None:
+                self._terminate_subprocess(stale)
+            self._proc = None
+            try:
+                self._spawn()
+            except BaseException:
+                failed = self._proc
+                self._proc = None
+                if failed is not None and failed.poll() is None:
+                    self._terminate_subprocess(failed)
+                raise
 
     def _spawn(self) -> None:
         cmd = [self._agent_bin, "--acp"]
@@ -299,23 +323,40 @@ class CopilotAcpClient:
         self._session_premium_multipliers.clear()
         self._session_models.clear()
 
+    def _terminate_subprocess(self, proc: subprocess.Popen[str]) -> None:
+        if proc.poll() is not None:
+            return
+        if os.name == "nt":
+            try:
+                tree_stopped = _terminate_windows_acp_tree(
+                    proc,
+                    identity_check=lambda: (
+                        self._proc is proc and proc.poll() is None
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                tree_stopped = False
+            if tree_stopped:
+                return
+        try:
+            proc.terminate()
+            proc.wait(timeout=2.0)
+        except Exception:  # noqa: BLE001
+            try:
+                proc.kill()
+                proc.wait(timeout=1.0)
+            except Exception:  # noqa: BLE001
+                pass
+
     def close(self) -> None:
         """Terminate the warm ACP subprocess and release all session state."""
         with self._start_lock:
             proc = self._proc
-            self._proc = None
             self._alive = False
             self._active_turn = None
-            if proc is not None and proc.poll() is None:
-                try:
-                    proc.terminate()
-                    proc.wait(timeout=2.0)
-                except Exception:  # noqa: BLE001
-                    try:
-                        proc.kill()
-                        proc.wait(timeout=1.0)
-                    except Exception:  # noqa: BLE001
-                        pass
+            if proc is not None:
+                self._terminate_subprocess(proc)
+            self._proc = None
             self._on_dead()
 
     def prewarm(self, cwd: str, *, front_door_session: bool = False) -> None:
@@ -960,6 +1001,7 @@ _CLIENTS: dict[
     CopilotAcpClient,
 ] = {}
 _CLIENTS_LOCK = threading.Lock()
+_MAX_CLIENTS_PER_SCOPE = 3
 
 
 def get_client(
@@ -982,19 +1024,32 @@ def get_client(
         normalized_dirs,
         str(scope or "shared"),
     )
+    evicted: list[CopilotAcpClient] = []
     with _CLIENTS_LOCK:
-        client = _CLIENTS.get(key)
-        if client is None:
-            client = CopilotAcpClient(
-                agent_bin,
-                model,
-                reasoning_effort,
-                lean=lean,
-                read_only=read_only,
-                add_dirs=normalized_dirs,
-            )
+        client = _CLIENTS.pop(key, None)
+        if client is not None:
             _CLIENTS[key] = client
-        return client
+            return client
+        scope_key = str(scope or "shared")
+        scoped_keys = [candidate for candidate in _CLIENTS if candidate[-1] == scope_key]
+        overflow = len(scoped_keys) - _MAX_CLIENTS_PER_SCOPE + 1
+        for stale_key in scoped_keys[:max(0, overflow)]:
+            evicted.append(_CLIENTS.pop(stale_key))
+        client = CopilotAcpClient(
+            agent_bin,
+            model,
+            reasoning_effort,
+            lean=lean,
+            read_only=read_only,
+            add_dirs=normalized_dirs,
+        )
+        _CLIENTS[key] = client
+    for stale_client in evicted:
+        try:
+            stale_client.close()
+        except Exception:  # noqa: BLE001
+            pass
+    return client
 
 
 def close_clients_for_scope(scope: str) -> None:

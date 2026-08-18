@@ -119,7 +119,7 @@ def test_video_research_harness_is_grounded_before_authoring_domain(
     assert [call["run_label"] for call in runner.calls] == [
         "manager-classify-grounded",
     ]
-    assert "Repository inspection is mandatory" in runner.calls[0]["prompt"]
+    assert "Inspect routing evidence" in runner.calls[0]["prompt"]
     assert (
         tmp_path / "research" / "DOMAINS" / "video_robotics_research.json"
     ).exists()
@@ -403,8 +403,7 @@ def test_zero_exit_fatal_error_preserves_actionable_reason(tmp_path, monkeypatch
 
 def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     """Regression: the vertical decision must give the Manager real repo access
-    (pinned working_dir + dangerous_yolo/full_auto matching the codebase's
-    safe_mode convention) instead of a text-only classify call with no tools."""
+    through pinned, read-only tools instead of a text-only call or write access."""
     monkeypatch.delenv("ARGUS_SKILL_VERTICAL", raising=False)
     monkeypatch.delenv("ARGUS_SKILL_SAFE_MODE", raising=False)
     state_root = tmp_path / "state"
@@ -425,12 +424,14 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     call = next(c for c in runner.calls if c["run_label"] == "manager-classify-grounded")
     opts = call["options"]
     assert opts.working_dir == str(workspace)
-    assert opts.sandbox_mode is None
-    assert opts.dangerous_yolo is True
+    assert opts.sandbox_mode == "read-only"
+    assert opts.force_safe_mode is True
+    assert opts.dangerous_yolo is False
     assert opts.full_auto is False
     assert opts.reasoning_effort == "low"
-    assert "full repository tool environment" in call["prompt"].lower()
-    assert "investigate" in call["prompt"].lower()
+    assert "inspect routing evidence" in call["prompt"].lower()
+    assert "at most 3 targeted operations" in call["prompt"].lower()
+    assert "<16k characters total" in call["prompt"]
 
 
 def test_copilot_vertical_decision_keeps_tools_available_for_repo_inspection(
@@ -454,9 +455,11 @@ def test_copilot_vertical_decision_keeps_tools_available_for_repo_inspection(
         "--context",
         "default",
     ]
-    assert call["options"].sandbox_mode is None
-    assert "Repository inspection is mandatory" in call["prompt"]
-    assert "full repository tool environment" in call["prompt"]
+    assert call["options"].sandbox_mode == "read-only"
+    assert call["options"].force_safe_mode is True
+    assert call["options"].dangerous_yolo is False
+    assert "Inspect routing evidence" in call["prompt"]
+    assert "at most 3 targeted operations" in call["prompt"]
 
 
 def test_authoring_call_respects_safe_mode(tmp_path, monkeypatch):
@@ -468,6 +471,7 @@ def test_authoring_call_respects_safe_mode(tmp_path, monkeypatch):
 
     call = next(c for c in runner.calls if c["run_label"] == "manager-classify-grounded")
     opts = call["options"]
-    assert opts.sandbox_mode is None
-    assert opts.dangerous_yolo is True
+    assert opts.sandbox_mode == "read-only"
+    assert opts.force_safe_mode is True
+    assert opts.dangerous_yolo is False
     assert opts.full_auto is False

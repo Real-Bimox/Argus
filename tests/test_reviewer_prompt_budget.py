@@ -16,9 +16,18 @@ from __future__ import annotations
 from argus_skill.reviewer import Reviewer
 
 # Repeated evidence-policy prose was removed; the representative prompt is now
-# about 6.5k chars. Keep headroom for task checklists without permitting the
+# about 9.4k chars. Keep headroom for task checklists without permitting the
 # global policy block to return.
-NON_MEASURED_BUDGET = 9_000
+#
+# 9_000 -> 9_500 for two deliberate new blocks, one from each side of the merge,
+# neither of them the prose regrowth this guard exists to catch:
+#   * the RESULT_FIELD_CHOICES enumeration (602 chars) — the legal verbatim
+#     values for each research-result field, replacing prose that named the
+#     fields but not what they accept, which is the mismatch that voided results;
+#   * the root-cause evidence bar (~370 chars) — a threshold miss is not a
+#     diagnosis, so a dominant-stage or replacement-architecture claim needs
+#     profiling or a counterfactual behind it.
+NON_MEASURED_BUDGET = 9_500
 
 
 def _build(measured: bool, monkeypatch) -> str:

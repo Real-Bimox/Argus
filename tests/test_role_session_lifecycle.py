@@ -290,6 +290,11 @@ def test_planner_mission_session_survives_new_planner_instance(tmp_path: Path) -
         thread for label, thread in backend.resume_history if label.startswith("planner.")
     ] == [None, "p1"]
     assert json.loads(capsule_path.read_text(encoding="utf-8"))["role"] == "planner"
+    planner_prompts = [
+        prompt for label, prompt, _options in backend.history if label.startswith("planner.")
+    ]
+    assert "## Continued Planner cycle" in planner_prompts[1]
+    assert len(planner_prompts[1]) < len(planner_prompts[0])
 
 
 def test_explicit_reviewer_quality_signal_rotates_only_target_role(tmp_path: Path) -> None:

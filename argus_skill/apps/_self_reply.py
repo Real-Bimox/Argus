@@ -31,6 +31,36 @@ _SELF_RETRYABLE_ACP_ERRORS = (
 )
 _SELF_LEARNING_REVIEW_INTERVAL = 5
 
+
+def _self_skill_snapshot(root: Path) -> dict[str, bytes]:
+    """Capture exact SELF Skill contents without exposing them in events."""
+    snapshot: dict[str, bytes] = {}
+    try:
+        paths = sorted(root.rglob("*.md"))
+    except OSError:
+        return snapshot
+    for path in paths:
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            snapshot[path.relative_to(root).as_posix()] = path.read_bytes()
+        except (OSError, ValueError):
+            continue
+    return snapshot
+
+
+def _self_skill_changes(
+    before: dict[str, bytes],
+    after: dict[str, bytes],
+) -> tuple[list[str], list[str], list[str]]:
+    created = sorted(after.keys() - before.keys())
+    removed = sorted(before.keys() - after.keys())
+    updated = sorted(
+        path for path in before.keys() & after.keys() if before[path] != after[path]
+    )
+    return created, updated, removed
+
+
 def _last_self_learning_review_count(session_root: Path | str) -> int:
     path = Path(session_root) / "events.jsonl"
     try:
@@ -365,7 +395,7 @@ class SelfReplyMixin:
         root_task_id: str | None = None,
     ) -> bool:
         with self.task_usage_context(root_task_id):
-            return self._maybe_chat_outcome(
+            outcome = self._maybe_chat_outcome(
                 objective=objective,
                 sink=sink,
                 seed_thread_id=seed_thread_id,
@@ -373,7 +403,9 @@ class SelfReplyMixin:
                 route=route,
                 self_mode=self_mode,
                 root_task_id=root_task_id,
-            ) is not None
+            )
+        self.last_chat_outcome = outcome
+        return outcome is not None
 
     def reset_chat_session(self) -> None:
         self._next_seed_thread_id = None
@@ -536,6 +568,10 @@ class SelfReplyMixin:
             f"- phase: {phase}",
             f"- isolated repair capability: {isolation}",
         ]
+        if snapshot.maintenance_mode:
+            lines.append(f"- maintenance mode: {snapshot.maintenance_mode}")
+        if snapshot.maintenance_error:
+            lines.append(f"- maintenance note: {snapshot.maintenance_error}")
         if snapshot.last_audit_at > 0:
             lines.append(
                 "- last audit: "
@@ -705,8 +741,11 @@ class SelfReplyMixin:
             except Exception:  # noqa: BLE001 - UI sinks never own the turn
                 pass
 
+        effective_backend = getattr(self._args, "backend", None)
         reply_model = (
-            resolve_manager_classify_model() if lean else resolve_manager_reply_model()
+            resolve_manager_classify_model(backend=effective_backend)
+            if lean
+            else resolve_manager_reply_model(backend=effective_backend)
         )
         reply_effort = (
             "low"
@@ -913,6 +952,7 @@ class SelfReplyMixin:
             from ..life.event_log import JsonlEventSink
 
             event_sink = JsonlEventSink(None, life_dir=Path(session_root))
+            before = _self_skill_snapshot(skill_dir)
             event_sink.append({
                 "type": "self.learning.review.started",
                 "agent_layer": "self",
@@ -923,7 +963,9 @@ class SelfReplyMixin:
                     self._backend,
                     prompt=prompt,
                     options=RunnerOptions(
-                        model=resolve_manager_classify_model(),
+                        model=resolve_manager_classify_model(
+                            backend=getattr(self._args, "backend", None),
+                        ),
                         reasoning_effort="low",
                         dangerous_yolo=True,
                         skip_git_repo_check=True,
@@ -942,6 +984,10 @@ class SelfReplyMixin:
                     "error": f"{type(exc).__name__}: {exc}",
                 })
                 return
+            created, updated, removed = _self_skill_changes(
+                before,
+                _self_skill_snapshot(skill_dir),
+            )
             failed = int(getattr(result, "exit_code", 0) or 0) != 0 or bool(
                 getattr(result, "fatal_error", None)
             )
@@ -954,6 +1000,12 @@ class SelfReplyMixin:
                 "agent_layer": "self",
                 "operator_turn_count": operator_turns,
                 "error": str(getattr(result, "fatal_error", "") or ""),
+                "learning_applied": bool(
+                    not failed and (created or updated or removed)
+                ),
+                "created": created,
+                "updated": updated,
+                "removed": removed,
             })
 
         thread = threading.Thread(

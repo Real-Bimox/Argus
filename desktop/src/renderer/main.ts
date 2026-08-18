@@ -1,7 +1,16 @@
 import './style.css';
+import { captureIpc } from './ipcRecovery';
 
 type LaunchState = 'idle' | 'starting' | 'ready' | 'error' | 'stopped';
-type RunnerKind = 'codex' | 'claude' | 'copilot' | 'pi' | 'opencode' | 'grok';
+type RunnerKind =
+  | 'codex'
+  | 'claude'
+  | 'copilot'
+  | 'pi'
+  | 'opencode'
+  | 'grok'
+  | 'qoder'
+  | 'dsh';
 type AppearanceTheme = 'system' | 'light' | 'dark';
 
 const RUNNER_LABELS: Record<RunnerKind, string> = {
@@ -10,11 +19,13 @@ const RUNNER_LABELS: Record<RunnerKind, string> = {
   copilot: 'Copilot CLI',
   pi: 'Pi（跟随用户模型）',
   opencode: 'OpenCode',
-  grok: 'Grok Build'
+  grok: 'Grok Build',
+  qoder: 'Qoder CLI',
+  dsh: 'DeepSeek Harness'
 };
 
 function isRunnerKind(value: string | undefined): value is RunnerKind {
-  return value === 'codex' || value === 'claude' || value === 'copilot' || value === 'pi' || value === 'opencode' || value === 'grok';
+  return value !== undefined && Object.hasOwn(RUNNER_LABELS, value);
 }
 
 interface DesktopStatus {
@@ -86,7 +97,7 @@ declare global {
       openLogs(): Promise<string>;
       openData(): Promise<string>;
       restartBackend(): Promise<boolean>;
-      exportDiagnostics(): Promise<string>;
+      exportDiagnostics(): Promise<string | null>;
       openCockpit(): Promise<void>;
       onShowSetup(callback: () => void): () => void;
       onNewChat(callback: () => void): () => void;
@@ -101,6 +112,7 @@ const detailEl = document.getElementById('detail') as HTMLParagraphElement;
 const barEl = document.getElementById('bar') as HTMLSpanElement;
 const retryEl = document.getElementById('retry') as HTMLButtonElement;
 const setupEl = document.getElementById('setup') as HTMLButtonElement;
+const diagnosticsEl = document.getElementById('diagnostics') as HTMLButtonElement;
 const stepsEl = document.getElementById('steps') as HTMLOListElement;
 
 const wizardEl = document.getElementById('wizard') as HTMLElement;
@@ -159,7 +171,9 @@ function applyTheme(resolved?: 'light' | 'dark'): void {
 }
 
 async function loadAppearance(): Promise<void> {
-  const appearance = await window.argusDesktop.getAppearance();
+  const result = await captureIpc(() => window.argusDesktop.getAppearance());
+  if (!result.ok) return;
+  const appearance = result.value;
   appearanceTheme = appearance.theme;
   applyTheme(appearance.resolvedTheme);
 }
@@ -215,6 +229,7 @@ function render(status: DesktopStatus): void {
   if (status.detail) detailEl.textContent = status.detail;
   retryEl.hidden = status.state !== 'error';
   setupEl.hidden = status.state !== 'error';
+  diagnosticsEl.hidden = status.state !== 'error';
   updateSteps(status);
 
   let width = 16;
@@ -228,10 +243,23 @@ function render(status: DesktopStatus): void {
   if (status.state === 'ready') void handleReady();
 }
 
+function renderIpcFailure(message: string, detail: string): void {
+  wizardPending = false;
+  cockpitOpening = false;
+  applying = false;
+  splashEl.classList.remove('is-ready');
+  render({ state: 'error', message, detail });
+}
+
 async function handleReady(): Promise<void> {
   if (cockpitOpening || wizardOpen || applying || wizardPending) return;
   wizardPending = true;
-  const setup = await window.argusDesktop.getSetup();
+  const setupResult = await captureIpc(() => window.argusDesktop.getSetup());
+  if (!setupResult.ok) {
+    renderIpcFailure('无法读取桌面设置', setupResult.detail);
+    return;
+  }
+  const setup = setupResult.value;
   port = setup.port;
   runnerKind = setup.runnerKind;
   runnerBins = { ...(setup.runnerBins || {}) };
@@ -252,7 +280,9 @@ async function handleReady(): Promise<void> {
   splashEl.classList.add('is-ready');
   window.setTimeout(() => {
     if (wizardOpen || setupRequested) return;
-    void window.argusDesktop.openCockpit();
+    void captureIpc(() => window.argusDesktop.openCockpit()).then((result) => {
+      if (!result.ok) renderIpcFailure('无法打开 Argus 工作台', result.detail);
+    });
   }, 720);
 }
 
@@ -346,14 +376,20 @@ function showWizard(setup: SetupInfo): void {
 }
 
 async function reopenWizard(): Promise<void> {
-  const setup = await window.argusDesktop.getSetup();
-  showWizard(setup);
+  const result = await captureIpc(() => window.argusDesktop.getSetup());
+  if (!result.ok) {
+    renderIpcFailure('无法读取桌面设置', result.detail);
+    return;
+  }
+  showWizard(result.value);
 }
 
 retryEl.addEventListener('click', () => {
   retryEl.disabled = true;
   statusEl.textContent = '正在重新启动 Argus';
-  void window.argusDesktop.restartBackend().finally(() => {
+  void captureIpc(() => window.argusDesktop.restartBackend()).then((result) => {
+    if (!result.ok) renderIpcFailure('无法重新启动 Argus', result.detail);
+  }).finally(() => {
     retryEl.disabled = false;
   });
 });
@@ -362,10 +398,32 @@ setupEl.addEventListener('click', () => {
   void reopenWizard();
 });
 
+diagnosticsEl.addEventListener('click', () => {
+  diagnosticsEl.disabled = true;
+  void captureIpc(() => window.argusDesktop.exportDiagnostics()).then((result) => {
+    if (!result.ok) {
+      renderIpcFailure('无法导出诊断', result.detail);
+      return;
+    }
+    if (!result.value) return;
+    detailEl.hidden = false;
+    detailEl.textContent = `脱敏诊断已导出：${result.value}`;
+  }).finally(() => {
+    diagnosticsEl.disabled = false;
+  });
+});
+
 chooseRunnerEl.addEventListener('click', async () => {
   chooseRunnerEl.disabled = true;
-  const path = await window.argusDesktop.chooseRunner(runnerKind);
+  const result = await captureIpc(() => window.argusDesktop.chooseRunner(runnerKind));
   chooseRunnerEl.disabled = false;
+  if (!result.ok) {
+    runnerStatus.dataset.state = 'warn';
+    runnerStatus.textContent = '选择失败';
+    runnerPath.textContent = result.detail;
+    return;
+  }
+  const path = result.value;
   if (path) {
     runnerBins[runnerKind] = path;
     renderRunner();
@@ -432,21 +490,25 @@ wizardFinish.addEventListener('click', async () => {
   detailEl.hidden = true;
   retryEl.hidden = true;
   setupEl.hidden = true;
+  diagnosticsEl.hidden = true;
   barEl.style.width = '72%';
 
-  const result = await window.argusDesktop.completeSetup({
+  const invocation = await captureIpc(() => window.argusDesktop.completeSetup({
     port,
     runnerKind,
     runnerBins
-  });
-  if (!result.ok) {
+  }));
+  if (!invocation.ok || !invocation.value.ok) {
     applying = false;
     document.body.dataset.state = 'error';
     statusEl.textContent = '设置保存失败';
-    detailEl.textContent = result.error || '未知错误';
+    detailEl.textContent = invocation.ok
+      ? (invocation.value.error || '未知错误')
+      : invocation.detail;
     detailEl.hidden = false;
     retryEl.hidden = false;
     setupEl.hidden = false;
+    diagnosticsEl.hidden = false;
     return;
   }
   applying = false;
@@ -454,7 +516,12 @@ wizardFinish.addEventListener('click', async () => {
     await window.argusDesktop.closeSetup();
     return;
   }
-  window.setTimeout(() => void window.argusDesktop.getStatus().then(render), 260);
+  window.setTimeout(() => {
+    void captureIpc(() => window.argusDesktop.getStatus()).then((status) => {
+      if (status.ok) render(status.value);
+      else renderIpcFailure('无法读取本地服务状态', status.detail);
+    });
+  }, 260);
 });
 
 window.addEventListener('keydown', (event) => {
@@ -477,6 +544,9 @@ if (settingsOnly) {
   wizardCancel.hidden = false;
   void reopenWizard();
 } else {
-  window.argusDesktop.getStatus().then(render);
+  void captureIpc(() => window.argusDesktop.getStatus()).then((status) => {
+    if (status.ok) render(status.value);
+    else renderIpcFailure('无法读取本地服务状态', status.detail);
+  });
   window.argusDesktop.onStatus(render);
 }

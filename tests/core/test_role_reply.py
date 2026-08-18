@@ -72,6 +72,18 @@ def test_a_leading_status_emoji_does_not_hide_the_decision() -> None:
     }
 
 
+def test_missing_newline_after_intro_does_not_hide_first_decision() -> None:
+    values = read_key_values(
+        "I inspected the repository.CHOICE=existing\nVERTICAL=math",
+        ("CHOICE", "VERTICAL"),
+    )
+
+    assert values == {
+        "CHOICE": "existing",
+        "VERTICAL": "math",
+    }
+
+
 def test_a_code_fence_around_the_answer_does_not_break_it() -> None:
     reply = "```\nVERTICAL=research\nWORKFLOW_MODE=staged\n```"
 
@@ -216,24 +228,17 @@ def test_a_daemon_still_answering_in_json_is_not_broken() -> None:
 
 def test_the_routing_prompt_no_longer_demands_json() -> None:
     from argus_skill.roles.prompts.manager import (
-        build_fast_vertical_decision_prompt,
         build_vertical_decision_prompt,
     )
 
-    fast = build_fast_vertical_decision_prompt(
-        task="make it faster",
-        verticals_with_purpose={"software": ""},
-        domains_with_purpose={},
-    )
     grounded = build_vertical_decision_prompt(
         "make it faster",
         verticals_with_purpose={"software": ""},
         domains_with_purpose={},
     )
 
-    assert "JSON" not in fast
     assert "JSON" not in grounded
-    assert "CHOICE=existing" in fast and "CHOICE=existing" in grounded
+    assert "CHOICE=existing" in grounded
 
 
 # -- values that are genuinely prose -----------------------------------------
@@ -652,12 +657,31 @@ def test_skill_placements_keep_their_shape_and_their_fallback() -> None:
     )
 
 
-def test_a_single_placement_verdict_reads_from_named_lines() -> None:
-    from argus_skill.manager.skill_review import _named_placement
+def test_a_single_placement_uses_the_batch_contract(monkeypatch) -> None:
+    from argus_skill.manager import skill_review
 
-    verdict = _named_placement(
-        "This one is reusable anywhere.\n\nPLACEMENT=global\nVERTICAL=\nWHY=no assumptions\n"
+    calls: list[dict] = []
+
+    class _Result:
+        last_agent_message = (
+            "CANDIDATE_ID=single\n"
+            "PLACEMENT=global\n"
+            "VERTICAL=\n"
+            "WHY=no assumptions\n"
+        )
+
+    def _run(_runner, **kwargs):
+        calls.append(kwargs)
+        return _Result()
+
+    monkeypatch.setattr(skill_review, "gateway_run_exec", _run)
+    verdict = skill_review.classify_skill_placement(
+        content="Reusable method",
+        task="Ship a result",
+        candidate_verticals=["software"],
+        runner=object(),
     )
 
-    assert verdict == {"placement": "global", "vertical": "", "why": "no assumptions"}
-    assert _named_placement("just prose") is None
+    assert verdict == skill_review.PlacementVerdict("global", "", "no assumptions")
+    assert calls[0]["run_label"] == "manager.skill_placement_batch"
+    assert '"candidate_id": "single"' in calls[0]["prompt"]

@@ -140,7 +140,13 @@ def publish_operator_message(
     event_fields: dict[str, Any] | None = None,
 ) -> bool:
     """Append one Argus transcript turn and matching live event exactly once."""
-    if not append_turn(life_dir, "argus", text, message_id=message_id):
+    if not append_turn(
+        life_dir,
+        "argus",
+        text,
+        message_id=message_id,
+        metadata=event_fields,
+    ):
         return False
     event = {
         "type": "ui.argus",

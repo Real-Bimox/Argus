@@ -1,33 +1,26 @@
 ---
-name: "Venue Selection And Format Research"
-description: "Select a currently open, domain-appropriate CCF-A conference when no venue is specified, or verify an explicit venue, then build research/VENUE_PROFILE.json from official deadline and author-kit sources."
+name: "Explicit Venue Format Research"
+description: "Verify an explicitly selected publication venue and build research/VENUE_PROFILE.json from official deadline and author-kit sources without inferring alternatives."
 ---
 
 # Venue Selection And Format Research
 
 ## When to use
 
-- `target_venue` is absent;
 - the named venue is not built in;
 - the venue cycle/year/deadline or author kit may be stale;
 - no valid `research/VENUE_PROFILE.json` exists.
 
-## Selection policy
+Do not use this Skill when `target_venue` is absent. An unspecified venue does
+not authorize venue discovery or candidate selection. Ask the operator to name
+a venue or explicitly request venue discovery.
 
-When the operator did not specify a venue:
+## Verification policy
 
-1. Search the current official CCF recommended-conference classification.
-2. Search official conference CFP/deadline pages for venues matching the actual
-   AI research domain.
-3. Keep only relevant main/research tracks whose submission deadline has not
-   passed at the current UTC date. Record the exact time zone.
-4. Compare scope fit, evidence expectations, conference cycle, and remaining
-   preparation time.
-5. Select the best-fitting open CCF-A venue. Do not choose a closed venue merely
-   because Argus has a bundled profile for it.
-
-If no suitable open CCF-A venue is verifiable, write the blocker and stop
-venue-dependent drafting rather than inventing a target.
+Verify only the explicit venue's official CFP/deadline, scope, cycle, author kit,
+and exact time zone. Do not search for or select alternatives unless the operator
+explicitly requested that separate task. If the venue cannot be verified, write
+the blocker and stop venue-dependent drafting rather than inventing a target.
 
 ## Required artifacts
 
@@ -37,12 +30,11 @@ Record:
 
 - current UTC timestamp;
 - paper domain and contribution shape;
-- CCF classification source;
-- candidate venues;
-- official CFP/deadline URLs and time zones;
+- explicit venue;
+- official CFP/deadline URL and time zone;
 - open/closed calculation;
 - scope fit;
-- selected venue and rejection reasons.
+- verification result.
 
 ### `research/VENUE_PROFILE.json`
 

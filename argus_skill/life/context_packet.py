@@ -8,14 +8,44 @@ the Reviewer verdict owns control.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any, Mapping
 
 CONTEXT_PACKET_VERSION = 3
+CHECKPOINT_CONTRACT_VERSION = 2
+CHECKPOINT_FILENAME = "CHECKPOINT.md"
 HANDOFF_DIRNAME = "handoffs"
 FRONTIER_FILENAME = "frontier.json"
+
+log = logging.getLogger(__name__)
+
+
+def _initialize_checkpoint(path: Path) -> bool:
+    """Atomically create the mission's empty optional checkpoint placeholder.
+
+    Empty is deliberate: round one should not pay checkpoint prompt overhead
+    until a role actually has continuation state to preserve.  Exclusive create
+    avoids overwriting a role-authored checkpoint when mission context is
+    refreshed.  Failure is advisory because readers independently tolerate an
+    absent or concurrently deleted checkpoint.
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        return True
+    except OSError as exc:
+        log.warning("could not initialize optional mission checkpoint %s: %s", path, exc)
+        return False
+    try:
+        os.close(descriptor)
+    except OSError as exc:
+        log.warning("could not close initialized mission checkpoint %s: %s", path, exc)
+        return False
+    return True
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -107,6 +137,8 @@ def create_mission_context(
     """Create or refresh the immutable mission-level handoff description."""
     root = mission_context_dir(life_dir, mission_id)
     path = root / "mission.json"
+    checkpoint_path = root / CHECKPOINT_FILENAME
+    _initialize_checkpoint(checkpoint_path)
     existing_created_at = time.time()
     try:
         existing = json.loads(path.read_text(encoding="utf-8"))
@@ -155,6 +187,10 @@ def create_mission_context(
         "deps": [str(dep) for dep in (deps or [])],
         "tags": [str(tag) for tag in (tags or [])],
         "frontier": _file_reference(frontier_path),
+        "checkpoint": {
+            **_file_reference(checkpoint_path),
+            "contract_version": CHECKPOINT_CONTRACT_VERSION,
+        },
         "created_at": existing_created_at,
         "updated_at": time.time(),
     }
@@ -263,6 +299,8 @@ def record_reviewed_handoff(
 
 
 __all__ = [
+    "CHECKPOINT_CONTRACT_VERSION",
+    "CHECKPOINT_FILENAME",
     "CONTEXT_PACKET_VERSION",
     "FRONTIER_FILENAME",
     "create_mission_context",

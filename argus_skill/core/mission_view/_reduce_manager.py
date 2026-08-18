@@ -184,7 +184,25 @@ def reduce_planner_event(
 
     elif event_type == EventType.LIFE_PLANNER_VERDICT:
         project_done = bool(event.get("project_done"))
-        label = "Project reviewed" if project_done else "Planning complete"
+        raw_delivery = event.get("delivery")
+        delivery = (
+            dict(raw_delivery)
+            if project_done and isinstance(raw_delivery, dict)
+            else None
+        )
+        label = (
+            "Task completed"
+            if delivery is not None
+            else "Project reviewed"
+            if project_done
+            else "Planning complete"
+        )
+        if delivery is not None:
+            view["delivery"] = delivery
+            mission = view.setdefault("mission", {})
+            mission["status"] = "complete"
+            mission["summary"] = str(delivery.get("summary") or "")[:1200]
+            mission["completed_at"] = ts
         _set_role(view, "planner", "done", label, ts)
         _timeline(
             view,

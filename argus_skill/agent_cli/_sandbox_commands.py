@@ -18,9 +18,12 @@ from .runner_backend import (
     BACKEND_CLAUDE,
     BACKEND_CODEX,
     BACKEND_COPILOT,
+    BACKEND_DSH,
     BACKEND_GROK,
     BACKEND_OPENCODE,
     BACKEND_PI,
+    BACKEND_QODER,
+    CLAUDE_FAMILY,
     RunnerBackend,
 )
 
@@ -31,6 +34,7 @@ log = logging.getLogger(__name__)
 # via ``--agent``).
 _OPENCODE_READ_ONLY_AGENT = "argus-read-only"
 _OPENCODE_FULL_ACCESS_AGENT = "argus-full-access"
+_OPENCODE_NO_TOOLS_AGENT = "argus-no-tools"
 
 
 def _pi_session_dir() -> str:
@@ -234,7 +238,8 @@ class CommandBuilderMixin:
     def _build_command(
         self, *, resume_thread_id: str | None, options
     ) -> list[str]:
-        if self.backend == BACKEND_CLAUDE:
+        if self.backend in CLAUDE_FAMILY:
+            # qoder is a Claude Code fork; it takes the same headless argv.
             return self._build_claude_command(resume_thread_id=resume_thread_id, options=options)
         if self.backend == BACKEND_COPILOT:
             return self._build_copilot_command(
@@ -252,13 +257,17 @@ class CommandBuilderMixin:
             return self._build_grok_command(
                 resume_thread_id=resume_thread_id, options=options
             )
+        if self.backend == BACKEND_DSH:
+            return self._build_dsh_command(
+                resume_thread_id=resume_thread_id, options=options
+            )
         return self._build_codex_command(resume_thread_id=resume_thread_id, options=options)
 
     def _apply_sandbox_policy(self, options):
         """Apply the operator's single global access policy."""
         import dataclasses
 
-        safe_mode = (
+        safe_mode = options.force_safe_mode or (
             os.environ.get("ARGUS_SKILL_SAFE_MODE", "0").strip().lower()
             in {"1", "true", "yes", "on"}
         )
@@ -276,6 +285,8 @@ class CommandBuilderMixin:
             BACKEND_GROK,
             BACKEND_OPENCODE,
             BACKEND_PI,
+            BACKEND_QODER,
+            BACKEND_DSH,
         ):
             return options
         if options.sandbox_mode is not None:
@@ -379,28 +390,37 @@ class CommandBuilderMixin:
     def _build_claude_command(
         self, *, resume_thread_id: str | None, options
     ) -> list[str]:
-        command = [
-            self.agent_bin,
-            "-p",
-            "--verbose",
-            "--output-format",
-            "stream-json",
-        ]
+        command = [self.agent_bin, "-p"]
+        # qodercli is a Claude Code fork that shares claude's headless surface
+        # but differs on three flags: it REJECTS --verbose, spells reasoning
+        # effort as --reasoning-effort (claude uses --effort), and takes
+        # snake_case permission modes (bypass_permissions / accept_edits).
+        is_qoder = self.backend == BACKEND_QODER
+        if not is_qoder:
+            command.append("--verbose")
+        command.extend(["--output-format", "stream-json"])
         if options.model:
             command.extend(["--model", options.model])
         if options.reasoning_effort:
-            effort = (
-                "high"
-                if options.reasoning_effort == "xhigh"
-                else options.reasoning_effort
+            # Both Claude and Qoder accept the full configured effort range.
+            command.extend(
+                ["--reasoning-effort" if is_qoder else "--effort",
+                 options.reasoning_effort]
             )
-            command.extend(["--effort", effort])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--tools", ""])
+        elif options.sandbox_mode == "read-only":
             command.extend(["--tools", "Read,Glob,Grep"])
         elif options.dangerous_yolo:
-            command.extend(["--permission-mode", "bypassPermissions"])
+            command.extend([
+                "--permission-mode",
+                "bypass_permissions" if is_qoder else "bypassPermissions",
+            ])
         elif options.full_auto:
-            command.extend(["--permission-mode", "acceptEdits"])
+            command.extend([
+                "--permission-mode",
+                "accept_edits" if is_qoder else "acceptEdits",
+            ])
         # --add-dir
         if options.add_dirs:
             for dir_path in options.add_dirs:
@@ -457,7 +477,9 @@ class CommandBuilderMixin:
                 "--no-custom-instructions",
                 "--disable-builtin-mcps",
             ])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--available-tools=", "--deny-tool=*"])
+        elif options.sandbox_mode == "read-only":
             command.extend([
                 "--available-tools", "view,rg,glob",
                 "--allow-tool", "view,rg,glob",
@@ -514,7 +536,9 @@ class CommandBuilderMixin:
             command.extend(["--variant", options.reasoning_effort])
         if options.working_dir:
             command.extend(["--dir", options.working_dir])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--agent", _OPENCODE_NO_TOOLS_AGENT])
+        elif options.sandbox_mode == "read-only":
             command.extend(["--agent", _OPENCODE_READ_ONLY_AGENT])
         elif options.dangerous_yolo or options.full_auto:
             command.extend(["--agent", _OPENCODE_FULL_ACCESS_AGENT])
@@ -570,7 +594,9 @@ class CommandBuilderMixin:
             command.extend(["--model", _pi_model(options.model)])
         if options.reasoning_effort:
             command.extend(["--thinking", options.reasoning_effort])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.append("--no-tools")
+        elif options.sandbox_mode == "read-only":
             command.extend(["--tools", "read,grep,find,ls"])
         merged_extra_args = [*self.default_extra_args]
         if options.extra_args:
@@ -613,7 +639,9 @@ class CommandBuilderMixin:
             command.extend(["--model", options.model])
         if options.reasoning_effort:
             command.extend(["--reasoning-effort", options.reasoning_effort])
-        if options.sandbox_mode == "read-only":
+        if options.disable_tools:
+            command.extend(["--tools", ""])
+        elif options.sandbox_mode == "read-only":
             command.extend(["--tools", "read_file,grep,list_dir"])
         elif options.dangerous_yolo or options.full_auto:
             command.append("--yolo")
@@ -631,3 +659,52 @@ class CommandBuilderMixin:
             command.extend(["--resume", resume_thread_id])
         # PromptDeliveryMixin appends --prompt-file with a private temporary file.
         return command
+
+
+    def _build_dsh_command(
+        self,
+        *,
+        resume_thread_id: str | None,
+        options,
+    ) -> list[str]:
+        """Build a DeepSeek Harness one-shot turn.
+
+        dsh has no stream-json surface, no session resume, and no model flag:
+        its headless profile runs one full agent turn and prints only the
+        final assistant text (exit 0 on completion; see
+        ``_finalize_turn_result`` in ``_run_exec.py``). The per-role model
+        rides in through the env-driven overlay attached via ``--patch``
+        (``ARGUS_DSH_PROVIDER`` / ``ARGUS_DSH_MODEL``) and the role's access
+        policy through ``DSH_PERMISSION_MODE`` (see ``_apply_dsh_env`` in
+        ``_prompt_delivery.py``). ``resume_thread_id`` is intentionally
+        ignored: the headless runner creates a fresh session per boot, and
+        round context travels in the prompt instead. The task positional is
+        appended by ``_prepare_prompt_delivery``.
+        """
+        command = [
+            self.agent_bin,
+            "--profile",
+            "headless",
+            "--patch",
+            _dsh_overlay_patch_path(),
+        ]
+        merged_extra_args = [*self.default_extra_args]
+        if options.extra_args:
+            merged_extra_args.extend(options.extra_args)
+        if options.sandbox_mode == "read-only":
+            merged_extra_args = _read_only_extra_args(
+                merged_extra_args,
+                backend=BACKEND_DSH,
+            )
+        if merged_extra_args:
+            command.extend(merged_extra_args)
+        return command
+
+def _dsh_overlay_patch_path() -> str:
+    """Path of the env-driven overlay attached to every dsh headless boot.
+
+    The overlay re-targets the deployment default model from
+    ``ARGUS_DSH_PROVIDER`` / ``ARGUS_DSH_MODEL`` and pins the approval
+    policy; see the file itself for the evaluated rows.
+    """
+    return str(Path(__file__).parent / "_dsh_overlay.patch.yml")

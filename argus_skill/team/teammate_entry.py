@@ -31,9 +31,56 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import task_board
+
+
+@dataclass(frozen=True)
+class TeammateMissionResult:
+    success: bool
+    status: str
+    reason: str = ""
+    operator_question: str = ""
+    operator_options: tuple[dict, ...] = ()
+    last_thread_id: str = ""
+
+    @property
+    def waits_for_operator(self) -> bool:
+        return bool(self.operator_question) and self.status in {
+            "blocked",
+            "operator_wait",
+            "paused_operator",
+        }
+
+    def __bool__(self) -> bool:
+        return self.success
+
+
+def _mission_result(outcome) -> TeammateMissionResult:
+    return TeammateMissionResult(
+        success=bool(getattr(outcome, "success", False)),
+        status=str(getattr(outcome, "status", "") or ""),
+        reason=str(getattr(outcome, "stop_reason", "") or ""),
+        operator_question=str(getattr(outcome, "operator_question", "") or "").strip(),
+        operator_options=tuple(
+            dict(option)
+            for option in (getattr(outcome, "operator_options", []) or [])
+            if isinstance(option, dict)
+        ),
+        last_thread_id=str(getattr(outcome, "last_thread_id", "") or ""),
+    )
+
+
+def _coerce_mission_result(result) -> TeammateMissionResult:
+    if isinstance(result, TeammateMissionResult):
+        return result
+    return TeammateMissionResult(
+        success=bool(result),
+        status="done" if result else "error",
+        reason="" if result else "teammate mission did not succeed",
+    )
 
 
 @contextmanager
@@ -88,15 +135,21 @@ def _build_runner_ns(cwd: str, *, max_rounds: int, paper_mission: bool,
     return ns
 
 
-def run_one_engineer_mission(objective: str, *, cwd: str, life_dir: Path,
-                             paper_mission: bool = False, max_rounds: int | None = None,
-                             timeout_s: float | None = None,
-                             prelude_context: str = "") -> bool:
+def run_one_engineer_mission(
+    objective: str,
+    *,
+    cwd: str,
+    life_dir: Path,
+    paper_mission: bool = False,
+    max_rounds: int | None = None,
+    timeout_s: float | None = None,
+    prelude_context: str = "",
+) -> TeammateMissionResult:
     """Run ONE headless engineer mission in-process on ``objective`` in ``cwd``.
 
     Reuses ``_SkillLoopRunner.execute`` — the exact per-mission call the
     daemon's supervisor makes. No cockpit, no daemon lock, no planner, no
-    recursion. Events go to the isolated ``life_dir``. Returns True on success.
+    recursion. Events go to the     isolated ``life_dir``. Returns the full settlement fields needed by the board.
 
     ``prelude_context`` is the same channel the supervisor uses for a
     mission-level agent: text prepended above the live objective rather than
@@ -170,14 +223,14 @@ def run_one_engineer_mission(objective: str, *, cwd: str, life_dir: Path,
             )
         except SystemExit as exc:  # codex extra missing, etc.
             sys.stderr.write(f"teammate_entry: runner unavailable: {exc}\n")
-            return False
+            return TeammateMissionResult(False, "error", str(exc))
         except Exception as exc:  # noqa: BLE001
             sys.stderr.write(f"teammate_entry: mission error: {exc!r}\n")
-            return False
+            return TeammateMissionResult(False, "error", repr(exc))
         finally:
             if watchdog is not None:
                 watchdog.cancel()
-        return bool(getattr(outcome, "success", False))
+        return _mission_result(outcome)
 
 
 def _owned_task(root: Path, member_id: str, task_id: str | None) -> dict | None:
@@ -315,6 +368,14 @@ def main(argv: list[str] | None = None) -> int:
     lb_block = _lb.objective_block(root, task.get("target") or task_id)
     if lb_block:
         objective = lb_block + objective
+    operator_answer = str(task.get("operator_answer") or "").strip()
+    if operator_answer:
+        objective = (
+            objective
+            + "\n\nThe operator answered the prior blocking question:\n"
+            + operator_answer
+            + "\nContinue the same task from its persisted artifacts."
+        )
     member_safe = args.member_id.replace(":", "_")
 
     (root / "shards").mkdir(parents=True, exist_ok=True)
@@ -325,15 +386,21 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=_heartbeat_loop, args=(root, task_id, stop), daemon=True).start()
 
     life_dir = root / "life" / member_safe
-    success = run_one_engineer_mission(
-        objective, cwd=cwd, life_dir=life_dir,
-        prelude_context=_vertical_prelude(task, cwd=cwd, state_root=life_dir))
+    mission = _coerce_mission_result(
+        run_one_engineer_mission(
+            objective,
+            cwd=cwd,
+            life_dir=life_dir,
+            prelude_context=_vertical_prelude(task, cwd=cwd, state_root=life_dir),
+        )
+    )
 
     stop.set()
     _result = _read_optional_result(expected_target=task.get("target") or task_id)
     _rec = {
         "member_id": args.member_id, "task_id": task_id,
-        "target": task.get("target") or task_id, "success": success,
+        "target": task.get("target") or task_id, "success": mission.success,
+        "status": mission.status,
         "metric": _result.get("metric"), "mechanism": _result.get("mechanism", ""),
     }
     # Carry the target's optimization direction so the leaderboard ranks per-target;
@@ -341,11 +408,24 @@ def main(argv: list[str] | None = None) -> int:
     if task.get("lower_is_better") is not None:
         _rec["lower_is_better"] = bool(task["lower_is_better"])
     shard.write_text(json.dumps(_rec) + "\n", encoding="utf-8")
-    if success:
+    if mission.success:
         task_board.complete(root, task_id, shard=str(shard))
+    elif mission.waits_for_operator:
+        task_board.block_for_operator(
+            root,
+            task_id,
+            question=mission.operator_question,
+            options=list(mission.operator_options),
+            reason=mission.reason or "teammate mission is waiting for an operator decision",
+            last_thread_id=mission.last_thread_id,
+        )
     else:
-        task_board.fail(root, task_id, reason="teammate mission did not succeed")
-    return 0 if success else 1
+        task_board.fail(
+            root,
+            task_id,
+            reason=mission.reason or "teammate mission did not succeed",
+        )
+    return 0 if mission.success or mission.waits_for_operator else 1
 
 
 if __name__ == "__main__":

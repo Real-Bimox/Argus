@@ -29,13 +29,15 @@ function executable(path: string): string {
   return path;
 }
 
-test('OpenCode and Grok are first-class supported runner kinds', () => {
-  assert.equal(isRunnerKind('opencode'), true);
-  assert.equal(isRunnerKind('grok'), true);
-  assert.equal(RUNNER_KINDS.includes('opencode'), true);
-  assert.equal(RUNNER_KINDS.includes('grok'), true);
+test('all external CLIs are first-class supported runner kinds', () => {
+  for (const kind of ['opencode', 'grok', 'qoder', 'dsh'] as const) {
+    assert.equal(isRunnerKind(kind), true);
+    assert.equal(RUNNER_KINDS.includes(kind), true);
+  }
   assert.equal(RUNNER_LABELS.opencode, 'OpenCode');
   assert.equal(RUNNER_LABELS.grok, 'Grok Build');
+  assert.equal(RUNNER_LABELS.qoder, 'Qoder CLI');
+  assert.equal(RUNNER_LABELS.dsh, 'DeepSeek Harness');
 });
 
 test('detects OpenCode in its user-local installation without consulting the real home', (t) => {
@@ -59,8 +61,22 @@ test('detects Grok Build in LocalAppData and accepts PATH fallback', (t) => {
   assert.equal(resolveRunnerBinary('grok', fallback.context), fromPath);
 });
 
-test('the setup wizard exposes OpenCode and Grok choices', () => {
+test('detects Qoder and dsh from npm global or PATH', (t) => {
+  const npm = isolatedContext();
+  t.after(() => rmSync(npm.root, { recursive: true, force: true }));
+  const qoder = executable(join(npm.context.appData!, 'npm', 'qodercli.cmd'));
+  assert.equal(resolveRunnerBinary('qoder', npm.context), qoder);
+
+  const fallback = isolatedContext();
+  t.after(() => rmSync(fallback.root, { recursive: true, force: true }));
+  const dsh = executable(join(fallback.context.path!, 'dsh.cmd'));
+  assert.equal(resolveRunnerBinary('dsh', fallback.context), dsh);
+});
+
+test('the setup wizard exposes every external CLI choice', () => {
   const html = readFileSync(join(process.cwd(), 'src', 'renderer', 'index.html'), 'utf-8');
   assert.match(html, /data-kind="opencode">OpenCode</);
   assert.match(html, /data-kind="grok">Grok Build</);
+  assert.match(html, /data-kind="qoder">Qoder CLI</);
+  assert.match(html, /data-kind="dsh">DeepSeek Harness</);
 });

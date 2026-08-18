@@ -52,10 +52,20 @@ def normalize_agent_options(
 
 
 def parse_agent_operator_options(message: str) -> list[dict[str, Any]]:
-    match = re.search(r"(?im)^\s*OPERATOR_OPTIONS\s*=\s*", str(message or ""))
+    text = "\n".join(
+        (
+            stripped[1:-1].strip()
+            if len(stripped := line.strip()) >= 2
+            and stripped.startswith("`")
+            and stripped.endswith("`")
+            else line
+        )
+        for line in str(message or "").splitlines()
+    )
+    match = re.search(r"(?im)^\s*OPERATOR_OPTIONS\s*=\s*", text)
     if match is None:
         return []
-    raw = str(message or "")[match.end():]
+    raw = text[match.end():]
     next_field = re.search(r"(?m)^\s*[A-Z][A-Z0-9_]{2,}\s*=", raw)
     if next_field is not None:
         raw = raw[:next_field.start()]

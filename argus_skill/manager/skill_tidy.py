@@ -191,19 +191,22 @@ def _team_learning_prompt(
         f"Mission result: {mission_result[:2000] or '(not supplied)'}\n\n"
         "Decide whether the mission demonstrated a durable role procedure "
         "that would materially improve later sessions. A successful mission with a "
-        "canonical done verdict is verified evidence about the work: a project "
-        "candidate that abstracts "
+        "canonical done verdict verifies only that mission's accepted output: it is "
+        "verified evidence about the work, not about every causal attribution in its "
+        "summary or candidate Skill, and not about a procedure that acted on the "
+        "machinery which produced the verdict. Promote a causal rule only when the "
+        "supplied evidence includes phase attribution/profiling or a controlled "
+        "comparison that supports it; end-to-end correlation is insufficient. A "
+        "candidate whose procedure edits stage, gate, certificate, objective, or "
+        "pipeline state — or otherwise operates on what a completion check reads — was "
+        "certified by the very thing it altered, and one success says nothing about "
+        "whether it was right. Make no profile edit from such a procedure however well "
+        "it appeared to work, and do not restate it in your own words; say in your "
+        "final message that you saw one and stopped. A project candidate that abstracts "
         "task-specific details into a broadly reusable procedure may be promoted after "
-        "that one success. Do not reject it merely because it came from one session, and "
-        "do not require novelty beyond improving future execution. "
-        "It is NOT evidence about a procedure that acted on the machinery which "
-        "produced the verdict. A candidate whose procedure edits stage, gate, "
-        "certificate, objective, or pipeline state — or otherwise operates on what a "
-        "completion check reads — was certified by the very thing it altered, and one "
-        "success says nothing about whether it was right. Make no profile edit from "
-        "such a procedure however well it appeared to work, and do not restate it in "
-        "your own words; say in your final message that you saw one and stopped. "
-        "For a failure, write "
+        "that one success when its evidence is sufficient. Do not reject it merely "
+        "because it came from one session, and do not require novelty beyond improving "
+        "future execution. For a failure, write "
         "only when the root cause is concretely verified or recent session evidence shows "
         "the same mechanism/assumption failing repeatedly. Capture a reusable detection, "
         "research, stopping, or recovery procedure—not the task-specific outcome. A "
@@ -308,7 +311,9 @@ def propagate_after_mission(
                 mission_result=mission_result,
             ),
             options=RunnerOptions(
-                model=resolve_manager_classify_model(),
+                model=resolve_manager_classify_model(
+                    backend=getattr(backend, "backend", None),
+                ),
                 reasoning_effort="low",
                 dangerous_yolo=True,
                 skip_git_repo_check=True,

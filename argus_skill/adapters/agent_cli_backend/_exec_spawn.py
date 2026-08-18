@@ -28,7 +28,10 @@ from ...core.models import RunnerResult
 from ...core.runner_errors import result_has_pre_provider_refusal
 from ...core.secret_guard import redact_secrets_text
 from ...core.token_usage import extract_token_usage
-from ...providers.copilot_usage import capture_copilot_usage_cursor, read_copilot_usage_since
+from ...provider_integrations.copilot_usage import (
+    capture_copilot_usage_cursor,
+    read_copilot_usage_since,
+)
 from ._exec_finalize import finalize_result, finish_quota
 from ._io_log import _command_metadata
 from ._io_log import raw_transcript_path as _raw_transcript_path

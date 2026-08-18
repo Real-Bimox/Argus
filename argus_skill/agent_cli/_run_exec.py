@@ -28,6 +28,7 @@ from ._env import (
     _DEFAULT_STREAM_QUEUE_LINES,
     _STREAM_QUEUE_LINES_ENV,
     _incomplete_turn_error,
+    _is_manager_turn_label,
     _positive_env_int,
     _turn_wall_clock_seconds,
 )
@@ -38,7 +39,7 @@ from ._idle_watchdog import (
     IdleEscalation,
 )
 from .models import AgentRunResult, InactivitySnapshot
-from .runner_backend import BACKEND_OPENCODE
+from .runner_backend import BACKEND_DSH, BACKEND_OPENCODE
 
 _POST_EXIT_PIPE_DRAIN_QUIET_SECONDS = 0.1
 _POST_EXIT_PIPE_DRAIN_MAX_SECONDS = 5.0
@@ -198,7 +199,9 @@ class RunExecMixin:
         command = self._build_command(
             resume_thread_id=resume_thread_id, options=options
         )
-        command, stdin_prompt, prompt_path = self._prepare_prompt_delivery(command, prompt)
+        command, stdin_prompt, prompt_path = self._prepare_prompt_delivery(
+            command, prompt, working_dir=options.working_dir
+        )
         command[0] = self._resolve_executable(command[0])
         if options.isolate_workdir:
             try:
@@ -336,14 +339,17 @@ class RunExecMixin:
                 except queue.Full:
                     continue
 
+        process_id = int(getattr(process, "pid", 0) or 0)
         stdout_thread = threading.Thread(
             target=consume_pipe,
             args=("stdout", process.stdout),
+            name=f"argus-provider-pipe-{process_id}-stdout",
             daemon=True,
         )
         stderr_thread = threading.Thread(
             target=consume_pipe,
             args=("stderr", process.stderr),
+            name=f"argus-provider-pipe-{process_id}-stderr",
             daemon=True,
         )
         stdout_thread.start()
@@ -374,13 +380,15 @@ class RunExecMixin:
                 or time.monotonic() - turn_started_at < turn_wall_clock_seconds
             ):
                 return False
-            subject = (
-                "scientist skill distill"
-                if str(run_label or "").strip().lower() == "scientist.skill_distill"
-                else "engineer turn"
-            )
+            normalized_label = str(run_label or "").strip().lower()
+            if _is_manager_turn_label(normalized_label):
+                subject = "Manager turn"
+            elif normalized_label == "scientist.skill_distill":
+                subject = "scientist skill distill"
+            else:
+                subject = "engineer turn"
             state.watchdog_reason = (
-                f"External interrupt: {subject} time budget reached after "
+                f"External interrupt: {subject} wall-clock limit reached after "
                 f"{turn_wall_clock_seconds}s; yield for review/steering"
             )
             self._emit(
@@ -569,8 +577,27 @@ class RunExecMixin:
         if process.poll() is None:
             process.wait(timeout=10.0)
 
-        stdout_thread.join(timeout=2.0 if stdout_closed else 0.05)
-        stderr_thread.join(timeout=2.0 if stderr_closed else 0.05)
+        pipe_readers = (
+            (process.stdout, stdout_thread),
+            (process.stderr, stderr_thread),
+        )
+        for pipe, reader in pipe_readers:
+            if os.name != "posix" and reader.is_alive() and pipe is not None:
+                try:
+                    os.close(pipe.fileno())
+                except (AttributeError, OSError, ValueError):
+                    pass
+        for pipe, reader in pipe_readers:
+            if os.name == "posix" and reader.is_alive():
+                continue
+            reader.join(timeout=2.0)
+            if not reader.is_alive() and pipe is not None:
+                close = getattr(pipe, "close", None)
+                try:
+                    if callable(close):
+                        close()
+                except OSError:
+                    pass
         return state
 
     def _finalize_turn_result(
@@ -629,6 +656,38 @@ class RunExecMixin:
                                 callback(message)
                             except Exception:  # noqa: BLE001 — UI callback must not break the turn
                                 pass
+
+        if (
+            self.backend == BACKEND_DSH
+            and not state.watchdog_terminated
+            and not state.turn_completed
+            and not state.turn_failed
+            and state.fatal_error is None
+        ):
+            # dsh's headless runner emits no JSON events at all: it prints the
+            # final assistant text once and exits 0 on a completed turn. Treat
+            # a clean exit as the authoritative completion receipt and a
+            # nonzero exit as the failure receipt, mirroring the fail-closed
+            # discipline of the generic branch below.
+            if process.returncode == 0:
+                final_text = "\n".join(
+                    line for line in state.stdout_lines if line.strip()
+                ).strip()
+                if final_text:
+                    state.agent_messages.append(final_text)
+                    state.turn_completed = True
+                else:
+                    state.turn_failed = True
+                    state.fatal_error = (
+                        "dsh completed with no assistant output: "
+                        + _incomplete_turn_error(state.stderr_lines)
+                    )
+            else:
+                state.turn_failed = True
+                state.fatal_error = (
+                    f"dsh exited with code {process.returncode}: "
+                    + _incomplete_turn_error(state.stderr_lines)
+                )
 
         if state.watchdog_terminated:
             state.turn_failed = True

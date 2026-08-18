@@ -6,6 +6,7 @@ import {
 } from './missionOutcome.js';
 import type {
   ArtifactInfo,
+  DeliveryReceipt,
   EventMsg,
   MissionAchievement,
   MissionDagNode,
@@ -47,7 +48,7 @@ function copyView(view: MissionView): MissionView {
 
 export function emptyMissionView(): MissionView {
   return {
-    schema_version: 5,
+    schema_version: 6,
     bootstrapped: false,
     mission: {
       id: '',
@@ -93,6 +94,7 @@ export function emptyMissionView(): MissionView {
     achievement: null,
     review: { status: '', reason: '', rejected_attempts: 0 },
     frontier: { change: '', summary: '', updated_at: 0 },
+    delivery: null,
     outcome: {},
     last_event_ts: 0,
     updated_at: 0,
@@ -300,7 +302,16 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     addRoleWork(view, event, 'planner', 'task', node.title || 'Task added', node.objective, 'pending');
   } else if (type === EVENT_TYPES.LIFE_PLANNER_VERDICT) {
     const projectDone = Boolean(event.project_done);
-    const label = projectDone ? 'Project reviewed' : 'Planning complete';
+    const delivery = projectDone && event.delivery && typeof event.delivery === 'object' && !Array.isArray(event.delivery)
+      ? JSON.parse(JSON.stringify(event.delivery)) as DeliveryReceipt
+      : null;
+    const label = delivery ? 'Task completed' : projectDone ? 'Project reviewed' : 'Planning complete';
+    if (delivery) {
+      view.delivery = delivery;
+      view.mission.status = 'complete';
+      view.mission.summary = delivery.summary || '';
+      view.mission.completed_at = ts;
+    }
     setRole(view, 'planner', 'done', label, ts);
     addTimeline(view, event, 'planner', label, S(event, 'reason'), projectDone ? 'success' : 'neutral');
     addRoleWork(view, event, 'planner', 'verdict', label, S(event, 'reason'), projectDone ? 'done' : 'planned');
@@ -311,6 +322,7 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     addRoleWork(view, event, 'planner', 'waiting', 'Planner waiting', detail, 'waiting');
   } else if (type === EVENT_TYPES.LIFE_MISSION_STARTED) {
     view.review = { status: '', reason: '', rejected_attempts: 0 };
+    view.delivery = null;
     view.mission.campaign_started_at ??= ts;
     view.mission = {
       ...view.mission,
@@ -509,6 +521,12 @@ export function reduceMissionViewEvent(view: MissionView, event: EventMsg): Miss
     view.mission.summary = S(event, 'summary');
     view.mission.status = presentation.missionStatus;
     view.mission.completed_at = ts;
+    const delivery = event.delivery;
+    if (event.success === true && delivery && typeof delivery === 'object' && !Array.isArray(delivery)) {
+      view.delivery = JSON.parse(JSON.stringify(delivery));
+    } else if (event.success !== true) {
+      view.delivery = null;
+    }
     view.outcome = missionOutcomeDimensions(event);
     setRole(
       view,
@@ -691,6 +709,7 @@ export function projectMissionView(
   view.storage.wiki_retired_bytes_saved ??= 0;
   view.learned_wiki_pages ??= [];
   view.role_work ??= [];
+  view.delivery ??= null;
   view.outcome ??= {};
   const seedTs = view.last_event_ts;
   // The snapshot is a baseline. Events newer than mission_view.last_event_ts

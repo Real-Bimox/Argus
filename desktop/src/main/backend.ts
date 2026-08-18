@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { createConnection } from 'node:net';
@@ -7,11 +7,15 @@ import { delimiter, join, resolve } from 'node:path';
 import { app } from 'electron';
 import { apiBaseUrl, cockpitUrl, type DesktopSettings } from './settings';
 import {
+  authenticatedBundledBackendMatches,
+  backendLaunchClaimMatches,
   backendOwnershipMatches,
+  priorBackendOwnershipMatches,
   type BackendOwnership,
   type BackendProbeIdentity,
 } from './backendIdentity';
 import { BackendResiliencePolicy } from './backendResilience';
+import { terminateWindowsProcessTree } from './backendProcess';
 import { redactSensitiveText } from './redaction';
 import { RUNNER_LABELS, resolveRunnerBinary } from './runner';
 import type { Logger } from './types';
@@ -36,7 +40,9 @@ const RECOVERY_STABLE_RESET_MS = 60_000;
 
 export class BackendSupervisor extends EventEmitter {
   private child: ChildProcess | null = null;
-  private ownedPid: number | null = null;
+  // The spawned process can be a Windows venv launcher. Keep its ChildProcess
+  // separate from the authenticated Python process that actually serves HTTP.
+  private runtimePid: number | null = null;
   private state: BackendState = 'idle';
   private logTail: string[] = [];
   private stopping = false;
@@ -65,7 +71,7 @@ export class BackendSupervisor extends EventEmitter {
       state: this.state,
       message: this.lastMessage,
       detail: this.lastDetail,
-      pid: this.child?.pid ?? this.ownedPid ?? undefined,
+      pid: this.runtimePid ?? this.child?.pid ?? undefined,
       url: this.state === 'ready' ? cockpitUrl(this.settings) : undefined
     };
   }
@@ -119,13 +125,31 @@ export class BackendSupervisor extends EventEmitter {
         );
         return;
       }
-      this.ownedPid = probe.pid ?? null;
+      this.runtimePid = probe.pid ?? null;
       this.markBackendReady('本地服务已就绪');
       return;
     }
     if (probe.occupied) {
-      this.setState('error', `端口 ${this.settings.port} 已被其他程序占用`, probe.detail);
-      return;
+      // An installer update can leave the previous Desktop backend listening
+      // while the new Electron host starts. Replace it only after its live API
+      // exactly matches this user's prior authenticated ownership record; an
+      // arbitrary older Argus or unrelated listener still fails closed.
+      if (this.priorOwnershipMatches(probe) || this.legacyBundledBackendMatches(probe)) {
+        this.setState('starting', '正在升级受管理的 Argus 本地后端', probe.detail);
+        const stopped = await this.stopPriorOwnedBackend(probe);
+        if (this.stopping || generation !== this.lifecycleGeneration) return;
+        if (!stopped) {
+          this.setState(
+            'error',
+            '无法安全替换上一版本的 Argus 本地后端',
+            `${probe.detail || `端口 ${this.settings.port} 仍被占用`}\n旧后端的身份已验证，但其监听进程未能在限定时间内退出；请从旧版 Argus 正常退出后重试。`
+          );
+          return;
+        }
+      } else {
+        this.setState('error', `端口 ${this.settings.port} 已被其他程序占用`, probe.detail);
+        return;
+      }
     }
 
     this.setState('starting', '正在启动 Argus 本地后端');
@@ -180,31 +204,40 @@ export class BackendSupervisor extends EventEmitter {
 
   private async terminateOwnedBackend(): Promise<void> {
     const child = this.child;
-    const pid = child?.pid ?? this.ownedPid ?? undefined;
+    const launcherPid = child?.pid;
+    const runtimePid = this.runtimePid ?? undefined;
     this.child = null;
-    this.ownedPid = null;
-    if (child?.pid !== undefined && this.isProcessAlive(child.pid)) {
-      await new Promise<void>((resolveStop) => {
-        let settled = false;
-        const finish = (): void => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          resolveStop();
-        };
-        const timer = setTimeout(finish, 2_500);
-        child.once('exit', finish);
-        try {
-          child.kill();
-        } catch {
-          finish();
-        }
-      });
+    this.runtimePid = null;
+    // The launcher is the safe root for a process-tree kill. If it has already
+    // exited, fall back to the authenticated runtime PID recorded in memory.
+    let terminated = true;
+    if (launcherPid !== undefined && this.isProcessAlive(launcherPid)) {
+      terminated = await this.killTree(launcherPid) && terminated;
     }
-    if (pid !== undefined && this.isProcessAlive(pid)) {
-      await this.killTree(pid);
+    if (
+      runtimePid !== undefined
+      && runtimePid !== launcherPid
+      && this.isProcessAlive(runtimePid)
+    ) {
+      terminated = await this.killTree(runtimePid) && terminated;
     }
-    if (pid !== undefined) this.clearOwnership(pid);
+    const launcherDead = launcherPid === undefined || !this.isProcessAlive(launcherPid);
+    const runtimeDead = runtimePid === undefined || !this.isProcessAlive(runtimePid);
+    if (runtimePid !== undefined && terminated && launcherDead && runtimeDead) {
+      this.clearOwnership(runtimePid);
+    } else if (runtimePid !== undefined && (!launcherDead || !runtimeDead)) {
+      this.log.error(
+        'backend process tree remained alive after taskkill; retaining ownership record',
+        `launcher_pid=${launcherPid ?? 'none'} runtime_pid=${runtimePid}`
+      );
+    } else {
+      // A forced renderer/main-process shutdown can race the child exit event,
+      // leaving a stale ownership record even though the whole process tree is
+      // gone.  With no in-memory runtime PID there is nothing safe to signal,
+      // but the record may still be removed after proving its recorded PIDs are
+      // no longer alive.  Never remove a live or unreadable ownership claim.
+      this.clearDeadOwnership();
+    }
   }
 
   private setState(state: BackendState, message: string, detail?: string): void {
@@ -355,6 +388,9 @@ export class BackendSupervisor extends EventEmitter {
     }
 
     let body: {
+      authentication?: {
+        authenticated?: boolean;
+      };
       runtime?: {
         package_version?: string;
         release_id?: string;
@@ -362,6 +398,7 @@ export class BackendSupervisor extends EventEmitter {
         executable?: string;
         pid?: number;
         started_at?: string;
+        desktop_launch_nonce?: string;
       };
     };
     try {
@@ -376,6 +413,14 @@ export class BackendSupervisor extends EventEmitter {
     }
 
     const runtime = body.runtime;
+    if (body.authentication?.authenticated !== true) {
+      return {
+        compatible: false,
+        occupied: true,
+        failureKind: 'identity',
+        detail: '端口上的服务未通过当前 Argus 桌面端身份认证'
+      };
+    }
     if (
       !runtime?.package_version
       || !runtime.executable
@@ -389,6 +434,14 @@ export class BackendSupervisor extends EventEmitter {
         detail: '端口上的服务缺少当前 Argus 桌面运行身份'
       };
     }
+    const respondingIdentity = {
+      authenticated: true,
+      pid: runtime.pid,
+      executable: runtime.executable,
+      manifestSourceDigest: runtime.manifest_source_digest,
+      startedAt: runtime.started_at,
+      launchNonce: runtime.desktop_launch_nonce
+    };
     if (process.env.ARGUS_DESKTOP_DEV !== '1') {
       const expectedExecutable = resolve(this.resolveCommand().command).toLowerCase();
       const actualExecutable = resolve(runtime.executable).toLowerCase();
@@ -397,7 +450,8 @@ export class BackendSupervisor extends EventEmitter {
           compatible: false,
           occupied: true,
           failureKind: 'identity',
-          detail: `端口由另一份 Argus 占用：${runtime.executable}`
+          detail: `端口由另一份 Argus 占用：${runtime.executable}`,
+          ...respondingIdentity
         };
       }
       if (runtime.package_version !== app.getVersion()) {
@@ -405,7 +459,8 @@ export class BackendSupervisor extends EventEmitter {
           compatible: false,
           occupied: true,
           failureKind: 'identity',
-          detail: `端口上的 Argus 版本为 ${runtime.package_version}，当前桌面版为 ${app.getVersion()}`
+          detail: `端口上的 Argus 版本为 ${runtime.package_version}，当前桌面版为 ${app.getVersion()}`,
+          ...respondingIdentity
         };
       }
       const expectedDigest = this.expectedManifestDigest();
@@ -414,17 +469,15 @@ export class BackendSupervisor extends EventEmitter {
           compatible: false,
           occupied: true,
           failureKind: 'identity',
-          detail: '端口上的 Argus 后端不是当前桌面构建'
+          detail: '端口上的 Argus 后端不是当前桌面构建',
+          ...respondingIdentity
         };
       }
     }
     return {
       compatible: true,
       occupied: false,
-      pid: runtime.pid,
-      executable: runtime.executable,
-      manifestSourceDigest: runtime.manifest_source_digest,
-      startedAt: runtime.started_at
+      ...respondingIdentity
     };
   }
 
@@ -532,6 +585,11 @@ export class BackendSupervisor extends EventEmitter {
     const { command, args, cwd } = this.resolveCommand();
     this.ensureSpecialPrompts();
     const runtimeBin = this.ensureRuntimeCommandShims(command);
+    const manifestSourceDigest = this.expectedManifestDigest();
+    if (!manifestSourceDigest) {
+      throw new Error('Argus backend release manifest is missing or invalid');
+    }
+    const launchNonce = randomBytes(32).toString('base64url');
     const runnerKind = this.settings.runnerKind;
     const runnerBin = this.settings.runnerBins[runnerKind]
       || process.env.ARGUS_SKILL_RUNNER_BIN
@@ -543,6 +601,7 @@ export class BackendSupervisor extends EventEmitter {
       ARGUS_SKILL_BIN: command,
       ARGUS_SKILL_PYTHON: command,
       ARGUS_SKILL_WEB_TOKEN: this.settings.token,
+      ARGUS_DESKTOP_LAUNCH_NONCE: launchNonce,
       ARGUS_SKILL_HOME: process.env.ARGUS_SKILL_HOME || join(app.getPath('home'), '.argus-skill'),
       PYTHONUTF8: process.env.PYTHONUTF8 || '1',
       PYTHONIOENCODING: process.env.PYTHONIOENCODING || 'utf-8',
@@ -566,6 +625,7 @@ export class BackendSupervisor extends EventEmitter {
     }
 
     this.logTail = [];
+    const spawnedAtMs = Date.now();
     const child = spawn(command, args, {
       cwd,
       env,
@@ -573,24 +633,23 @@ export class BackendSupervisor extends EventEmitter {
       stdio: ['ignore', 'pipe', 'pipe']
     });
     this.child = child;
-    this.ownedPid = child.pid ?? null;
+    this.runtimePid = null;
     child.stdout?.on('data', (chunk: Buffer) => this.appendLog(chunk));
     child.stderr?.on('data', (chunk: Buffer) => this.appendLog(chunk));
     child.once('error', (error) => {
       if (this.child !== child || this.stopping) return;
-      this.clearOwnership(child.pid);
       this.child = null;
-      this.ownedPid = null;
+      this.runtimePid = null;
       this.handleBackendFailure(
         '无法启动 Argus 本地后端',
         `${error.name}: ${error.message}`
       );
     });
     child.once('exit', (code, signal) => {
-      const wasCurrent = this.child === child || this.ownedPid === child.pid;
+      const runtimePid = this.runtimePid;
+      const wasCurrent = this.child === child;
       if (this.child === child) this.child = null;
-      if (this.ownedPid === child.pid) this.ownedPid = null;
-      this.clearOwnership(child.pid);
+      if (wasCurrent) this.runtimePid = null;
       if (!this.stopping && wasCurrent) {
         this.cancelHealthMonitor();
         const detail = [
@@ -598,29 +657,38 @@ export class BackendSupervisor extends EventEmitter {
           `signal: ${signal ?? 'none'}`,
           ...this.logTail.slice(-8)
         ].join('\n');
-        this.handleBackendFailure(
+        const reportFailure = (): void => this.handleBackendFailure(
           this.reachedReady ? 'Argus 本地后端意外退出' : '本地后端启动失败',
           detail
         );
+        if (
+          runtimePid !== null
+          && runtimePid !== child.pid
+          && this.isProcessAlive(runtimePid)
+        ) {
+          void this.killTree(runtimePid).then((stopped) => {
+            if (stopped) this.clearOwnership(runtimePid);
+            else this.log.error(
+              'orphaned backend runtime remained alive; retaining ownership record',
+              `runtime_pid=${runtimePid}`
+            );
+          }).finally(reportFailure);
+        } else {
+          if (runtimePid !== null) this.clearOwnership(runtimePid);
+          else this.clearDeadOwnership();
+          reportFailure();
+        }
+      } else if (runtimePid !== null && !this.isProcessAlive(runtimePid)) {
+        this.clearOwnership(runtimePid);
+      } else {
+        this.clearDeadOwnership();
       }
     });
-    try {
-      if (process.env.ARGUS_DESKTOP_DEV !== '1') {
-        this.writeOwnership(child.pid, command);
-        if (!this.ownershipFileExists()) {
-          throw new Error('backend ownership record was not created');
-        }
-      }
-    } catch (error) {
-      if (this.child === child) this.child = null;
-      if (this.ownedPid === child.pid) this.ownedPid = null;
-      if (child.pid !== undefined && this.isProcessAlive(child.pid)) {
-        await this.killTree(child.pid);
-      }
-      this.clearOwnership(child.pid);
-      throw error;
-    }
-    void this.waitUntilReady(child).catch((error) => {
+    void this.waitUntilReady(child, {
+      launchNonce,
+      manifestSourceDigest,
+      spawnedAtMs,
+    }).catch((error) => {
       if (this.stopping || this.child !== child) return;
       const detail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
       this.log.error('backend readiness monitor failed', detail);
@@ -649,18 +717,43 @@ export class BackendSupervisor extends EventEmitter {
     this.log.verbose('backend output', lines.join('\n'));
   }
 
-  private async waitUntilReady(child: ChildProcess): Promise<void> {
+  private async waitUntilReady(
+    child: ChildProcess,
+    launch: {
+      launchNonce: string;
+      manifestSourceDigest: string;
+      spawnedAtMs: number;
+    }
+  ): Promise<void> {
     const deadline = Date.now() + 30_000;
     let lastDetail = '';
 
     const fail = async (detail: string): Promise<void> => {
       this.pollTimer = null;
+      const runtimePid = this.runtimePid;
       if (this.child === child) this.child = null;
-      if (this.ownedPid === child.pid) this.ownedPid = null;
+      this.runtimePid = null;
+      let terminated = true;
       if (child.pid !== undefined && this.isProcessAlive(child.pid)) {
-        await this.killTree(child.pid);
+        terminated = await this.killTree(child.pid) && terminated;
       }
-      this.clearOwnership(child.pid);
+      if (
+        runtimePid !== null
+        && runtimePid !== child.pid
+        && this.isProcessAlive(runtimePid)
+      ) {
+        terminated = await this.killTree(runtimePid) && terminated;
+      }
+      const launcherDead = child.pid === undefined || !this.isProcessAlive(child.pid);
+      const runtimeDead = runtimePid === null || !this.isProcessAlive(runtimePid);
+      if (runtimePid !== null && terminated && launcherDead && runtimeDead) {
+        this.clearOwnership(runtimePid);
+      } else if (!launcherDead || !runtimeDead) {
+        this.log.error(
+          'timed-out backend remained alive; retaining ownership for recovery',
+          `launcher_pid=${child.pid ?? 'none'} runtime_pid=${runtimePid ?? 'none'}`
+        );
+      }
       this.handleBackendFailure('本地后端启动超时', detail);
     };
 
@@ -669,22 +762,31 @@ export class BackendSupervisor extends EventEmitter {
       try {
         const probe = await this.probe(INITIAL_PROBE_TIMEOUT_MS);
         lastDetail = probe.detail || lastDetail;
-        if (
-          probe.compatible
-          && probe.pid === child.pid
-          && probe.executable
-          && probe.startedAt
-        ) {
-          this.writeOwnership(child.pid, probe.executable, probe.startedAt);
-        }
-        if (
-          probe.compatible
-          && probe.pid === child.pid
-          && this.ownershipMatches(probe)
-        ) {
-          this.pollTimer = null;
-          this.markBackendReady('Argus 桌面端已就绪');
-          return;
+        if (backendLaunchClaimMatches(probe, launch)) {
+          const runtimePid = probe.pid!;
+          const executable = probe.executable!;
+          const startedAt = probe.startedAt!;
+          // Retain the authenticated runtime PID even if ownership persistence
+          // fails, so timeout cleanup still knows the exact listener process.
+          this.runtimePid = runtimePid;
+          this.writeOwnership(
+            runtimePid,
+            child.pid ?? runtimePid,
+            executable,
+            startedAt,
+          );
+          if (this.ownershipMatches(probe)) {
+            this.runtimePid = runtimePid;
+            this.pollTimer = null;
+            this.markBackendReady('Argus 桌面端已就绪');
+            return;
+          }
+          // Keep the authenticated launch claim until the process is proven
+          // dead. If cleanup later fails, deleting it would turn an owned
+          // listener into an unmanageable port conflict.
+          lastDetail = '本地后端身份记录未能通过完整性校验';
+        } else if (probe.compatible) {
+          lastDetail = '响应端未能证明它属于本次桌面端启动';
         }
       } catch (error) {
         lastDetail = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
@@ -758,7 +860,7 @@ export class BackendSupervisor extends EventEmitter {
         clearTimeout(this.stableTimer);
         this.stableTimer = null;
       }
-      const pid = this.child?.pid ?? this.ownedPid ?? undefined;
+      const pid = this.runtimePid ?? this.child?.pid ?? undefined;
       const processAlive = pid !== undefined && this.isProcessAlive(pid);
       const identityConflict = probe.failureKind === 'identity'
         || (probe.compatible && !ownershipMatches);
@@ -796,40 +898,94 @@ export class BackendSupervisor extends EventEmitter {
     schedule(HEALTH_INTERVAL_MS);
   }
 
-  private ownershipMatches(probe: BackendProbe): boolean {
-    if (!probe.pid) return false;
-    const manifestSourceDigest = this.expectedManifestDigest();
-    if (!manifestSourceDigest) return false;
+  private readOwnership(): Partial<BackendOwnership> | null {
     try {
       const file = join(app.getPath('userData'), 'runtime', 'backend.json');
       const payload = JSON.parse(readFileSync(file, 'utf-8')) as Partial<BackendOwnership>;
-      return backendOwnershipMatches(payload, probe, {
-        host: this.settings.host,
-        port: this.settings.port,
-        executable: process.env.ARGUS_DESKTOP_DEV === '1' && probe.executable
-          ? resolve(probe.executable)
-          : resolve(this.resolveCommand().command),
-        manifestSourceDigest,
-        tokenSha256: this.tokenSha256()
-      });
+      return payload && typeof payload === 'object' ? payload : null;
     } catch {
+      return null;
+    }
+  }
+
+  private ownershipMatches(probe: BackendProbe): boolean {
+    if (!probe.pid) return false;
+    const manifestSourceDigest = this.expectedManifestDigest();
+    const ownership = this.readOwnership();
+    if (!manifestSourceDigest || ownership === null) return false;
+    return backendOwnershipMatches(ownership, probe, {
+      host: this.settings.host,
+      port: this.settings.port,
+      executable: process.env.ARGUS_DESKTOP_DEV === '1' && probe.executable
+        ? resolve(probe.executable)
+        : resolve(this.resolveCommand().command),
+      manifestSourceDigest,
+      tokenSha256: this.tokenSha256()
+    });
+  }
+
+  private priorOwnershipMatches(probe: BackendProbe): boolean {
+    const ownership = this.readOwnership();
+    if (ownership === null) return false;
+    return priorBackendOwnershipMatches(ownership, probe, {
+      host: this.settings.host,
+      port: this.settings.port,
+      tokenSha256: this.tokenSha256()
+    });
+  }
+
+  /**
+   * Support an in-place installer upgrade from an older Desktop build whose
+   * ownership record is absent or predates schema 3. The token-authenticated
+   * listener must still report the exact executable path bundled by this app.
+   */
+  private legacyBundledBackendMatches(probe: BackendProbe): boolean {
+    if (process.env.ARGUS_DESKTOP_DEV === '1') return false;
+    return authenticatedBundledBackendMatches(probe, {
+      executable: resolve(this.resolveCommand().command)
+    });
+  }
+
+  /** Replace only an authenticated previous-release listener from this Desktop install. */
+  private async stopPriorOwnedBackend(probe: BackendProbe): Promise<boolean> {
+    const runtimePid = probe.pid;
+    const ownedPrior = this.priorOwnershipMatches(probe);
+    const legacyBundled = this.legacyBundledBackendMatches(probe);
+    if (!runtimePid || (!ownedPrior && !legacyBundled)) return false;
+    this.log.info(
+      `replacing ${ownedPrior ? 'owned' : 'legacy bundled'} desktop backend pid=${runtimePid} on ${this.settings.host}:${this.settings.port}`
+    );
+    if (this.isProcessAlive(runtimePid) && !(await this.killTree(runtimePid))) {
       return false;
     }
+    // Do not signal a distinct historical launcher PID: the authenticated API
+    // proves the listener, not a PID which may have been reused after the old
+    // launcher exited. Killing the listener's tree is sufficient to free the
+    // port and preserves the no-unknown-process ownership boundary.
+    this.clearOwnership(runtimePid);
+    const deadline = Date.now() + 5_000;
+    while (await this.portOccupied()) {
+      if (Date.now() >= deadline) return false;
+      await new Promise<void>((resolveDelay) => setTimeout(resolveDelay, 100));
+    }
+    return true;
   }
 
   private writeOwnership(
     pid: number | undefined,
+    rootPid: number | undefined,
     command: string,
     startedAt = new Date().toISOString(),
   ): void {
-    if (!pid || !existsSync(command)) return;
+    if (!pid || !rootPid || !existsSync(command)) return;
     const manifestSourceDigest = this.expectedManifestDigest();
     if (!manifestSourceDigest) return;
     const file = join(app.getPath('userData'), 'runtime', 'backend.json');
     mkdirSync(join(app.getPath('userData'), 'runtime'), { recursive: true });
     const ownership: BackendOwnership = {
-      schema: 2,
+      schema: 3,
       pid,
+      rootPid,
       host: this.settings.host,
       port: this.settings.port,
       executable: resolve(command),
@@ -838,10 +994,6 @@ export class BackendSupervisor extends EventEmitter {
       startedAt
     };
     writeFileSync(file, JSON.stringify(ownership, null, 2), 'utf-8');
-  }
-
-  private ownershipFileExists(): boolean {
-    return existsSync(join(app.getPath('userData'), 'runtime', 'backend.json'));
   }
 
   private clearOwnership(expectedPid?: number): void {
@@ -859,6 +1011,26 @@ export class BackendSupervisor extends EventEmitter {
     }
   }
 
+  private clearDeadOwnership(): void {
+    try {
+      const file = join(app.getPath('userData'), 'runtime', 'backend.json');
+      const payload = JSON.parse(readFileSync(file, 'utf-8')) as {
+        pid?: unknown;
+        rootPid?: unknown;
+      };
+      const pids = [payload.pid, payload.rootPid].filter(
+        (value): value is number => (
+          typeof value === 'number' && Number.isInteger(value) && value > 0
+        )
+      );
+      if (pids.length === 0 || pids.some((pid) => this.isProcessAlive(pid))) return;
+      rmSync(file, { force: true });
+    } catch {
+      // Fail closed: malformed or unreadable ownership stays available for
+      // operator diagnosis instead of being silently discarded.
+    }
+  }
+
   private isProcessAlive(pid: number): boolean {
     try {
       process.kill(pid, 0);
@@ -869,14 +1041,9 @@ export class BackendSupervisor extends EventEmitter {
     }
   }
 
-  private killTree(pid: number): Promise<void> {
-    return new Promise((resolveKill) => {
-      const killer = spawn('taskkill', ['/pid', String(pid), '/t', '/f'], {
-        windowsHide: true,
-        stdio: 'ignore'
-      });
-      killer.once('exit', () => resolveKill());
-      killer.once('error', () => resolveKill());
+  private killTree(pid: number): Promise<boolean> {
+    return terminateWindowsProcessTree(pid, {
+      isAlive: (targetPid) => this.isProcessAlive(targetPid),
     });
   }
 }

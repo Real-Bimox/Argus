@@ -205,7 +205,7 @@ def stage_plot_svg(transitions: list[dict[str, str]], trace: dict) -> str:
     pieces: list[str] = []
     windows = trace["windows_hours"]
     bands = [
-        (windows["no_go_start"], windows["negative_scope_locked"], "#FCEBED", "no-go ×7", 14),
+        (windows["pivot_start"], windows["negative_scope_locked"], "#FCEBED", "7 routes dropped", 14),
         (windows["negative_scope_locked"], windows["first_submission_stage"], "#EAF2FF", "pivot", 31),
         (windows["submission_repair_start"], windows["final_completion"], "#FFF2DA", "repair ×2", 14),
     ]
@@ -301,9 +301,9 @@ body {{ font-family:Arial,Helvetica,sans-serif; color:#24465D; background:#FBF7E
 .episode ul {{ margin:5px 0 5px 14px; padding:0; color:#4D5A67; font-size:9.7px; line-height:1.16; }}
 .paper-output {{ margin-top:4px; border:1px solid #E2C77E; background:#FFF8E7; border-radius:7px; padding:4px; text-align:center; }} .paper-output b {{ color:#8B6515; font-size:18px; }} .paper-output span {{ display:block; color:#6E5A2D; font-size:9.5px; font-weight:700; }}
 </style></head><body><main class="canvas"><img class="mountain-strip" src="assets/anime/mountain_strip.png" alt="">
-<section class="plot-panel"><div class="plot-top"><div class="plot-head"><strong>Stage trajectory</strong><span>red = rollback · gold = completion</span></div><div class="summary"><div><b>{trace['campaign_hours']:.1f} h</b><span>campaign</span></div><div><b>{trace['engineer_rounds']}</b><span>rounds</span></div><div><b>{trace['reviewer_revisions']}</b><span>revisions</span></div><div><b>{trace['session_rolls']}</b><span>sessions</span></div><div><b>{trace['early_no_go_rollbacks']}</b><span>early rollback</span></div><div><b>{trace['submission_rollbacks']}</b><span>late rollback</span></div></div></div>{plot}</section>
+<section class="plot-panel"><div class="plot-top"><div class="plot-head"><strong>Stage trajectory</strong><span>red = rollback · gold = completion</span></div><div class="summary"><div><b>{trace['campaign_hours']:.1f} h</b><span>campaign</span></div><div><b>{trace['engineer_rounds']}</b><span>rounds</span></div><div><b>{trace['reviewer_revisions']}</b><span>revisions</span></div><div><b>{trace['session_rolls']}</b><span>sessions</span></div><div><b>{trace['early_route_rollbacks']}</b><span>early pivots</span></div><div><b>{trace['submission_rollbacks']}</b><span>late repairs</span></div></div></div>{plot}</section>
 <section class="episodes-wrap"><div class="episodes-title"><strong>(b) Scientific episodes</strong></div><div class="episodes">
-  <article class="episode" data-step="01" style="--c:#B43F55"><div class="episode-head"><small>Prune</small><div class="badges">{role_badges('R','M','P')}</div></div><h3><strong>7 no-go gates</strong></h3><div class="pivot">reject weak routes</div></article>
+  <article class="episode" data-step="01" style="--c:#B43F55"><div class="episode-head"><small>Prune</small><div class="badges">{role_badges('R','M','P')}</div></div><h3><strong>7 approaches dropped</strong></h3><div class="pivot">keep the evidence</div></article>
   <article class="episode" data-step="02" style="--c:#315BCE"><div class="episode-head"><small>Pivot</small><div class="badges">{role_badges('P','M')}</div></div><h3>Method → audit</h3><div class="pivot">retain evidence</div></article>
   <article class="episode" data-step="03" style="--c:#C38A20"><div class="episode-head"><small>Experiment</small><div class="badges">{role_badges('E','R')}</div></div><h3><strong>{trace['canonical_cells']} cells</strong></h3><div class="pivot">{trace['canonical_scored_rows']:,} rows</div></article>
   <article class="episode" data-step="04" style="--c:#287D70"><div class="episode-head"><small>Write</small><div class="badges">{role_badges('E','R','M')}</div></div><h3>Analyze → review</h3><div class="paper-output"><b>{trace['final_pages']} pages</b></div></article>
@@ -330,7 +330,7 @@ def write_provenance() -> None:
     trajectory = {
         "figure_id": "representative-paper-trajectory",
         "reader_question": "How does one Argus campaign recover from failed hypotheses and late submission defects?",
-        "claim": "The representative campaign uses seven early no-go rollbacks, a scientific scope pivot, and two late submission repairs to reach a completed manuscript.",
+        "claim": "The representative campaign drops seven weak approaches, changes the research question, and repairs two late submission defects before completing the manuscript.",
         "evidence": [TRANSITIONS_PATH.name, TRACE_PATH.name],
         "encoding": "An actual Stage-versus-time trace carries the main visual, with six campaign statistics above it and five role-resolved episodes below.",
         "scope": "One 163.6-hour multimodal-hallucination campaign; role labels summarize structured events rather than private model reasoning.",

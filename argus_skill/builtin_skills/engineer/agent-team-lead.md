@@ -30,8 +30,9 @@ Use `python -m argus_skill.tools.team`.
 3. Set deliberate capacity with:
    `pool-set --root <team_root> --width <N> --state running`.
 4. Inspect progress with `status --root <team_root>` and read landed `shards/*.jsonl` plus `leaderboard.json`.
-5. Refresh or extend the backlog with `form`. Re-forming a live task preserves its owner; re-forming a terminal task deliberately reopens it.
-6. Wind down with `pool-set --state draining`, synthesize the canonical artifact, pass the normal mission Reviewer, then run `dissolve --root <team_root>`.
+5. A task waiting on a real operator-owned decision is `blocked`, retains its owner and question, and is not retried. After the operator answers, run `resume --root <team_root> --task-id <task_id> --answer "<answer>"` to requeue it with that answer.
+6. Refresh or extend the backlog with `form`. Re-forming claimed, running, or blocked work preserves its lifecycle state; re-forming a done or failed task deliberately reopens it.
+7. Wind down with `pool-set --state draining`, synthesize the canonical artifact, pass the normal mission Reviewer, then run `dissolve --root <team_root>`.
 
 The lead never manually spawns, claims, waits for, reassigns, or kills teammates. Those are Curator responsibilities.
 

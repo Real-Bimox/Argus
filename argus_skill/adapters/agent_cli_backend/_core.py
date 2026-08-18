@@ -12,7 +12,7 @@ import os
 import threading
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from ...core.models import RunnerOptions, RunnerResult
 from ...core.secret_guard import known_secret_values
@@ -52,7 +52,7 @@ class AgentCliBackend:
     """``RunnerBackend`` implementation that shells out to a real CLI.
 
     Construct once with the runner backend choice ("codex" / "claude" /
-    "copilot" / "opencode" / "pi" / "grok") and any cross-call defaults
+    "copilot" / "opencode" / "pi" / "grok" / "qoder" / "dsh") and any cross-call defaults
     (e.g. ``default_extra_args``
     for ``-c "config_profile=..."``), then pass the same instance to
     every ``SkillLoop`` actor (author / engineer / reviewer). Each
@@ -67,11 +67,11 @@ class AgentCliBackend:
 
     Args:
         backend: which CLI to drive ("codex" / "claude" / "copilot" /
-            "opencode" / "pi" / "grok").
+            "opencode" / "pi" / "grok" / "qoder" / "dsh").
             Defaults to the bundled runner's default (codex).
         runner_bin: explicit path to the CLI binary. Default: resolve
             from ``$PATH`` (e.g. ``codex`` / ``claude`` / ``copilot`` /
-            ``opencode`` / ``pi`` / ``grok``).
+            ``opencode`` / ``pi`` / ``grok`` / ``qodercli`` / ``dsh``).
         default_extra_args: appended to every command (after
             ``options.extra_args``). Useful for global ``-c`` flags.
         before_exec: called before each subprocess spawn — used to reset
@@ -94,6 +94,7 @@ class AgentCliBackend:
         default_watchdog_hard_idle_seconds: int = _RUNNER_DEFAULT_HARD_IDLE_SECONDS,
         before_exec=None,
         event_callback=None,
+        known_secret_values_override: Iterable[str] | None = None,
     ) -> None:
         deps = load_agent_cli_runtime()
         self._deps = deps
@@ -140,7 +141,11 @@ class AgentCliBackend:
         self._usage_project_root: Path | None = None
         self._usage_global_root: Path | None = None
         self._usage_mission_id: str | None = None
-        self._known_secret_values = known_secret_values()
+        self._known_secret_values_override = tuple(
+            known_secret_values_override or ()
+        )
+        self._known_secret_values: tuple[str, ...] = ()
+        self._refresh_known_secret_values()
 
     @property
     def backend(self) -> str:
@@ -155,6 +160,7 @@ class AgentCliBackend:
     def prewarm_acp_client(
         self,
         *,
+        run_label: str,
         model: str | None,
         reasoning_effort: str | None,
         lean: bool,
@@ -166,6 +172,7 @@ class AgentCliBackend:
         prewarm = getattr(self._runner, "prewarm_acp_client", None)
         if callable(prewarm):
             prewarm(
+                run_label=run_label,
                 model=model,
                 reasoning_effort=reasoning_effort,
                 lean=lean,
@@ -207,6 +214,12 @@ class AgentCliBackend:
                 self._usage_mission_id,
                 self._usage_global_root,
             )
+
+    def _refresh_known_secret_values(self) -> None:
+        self._known_secret_values = tuple(dict.fromkeys((
+            *self._known_secret_values_override,
+            *known_secret_values(),
+        )))
 
     def _configured_pricing_model(self, *, profile: str = "") -> str:
         """Read the implicit model from Codex's own config, never another route."""
@@ -337,6 +350,20 @@ class AgentCliBackend:
             if options.watchdog_hard_idle_seconds is None
             else max(0, int(options.watchdog_hard_idle_seconds))
         )
+        if self._backend_name == "dsh":
+            # dsh's headless runner emits nothing until the final assistant
+            # text, so byte-level inactivity is NOT a health signal: a long
+            # tool-heavy turn looks identical to a hung one. Several callers
+            # pass streaming-assuming thresholds (the SELF reply path uses
+            # 5s/120s for progress display and stuck-turn killing; subagents
+            # pass their own timeout), any of which would kill healthy dsh
+            # turns. The ONLY knob that re-enables the stages for dsh is the
+            # operator's explicit ARGUS_SKILL_RUNNER_*_IDLE_SECONDS; caller
+            # options are ignored, and hung turns are bounded by dsh's own
+            # internal request/tool timeouts instead.
+            soft_idle = _env_int("ARGUS_SKILL_RUNNER_SOFT_IDLE_SECONDS", 0)
+            stalled_idle = _env_int("ARGUS_SKILL_RUNNER_STALLED_IDLE_SECONDS", 0)
+            hard_idle = _env_int("ARGUS_SKILL_RUNNER_HARD_IDLE_SECONDS", 0)
         option_fields = getattr(cli_cls, "__dataclass_fields__", {})
         kwargs = dict(
             model=options.model,
@@ -366,6 +393,10 @@ class AgentCliBackend:
             )
         if "sandbox_mode" in option_fields:
             kwargs["sandbox_mode"] = getattr(options, "sandbox_mode", None)
+        if "force_safe_mode" in option_fields:
+            kwargs["force_safe_mode"] = getattr(options, "force_safe_mode", False)
+        if "disable_tools" in option_fields:
+            kwargs["disable_tools"] = getattr(options, "disable_tools", False)
         if "isolate_workdir" in getattr(cli_cls, "__dataclass_fields__", {}):
             kwargs["isolate_workdir"] = getattr(options, "isolate_workdir", False)
         # Forward the live assistant-block callback the same guarded way — only
@@ -427,7 +458,7 @@ def build_agent_cli_backend_from_env() -> AgentCliBackend:
     Honours:
 
       * ``ARGUS_SKILL_RUNNER_BACKEND`` — "codex" / "claude" / "copilot" /
-        "opencode" / "pi" / "grok"
+        "opencode" / "pi" / "grok" / "qoder" / "dsh"
         (default: codex)
       * ``ARGUS_SKILL_RUNNER_BIN``     — path to the CLI binary
       * ``ARGUS_SKILL_RUNNER_EXTRA_ARGS`` — space-separated default args

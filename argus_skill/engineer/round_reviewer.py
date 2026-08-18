@@ -219,10 +219,11 @@ class RoundReviewerMixin:
                 backend_unavailable=True,
                 backend_stop_kind="backend_unavailable",
             )
+        session_metadata_persisted = True
         if reviewer_session is not None:
             if reviewer_resume_id and not review.session_resumed:
                 reviewer_session.rotate("static_context_changed")
-            reviewer_session.complete(
+            session_metadata_persisted = reviewer_session.complete(
                 review,
                 decisive_output="\n".join(
                     part for part in (review.reason, review.next_action) if part
@@ -255,21 +256,27 @@ class RoundReviewerMixin:
                 "prompt_chars": prompt_chars,
                 "prompt_estimated_tokens": (prompt_chars + 3) // 4,
                 "capsule_path": str(reviewer_session.path or ""),
+                "metadata_persisted": session_metadata_persisted,
+                "persistence_warning": reviewer_session.persistence_error,
             })
         signal = review.session_signal if isinstance(review.session_signal, dict) else {}
         signal_kind = str(signal.get("kind") or "").strip()
         signal_target = str(signal.get("target") or "").strip()
         signal_detail = str(signal.get("detail") or "").strip()
-        if signal_kind and signal_target and supervised_config.role_session_policy != "fresh":
+        if signal_kind and signal_target:
             target_session = {
                 "engineer": state.engineer_session,
                 "reviewer": reviewer_session,
             }.get(signal_target)
             applied = False
-            if target_session is not None:
+            effective_policy = getattr(target_session, "policy", "fresh")
+            if target_session is not None and target_session.policy != "fresh":
                 target_session.signal(signal_kind, signal_detail)
                 applied = True
             elif signal_target == "planner" and supervised_config.role_session_dir:
+                # A planner capsule exists only for a resumable policy. Avoid
+                # materialising rotation metadata for a fresh-only backend.
+                effective_policy = supervised_config.role_session_policy
                 from ..core.role_session import signal_role_session_file
 
                 applied = signal_role_session_file(
@@ -281,7 +288,7 @@ class RoundReviewerMixin:
                 on_event({
                     "type": EventType.ROLE_SESSION_TURN,
                     "role": signal_target,
-                    "policy": supervised_config.role_session_policy,
+                    "policy": effective_policy,
                     "action": "rotated",
                     "rotation_reason": f"signal:{signal_kind}",
                     "round_index": round_index,

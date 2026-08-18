@@ -44,6 +44,8 @@ from .protocol import SNAPSHOT_SCHEMA_VERSION
 DAEMON_ADMISSION_FILE = "daemon.admission.json"
 _PROJECT_INDEX_LABEL_CHARS = 180
 _PROJECT_INDEX_OBJECTIVE_CHARS = 1_000
+_HOST_CACHE_MAX_ENTRIES = 64
+_PROJECT_CACHE_MAX_ENTRIES = 256
 
 _SPEND_CACHE: dict[str, tuple[tuple[int, int, int] | None, UsageSummary]] = {}
 _SPEND_CACHE_LOCK = threading.Lock()
@@ -57,6 +59,20 @@ _GLOBAL_USAGE_CACHE: dict[str, tuple[float, UsageSummary]] = {}
 _GLOBAL_USAGE_CACHE_LOCK = threading.Lock()
 _HOST_REFRESHING: set[str] = set()
 _HOST_REFRESHING_LOCK = threading.Lock()
+
+
+def _store_bounded_cache_entry(
+    cache: dict[Any, Any],
+    key: Any,
+    value: Any,
+    *,
+    max_entries: int,
+) -> None:
+    """Store one entry while evicting the oldest project/root keys."""
+    cache.pop(key, None)
+    cache[key] = value
+    while len(cache) > max_entries:
+        del cache[next(iter(cache))]
 
 
 def project_usage_summary(project_root: Path | str) -> UsageSummary:
@@ -116,23 +132,38 @@ def _cached_metrics_snapshot(
             return cached[1] if cached is not None else None
     value = metrics_snapshot(root=root, cost_control=cost_control)
     with _METRICS_CACHE_LOCK:
-        _METRICS_CACHE[key] = (now + _METRICS_CACHE_TTL_SECONDS, value)
+        _store_bounded_cache_entry(
+            _METRICS_CACHE,
+            key,
+            (now + _METRICS_CACHE_TTL_SECONDS, value),
+            max_entries=_HOST_CACHE_MAX_ENTRIES,
+        )
     return value
 
 
 def _store_cost_control_cache(key: str, value: dict[str, Any]) -> None:
     with _COST_CONTROL_CACHE_LOCK:
-        _COST_CONTROL_CACHE[key] = (
-            time.monotonic() + _HOST_SNAPSHOT_CACHE_TTL_SECONDS,
-            value,
+        _store_bounded_cache_entry(
+            _COST_CONTROL_CACHE,
+            key,
+            (
+                time.monotonic() + _HOST_SNAPSHOT_CACHE_TTL_SECONDS,
+                value,
+            ),
+            max_entries=_HOST_CACHE_MAX_ENTRIES,
         )
 
 
 def _store_global_usage_cache(key: str, value: UsageSummary) -> None:
     with _GLOBAL_USAGE_CACHE_LOCK:
-        _GLOBAL_USAGE_CACHE[key] = (
-            time.monotonic() + _HOST_SNAPSHOT_CACHE_TTL_SECONDS,
-            value,
+        _store_bounded_cache_entry(
+            _GLOBAL_USAGE_CACHE,
+            key,
+            (
+                time.monotonic() + _HOST_SNAPSHOT_CACHE_TTL_SECONDS,
+                value,
+            ),
+            max_entries=_HOST_CACHE_MAX_ENTRIES,
         )
 
 
@@ -538,7 +569,12 @@ def settled_spend(
             diagnostics.append(diagnostic("usage", exc))
         return total
     with _SPEND_CACHE_LOCK:
-        _SPEND_CACHE[key] = (stat_signature(life_dir / "usage.jsonl"), total)
+        _store_bounded_cache_entry(
+            _SPEND_CACHE,
+            key,
+            (stat_signature(life_dir / "usage.jsonl"), total),
+            max_entries=_PROJECT_CACHE_MAX_ENTRIES,
+        )
     return total
 
 

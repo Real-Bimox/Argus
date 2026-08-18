@@ -35,7 +35,10 @@ from argus_skill.adapters.agent_cli_backend import (
 )
 from argus_skill.core.models import RunnerOptions
 from argus_skill.core.token_usage import extract_token_usage
-from argus_skill.providers.copilot_usage import CopilotCallUsage, CopilotModelUsage
+from argus_skill.provider_integrations.copilot_usage import (
+    CopilotCallUsage,
+    CopilotModelUsage,
+)
 
 
 @dataclass
@@ -46,6 +49,8 @@ class FakeCliRunnerOptions:
     full_auto: bool = False
     skip_git_repo_check: bool = False
     sandbox_mode: str | None = None
+    force_safe_mode: bool = False
+    disable_tools: bool = False
     extra_args: list[str] | None = None
     working_dir: str | None = None
     external_interrupt_reason_provider: Any | None = None
@@ -172,6 +177,21 @@ def _make_cli_result(
     )
 
 
+def test_explicit_secret_snapshot_survives_per_call_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "ambient-secret-value")
+    backend = AgentCliBackend(
+        backend="codex",
+        known_secret_values_override=("custom-vault-secret",),
+    )
+
+    backend._refresh_known_secret_values()
+
+    assert "custom-vault-secret" in backend._known_secret_values
+    assert "ambient-secret-value" in backend._known_secret_values
+
+
 def test_run_exec_translates_options_and_result(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -220,6 +240,8 @@ def test_run_exec_translates_options_and_result(
         extra_args=["-c", "config_profile=tb"],
         full_auto=True,
         sandbox_mode="read-only",
+        force_safe_mode=True,
+        disable_tools=True,
         skip_git_repo_check=True,
         dangerous_yolo=False,
     )
@@ -238,6 +260,8 @@ def test_run_exec_translates_options_and_result(
     assert forwarded.extra_args == ["-c", "config_profile=tb"]
     assert forwarded.full_auto is True
     assert forwarded.sandbox_mode == "read-only"
+    assert forwarded.force_safe_mode is True
+    assert forwarded.disable_tools is True
     assert forwarded.skip_git_repo_check is True
     assert forwarded.dangerous_yolo is False
     assert captured["resume_thread_id"] == "thr-prev"
@@ -1288,7 +1312,7 @@ def test_copilot_policy_denial_with_exit_zero_sets_auth_failure(
 
     assert result.fatal_error == "Error: Access denied by policy settings"
     assert backend._auth_failure_detected is True
-    from argus_skill.providers.copilot_guard import copilot_guard_snapshot
+    from argus_skill.provider_integrations.copilot_guard import copilot_guard_snapshot
 
     assert copilot_guard_snapshot()["blocked_until"] > 0
 
@@ -1356,6 +1380,35 @@ def test_run_exec_normalizes_high_attempt_reconnect_notice(
 
     assert result.last_agent_message == "continued after high-attempt reconnect"
     assert result.fatal_error is None
+
+
+def test_failed_manager_timeout_preserves_429_as_provider_cooldown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    backend = AgentCliBackend(backend="codex")
+
+    def fake_run_exec(self: Any, **kwargs: Any) -> AgentRunResult:
+        return _make_cli_result(
+            exit_code=-15,
+            fatal_error=(
+                "External interrupt: Manager turn wall-clock limit reached "
+                "after 300s; yield for review/steering"
+            ),
+            stderr_lines=[
+                "Reconnecting... 37/100 (429 Too Many Requests; retry after 60s)"
+            ],
+        )
+
+    monkeypatch.setattr(backend._runner.__class__, "run_exec", fake_run_exec, raising=True)
+
+    result = backend.run_exec(
+        prompt="classify",
+        options=RunnerOptions(),
+        run_label="manager-classify-grounded",
+    )
+
+    assert "wall-clock limit reached" in str(result.fatal_error)
+    assert result.stop_kind == "provider_cooldown"
 
 
 def test_run_exec_handles_file_not_found(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -24,7 +24,7 @@
     {
       "id": "decision-card",
       "surface": "operator decision",
-      "before": "NO-GO",
+      "before": "REJECTED",
       "after": "Cannot publish this result yet.\nReason: the combined stack has only one timed run, below the required N>=10.\nNext: Argus will run nine more paired measurements; no user action is needed."
     },
     {

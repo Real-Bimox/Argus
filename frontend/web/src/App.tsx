@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { artifactRefreshEventKey, snapshotRefreshEventKey, useProjects, useProjectCosts, useSnapshot, useEventStream, useProjectActions, useArtifacts, useTranscript, useJournal, useGitDiff } from './hooks';
-import { api, type EventMsg } from './api';
+import { api, isConnectionError, type EventMsg } from './api';
 import { TopBar } from './components/TopBar';
 import { EventStream } from './components/EventStream';
 import { ChatBox } from './components/ChatBox';
@@ -55,6 +55,13 @@ import { usePendingReplySession } from './usePendingReplySession';
 import { useProjectSelection } from './useProjectSelection';
 import { useWorkbenchLayout } from './useWorkbenchLayout';
 import { useI18n } from './i18n';
+import { ConnectionProblemBanner } from './components/ConnectionProblemBanner';
+import { DeliveryNotice } from './components/DeliveryNotice';
+import type { DeliveryReceipt } from '../../core/src/types';
+import {
+  notifyDesktopDelivery,
+  subscribeDesktopDelivery,
+} from './lib/desktopBridge';
 
 type Overlay = 'none' | 'palette' | 'help' | 'doctor' | 'config' | 'identity' | 'transcript' | 'inspector' | 'operations';
 interface ActiveMessageRequest {
@@ -81,6 +88,8 @@ export default function App() {
     [projectCostsQ.data?.projects, projectsQ.data?.projects],
   );
   const localCwd = projectsQ.data?.local_cwd ?? '';
+  const connectionError = [projectsQ.error, projectCostsQ.error]
+    .find((error) => isConnectionError(error));
 
   const [overlay, setOverlay] = useState<Overlay>('none');
   const {
@@ -132,11 +141,16 @@ export default function App() {
   const [managerSteps, setManagerSteps] = useState<PhaseStep[]>([]);
   const [managerStartedAt, setManagerStartedAt] = useState(0);
   const [artifactPath, setArtifactPath] = useState<string | null>(null);
+  const [previewPathRequest, setPreviewPathRequest] = useState({ path: '', token: 0 });
+  const [dismissedDeliveryId, setDismissedDeliveryId] = useState('');
   const [taskItemId, setTaskItemId] = useState<string | null>(null);
   const [newDaemonOpen, setNewDaemonOpen] = useState(false);
   const [daemonManageOpen, setDaemonManageOpen] = useState(false);
+  const messageSubmitLockRef = useRef(false);
   const messageRequestRef = useRef<ActiveMessageRequest | null>(null);
   const messageEpochRef = useRef(0);
+  const observedDeliveryRef = useRef<string | null | undefined>(undefined);
+  const deliveryRef = useRef<DeliveryReceipt | null>(null);
   const [notice, setNotice] = useState<UiNotice | null>(null);
   const [eventView, dispatchEventView] = useReducer(eventViewReducer, initialEventViewState);
   const [eventFilter, setEventFilter] = useState<EventViewFilter>('all');
@@ -284,6 +298,46 @@ export default function App() {
     () => snap ? projectMissionView(snap, activityEvents, artifactsQ.data ?? []) : null,
     [activityEvents, artifactsQ.data, snap],
   );
+  const delivery = missionView?.delivery ?? null;
+  deliveryRef.current = delivery;
+  const focusDeliveryPath = useCallback((path: string) => {
+    const target = path.trim();
+    if (!target) {
+      setWorkspaceView('mission');
+      return;
+    }
+    setRightPanelOpen(true);
+    setMobileView('preview');
+    setPreviewPathRequest((current) => ({ path: target, token: current.token + 1 }));
+  }, [setMobileView, setRightPanelOpen, setWorkspaceView]);
+  const openDelivery = useCallback((receipt: DeliveryReceipt) => {
+    focusDeliveryPath(receipt.primary_target?.path ?? '');
+  }, [focusDeliveryPath]);
+  useEffect(() => {
+    if (!snap) return;
+    const id = delivery?.delivery_id || null;
+    const previous = observedDeliveryRef.current;
+    if (previous === undefined) {
+      observedDeliveryRef.current = id;
+      if (delivery) openDelivery(delivery);
+      return;
+    }
+    if (previous === id) return;
+    observedDeliveryRef.current = id;
+    setDismissedDeliveryId('');
+    if (delivery) {
+      openDelivery(delivery);
+      void notifyDesktopDelivery(delivery);
+    }
+  }, [delivery, openDelivery, snap]);
+  useEffect(() => subscribeDesktopDelivery((payload) => {
+    const current = deliveryRef.current;
+    if (current && current.delivery_id === payload.deliveryId) {
+      openDelivery(current);
+    } else if (payload.path) {
+      focusDeliveryPath(payload.path);
+    }
+  }), [focusDeliveryPath, openDelivery]);
   // Keep a ref so the /clear handler can read the current length without being
   // listed as a reactive dependency of commandHandlers.
   const activityEventsRef = useRef(activityEvents);
@@ -373,20 +427,28 @@ export default function App() {
 
   const sendMessage = async (text: string, attachments: File[] = []): Promise<boolean> => {
     const requestSid = activeSid;
-    if (!requestSid || messageRequestRef.current) return false;
+    if (!requestSid || messageSubmitLockRef.current || messageRequestRef.current) return false;
 
-    if (!attachments.length) {
-      const command = await dispatchWebCommand(text, commandHandlers);
-      if (command.kind === 'handled') return true;
-      if (command.kind === 'error') {
-        notify('error', command.message);
-        return false;
+    messageSubmitLockRef.current = true;
+    let requestId: number;
+    let controller: AbortController;
+    try {
+      if (!attachments.length) {
+        const command = await dispatchWebCommand(text, commandHandlers);
+        if (command.kind === 'handled') return true;
+        if (command.kind === 'error') {
+          notify('error', command.message);
+          return false;
+        }
       }
+
+      requestId = ++messageEpochRef.current;
+      controller = new AbortController();
+      messageRequestRef.current = { id: requestId, sid: requestSid, controller };
+    } finally {
+      messageSubmitLockRef.current = false;
     }
 
-    const requestId = ++messageEpochRef.current;
-    const controller = new AbortController();
-    messageRequestRef.current = { id: requestId, sid: requestSid, controller };
     const isCurrent = () => {
       const request = messageRequestRef.current;
       return Boolean(
@@ -636,6 +698,20 @@ export default function App() {
 
   return (
     <div ref={shellRef} className="workbench-shell ambient-canvas flex h-screen h-[100dvh] w-screen max-w-full overflow-hidden text-ink">
+      <ConnectionProblemBanner
+        error={connectionError}
+        onRetry={() => {
+          void projectsQ.refetch();
+          void projectCostsQ.refetch();
+        }}
+      />
+      {delivery && delivery.delivery_id !== dismissedDeliveryId ? (
+        <DeliveryNotice
+          delivery={delivery}
+          onOpen={openDelivery}
+          onDismiss={setDismissedDeliveryId}
+        />
+      ) : null}
       {!kiosk && sidebarOpen ? (
         <button
           type="button"
@@ -709,7 +785,12 @@ export default function App() {
               <div className={`${workspaceView === 'workbench' ? 'hidden' : 'flex'} min-h-0 flex-1 flex-col`}>
                 <GuardianBanner alert={guardianAlert} />
                 {standardWorkspaceView === 'mission' && missionView ? (
-                  <MissionControl view={missionView} gitDiff={gitDiffQ.data} onOpenArtifact={setArtifactPath} />
+                  <MissionControl
+                    view={missionView}
+                    gitDiff={gitDiffQ.data}
+                    onOpenArtifact={setArtifactPath}
+                    onOpenDelivery={openDelivery}
+                  />
                 ) : (
                   <EventStream
                     events={activityEvents}
@@ -720,6 +801,7 @@ export default function App() {
                     filter={eventFilter}
                     query={eventQuery}
                     skipFirst={eventView.skipFirst}
+                    onOpenDelivery={openDelivery}
                   />
                 )}
                 {!kiosk ? (
@@ -802,6 +884,8 @@ export default function App() {
                 onCollapse={() => setRightPanelOpen(false)}
                 missionView={missionView}
                 activityEvents={activityEvents}
+                requestedPath={previewPathRequest.path}
+                requestedPathToken={previewPathRequest.token}
               />
               {!rightPanelOpen ? (
                 <div className="hidden h-12 items-center justify-center border-b border-line/50 text-ink-faint lg:flex">

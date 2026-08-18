@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
 from ..core.models import ReviewDecision
-from ..core.operator_decision import parse_agent_operator_options
+from ..core.role_handoff import parse_engineer_handoff
 from .round_state import (
     EngineerTurnOutcome,
     RoundControl,
@@ -20,18 +20,15 @@ if TYPE_CHECKING:
     from .runner import SupervisedConfig
 
 
+def _control_line(line: str) -> str:
+    text = str(line or "").strip()
+    if len(text) >= 2 and text.startswith("`") and text.endswith("`"):
+        text = text[1:-1].strip()
+    return text
+
+
 def _engineer_operator_question(message: str) -> str:
-    question = ""
-    for line in str(message or "").splitlines():
-        key, separator, value = line.partition("=")
-        if not separator or key.strip().casefold() != "operator_question":
-            continue
-        candidate = value.strip()
-        if candidate.casefold().rstrip(".") in {"", "none", "n/a", "na", "null"}:
-            question = ""
-        else:
-            question = candidate[:500]
-    return question
+    return parse_engineer_handoff(message).operator_question
 
 
 class RoundSelfReviewMixin:
@@ -59,23 +56,22 @@ class RoundSelfReviewMixin:
         else:
             state.no_progress_streak += 1
         milestone_done = any(
-            line.strip().casefold() == "milestone_status=done"
+            _control_line(line).casefold() == "milestone_status=done"
             for line in outcome.engineer_message.splitlines()
         )
-        operator_question = _engineer_operator_question(outcome.engineer_message)
-        if operator_question:
-            operator_options = parse_agent_operator_options(outcome.engineer_message)
+        handoff = parse_engineer_handoff(outcome.engineer_message)
+        if handoff.waits_for_operator:
             return self._settle_round(
                 review=ReviewDecision(
                     status="blocked",
                     reason="Engineer requires an operator-owned decision before continuing.",
                     next_action="Resume after the operator answers the pending question.",
-                    operator_question=operator_question,
-                    operator_options=operator_options,
+                    operator_question=handoff.operator_question,
+                    operator_options=list(handoff.operator_options),
                     review_source="engineer_operator_question",
                     planner_report={
                         "plan_signal": "continue",
-                        "challenge": operator_question,
+                        "challenge": handoff.operator_question,
                         "authority_impact": "operator",
                     },
                 ),
@@ -88,6 +84,8 @@ class RoundSelfReviewMixin:
                 continue_adaptor=continue_adaptor,
                 on_event=on_event,
             )
+        if handoff.next_owner == "engineer":
+            return control_continue_loop()
         if not supervised_config.require_independent_review and successful_work:
             if milestone_done:
                 return self._settle_round(
