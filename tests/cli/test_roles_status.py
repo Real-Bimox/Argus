@@ -525,10 +525,14 @@ def test_activity_does_not_put_assistant_prose_in_role_bar(tmp_path):
     assert role_activity(tmp_path, now=now)["reviewer"].label == "reporting progress"
 
 
-def test_planner_waiting_event_projects_waiting_label(tmp_path):
+@pytest.mark.parametrize(
+    "event_type",
+    ["life.planner.waiting", "life.team.waiting"],
+)
+def test_planner_waiting_event_projects_waiting_label(tmp_path, event_type):
     now = time.time()
     _write_events(tmp_path, [{
-        "type": "life.planner.waiting",
+        "type": event_type,
         "reason": "await remote job completion",
         "ts": now - 1,
     }])

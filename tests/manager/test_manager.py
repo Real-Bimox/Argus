@@ -17,6 +17,7 @@ from argus_skill.manager.domain_author import (
     parse_vertical_decision,
 )
 from argus_skill.skills.stage_machine import ChecklistItem
+from argus_skill.skills.vertical_select import persist_vertical
 from argus_skill.verticals.research.stages import STAGE_ORDER as RESEARCH_STAGES
 
 
@@ -185,6 +186,73 @@ def test_environment_cannot_force_vertical(tmp_path, monkeypatch) -> None:
     assert [call["run_label"] for call in runner.calls] == [
         "manager-classify-fast"
     ]
+
+
+def test_manager_rejects_direct_alias_conflicting_with_persisted_staged_mode(
+    tmp_path,
+) -> None:
+    persist_vertical(tmp_path, "software", workflow_mode="staged")
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "name": "direct",
+        "confidence": 0.95,
+        "execution_task": "repair the repository",
+        "rationale": "bounded repair",
+    })
+
+    with pytest.raises(VerticalDecisionError, match="could not decide"):
+        Manager(project_root=tmp_path, runner=runner).decide_vertical(
+            "repair the repository"
+        )
+
+
+def test_manager_recovers_direct_mode_from_legacy_persisted_alias(
+    tmp_path,
+) -> None:
+    state = tmp_path / "research" / "PIPELINE_STATE.json"
+    state.parent.mkdir(parents=True)
+    state.write_text('{"vertical": "direct"}', encoding="utf-8")
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "name": "software",
+        "confidence": 0.95,
+        "execution_task": "repair the repository",
+        "rationale": "bounded repair",
+    })
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "repair the repository"
+    )
+
+    assert decision.vertical == "software"
+    assert decision.workflow_mode == "direct"
+
+
+def test_manager_recovers_persisted_required_research_target(
+    tmp_path,
+) -> None:
+    persist_vertical(
+        tmp_path,
+        "research",
+        domain="chemistry",
+        workflow_mode="staged",
+        research_target_level="publishable",
+    )
+    runner = _DecisionRunner({
+        "choice": "existing",
+        "name": "research",
+        "workflow_mode": "staged",
+        "confidence": 0.95,
+        "execution_task": "continue the paper",
+        "rationale": "resume the existing research",
+    })
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "continue the paper"
+    )
+
+    assert decision.domain == "chemistry"
+    assert decision.research_target_level == "publishable"
 
 
 def test_manager_without_backend_cannot_be_bypassed_by_vertical_env(

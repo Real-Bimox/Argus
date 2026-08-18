@@ -128,13 +128,26 @@ _LIVE_OWNERSHIP_FIELDS = (
 _MATERIAL_SPEC_FIELDS = (
     "title",
     "objective",
+    "acceptance_check",
+    "role",
+    "non_goals",
     "target",
     "lower_is_better",
     "owns_paths",
     "cwd",
     "deps",
-    "result_shard",
-    "operator_answer",
+    "priority",
+)
+
+_COMPARABLE_LEGACY_SPEC_FIELDS = (
+    "title",
+    "objective",
+    "acceptance_check",
+    "target",
+    "lower_is_better",
+    "owns_paths",
+    "cwd",
+    "deps",
     "priority",
 )
 
@@ -143,32 +156,186 @@ def _material_task_spec(task: dict[str, Any]) -> dict[str, Any]:
     return {
         "title": str(task.get("title", "") or ""),
         "objective": str(task.get("objective", "") or ""),
+        "acceptance_check": str(task.get("acceptance_check", "") or ""),
+        "role": str(task.get("role", "") or ""),
+        "non_goals": list(task.get("non_goals", [])),
         "target": str(task.get("target", "") or ""),
         "lower_is_better": task.get("lower_is_better"),
         "owns_paths": list(task.get("owns_paths", [])),
         "cwd": str(task.get("cwd", "") or ""),
         "deps": list(task.get("deps", [])),
-        "result_shard": str(task.get("result_shard", "") or ""),
-        "operator_answer": str(task.get("operator_answer", "") or ""),
         "priority": int(task.get("priority", 100)),
     }
 
 
-def _has_complete_material_spec(task: dict[str, Any]) -> bool:
-    return all(field in task for field in _MATERIAL_SPEC_FIELDS)
+def _has_comparable_material_spec(task: dict[str, Any]) -> bool:
+    return all(field in task for field in _COMPARABLE_LEGACY_SPEC_FIELDS)
+
+
+def _task_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    tid = spec["task_id"]
+    _task_filename(tid)
+    if not normalized_logical_identifier(tid):
+        raise ValueError(f"invalid task_id for task board path: {tid!r}")
+    if len(tid.encode("utf-8")) > 120:
+        raise ValueError("task_id exceeds 120 UTF-8 bytes")
+    return {
+        "task_id": tid,
+        "title": spec.get("title", ""),
+        "objective": spec.get("objective", ""),
+        "acceptance_check": str(spec.get("acceptance_check", "") or ""),
+        "role": str(spec.get("role", "") or ""),
+        "non_goals": list(spec.get("non_goals", [])),
+        "target": spec.get("target") or tid,
+        "lower_is_better": spec.get("lower_is_better"),
+        "owns_paths": list(spec.get("owns_paths", [])),
+        "cwd": str(spec.get("cwd", "") or ""),
+        "deps": list(spec.get("deps", [])),
+        "state": "pending",
+        "owner": "",
+        "result_shard": spec.get("result_shard", ""),
+        "reason": "",
+        "pending_question": "",
+        "operator_options": [],
+        "operator_answer": str(spec.get("operator_answer", "") or ""),
+        "last_thread_id": "",
+        "claim_ts": 0.0,
+        "heartbeat_ts": 0.0,
+        "attempts": 0,
+        "priority": int(spec.get("priority", 100)),
+    }
+
+
+def canonical_material_specs(specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return validated, stable identity records for one requested board."""
+    records: list[dict[str, Any]] = []
+    seen: dict[str, str] = {}
+    for spec in specs:
+        task = _task_from_spec(spec)
+        task_id = task["task_id"]
+        identity = normalized_logical_identifier(task_id)
+        prior_id = seen.get(identity)
+        if prior_id is not None:
+            raise ValueError(
+                "duplicate task_id under normalized identity: "
+                f"{task_id!r} vs {prior_id!r}"
+            )
+        seen[identity] = task_id
+        records.append({
+            "task_id": task_id,
+            **_material_task_spec(task),
+        })
+    records.sort(
+        key=lambda task: (
+            normalized_logical_identifier(task["task_id"]),
+            task["task_id"],
+        )
+    )
+    return records
+
+
+def _validated_form_tasks(
+    root: Path,
+    specs: list[dict[str, Any]],
+) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
+    existing_identities: dict[str, str] = {}
+    for task in _load_all(root):
+        task_id = str(task.get("task_id") or "")
+        identity = normalized_logical_identifier(task_id)
+        if not identity:
+            continue
+        prior_id = existing_identities.get(identity)
+        if prior_id is not None and prior_id != task_id:
+            raise ValueError(
+                "existing task board contains conflicting normalized task ids: "
+                f"{prior_id!r} vs {task_id!r}"
+            )
+        existing_identities.setdefault(identity, task_id)
+
+    validated: list[tuple[dict[str, Any], dict[str, Any] | None]] = []
+    batch_identities: dict[str, str] = {}
+    for spec in specs:
+        task = _task_from_spec(spec)
+        tid = task["task_id"]
+        identity = normalized_logical_identifier(tid)
+        prior_batch_id = batch_identities.get(identity)
+        if prior_batch_id is not None:
+            raise ValueError(
+                "duplicate task_id under normalized identity: "
+                f"{tid!r} vs {prior_batch_id!r}"
+            )
+        batch_identities[identity] = tid
+        existing_id = existing_identities.get(identity)
+        if existing_id is not None and existing_id != tid:
+            raise ValueError(
+                "task_id conflicts with an existing task under normalized identity: "
+                f"{tid!r} vs {existing_id!r}"
+            )
+        prior = _read_task(root, tid)
+        if (
+            isinstance(prior, dict)
+            and prior.get("state") in {"claimed", "running", "blocked"}
+            and _has_comparable_material_spec(prior)
+            and _material_task_spec(prior) != _material_task_spec(task)
+        ):
+            raise ValueError(
+                "cannot reuse live task identity with a materially changed spec: "
+                f"{tid!r}"
+            )
+        validated.append((task, prior))
+    return validated
+
+
+def material_specs_match(
+    root: Path,
+    specs: list[dict[str, Any]],
+    *,
+    allow_subset: bool = False,
+    require_pending: bool = False,
+) -> bool:
+    """Return whether durable material specs match the requested board."""
+    with _store.locked(_lock(root)):
+        try:
+            expected = canonical_material_specs(specs)
+        except (KeyError, TypeError, ValueError):
+            return False
+        persisted = _load_all(root)
+        if (
+            len(persisted) > len(expected)
+            or (not allow_subset and len(persisted) != len(expected))
+        ):
+            return False
+        expected_by_id = {
+            normalized_logical_identifier(task["task_id"]): task
+            for task in expected
+        }
+        persisted_by_id = {
+            normalized_logical_identifier(task.get("task_id")): task
+            for task in persisted
+        }
+        if len(persisted_by_id) != len(persisted):
+            return False
+        for identity, prior in persisted_by_id.items():
+            task = expected_by_id.get(identity)
+            if (
+                task is None
+                or prior.get("task_id") != task["task_id"]
+                or (require_pending and prior.get("state") != "pending")
+                or not _has_comparable_material_spec(prior)
+                or _material_task_spec(prior) != {
+                    key: task[key] for key in _MATERIAL_SPEC_FIELDS
+                }
+            ):
+                return False
+        return True
 
 
 def form(root: Path, tasks: list[dict[str, Any]]) -> None:
     """Create (or refresh) the task records for a team from partial specs.
 
-    Idempotent over an ACTIVE campaign: when a task record already exists and a
-    teammate is mid-flight or waiting on it (``claimed``/``running``/``blocked``), its
-    ownership/liveness fields are PRESERVED and only the static spec fields
-    (title/objective/acceptance_check/target/priority/...) are refreshed.
-    Re-running ``form`` on a live fleet therefore never de-owns a task a Curator
-    teammate is working — which would otherwise defeat the pool's double-spawn
-    guard. Takes the board lock so the read-merge can't race a concurrent
-    claim/heartbeat/reassign.
+    Re-forming an active task preserves its ownership only when its complete
+    static specification is unchanged. The full batch is validated before any
+    record is written so a rejected formation cannot partially mutate the board.
 
     The record is rebuilt field by field rather than copied from the spec, and
     what that buys is lifecycle integrity: ``state``, ``owner``, ``claim_ts``,
@@ -179,99 +346,15 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
     to anything the board itself acts on is not.
     """
     with _store.locked(_lock(root)):
-        existing = _load_all(root)
-        seen_identities: dict[str, str] = {}
-        for task in existing:
-            task_id = str(task.get("task_id") or "")
-            identity = normalized_logical_identifier(task_id)
-            if identity:
-                prior_identity = seen_identities.get(identity)
-                if prior_identity is not None and prior_identity != task_id:
-                    raise ValueError(
-                        "existing task board contains conflicting normalized task ids: "
-                        f"{prior_identity!r} vs {task_id!r}"
-                    )
-                seen_identities.setdefault(identity, task_id)
-        for spec in tasks:
-            tid = spec["task_id"]
-            identity = normalized_logical_identifier(tid)
-            if not identity:
-                raise ValueError(f"invalid task_id for task board path: {tid!r}")
-            prior_identity = seen_identities.get(identity)
-            if prior_identity is not None and prior_identity != tid:
-                raise ValueError(
-                    "task_id conflicts with an existing task under normalized identity: "
-                    f"{tid!r} vs {prior_identity!r}"
-                )
-            if identity in seen_identities and seen_identities[identity] == tid:
-                pass
-            elif identity in seen_identities:
-                raise ValueError("duplicate task_id under normalized identity")
-            else:
-                seen_identities[identity] = tid
-            task = {
-                "task_id": tid,
-                "title": spec.get("title", ""),
-                "objective": spec.get("objective", ""),
-                # This task's done condition, carried verbatim and never read
-                # here. Every other mission in this runtime has one — the
-                # Planner writes it, the Manager's DAG carries it, the
-                # supervisor puts it in front of the Reviewer — and a board task
-                # was the single mission shape with no way to state one. It is
-                # the field a per-mission hook consults first
-                # (``verticals._base.vertical_mission_prelude`` is handed this
-                # record as the mission), so with no slot for it, a dispatched
-                # teammate could only be briefed off prose meant for a human.
-                # The board neither parses nor matches on the string: what a
-                # well-formed one says is the vertical's business, and stays
-                # there.
-                "acceptance_check": str(spec.get("acceptance_check", "") or ""),
-                # The target this task contributes to. Several tasks (breadth + depth
-                # re-forms) can share one target, so the leaderboard aggregates by
-                # target, not task_id. Defaults to task_id.
-                "target": spec.get("target") or tid,
-                # Optimization direction for this target's metric, for the leaderboard:
-                # True = lower is better (latency / error-count / loss), False = higher
-                # (a speedup / score). None (default) → the leaderboard's global default.
-                "lower_is_better": spec.get("lower_is_better"),
-                "owns_paths": list(spec.get("owns_paths", [])),
-                # Per-task working directory. When set, the Curator spawns this task's
-                # teammate in its OWN dir, so N tasks can be independent project
-                # workdirs (e.g. one per kernel) instead of all sharing the campaign
-                # cwd. Empty → fall back to the campaign cwd (legacy behaviour).
-                "cwd": str(spec.get("cwd", "") or ""),
-                "deps": list(spec.get("deps", [])),
-                "state": "pending",
-                "owner": "",
-                "result_shard": spec.get("result_shard", ""),
-                "reason": "",
-                "pending_question": "",
-                "operator_options": [],
-                "operator_answer": str(spec.get("operator_answer", "") or ""),
-                "last_thread_id": "",
-                "claim_ts": 0.0,
-                "heartbeat_ts": 0.0,
-                "attempts": 0,
-                "priority": int(spec.get("priority", 100)),
-            }
-            prior = _read_task(root, tid)
-            if prior is None and len(str(tid).encode("utf-8")) > 120:
-                raise ValueError("task_id exceeds 120 UTF-8 bytes")
+        for task, prior in _validated_form_tasks(root, tasks):
+            tid = task["task_id"]
             if isinstance(prior, dict) and prior.get("state") in (
                 "claimed",
                 "running",
                 "blocked",
             ):
-                if (
-                    _has_complete_material_spec(prior)
-                    and _material_task_spec(prior) != _material_task_spec(task)
-                ):
-                    raise ValueError(
-                        "cannot reuse live task identity with a materially changed spec: "
-                        f"{tid!r}"
-                    )
                 # A teammate is mid-flight on this task — keep its ownership and
-                # only refresh the static spec fields rebuilt above.
+                # accept only the exact static spec rebuilt above.
                 for field in _LIVE_OWNERSHIP_FIELDS:
                     if field in prior:
                         task[field] = prior[field]

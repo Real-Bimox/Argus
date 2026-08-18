@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from ..team import pool, registry, roster, task_board
+from ..team import formation, pool, roster, task_board
 
 
 def _load_tasks(path: Path) -> list[dict]:
@@ -42,24 +42,14 @@ def cmd_form(a: argparse.Namespace) -> int:
 
     root = Path(a.root)
     tasks = _load_tasks(Path(a.tasks))
-    roster.create(
-        root,
+    formation.form_team(
+        project_root=Path(project_root),
+        root=root,
         team_id=a.team_id,
         mission=a.mission,
         lead=a.lead,
-        now=time.time(),
-    )
-    task_board.form(root, tasks)
-    # Publish a new campaign paused, so the lead's explicit pool-set cannot race
-    # the Curator's default-width refill. Re-forming preserves existing intent.
-    if not (root / "pool.json").exists():
-        pool.update(root, width=0, state="running")
-    # The registry marker is the sole handoff to the resident Curator.
-    registry.write_marker(
-        Path(project_root),
-        team_id=a.team_id,
-        team_root=root,
         cwd=(a.cwd or os.getcwd()),
+        tasks=tasks,
         now=time.time(),
     )
     return 0

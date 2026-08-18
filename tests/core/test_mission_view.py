@@ -16,6 +16,20 @@ def emit(root: Path, event_type: str, ts: float, **payload) -> dict:
     return update_mission_view_event(root, {"type": event_type, "ts": ts, **payload})
 
 
+def test_legacy_team_waiting_projects_as_planner_waiting(tmp_path: Path) -> None:
+    view = emit(
+        tmp_path,
+        "life.team.waiting",
+        1,
+        reason="await external worker",
+    )
+
+    planner = next(role for role in view["roles"] if role["role"] == "planner")
+    assert planner["status"] == "waiting"
+    assert planner["label"] == "Waiting on external work"
+    assert view["timeline"][-1]["title"] == "Planner waiting"
+
+
 def test_manager_handoff_refreshes_stage_after_objective_update(tmp_path: Path) -> None:
     emit(
         tmp_path,

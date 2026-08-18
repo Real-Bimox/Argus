@@ -381,6 +381,22 @@ class _VerticalDecisionMixin:
             or ""
         ).strip().lower()
         known_verticals = list(vertical_select.available_verticals())
+        persisted_vertical = (
+            vertical_select.resolve_vertical_if_decided(self.project_root) or ""
+        )
+        persisted_workflow_mode = (
+            vertical_select.resolve_workflow_mode(self.project_root)
+            if persisted_vertical
+            else ""
+        )
+        persisted_domain = (
+            vertical_select.resolve_domain_if_decided(self.project_root) or ""
+        )
+        from ..core.research_contract import resolve_research_target_level
+
+        persisted_research_target_level = (
+            resolve_research_target_level(self.project_root) or ""
+        )
 
         def finalize(decision: VerticalDecision) -> VerticalDecision:
             if decision.choice == "existing":
@@ -466,6 +482,12 @@ class _VerticalDecisionMixin:
                     known_domains=list(BUILTIN_DOMAINS),
                     existing_data_domains=all_domain_names,
                     research_target_verticals=research_target_verticals,
+                    persisted_vertical=persisted_vertical,
+                    persisted_workflow_mode=persisted_workflow_mode,
+                    persisted_domain=persisted_domain,
+                    persisted_research_target_level=(
+                        persisted_research_target_level
+                    ),
                 )
                 if (
                     fast_route is not None
@@ -548,6 +570,12 @@ class _VerticalDecisionMixin:
                 existing_data_domains=all_domain_names,
                 research_target_verticals=research_target_verticals,
                 default_execution_task="" if contextual_task else task.strip(),
+                persisted_vertical=persisted_vertical,
+                persisted_workflow_mode=persisted_workflow_mode,
+                persisted_domain=persisted_domain,
+                persisted_research_target_level=(
+                    persisted_research_target_level
+                ),
             )
             if route_decision is None:
                 raise VerticalDecisionError(

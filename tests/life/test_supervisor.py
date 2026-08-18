@@ -116,6 +116,47 @@ class _MaintenanceRunner:
         return outcome
 
 
+def test_crash_after_mission_claim_requeues_audit_and_reemits_started(
+    tmp_path,
+) -> None:
+    memory = LifeMemory.open(tmp_path / "life")
+    item = memory.backlog.add(BacklogItem.new(
+        title="recover claimed mission",
+        objective="finish after restart",
+        tags=["scope:bounded"],
+        manager_decision={
+            "routed": True,
+            "vertical": "software",
+            "workflow_mode": "direct",
+        },
+    ))
+    claimed = memory.backlog.claim_next()
+    assert claimed is not None and claimed.id == item.id
+    assert claimed.status == "running"
+
+    sink = _RecordingSink(memory.root)
+    restarted = LifeSupervisor(
+        memory=memory,
+        runner=_MaintenanceRunner(),
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=tmp_path,
+            artifact_root=tmp_path,
+        ),
+    )
+
+    assert sink.events[0]["type"] == "life.mission.requeued"
+    assert sink.events[0]["item_id"] == item.id
+    restarted._vertical_resolved = True
+    restarted.tick()
+    started = [
+        event for event in sink.events
+        if event["type"] == EventType.LIFE_MISSION_STARTED
+    ]
+    assert len(started) == 1
+    assert started[0]["item_id"] == item.id
+
+
 def test_framework_maintenance_uses_private_worktree_and_review(
     tmp_path,
 ) -> None:
