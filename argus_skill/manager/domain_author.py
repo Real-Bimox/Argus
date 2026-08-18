@@ -144,6 +144,12 @@ def _sluggify_name(raw: object) -> str:
     return s
 
 
+def _canonical_existing_vertical(value: object) -> tuple[str, bool]:
+    raw_name = _sluggify_name(value)
+    legacy_direct = raw_name == "direct"
+    return ("software" if legacy_direct else raw_name, legacy_direct)
+
+
 def _dedupe_name(name: str, taken: set[str]) -> str | None:
     """Return ``name`` or a numeric-suffixed variant not in ``taken``; ``None`` if
     it cannot be made unique within a small bound."""
@@ -331,9 +337,9 @@ def parse_fast_vertical_decision(
         )
     if choice != "existing":
         return None
-    raw_name = _sluggify_name(obj.get("vertical") or obj.get("name"))
-    legacy_direct = raw_name == "direct"
-    name = "software" if legacy_direct else raw_name
+    name, legacy_direct = _canonical_existing_vertical(
+        obj.get("vertical") or obj.get("name")
+    )
     known = {str(v).strip().lower() for v in known_verticals}
     known |= {str(v).strip().lower() for v in existing_data_domains}
     if not name or name not in known:
@@ -351,6 +357,8 @@ def parse_fast_vertical_decision(
     if not workflow_mode:
         workflow_mode = "direct" if legacy_direct else "staged"
     if workflow_mode not in {"direct", "staged"}:
+        return None
+    if legacy_direct and workflow_mode != "direct":
         return None
     targeted = {
         str(value or "").strip().lower()
@@ -458,15 +466,17 @@ def parse_vertical_decision(
         obj.get("live_view") is None or parsed_live_view is not None
     )
     choice = str(obj.get("choice") or "").strip().lower()
-    raw_vertical_name = _sluggify_name(obj.get("vertical") or obj.get("name"))
-    legacy_direct = raw_vertical_name == "direct"
+    name, legacy_direct = _canonical_existing_vertical(
+        obj.get("vertical") or obj.get("name")
+    )
     workflow_mode = str(obj.get("workflow_mode") or "").strip().lower()
     if not workflow_mode:
         workflow_mode = "direct" if legacy_direct else "staged"
     if workflow_mode not in {"direct", "staged"}:
         return None
+    if legacy_direct and workflow_mode != "direct":
+        return None
     if choice == "existing":
-        name = "software" if legacy_direct else raw_vertical_name
         domain = _sluggify_name(obj.get("domain"))
         target_level = str(obj.get("research_target_level") or "").strip().lower()
         known = {str(v).strip().lower() for v in known_verticals}

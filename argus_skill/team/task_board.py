@@ -13,6 +13,7 @@ from typing import Any
 
 from ..core.portable_filename import (
     legacy_hashed_filename_components,
+    normalized_logical_identifier,
     portable_filename_component,
 )
 from . import _store
@@ -124,6 +125,38 @@ _LIVE_OWNERSHIP_FIELDS = (
     "last_thread_id",
 )
 
+_MATERIAL_SPEC_FIELDS = (
+    "title",
+    "objective",
+    "target",
+    "lower_is_better",
+    "owns_paths",
+    "cwd",
+    "deps",
+    "result_shard",
+    "operator_answer",
+    "priority",
+)
+
+
+def _material_task_spec(task: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": str(task.get("title", "") or ""),
+        "objective": str(task.get("objective", "") or ""),
+        "target": str(task.get("target", "") or ""),
+        "lower_is_better": task.get("lower_is_better"),
+        "owns_paths": list(task.get("owns_paths", [])),
+        "cwd": str(task.get("cwd", "") or ""),
+        "deps": list(task.get("deps", [])),
+        "result_shard": str(task.get("result_shard", "") or ""),
+        "operator_answer": str(task.get("operator_answer", "") or ""),
+        "priority": int(task.get("priority", 100)),
+    }
+
+
+def _has_complete_material_spec(task: dict[str, Any]) -> bool:
+    return all(field in task for field in _MATERIAL_SPEC_FIELDS)
+
 
 def form(root: Path, tasks: list[dict[str, Any]]) -> None:
     """Create (or refresh) the task records for a team from partial specs.
@@ -146,8 +179,36 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
     to anything the board itself acts on is not.
     """
     with _store.locked(_lock(root)):
+        existing = _load_all(root)
+        seen_identities: dict[str, str] = {}
+        for task in existing:
+            task_id = str(task.get("task_id") or "")
+            identity = normalized_logical_identifier(task_id)
+            if identity:
+                prior_identity = seen_identities.get(identity)
+                if prior_identity is not None and prior_identity != task_id:
+                    raise ValueError(
+                        "existing task board contains conflicting normalized task ids: "
+                        f"{prior_identity!r} vs {task_id!r}"
+                    )
+                seen_identities.setdefault(identity, task_id)
         for spec in tasks:
             tid = spec["task_id"]
+            identity = normalized_logical_identifier(tid)
+            if not identity:
+                raise ValueError(f"invalid task_id for task board path: {tid!r}")
+            prior_identity = seen_identities.get(identity)
+            if prior_identity is not None and prior_identity != tid:
+                raise ValueError(
+                    "task_id conflicts with an existing task under normalized identity: "
+                    f"{tid!r} vs {prior_identity!r}"
+                )
+            if identity in seen_identities and seen_identities[identity] == tid:
+                pass
+            elif identity in seen_identities:
+                raise ValueError("duplicate task_id under normalized identity")
+            else:
+                seen_identities[identity] = tid
             task = {
                 "task_id": tid,
                 "title": spec.get("title", ""),
@@ -201,6 +262,14 @@ def form(root: Path, tasks: list[dict[str, Any]]) -> None:
                 "running",
                 "blocked",
             ):
+                if (
+                    _has_complete_material_spec(prior)
+                    and _material_task_spec(prior) != _material_task_spec(task)
+                ):
+                    raise ValueError(
+                        "cannot reuse live task identity with a materially changed spec: "
+                        f"{tid!r}"
+                    )
                 # A teammate is mid-flight on this task — keep its ownership and
                 # only refresh the static spec fields rebuilt above.
                 for field in _LIVE_OWNERSHIP_FIELDS:

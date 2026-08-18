@@ -152,6 +152,7 @@ def test_unknown_vertical_events_remain_extensible_and_legacy_aliases_are_explic
     assert unknown.valid is True
     assert unknown.known is False
     assert canonical_event_type("mission.started") == "life.mission.started"
+    assert canonical_event_type("life.team.waiting") == "life.planner.waiting"
     aliased = normalize_event_envelope({"type": "mission.started"})
     assert aliased["canonical_type"] == "life.mission.started"
 

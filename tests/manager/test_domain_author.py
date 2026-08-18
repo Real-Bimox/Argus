@@ -174,6 +174,21 @@ def test_fast_vertical_parser_accepts_confident_existing_route() -> None:
     assert route.confidence == 0.94
 
 
+def test_fast_vertical_parser_rejects_legacy_direct_alias_with_staged_workflow() -> None:
+    route = parse_fast_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "direct",
+            "workflow_mode": "staged",
+            "confidence": 0.94,
+            "rationale": "conflicting alias",
+        }),
+        known_verticals=VERTICALS,
+    )
+
+    assert route is None
+
+
 def test_fast_vertical_parser_accepts_research_with_chemistry_domain() -> None:
     route = parse_fast_vertical_decision(
         json.dumps({
@@ -207,6 +222,35 @@ def test_vertical_parser_rejects_domain_on_non_research_workflow() -> None:
         known_verticals=VERTICALS,
         known_domains=BUILTIN_DOMAINS,
         default_execution_task="repair chemistry package",
+    )
+
+    assert decision is None
+
+
+def test_vertical_parser_defaults_legacy_direct_alias_to_direct_workflow() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "direct",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
+    )
+
+    assert decision is not None
+    assert decision.vertical == "software"
+    assert decision.workflow_mode == "direct"
+
+
+def test_vertical_parser_rejects_legacy_direct_alias_with_staged_workflow() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "vertical": "direct",
+            "workflow_mode": "staged",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
     )
 
     assert decision is None

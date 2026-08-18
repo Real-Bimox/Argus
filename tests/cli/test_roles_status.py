@@ -525,6 +525,20 @@ def test_activity_does_not_put_assistant_prose_in_role_bar(tmp_path):
     assert role_activity(tmp_path, now=now)["reviewer"].label == "reporting progress"
 
 
+def test_planner_waiting_event_projects_waiting_label(tmp_path):
+    now = time.time()
+    _write_events(tmp_path, [{
+        "type": "life.planner.waiting",
+        "reason": "await remote job completion",
+        "ts": now - 1,
+    }])
+
+    planner = role_activity(tmp_path, now=now)["planner"]
+    assert planner.label == "waiting on external work"
+    assert planner.status == "waiting"
+    assert planner.active is False
+
+
 def test_completed_manager_reply_is_idle_immediately(tmp_path):
     now = time.time()
     _write_events(tmp_path, [{

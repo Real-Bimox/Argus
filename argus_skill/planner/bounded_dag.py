@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from ..core.portable_filename import normalized_logical_identifier
 from ..core.models import RunnerOptions
 from ..core.run_gateway import run_exec as gateway_run_exec
 
@@ -104,7 +105,7 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
     if not reason or not isinstance(rows, list) or not rows:
         raise ValueError("planner output has no bounded task batch")
     nodes: list[BoundedDagNode] = []
-    keys: set[str] = set()
+    identity_to_key: dict[str, str] = {}
     for row in rows:
         if not isinstance(row, dict):
             raise ValueError("planner task is not an object")
@@ -112,16 +113,31 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
         title = str(row.get("title") or "").strip()
         objective = str(row.get("objective") or "").strip()
         raw_deps = row.get("deps")
-        if not key or key in keys or not title or not objective or not isinstance(raw_deps, list):
+        if not key or not title or not objective or not isinstance(raw_deps, list):
             raise ValueError("planner task fields are invalid or duplicate")
-        deps = tuple(dict.fromkeys(str(dep).strip() for dep in raw_deps if str(dep).strip()))
-        if key in deps:
+        key_identity = normalized_logical_identifier(key)
+        if not key_identity:
+            raise ValueError("planner task fields are invalid or duplicate")
+        if key_identity in identity_to_key:
+            raise ValueError("planner task fields are invalid or duplicate")
+        deps: list[str] = []
+        seen_dep_identities: set[str] = set()
+        for raw_dep in raw_deps:
+            dep = str(raw_dep).strip()
+            if not dep:
+                continue
+            dep_identity = normalized_logical_identifier(dep)
+            if not dep_identity or dep_identity in seen_dep_identities:
+                continue
+            seen_dep_identities.add(dep_identity)
+            deps.append(dep)
+        if key_identity in seen_dep_identities:
             raise ValueError(f"planner task {key!r} depends on itself")
-        keys.add(key)
+        identity_to_key[key_identity] = key
         nodes.append(
             BoundedDagNode(
                 key=key,
-                deps=deps,
+                deps=tuple(deps),
                 title=title,
                 objective=objective,
                 acceptance_check=str(row.get("acceptance_check") or "").strip(),
@@ -133,7 +149,14 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
             )
         )
     nodes = [
-        replace(node, deps=tuple(dep for dep in node.deps if dep in keys))
+        replace(
+            node,
+            deps=tuple(
+                identity_to_key[dep_identity]
+                for dep in node.deps
+                if (dep_identity := normalized_logical_identifier(dep)) in identity_to_key
+            ),
+        )
         for node in nodes
     ]
     remaining = {node.key: set(node.deps) for node in nodes}

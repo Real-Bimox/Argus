@@ -168,6 +168,22 @@ def test_bounded_planner_rejects_cycle(tmp_path) -> None:
     assert "cycle" in plan.error
 
 
+def test_bounded_planner_rejects_unicode_equivalent_duplicate_keys(tmp_path) -> None:
+    runner = _Runner(
+        {
+            "reason": "bad graph",
+            "tasks": [
+                {"key": "café", "deps": [], "title": "A", "objective": "do A"},
+                {"key": "cafe\u0301", "deps": [], "title": "B", "objective": "do B"},
+            ],
+        }
+    )
+
+    plan = plan_bounded_dag(runner, "x", workdir=tmp_path)
+
+    assert "duplicate" in plan.error
+
+
 def test_bounded_planner_accepts_minimal_task_without_control_fields(tmp_path) -> None:
     plan = plan_bounded_dag(
         _RawRunner(
@@ -184,6 +200,23 @@ def test_bounded_planner_accepts_minimal_task_without_control_fields(tmp_path) -
     assert plan.error == ""
     assert plan.tasks[0].title == "A"
     assert not hasattr(plan.tasks[0], "require_independent_review")
+
+
+def test_bounded_planner_resolves_casefolded_dep_to_canonical_key(tmp_path) -> None:
+    runner = _Runner(
+        {
+            "reason": "normalized dep",
+            "tasks": [
+                {"key": "Parent", "deps": [], "title": "A", "objective": "do A"},
+                {"key": "child", "deps": ["parent"], "title": "B", "objective": "do B"},
+            ],
+        }
+    )
+
+    plan = plan_bounded_dag(runner, "x", workdir=tmp_path)
+
+    assert plan.error == ""
+    assert plan.tasks[1].deps == ("Parent",)
 
 
 def test_bounded_planner_does_not_cap_node_count(tmp_path) -> None:
