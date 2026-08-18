@@ -11,9 +11,11 @@ Review an experiment plan as a senior ML researcher would before approving compu
 - You are approving a GPU/API budget request, not reviewing a finished paper.
 - A bad plan wastes weeks of compute. Be strict on design, lenient on prose.
 - If the plan would produce unconvincing evidence even if executed perfectly, reject it.
-- Publishable/doctoral plans require a nontrivial technical core, verified
-  originality, claim-relevant formal/causal grounding, and field-level
-  consequence; feasibility cannot rescue a shallow idea.
+- Treat the selected idea, contribution case, and frozen falsifiable premise as
+  upstream inputs. Do not re-rank its novelty, significance, or overall
+  reasonableness here. Review whether the proposed experiment gives that idea a
+  valid, fair, executable test. If the plan silently changes the method or
+  premise, return it upstream rather than re-selecting the idea in this review.
 
 ## Review dimensions
 
@@ -21,12 +23,13 @@ Score each 1–5. Score 3+ on all applicable dimensions = pass. Dimensions 1–5
 always apply; dimension 6 (RL config sanity) applies only to RL/preference
 post-training plans — omit `rl_config_sanity` from the output for non-RL plans.
 
-1. **Method competitiveness**
-   - Is the proposed method, system, theorem, diagnostic, characterization,
-     evaluation, or data contribution non-trivial for the target venue?
+1. **Method and hypothesis fidelity**
+   - Does the plan implement the selected method and test its frozen binding
+     premise without silently substituting an easier claim?
    - Does the plan use resources appropriate to the question rather than merely
      maximizing available compute?
-   - Is the contribution or research insight clearly differentiated from prior work?
+   - Do the primary measurement and controls distinguish the mechanism-specific
+     prediction from the strongest alternative explanation?
 
 2. **Baseline strength**
    - Does the plan include the strongest relevant published, standard, or system

@@ -7,10 +7,10 @@ description: "Given IDEA_CANDIDATES.md from idea-discovery, rank candidates and 
 
 > Adapted from ARIS `idea-creator` skill (MIT, © 2026 wanshuiyin).
 
-`idea-discovery` produces candidates; `idea-creator` decides which deserve real
-budget. The probe budget is set by the operator and project, not a universal
-wall-clock threshold. The reviewer rules on whether the resulting positive,
-negative, diagnostic, or boundary evidence is scientifically valuable.
+`idea-discovery` produces candidates; `idea-creator` first decides which ideas
+are reasonable enough to deserve real budget, then probes only those selected
+survivors. The probe budget is set by the operator and project, not a universal
+wall-clock threshold.
 
 For publishable/doctoral selection, the ambition standard is a nontrivial
 technical core, verified originality, claim-relevant formal/causal grounding,
@@ -66,12 +66,25 @@ recommended `run` merely because it is cheap. Reject decorative mathematics:
 the foundation score concerns real derivations or mechanism-specific
 predictions, not notation density.
 
+Complete this selection from literature, formal/causal analysis, closest-method
+reduction attempts, and feasibility evidence before designing or executing any
+probe. Probe outcomes must not be used to retroactively make an otherwise
+unreasonable idea selectable. A `queue` or `drop` candidate receives no model,
+API, or GPU calls; revise its method case or reject it first. A `run`
+recommendation locks that candidate's method-reasonableness case for probing; it
+does not yet choose the single final paper thesis.
+
 ### Step 2 — design probes for the top candidates
 
-For each `run`-recommended candidate, write a **resource-adaptive probe spec**.
+Only after Step 1 has selected a candidate as `run`, write its
+**resource-adaptive probe spec**.
 The probe should cheaply test the binding premise or characterize the proposed
 phenomenon against a strong reference. Do not force a fixed duration or require
 an improvement when a clean null/boundary result would answer the question.
+Instantiate the Planner-authored evidence contract: Engineer may choose
+implementation details such as batching, caching, file layout, and safe
+scheduling, but must not silently change the frozen premise, strongest
+comparison, primary observation, interpretation rule, or budget.
 
 ```markdown
 ## Pilot P-{{id}}: <one-line goal>
@@ -107,12 +120,20 @@ idea from whichever serial probe happened to finish first.
 Each pilot writes:
 - `experiments/pilot-{{id}}/RESULTS.md` — measurement summary
 - `experiments/pilot-{{id}}/VERDICT.md` — reviewer-written
-  commit/kill verdict with evidence
+  engineering-validity and hypothesis-evidence verdict
+- the existing `research/ideas/<id>/EVIDENCE.json` four-state record, keeping
+  execution validity separate from `untested` / `inconclusive` / `supported` /
+  `refuted`
 
 ### Step 5 — commit to one candidate
 
-The reviewer reads all pilot verdicts and selects ONE candidate to
-build the full experiment plan around. That selection goes into
+The Planner reads all pilot verdicts and chooses which already-selected
+candidate has the strongest empirical case for a full experiment plan. This
+does not reopen the Step 1 method-reasonableness decision. If implementation
+changed the method or the probe exposed a broken premise in that selection
+case, return the candidate upstream for revision instead of asking the
+experiment reviewer to re-select it. This is where one final thesis is chosen
+from the probe-eligible candidates. The chosen candidate goes into
 `research/EXPERIMENT_PLAN.md` (input to the `plan` stage).
 
 ## Anti-patterns
@@ -130,5 +151,6 @@ build the full experiment plan around. That selection goes into
 
 Writes `research/IDEA_RANKING.json`,
 `experiments/pilot-*/{RESULTS,VERDICT}.md`, and updates
-`research/IDEA_CANDIDATES.md` with `pilot_status` per candidate. The
-final commit is recorded in `research/EXPERIMENT_PLAN.md`.
+`research/IDEA_CANDIDATES.md` with `pilot_status` plus
+`research/ideas/<id>/EVIDENCE.json` per probed candidate. The final commit is
+recorded in `research/EXPERIMENT_PLAN.md`.

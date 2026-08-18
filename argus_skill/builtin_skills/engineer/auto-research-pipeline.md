@@ -184,11 +184,15 @@ that would overturn the claim.
   Agent behavior.
 - Reuse a completed independent route portfolio; do not start another breadth
   sweep under new route names.
-- Validate each finalist in one decision-sized milestone that owns the nearest
-  source grounding, prior-art attack, minimal mechanism, cheapest faithful probe,
-  and keep/reject comparison. Run independent finalist probes concurrently.
-  Do not serialize "repair research canon," "build smoke harness," and "judge
-  smoke" into separate missions when one coherent milestone can do them.
+- Validate each finalist in one decision-sized milestone, but preserve the
+  dependency inside that milestone: first complete the nearest-source grounding,
+  prior-art attack, technical/formal validity check, and independent selection
+  decision; only a selected survivor may proceed to probe design and execution.
+  A rejected or still-unresolved idea must not consume model, API, or GPU calls.
+  Run independent finalists concurrently, while keeping selection-before-probe
+  ordering within each finalist. Do not serialize "repair research canon,"
+  "build smoke harness," and "judge smoke" into separate Planner missions when
+  one coherent milestone can own the ordered conditional branch.
 - Before using a comparative probe for keep/reject, verify that it can distinguish
   the candidate from the baseline: the tasks exercise the proposed mechanism,
   the baseline has metric headroom, and the cases/repeats can resolve the

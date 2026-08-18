@@ -85,7 +85,11 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "The selected thesis has a nontrivial technical core, verified "
                 "originality, claim-relevant formal or causal predictions, field-level "
                 "consequence, falsifier, and justified budget. Reject prompt/schema/"
-                "wrapper/scale variants, decorative math, or feasibility rescue."
+                "wrapper/scale variants, decorative math, or feasibility rescue. "
+                "Before any probe is designed or executed, lock the method-reasonableness "
+                "case for every candidate admitted to probing. The final single thesis "
+                "may be chosen among those candidates after their probe evidence is "
+                "reviewed."
             ),
             evidence_hint=(
                 "research/RESEARCH_BRIEF.md and research/ideation/{routes,debates}/"
@@ -94,8 +98,9 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.signal_derisk",
             statement=(
-                "Before leaving research, the locked idea survives the cheapest REAL "
-                "falsification probe that tests its binding premise on this machine. "
+                "Only after research.thesis has locked a candidate's "
+                "method-reasonableness case, run the cheapest REAL falsification probe "
+                "that tests its binding premise on this machine. "
                 "The Planner authors the evidence contract for the research shape: a "
                 "comparative method may use measured baseline/proposed deltas; a "
                 "systems or architecture idea may test fidelity plus the claimed "
