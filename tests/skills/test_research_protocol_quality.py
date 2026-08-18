@@ -80,6 +80,7 @@ def test_live_checklist_requires_thesis_and_implementation_adequacy() -> None:
 
 def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
     discovery = _skill("engineer/idea-discovery.md")
+    normalized_discovery = " ".join(discovery.split())
     research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
 
     assert "pool-set --root <team_root> --width 12 --state running" in discovery
@@ -87,8 +88,11 @@ def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
     assert "Never restart a second" in discovery
     assert "A single model call" in discovery
     assert "written cross-examination" in discovery
+    assert "at least four of the twelve routes" in discovery
+    assert "network/statistical physics" in normalized_discovery
     assert "12-route portfolio" in research["research.thesis"]
     assert "adversarial meta-review" in research["research.thesis"]
+    assert "at least four independent routes" in research["research.thesis"]
 
 
 def test_research_idea_selection_requires_ambition_without_decorative_math() -> None:
@@ -100,6 +104,8 @@ def test_research_idea_selection_requires_ambition_without_decorative_math() -> 
     assert "Hard technical core" in discovery
     assert "Frontier significance" in discovery
     assert "decorative equations" in discovery
+    assert "scaling law" in discovery
+    assert "measurable quantities" in discovery
     assert "technical_depth" in creator
     assert "theoretical_foundation" in creator
     thesis = research["research.thesis"]

@@ -15,6 +15,15 @@ consequence**. Feasibility cannot rescue prompt/schema/wrapper/scale variants or
 decorative mathematics. Prefer an idea that changes what the field believes or
 builds over an easy local metric win.
 
+For an open-ended Agent paper, deliberately explore foundation-first routes
+rather than waiting for theory to be added after selection. Start from a
+measured Agent failure, then independently test whether probability or learning
+theory, information theory, control/dynamical systems, causal inference, game
+theory, formal methods, or network/statistical physics exposes a new mechanism.
+Keep a route only when the formal objects map to observable Agent behavior and
+derive an algorithm, bound, impossibility result, scaling law, threshold, or
+quantitative prediction. Analogy alone is not a contribution.
+
 ## When to Use
 
 - Starting a new research direction
@@ -79,12 +88,13 @@ Borrow structural ideas from other disciplines:
 | Source Field | Transferable Concepts |
 |-------------|----------------------|
 | Neuroscience | Attention, memory consolidation, hierarchical processing |
-| Physics | Energy-based models, phase transitions |
+| Physics | Measurable dynamics, conservation constraints, critical thresholds |
 | Economics | Mechanism design, auction theory, incentive alignment |
 | Ecology | Population dynamics, niche competition |
 | Control Theory | Feedback loops, stability, adaptive regulation |
 
-Requirements: structural fidelity, non-obvious connection, testable predictions.
+Requirements: structural fidelity, non-obvious connection, and a prediction
+that differs from simpler non-physical explanations.
 
 ### 5. The "What Changed?" Principle
 
@@ -151,6 +161,7 @@ If you can't fill this → the idea isn't ready.
 3. Probe boundaries (F6)
 4. Cross-pollinate (F4)
 5. Compose/decompose (F9)
+6. For Agent research, run independent foundation-first routes before ranking
 
 ### Phase 2: Converge (top 3-5)
 

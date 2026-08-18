@@ -110,6 +110,10 @@ def test_live_search_prompt_has_a_bounded_move_vocabulary() -> None:
     assert "**Formal or causal foundation**" in prompt
     assert "**Frontier significance**" in prompt
     assert "reject decorative equations" in prompt
+    assert "at least one third of the candidates" in prompt
+    assert "network/statistical physics" in prompt
+    assert "scaling law" in prompt
+    assert "measurable Agent variables" in prompt
     assert "31 tactical clusters" not in prompt
     assert "`C##`" not in prompt
     # Keep the one-shot source compact; detailed cards are loaded later by the

@@ -65,7 +65,11 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             id="research.thesis",
             statement=(
                 "Broad paper idea lock follows a 12-route "
-                "portfolio and adversarial meta-review. The thesis has a nontrivial "
+                "portfolio and adversarial meta-review. For an open-ended Agent paper, "
+                "at least four independent routes search distinct mathematical or "
+                "physical foundations and derive an algorithm, bound, impossibility "
+                "result, scaling law, threshold, or measurable prediction rather than "
+                "an analogy. The thesis has a nontrivial "
                 "technical core, verified originality, claim-relevant formal/causal "
                 "predictions, field-level consequence, falsifier, and justified "
                 "budget; reject prompt/schema/wrapper/scale variants, decorative math, "
