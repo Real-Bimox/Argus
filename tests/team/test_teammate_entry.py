@@ -52,6 +52,33 @@ def test_main_inprocess_success_marks_done(tmp_path: Path, monkeypatch) -> None:
     assert {t["task_id"]: t for t in tb.snapshot(root)}["t1::a"]["state"] == "done"
 
 
+def test_main_passes_task_timeout_to_mission(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    tb.form(root, [{
+        "task_id": "t1::a",
+        "objective": "do a",
+        "owns_paths": ["a/**"],
+        "timeout_s": 600,
+    }])
+    assert tb.claim_top(root, "t1::w1", now=1.0) is not None
+    captured: dict[str, object] = {}
+
+    def run(*_args, **kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(te, "run_one_engineer_mission", run)
+    rc = te.main([
+        "--root", str(root),
+        "--member-id", "t1::w1",
+        "--task-id", "t1::a",
+        "--cwd", str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert captured["timeout_s"] == 600.0
+
+
 def test_main_inprocess_failure_marks_failed(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / ".argus_team" / "t1"
     _form_claim(root)

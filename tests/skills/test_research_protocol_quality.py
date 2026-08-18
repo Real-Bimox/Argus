@@ -76,7 +76,7 @@ def test_live_checklist_requires_thesis_and_implementation_adequacy() -> None:
     assert "weak result cannot be rescued" in review["review.publication_value"]
 
 
-def test_broad_paper_ideation_streams_review_and_probes() -> None:
+def test_broad_paper_ideation_uses_eighty_percent_review_quorum() -> None:
     discovery = _skill("engineer/idea-discovery.md")
     creator = _skill("engineer/idea-creator.md")
     pipeline = _skill("engineer/auto-research-pipeline.md")
@@ -90,23 +90,22 @@ def test_broad_paper_ideation_streams_review_and_probes() -> None:
     assert "Never restart a second" in discovery
     assert "A single model call" in discovery
     assert "fresh independent reviewer" in discovery
-    assert "starts its probe immediately" in discovery
-    assert "first route whose independent probe records `advance`" in discovery
+    assert "`ceil(12 × 0.8) = 10`" in discovery
+    assert "one advisory probe" in discovery
     assert "at least four routes" in discovery
     assert "network/statistical physics" in normalized_discovery
-    assert "canonical 12-route team pipeline" in research["research.idea_portfolio"].lower()
-    assert "without waiting" in research["research.idea_portfolio"]
-    assert "earliest independently reviewed candidate" in (
+    assert "12-route team explores concurrently" in research["research.idea_portfolio"]
+    assert "80% review quorum" in research["research.idea_portfolio"]
+    assert "After at least 80% of reviews" in (
         research["research.adversarial_selection"]
     )
-    assert "does not wait for every route or probe" in (
+    assert "final routes do not block" in (
         research["research.adversarial_selection"]
     )
-    assert "first independently reviewed probe with an `advance` verdict wins" in (
-        normalized_creator
-    )
-    assert "Do not wait for every candidate" in normalized_creator
-    assert "unfinished routes are not a stage blocker" in normalized_pipeline
+    assert "10 of 12 by default" in normalized_creator
+    assert "Do not wait for the final two routes" in normalized_creator
+    assert "10 of 12 by default" in normalized_pipeline
+    assert "final two routes" in normalized_pipeline
 
 
 def test_research_idea_selection_requires_ambition_without_decorative_math() -> None:
@@ -123,10 +122,10 @@ def test_research_idea_selection_requires_ambition_without_decorative_math() -> 
     assert "technical_depth" in creator
     assert "theoretical_foundation" in creator
     thesis = research["research.thesis"]
-    assert "nontrivial technical core" in thesis
-    assert "formal or causal predictions" in thesis
+    assert "plausible nontrivial technical core" in thesis
+    assert "formal/causal structure" in thesis
     assert "decorative math" in thesis
-    assert "feasibility rescue" in thesis
+    assert "Research review is qualitative" in thesis
     assert "shallow prompt/schema/wrapper/scale" in peer_review
 
 
@@ -169,7 +168,7 @@ def test_research_smokes_reject_label_leakage_before_model_calls() -> None:
     )
 
 
-def test_research_smokes_require_discriminative_power_before_rejection() -> None:
+def test_research_smokes_record_power_limits_without_rejecting_ideas() -> None:
     probe = _skill("engineer/idea-feasibility-derisk.md")
     pipeline = _skill("engineer/auto-research-pipeline.md")
     runner = _skill("engineer/research-experiment-runner.md")
@@ -182,9 +181,11 @@ def test_research_smokes_require_discriminative_power_before_rejection() -> None
         assert "inconclusive" in text
     assert "baseline ceiling/floor saturation" in research["research.signal_derisk"]
     assert "predeclared power and headroom" in research["research.signal_derisk"]
+    assert "cannot kill or block" in research["research.signal_derisk"]
+    assert "Never reject a qualitatively strong idea" in " ".join(pipeline.split())
 
 
-def test_route_review_precedes_probe_without_global_barrier() -> None:
+def test_route_review_precedes_quorum_selection_and_advisory_probe() -> None:
     creator = _skill("engineer/idea-creator.md")
     probe = _skill("engineer/idea-feasibility-derisk.md")
     pipeline = _skill("engineer/auto-research-pipeline.md")
@@ -204,17 +205,29 @@ def test_route_review_precedes_probe_without_global_barrier() -> None:
     assert "selection-before-probe" in pipeline
     assert "earlier dependency" in brief
     assert "Before any probe is designed or executed" in research["research.thesis"]
-    assert "final single thesis" in research["research.thesis"]
+    assert "thesis may evolve later" in research["research.thesis"]
     assert "Only after research.thesis" in research["research.signal_derisk"]
     normalized_planner = " ".join(planner.split())
-    assert "selection must precede probe design and execution" in normalized_planner
-    assert "Author the frozen evidence question" in normalized_planner
-    assert "does not yet choose the final thesis" in creator
+    assert "Wait for an 80% review quorum" in normalized_planner
+    assert "probe only that winner" in normalized_planner
     assert "must not silently change the frozen premise" in creator
-    assert "first independently reviewed probe with an `advance` verdict wins" in (
-        " ".join(creator.split())
+    assert "Keep route reviews parallel until at least 80%" in " ".join(
+        creator.split()
     )
-    assert "unfinished routes are not a stage blocker" in " ".join(pipeline.split())
+    assert "final two routes" in " ".join(pipeline.split())
+
+
+def test_reviewer_treats_research_smokes_as_advisory() -> None:
+    verification_policy = (
+        Path(__file__).parents[2]
+        / "argus_skill"
+        / "core"
+        / "verification_policy.py"
+    ).read_text(encoding="utf-8")
+    results_review = _skill("reviewer/experiment-results-review.md")
+
+    assert "smoke is advisory, never a replan trigger" in verification_policy
+    assert "not research-stage smoke probes" in results_review
 
 
 def test_experiment_review_does_not_repeat_idea_selection() -> None:

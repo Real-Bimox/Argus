@@ -322,8 +322,16 @@ class Curator:
             ),
         )
 
-    def _spawn_tracked(self, root: Path, *, member_id: str, task_id: str,
-                       cwd: Path, now: float | None = None) -> int:
+    def _spawn_tracked(
+        self,
+        root: Path,
+        *,
+        member_id: str,
+        task_id: str,
+        cwd: Path,
+        now: float | None = None,
+        timeout_s: float | None = None,
+    ) -> int:
         root = Path(root)
         key = _child_key(root, member_id)
         prior = self._children.get(key)
@@ -333,7 +341,12 @@ class Curator:
         self._children[key] = TrackedTeammate(
             proc, member_id=member_id, task_id=task_id, root=root,
             started_at=(self._now() if now is None else now),
-            timeout_s=self.teammate_timeout_s, hard_grace_s=self.hard_grace_s)
+            timeout_s=(
+                self.teammate_timeout_s
+                if timeout_s is None or timeout_s <= 0
+                else float(timeout_s)
+            ),
+            hard_grace_s=self.hard_grace_s)
         roster.add_member(root, {
             "id": member_id, "pid": proc.pid, "cwd": str(cwd),
             "task_id": task_id, "status": "running",
@@ -448,7 +461,8 @@ class Curator:
                 failed_dead_cwd.append(task["task_id"])
                 continue
             self._spawn_tracked(root, member_id=mid, task_id=task["task_id"],
-                                cwd=task_cwd, now=now)
+                                cwd=task_cwd, now=now,
+                                timeout_s=float(task.get("timeout_s", 0) or 0))
             spawned.append({"member_id": mid, "task_id": task["task_id"]})
         return {"spawned": spawned, "in_flight": in_flight, "live": len(live),
                 "occupied": occupied, "free": free, "reassigned": reassigned,

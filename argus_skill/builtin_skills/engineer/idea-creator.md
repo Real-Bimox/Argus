@@ -8,9 +8,10 @@ description: "Given IDEA_CANDIDATES.md from idea-discovery, rank candidates and 
 > Adapted from ARIS `idea-creator` skill (MIT, © 2026 wanshuiyin).
 
 `idea-discovery` streams independent routes; `idea-creator` reviews each route
-as soon as it lands, then probes only candidates that are reasonable enough to
-deserve real budget. The probe budget is set by the operator and project, not a
-universal wall-clock threshold.
+as soon as it lands, then gives promising candidates one short advisory probe.
+The review chooses the idea; the probe does not. The probe budget is set by the
+operator and project, with a default target of at most ten minutes and no full
+benchmark, training run, or broad sweep.
 
 For publishable/doctoral selection, the ambition standard is a nontrivial
 technical core, verified originality, claim-relevant formal/causal grounding,
@@ -29,8 +30,10 @@ for weakness in one of these four.
 
 A fresh reviewer reads one completed route without waiting for the rest of the
 portfolio and judges **novelty × technical_depth × theoretical_foundation ×
-stake × tractability × local_feasibility**. The same schema may be used to
-summarize the route:
+stake × tractability × local_feasibility** qualitatively. Qualify a route when
+it looks strong, professional, novel, and developable; do not demand a finished
+theorem, fixed implementation, or reliable quantitative result during research.
+The same schema may be used to summarize the route:
 
 ```json
 {
@@ -67,20 +70,20 @@ the foundation score concerns real derivations or mechanism-specific
 predictions, not notation density.
 
 Complete this route-local selection from literature, formal/causal analysis,
-closest-method reduction attempts, and feasibility evidence before designing or
-executing its probe. Do not wait for unfinished routes. Probe outcomes must not
-retroactively make an otherwise unreasonable idea selectable. A `queue` or
-`drop` candidate receives no model, API, or GPU calls; revise its method case or
-reject it first. A `run` recommendation locks that route's
-method-reasonableness case for probing; it does not yet choose the final thesis.
+closest-method reduction attempts, and qualitative feasibility before its
+probe. Do not wait for unfinished routes. Reject only clear prior-art collisions,
+trivial wrappers, incoherent mechanisms, or ideas with no credible evidence
+path. Probe outcomes must not retroactively reverse a qualified review. A
+`queue` or `drop` candidate receives no model, API, or GPU calls; a `run`
+recommendation makes the route eligible for immediate greedy selection.
 
 ### Step 2 — design probes for the top candidates
 
-Only after Step 1 has selected a candidate as `run`, write its
-**resource-adaptive probe spec**.
-The probe should cheaply test the binding premise or characterize the proposed
-phenomenon against a strong reference. Do not force a fixed duration or require
-an improvement when a clean null/boundary result would answer the question.
+Only after Step 1 has selected a candidate as `run`, write its tiny
+**resource-adaptive smoke-probe spec**. Target at most ten minutes and the
+smallest real slice that checks wiring, feasibility, or one mechanism signal.
+Do not run the formal benchmark, training, broad ablations, large sweeps, or a
+publication-scale multi-seed study here; those belong to later stages.
 Instantiate the Planner-authored evidence contract: Engineer may choose
 implementation details such as batching, caching, file layout, and safe
 scheduling, but must not silently change the frozen premise, strongest
@@ -101,20 +104,21 @@ distinguish hypothesis from null>
 - Token budget: <estimate>
 
 **Stop rules**:
-- Signal clearly present → commit to full experiment plan
-- Signal clearly absent → record a supported negative or kill the hypothesis,
-  depending on whether the result has research value
-- Signal ambiguous → enlarge once if justified, then classify honestly
+- Record the first honest observation and its limitations
+- Do not enlarge merely to obtain a decisive result
+- Continue the qualified idea into planning; treat weak/null evidence as a
+  later implementation or experiment-design question
 ```
 
 ### Step 3 — execute pilots in parallel
 
-Run each qualified route's probe via `research-experiment-runner` immediately
-after its independent review, while slower discovery routes continue. Use
-parallel resources when available and waves when a scarce resource requires
-them. The default selection policy is intentionally greedy: the first
-independently reviewed probe with an `advance` verdict wins. Do not wait for
-every candidate merely to compare finished pilots.
+Keep route reviews parallel until at least 80% of the configured routes are
+complete (10 of 12 by default). Then let one fresh selector Agent choose the
+strongest review-qualified idea qualitatively. Do not wait for the final two
+routes and do not use probe outcomes in this comparison.
+
+Run one short advisory probe only for the selected idea. The probe's four-state
+evidence status does not reopen or reverse selection.
 
 ### Step 4 — record verdicts
 
@@ -128,25 +132,21 @@ Each pilot writes:
 
 ### Step 5 — commit the greedy winner
 
-Materialize the first `advance` verdict as `research/IDEA_SELECTION.json` and
-build the full experiment plan around it without waiting for all pilot verdicts.
-This does not reopen the Step 1 method-reasonableness decision. If
-implementation changed the method or the probe exposed a broken premise in that
-selection case, return the candidate upstream for revision instead of asking the
-experiment reviewer to re-select it. Later route or probe results remain audit
-evidence but do not block or silently replace the selected thesis.
+Materialize the quorum selector's choice as `research/IDEA_SELECTION.json`, run
+one bounded advisory probe, and build the full experiment plan around it. The
+smoke result does not need to support the premise. Preserve weak/null evidence
+as an implementation or design note and allow the idea to evolve through later
+experiments. The final two route results remain audit evidence but do not block
+or silently replace the selected thesis.
 
 ## Anti-patterns
 
 - ❌ Pilot all candidates fully instead of using the cheapest faithful probe
-- ❌ Wait for every route or pilot after one independently reviewed probe advances
-- ❌ Mark "ambiguous" as commit — ambiguous pilots usually become
-  ambiguous full experiments
-- ❌ Skip the pivot step when pilot kills — commit-bias is the
-  number-one cause of dead-end papers
-- ❌ Re-pilot a killed candidate to "make sure" — the kill verdict
-  was made on evidence; treat it as final unless the candidate is
-  re-specified
+- ❌ Decide from the first route before the 80% review quorum
+- ❌ Wait for all routes after the 80% quorum is available
+- ❌ Kill a strong idea because a smoke probe is weak, null, noisy, or inconclusive
+- ❌ Expand a probe into a formal benchmark or long multi-seed experiment
+- ❌ Freeze the initial idea wording; later engineering evidence should refine it
 
 ## Output contract
 

@@ -140,6 +140,7 @@ _MATERIAL_SPEC_FIELDS = (
     "cwd",
     "deps",
     "priority",
+    "timeout_s",
 )
 
 _COMPARABLE_LEGACY_SPEC_FIELDS = (
@@ -168,6 +169,7 @@ def _material_task_spec(task: dict[str, Any]) -> dict[str, Any]:
         "cwd": str(task.get("cwd", "") or ""),
         "deps": list(task.get("deps", [])),
         "priority": int(task.get("priority", 100)),
+        "timeout_s": float(task.get("timeout_s", 0) or 0),
     }
 
 
@@ -194,6 +196,7 @@ def _task_from_spec(spec: dict[str, Any]) -> dict[str, Any]:
         "owns_paths": list(spec.get("owns_paths", [])),
         "cwd": str(spec.get("cwd", "") or ""),
         "deps": list(spec.get("deps", [])),
+        "timeout_s": float(spec.get("timeout_s", 0) or 0),
         "state": "pending",
         "owner": "",
         "result_shard": spec.get("result_shard", ""),

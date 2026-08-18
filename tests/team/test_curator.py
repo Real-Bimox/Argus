@@ -323,6 +323,19 @@ def test_refill_fills_to_width_then_idempotent(tmp_path: Path) -> None:
     assert c._refill(root, width=3, cwd=tmp_path, now=101.0)["spawned"] == []
 
 
+def test_refill_uses_per_task_timeout(tmp_path: Path) -> None:
+    root = tmp_path / "team"
+    task_board.form(root, [
+        {"task_id": "t::bounded", "objective": "x", "timeout_s": 600},
+    ])
+    c = _fake_curator(tmp_path, teammate_timeout_s=5400)
+
+    c._refill(root, width=1, cwd=tmp_path, now=100.0)
+
+    child = next(iter(c._children.values()))
+    assert child.timeout_s == 600.0
+
+
 def test_member_ids_are_namespaced_by_campaign_root(tmp_path: Path) -> None:
     """Every roster starts at w1; two campaigns must retain both processes."""
     root_a = tmp_path / "team-a"

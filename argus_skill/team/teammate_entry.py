@@ -391,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
             objective,
             cwd=cwd,
             life_dir=life_dir,
+            timeout_s=float(task.get("timeout_s", 0) or 0) or None,
             prelude_context=_vertical_prelude(task, cwd=cwd, state_root=life_dir),
         )
     )

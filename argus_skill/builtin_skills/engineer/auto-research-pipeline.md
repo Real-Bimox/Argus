@@ -177,10 +177,10 @@ that would overturn the claim.
 - Do not lock an idea until the ambition standard survives independent
   prior-art attack and adversarial review.
 - Stream discovery into validation: each completed route receives a fresh
-  independent review immediately, and every qualified route starts its cheapest
-  faithful probe without waiting for the rest of the portfolio. Select the first
-  probe that earns an `advance` verdict; unfinished routes are not a stage
-  blocker.
+  independent review immediately. At an 80% review quorum (10 of 12 by default),
+  a fresh selector Agent chooses the strongest idea qualitatively; do not wait
+  for the final two routes. Only the selected idea receives one short advisory
+  probe. The final two routes and weak smoke results are not stage blockers.
 - For a broad publishable/doctoral Agent paper, at least four portfolio routes
   must independently search for load-bearing mathematical or physical
   foundations. Cover distinct relevant lenses rather than variants of one
@@ -195,14 +195,16 @@ that would overturn the claim.
   decision; only a selected survivor may proceed to probe design and execution.
   A rejected or still-unresolved idea must not consume model, API, or GPU calls.
   Run independent finalists concurrently, while keeping selection-before-probe
-  ordering within each finalist. Do not serialize "repair research canon,"
+  ordering within each finalist. Keep probes below ten minutes by default and
+  never turn them into formal benchmarks, training, or broad sweeps. Do not
+  serialize "repair research canon,"
   "build smoke harness," and "judge smoke" into separate Planner missions when
   one coherent milestone can own the ordered conditional branch.
-- Before using a comparative probe for keep/reject, verify that it can distinguish
-  the candidate from the baseline: the tasks exercise the proposed mechanism,
-  the baseline has metric headroom, and the cases/repeats can resolve the
-  predeclared contrast. A ceilinged, floored, too-easy, or underpowered tie is
-  inconclusive; redesign the probe instead of rejecting the method from it.
+- Treat the probe as an observation, not a keep/reject gate. A ceilinged,
+  floored, too-easy, underpowered, or poorly implemented result is merely a
+  limitation note; record missing headroom explicitly. Never reject a
+  qualitatively strong idea from a research smoke probe; later stages own
+  faithful benchmarking and iterative refinement.
 - Before paid/model-backed execution, verify that candidate predictions cannot
   read gold labels or scorer-derived fields and that baselines receive the same
   decision-time information.

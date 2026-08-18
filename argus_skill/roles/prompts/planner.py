@@ -42,10 +42,15 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
 - Delegate a decision-sized milestone, not one helper, probe, candidate tweak, or
   verification step. Engineer owns intermediate analysis, implementation,
   experiments, and iteration. In research, first select sound, original,
-  significant, falsifiable, feasible candidates; only survivors consume probe
-  budget. Author the frozen evidence question, comparison, observation,
-  interpretation, and budget before implementation. Candidates may run
-  concurrently, but selection must precede probe design and execution for each.
+  significant, falsifiable, feasible-looking candidates qualitatively; missing
+  engineering detail or uncertain early evidence is not a rejection reason.
+  Only review-qualified candidates consume probe budget. Author one tiny advisory
+  observation with a default target below ten minutes; never delegate a full
+  benchmark, training run, broad sweep, or publication-scale multi-seed study as
+  a research probe. Candidates and reviews run concurrently. Wait for an 80%
+  review quorum (10 of 12 by default), let a fresh Agent select the strongest
+  idea qualitatively, then probe only that winner. Do not wait for the final two
+  routes, and weak/null probe results do not kill or block the selected idea.
 - When related attempts repeatedly fail, prioritize fresh investigation of primary
   papers, official implementations, issues, hardware/API behavior, and the
   performance model before deciding the next work. Use that evidence to reassess

@@ -196,6 +196,16 @@ def test_form_stores_priority(tmp_path: Path) -> None:
     assert snap["b"]["priority"] == 5
 
 
+def test_form_stores_task_timeout(tmp_path: Path) -> None:
+    tb.form(tmp_path, [
+        {"task_id": "default", "objective": "x"},
+        {"task_id": "bounded", "objective": "y", "timeout_s": 600},
+    ])
+    snap = {task["task_id"]: task for task in tb.snapshot(tmp_path)}
+    assert snap["default"]["timeout_s"] == 0.0
+    assert snap["bounded"]["timeout_s"] == 600.0
+
+
 def test_claim_top_orders_by_priority(tmp_path: Path) -> None:
     tb.form(tmp_path, [
         {"task_id": "a", "objective": "x", "priority": 100},

@@ -22,6 +22,7 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
     if resolve_research_target_level(context.workdir) == "exploratory":
         return
     from .idea_portfolio import (
+        QUORUM_COUNT,
         ensure_idea_portfolio,
         idea_portfolio_selection,
         portfolio_required,
@@ -43,9 +44,10 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
             "team_root": str(team_root),
             "width": 12,
             "route_count": 12,
-            "task_count": 36,
+            "review_quorum": QUORUM_COUNT,
+            "task_count": 24,
             "selection": selection or {},
-            "policy": "greedy_first_qualified",
+            "policy": "quorum_80_agent_judgment",
             "text": (
                 f"streaming 12-route idea pipeline selected {selection['route_id']}"
                 if selection

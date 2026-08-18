@@ -7,10 +7,10 @@ description: "Run the cheapest faithful observation that informs a research idea
 
 ## Purpose
 
-After an idea has passed method-reasonableness selection, and before committing
-substantial compute, obtain one real observation about its binding premise on
-available models, data, or systems. This is a source of information, not a
-routing gate and not a substitute for idea selection.
+After an idea has passed method-reasonableness selection, obtain one short real
+observation before committing substantial compute. This is advisory context,
+not a routing gate, not a miniature benchmark, and never a reason by itself to
+kill or replace a promising idea.
 
 For publishable/doctoral work, a successful probe does not waive the ambition
 standard: nontrivial technical core, verified originality, claim-relevant
@@ -24,12 +24,13 @@ feasibility cannot promote a shallow idea.
    resource feasibility is still unresolved, stop before model/API/GPU execution
    and finish selection first. Otherwise identify the selected idea's uncertain
    empirical premise whose answer would most change the plan.
-2. Choose the cheapest faithful probe that can inform it. Use real public data or
-   the actual system when the claim depends on them; do not replace the premise
-   with an easy toy proxy. For a comparative claim, require discriminative
-   headroom: the task slice must exercise the proposed mechanism, the baseline
-   must not already saturate at the metric ceiling or floor, and the planned
-   cases/repeats must be able to resolve the predeclared contrast.
+2. Choose the cheapest short probe that can touch it. Target at most ten minutes
+   and a tiny real slice. Never run the formal benchmark, training, large sweep,
+   or publication-scale multi-seed evaluation in this step. If a faithful test
+   cannot fit that budget, record the limitation and continue to planning rather
+   than inflating the probe. For a comparison, note whether the baseline has
+   headroom and whether the slice exercises the mechanism, but do not enlarge
+   the smoke test to obtain statistical power.
 3. Record the setup before running: model/system identity, data slice, comparator
    or control, metric/observation, and the limitations of the probe.
 4. Before any paid or model-backed call, inspect the prediction boundary:
@@ -52,10 +53,10 @@ feasibility cannot promote a shallow idea.
    - paths to the raw material.
 
 Do not emit PASS/FAIL, force a pivot, or automatically schedule another direction.
-The Planner reads the stored observation with the rest of the project and decides
-what it changes. A wiring smoke test is not evidence for the scientific thesis.
-A tie from an easy, ceilinged/floored, or underpowered probe is inconclusive:
-redesign the probe rather than treating it as evidence that the method failed.
+The selected idea continues after one bounded attempt. A weak/null result may
+reflect the probe setup, implementation, scale, or current idea version; record
+that ambiguity as inconclusive context for later small-step iteration. A wiring
+smoke test is not evidence for or against the scientific thesis.
 
 ## Integrity
 

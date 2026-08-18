@@ -56,10 +56,9 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.idea_portfolio",
             statement=(
-                "A canonical 12-route team pipeline explores ideas concurrently. "
-                "Every completed route enters its own fresh independent review and, "
-                "when qualified, its cheapest faithful probe without waiting for "
-                "slower routes."
+                "A 12-route team explores concurrently; each result gets an independent "
+                "review, and a fresh selector acts at the 80% review quorum without "
+                "waiting for the final routes."
             ),
             evidence_hint=(
                 "research/IDEA_PORTFOLIO.json + research/ideation/portfolios/**/"
@@ -69,10 +68,10 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.adversarial_selection",
             statement=(
-                "The selected thesis is the earliest independently reviewed candidate "
-                "whose faithful probe earns an ADVANCE verdict. Selection is greedy "
-                "and does not wait for every route or probe; route, review, and probe "
-                "must use fresh workers with deterministic provenance."
+                "After at least 80% of reviews (10/12 by default), a fresh Agent selects "
+                "qualitatively by theory, novelty, generality, and top-conference "
+                "potential. Probe metrics cannot veto the choice; final routes do not "
+                "block planning."
             ),
             evidence_hint=(
                 "research/IDEA_SELECTION.json + selected route/review/EVIDENCE.json"
@@ -89,14 +88,13 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.thesis",
             statement=(
-                "The selected thesis has a nontrivial technical core, verified "
-                "originality, claim-relevant formal or causal predictions, field-level "
-                "consequence, falsifier, and justified budget. Reject prompt/schema/"
-                "wrapper/scale variants, decorative math, or feasibility rescue. "
-                "Before any probe is designed or executed, lock the method-reasonableness "
-                "case for every candidate admitted to probing. The final single thesis "
-                "may be chosen among those candidates after their probe evidence is "
-                "reviewed."
+                "The selected thesis has a plausible nontrivial technical core, "
+                "originality, formal/causal structure, field-level potential, and an "
+                "evidence path. Research review is qualitative: no finished theorem, "
+                "fixed implementation, or reliable effect size is required. Reject only "
+                "clear duplicates, trivial prompt/schema/wrapper/scale variants, "
+                "incoherent mechanisms, or decorative math. Before any probe is designed "
+                "or executed, lock method reasonableness; the thesis may evolve later."
             ),
             evidence_hint=(
                 "research/RESEARCH_BRIEF.md and research/ideation/{routes,debates}/"
@@ -105,26 +103,15 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.signal_derisk",
             statement=(
-                "Only after research.thesis has locked a candidate's "
-                "method-reasonableness case, run the cheapest REAL falsification probe "
-                "that tests its binding premise on this machine. "
-                "The Planner authors the evidence contract for the research shape: a "
-                "comparative method may use measured baseline/proposed deltas; a "
-                "systems or architecture idea may test fidelity plus the claimed "
-                "resource/stability signal; theoretical or survey work uses its own "
-                "decisive counterexample/coverage test. Prefer <=10 minutes / <=$1 "
-                "when faithful, but do not substitute a toy proxy merely to meet that "
-                "budget. Preserve commands and raw outputs. Store the outcome without "
-                "turning a metric threshold into a mechanical routing decision; a "
-                "fresh Reviewer authors the explicit advance/reject/inconclusive "
-                "verdict, and the greedy pipeline routes only on that reviewed verdict. "
-                "A passed wiring-only smoke does not prove the thesis. "
-                "Record what the probe established — untested / inconclusive / "
-                "supported / refuted — separately from whether it ran; infrastructure "
-                "failures, baseline ceiling/floor saturation, tasks that do not "
-                "exercise the mechanism, and under-powered runs leave it unresolved, "
-                "never negative. A comparative tie refutes the premise only when the "
-                "probe had predeclared power and headroom to distinguish the methods. "
+                "Only after research.thesis has qualitatively admitted a candidate, "
+                "run one REAL advisory probe, normally <=10 minutes / <=$1; never run "
+                "the formal benchmark, training, broad sweep, or publication-scale "
+                "multi-seed study. The Planner authors the evidence contract. Preserve "
+                "commands/raw outputs and record untested/inconclusive/supported/refuted "
+                "honestly. The probe cannot kill or block a qualified idea or become a "
+                "mechanical routing decision: infrastructure/implementation failures, "
+                "baseline ceiling/floor saturation, and missing predeclared power and "
+                "headroom are limitations. Later stages own decisive benchmarks. "
                 "`argus_skill.skills.signal_derisk validate` is available only for "
                 "the default scalar-comparison shape and never decides quality."
             ),
