@@ -140,6 +140,20 @@ def _verification_directive() -> str:
     )
 
 
+def _audit_integrity_directive() -> str:
+    return (
+        "## Audit integrity\n"
+        "Treat an operator mutation freeze or append-only requirement as a hard temporal "
+        "boundary. When audit continuity matters, compare directive order with file-write, "
+        "install, and command events. A later archive, correction, or successful rerun "
+        "cannot make an overwritten or reconstructed ledger contemporaneous. Reject any "
+        "fact attributed to the objective unless the cited objective text states it, and "
+        "do not accept a summarized command log as the missing byte-faithful command. "
+        "Preserve useful corrections, but return `continue`, `replan_requested`, or "
+        "`blocked` when the required historical integrity is irrecoverable.\n\n"
+    )
+
+
 def _prompt_block_stats(blocks: Mapping[str, str]) -> dict[str, dict[str, int]]:
     stats: dict[str, dict[str, int]] = {}
     for name, text in blocks.items():
@@ -643,6 +657,7 @@ def render_reviewer_prompt(
         "grounding may change the mechanism; do not demand new research for local-only work "
         "or already-grounded work.\n\n"
         + ("" if _requires_engineering_audit else _verification_directive())
+        + _audit_integrity_directive()
         + "## Output protocol\n"
         "Reason and use tools normally, and write your review however is "
         "clearest. End the final message with these lines; only they are read, "
