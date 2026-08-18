@@ -56,9 +56,15 @@ serious candidate ask:
 Record rejected alternatives only when they affected the decision; do not create
 a rejection quota.
 
-## 3. De-risk the binding premise
+Do not continue to probe design until this method-reasonableness case has been
+completed and the candidate has been selected. Selection may share one
+decision-sized milestone with the later probe, but it is an earlier dependency,
+not a parallel branch.
 
-Run the cheapest faithful real probe that can invalidate the central assumption.
+## 3. De-risk the selected idea's binding premise
+
+Only after selection, run the cheapest faithful real probe that can invalidate
+the central empirical assumption.
 A smoke test proves wiring, not the idea. If the premise fails, decide whether
 the failure comes from:
 
