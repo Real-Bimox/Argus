@@ -47,6 +47,7 @@ def _build(
     workflow_mode: str | None = "staged",
     scope: str = "",
     main_error: str | None = None,
+    objective: str = "implement and verify the kernel",
 ) -> str:
     if monkeypatch is not None:
         if workflow_mode is not None:
@@ -60,7 +61,7 @@ def _build(
             monkeypatch.delenv("ARGUS_SKILL_MEASURED_MODE", raising=False)
     r = Reviewer(runner=None, skill_store=None)
     return r._build_prompt(
-        objective="implement and verify the kernel",
+        objective=objective,
         operator_messages=[],
         planner_review_instruction="",
         round_index=4,
@@ -92,7 +93,11 @@ def test_no_audit_section_when_log_path_empty(monkeypatch) -> None:
 
 
 def test_reviewer_rejects_retroactive_audit_reconstruction(monkeypatch) -> None:
-    p = _build("", monkeypatch=monkeypatch)
+    p = _build(
+        "",
+        monkeypatch=monkeypatch,
+        objective="Review an append-only audit ledger and exact COMMAND_LOG.",
+    )
 
     assert "operator mutation freeze or append-only requirement" in p
     assert "compare directive order with file-write, install, and command events" in p
