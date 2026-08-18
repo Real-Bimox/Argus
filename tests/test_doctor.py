@@ -377,6 +377,8 @@ def test_backend_preflight_defaults_to_codex_with_original_install_hint(
     monkeypatch.delenv("ARGUS_SKILL_RUNNER_BACKEND", raising=False)
     monkeypatch.delenv("ARGUS_SKILL_LIFE_BACKEND", raising=False)
     monkeypatch.delenv("ARGUS_SKILL_RUNNER_BIN", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path / "home"))
     monkeypatch.setattr("shutil.which", lambda name: None)
 
     check = _check_backend_preflight()

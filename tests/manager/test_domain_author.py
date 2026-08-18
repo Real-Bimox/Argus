@@ -416,7 +416,18 @@ def test_read_only_repository_audit_avoids_maintenance_meta_review() -> None:
     )
 
     assert "`software`/`direct`, not `argus_maintenance`" in prompt
-    assert "no meta-review unless explicitly requested" in prompt
+    assert "no meta-review unless asked" in prompt
+
+
+def test_paper_process_audit_routes_by_deliverable_not_argus_noun() -> None:
+    prompt = build_vertical_decision_prompt(
+        "Use Argus to generate an ICLR paper and audit the paper-generation process.",
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+
+    assert "Paper/survey work: `research`" in prompt
+    assert "even about/using Argus" in prompt
+    assert "runtime changes: `argus_maintenance`" in prompt
 
 
 def test_vertical_prompts_prefer_matching_formal_project_domain() -> None:
