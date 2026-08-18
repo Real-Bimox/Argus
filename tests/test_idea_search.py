@@ -106,6 +106,10 @@ def test_live_search_prompt_has_a_bounded_move_vocabulary() -> None:
     prompt = _build_prompt("quantized memory for long-running agents", 6)
 
     assert "15. Design a Property-Targeting Pretext Objective" in prompt
+    assert "**Hard technical core**" in prompt
+    assert "**Formal or causal foundation**" in prompt
+    assert "**Frontier significance**" in prompt
+    assert "reject decorative equations" in prompt
     assert "31 tactical clusters" not in prompt
     assert "`C##`" not in prompt
     # Keep the one-shot source compact; detailed cards are loaded later by the

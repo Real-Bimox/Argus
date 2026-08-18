@@ -84,10 +84,42 @@ The reviewer ranks clusters by:
 - **Stake** — "if resolved, X changes understanding or practice"
 - **Research value** — would resolving this question change understanding,
   evaluation, system design, or practice?
+- **Technical depth** — does the contribution require a nontrivial algorithm,
+  system mechanism, formal object, or causal explanation rather than a prompt,
+  schema, wrapper, or larger sweep?
+- **Theoretical foundation** — are the objects, assumptions, invariants, and
+  predicted consequences explicit enough to derive or falsify? Require a real
+  mathematical derivation or theorem when the claim is mathematical, and a real
+  physical model only when the domain is physical; decorative equations do not
+  add depth.
 - **Feasibility** — is there a credible staged execution plan within the
   operator's resources and time budget? Discover available capabilities and
   honor explicit limits; do not impose a universal wall-clock cutoff.
 - **Recency** — are the closest references current enough to define the frontier?
+
+### Step 3.25 — apply the ambition gate
+
+A publishable/doctoral candidate cannot enter the serious shortlist unless all
+four questions have evidence-backed answers:
+
+1. **Hard technical core:** What is technically difficult, and what nontrivial
+   mechanism solves it? If a prompt, JSON format, generic verifier, or workflow
+   wrapper captures the whole idea, reject it.
+2. **Verified originality:** What did the closest papers and systems not already
+   do? The prior-art assassin must fail to reduce the contribution to an existing
+   method plus renamed components.
+3. **Genuine foundation:** State the formal or causal model, assumptions,
+   invariants, and derived predictions. A theoretical claim needs an actual
+   derivation/proof obligation; an empirical systems claim needs a mechanism
+   whose predictions distinguish it from simpler explanations. Never add physics
+   or mathematics for appearance.
+4. **Frontier significance:** If the idea works, what general scientific belief,
+   design principle, or capability changes? A local product metric, convenient
+   implementation, or benchmark-only win is insufficient without a broader
+   decision-changing consequence.
+
+Score feasibility separately. Ease of execution cannot rescue a candidate that
+fails technical depth, originality, foundation, or significance.
 
 ### Step 3.5 — diagnose the bottleneck, then select a research move
 
@@ -152,12 +184,21 @@ you are avoiding>
 **Contribution shape**: <method, system, theorem, diagnostic, characterization,
 evaluation, benchmark/data contribution, negative result, or boundary finding>
 
+**Hard technical core**: <the nontrivial algorithm/system/formal mechanism; why a
+prompt, schema, wrapper, or scale-up is insufficient>
+
+**Formal or causal foundation**: <objects, assumptions, invariants, derivation or
+mechanism-specific predictions; no decorative math>
+
 **Reference comparison + target**: <the strongest relevant published/standard
 reference, the public benchmark(s), and what outcome would support or refute the
 research claim>
 
 **Why it matters (thesis)**: <one sentence — the non-obvious insight or
 decision-relevant value>
+
+**Frontier significance**: <what general belief, design principle, or capability
+would change if the claim is true>
 
 **Experiment sketch (resource-adaptive)**:
 - Setup: <models / data / baselines + the method>
@@ -196,10 +237,11 @@ the proponent must answer that exact evidence rather than a generic objection.
 Give each side one written cross-examination response, then give a fresh
 meta-reviewer both complete arguments, route reports, and closest sources.
 
-The meta-reviewer ranks novelty, importance, mechanism specificity,
-falsifiability, benchmark validity, and local feasibility separately. Local
-ease cannot compensate for an incremental or unimportant thesis. Persist the
-full exchange and the reasons each candidate survives or is killed.
+The meta-reviewer ranks novelty, technical depth, theoretical/causal foundation,
+frontier significance, mechanism specificity, falsifiability, benchmark
+validity, and local feasibility separately. Local ease cannot compensate for an
+incremental, shallow, weakly grounded, or unimportant thesis. Persist the full
+exchange and the reasons each candidate survives or is killed.
 
 ### Step 6 — hand off to idea-creator
 

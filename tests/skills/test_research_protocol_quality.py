@@ -54,6 +54,24 @@ def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
     assert "pool-set --root <team_root> --width 12 --state running" in discovery
     assert "A single model call" in discovery
     assert "written cross-examination" in discovery
-    assert "research.idea_portfolio" in research
-    assert "12-route candidate portfolio" in research["research.idea_portfolio"]
-    assert "research.adversarial_selection" in research
+    assert "12-route portfolio" in research["research.thesis"]
+    assert "adversarial meta-review" in research["research.thesis"]
+
+
+def test_research_idea_selection_requires_ambition_without_decorative_math() -> None:
+    discovery = _skill("engineer/idea-discovery.md")
+    creator = _skill("engineer/idea-creator.md")
+    peer_review = _skill("reviewer/academic-paper-peer-review-benchmark.md")
+    research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
+
+    assert "Hard technical core" in discovery
+    assert "Frontier significance" in discovery
+    assert "decorative equations" in discovery
+    assert "technical_depth" in creator
+    assert "theoretical_foundation" in creator
+    thesis = research["research.thesis"]
+    assert "nontrivial technical core" in thesis
+    assert "formal/causal predictions" in thesis
+    assert "decorative math" in thesis
+    assert "feasibility rescue" in thesis
+    assert "shallow prompt/schema/wrapper/scale" in peer_review
