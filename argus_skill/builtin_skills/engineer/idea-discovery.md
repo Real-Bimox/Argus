@@ -27,20 +27,24 @@ For a `publishable` or `doctoral` paper mission that starts from a broad
 direction rather than an operator-locked hypothesis, use `agent-team-lead` to
 form a 12-route ideation portfolio before ranking anything:
 
-1. Give each route a materially different mechanism/domain slice, its own
+1. First inventory existing independent route reports. Count every report that
+   already has a distinct mechanism, source trail, closest work, kill argument,
+   and faithful probe; spawn only the missing routes. Never restart a second
+   "broad search" merely because the directory or route names differ.
+2. Give each route a materially different mechanism/domain slice, its own
    `research/ideation/routes/<route-id>.md` output, and a separately checkable
    source trail. Each route must identify the closest work, a non-obvious gap,
    the strongest kill argument, and a faithful public-benchmark or real-trace
    probe.
-2. Form all 12 tasks, then set the team pool with
+3. Form all missing tasks, then set the team pool with
    `pool-set --root <team_root> --width 12 --state running`. The lead continues
    venue and source verification while the Curator supervises the portfolio.
-3. Search primary papers and official artifacts for novelty. Also inspect
+4. Search primary papers and official artifacts for novelty. Also inspect
    credible practitioner reports, technical blogs, benchmark issue trackers,
    and incident reports when they reveal deployment failures or unmet needs;
    these may motivate a gap but never replace primary evidence for a novelty
    claim.
-4. Preserve every route report and failed route. A single model call, several
+5. Preserve every route report and failed route. A single model call, several
    parallel search queries inside one context, or twelve variants of one
    mechanism do not satisfy the portfolio.
 

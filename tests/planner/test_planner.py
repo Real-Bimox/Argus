@@ -118,6 +118,24 @@ def test_incomplete_key_value_result_is_retryable() -> None:
     assert verdict.error == "planner said not done but produced no concrete tasks"
 
 
+def test_operator_wait_defaults_to_event_driven_authorization() -> None:
+    verdict = parse_planner_text(
+        "PROJECT_DONE=false\n"
+        "REASON=An operator must approve the external action.\n"
+        "WAITING=true\n"
+        "BLOCKER_FINGERPRINT=external-approval\n"
+        "RECHECK_CONDITION=Operator approval arrives.\n"
+        "RECHECK_TOKEN=approval-pending\n"
+        "OPERATOR_ACTION_REQUIRED=true"
+    )
+
+    assert verdict.error == ""
+    assert verdict.waiting_contract is not None
+    assert verdict.waiting_contract.operator_action_required is True
+    assert verdict.waiting_contract.wait_mode == "event"
+    assert verdict.waiting_contract.wake_on == ("authorization",)
+
+
 def test_missing_completion_marker_is_retryable() -> None:
     verdict = parse_planner_text("I inspected the repository but did not finish.")
 

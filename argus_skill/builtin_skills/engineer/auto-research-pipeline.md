@@ -170,8 +170,16 @@ that would overturn the claim.
   observations in the existing project history.
 - Do not lock an idea until the ambition standard survives independent
   prior-art attack and adversarial review.
-- Run the cheapest faithful falsification or characterization probe of the
-  binding premise.
+- Reuse a completed independent route portfolio; do not start another breadth
+  sweep under new route names.
+- Validate each finalist in one decision-sized milestone that owns the nearest
+  source grounding, prior-art attack, minimal mechanism, cheapest faithful probe,
+  and keep/reject comparison. Run independent finalist probes concurrently.
+  Do not serialize "repair research canon," "build smoke harness," and "judge
+  smoke" into separate missions when one coherent milestone can do them.
+- Before paid/model-backed execution, verify that candidate predictions cannot
+  read gold labels or scorer-derived fields and that baselines receive the same
+  decision-time information.
 - Store the probe without a routing verdict; the Planner decides what it changes.
 
 ### 2. Plan

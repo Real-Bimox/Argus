@@ -83,6 +83,8 @@ def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
     research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
 
     assert "pool-set --root <team_root> --width 12 --state running" in discovery
+    assert "spawn only the missing routes" in discovery
+    assert "Never restart a second" in discovery
     assert "A single model call" in discovery
     assert "written cross-examination" in discovery
     assert "12-route portfolio" in research["research.thesis"]
@@ -127,3 +129,21 @@ def test_manager_and_planner_prompts_preserve_the_ambition_standard() -> None:
         assert "verified originality" in prompt
         assert "formal/causal" in prompt
         assert "field-level significance" in prompt
+
+
+def test_research_smokes_reject_label_leakage_before_model_calls() -> None:
+    probe = _skill("engineer/idea-feasibility-derisk.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
+    plan_review = _skill("reviewer/experiment-plan-review.md")
+    benchmark = {
+        item.id: item.statement for item in STAGE_CHECKLISTS["benchmark"]
+    }
+
+    for text in (probe, pipeline, plan_review):
+        assert "gold labels" in text
+    assert "remove or permute hidden labels" in probe
+    assert "same information and intervention timing" in probe
+    assert "one decision-sized milestone" in pipeline
+    assert "removing or permuting hidden labels" in (
+        benchmark["benchmark.evaluator_authentic"]
+    )

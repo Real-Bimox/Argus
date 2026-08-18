@@ -25,10 +25,19 @@ feasibility cannot promote a shallow idea.
    with an easy toy proxy.
 3. Record the setup before running: model/system identity, data slice, comparator
    or control, metric/observation, and the limitations of the probe.
-4. Run it for real and preserve the command, raw output, and analysis under a
+4. Before any paid or model-backed call, inspect the prediction boundary:
+   - candidate and baseline code may receive only information available at their
+     claimed decision time, never gold labels, expected outcomes, scorer verdicts,
+     or fields derived from them;
+   - remove or permute hidden labels and confirm candidate predictions do not
+     change;
+   - execute baselines with the same information and intervention timing. A
+     historical trace that already executed an action or a post-hoc verifier is a
+     diagnostic, not an online prevention baseline.
+5. Run it for real and preserve the command, raw output, and analysis under a
    sensible project path. Reuse existing run conventions instead of creating a
    special de-risk packet.
-5. Write a short factual note in `research/RESEARCH_BRIEF.md` or the existing
+6. Write a short factual note in `research/RESEARCH_BRIEF.md` or the existing
    experiment log:
    - what was observed;
    - what remains uncertain;
@@ -43,7 +52,8 @@ what it changes. A wiring smoke test is not evidence for the scientific thesis.
 
 Never type expected numbers as results, hide failed calls, or relabel synthetic
 examples as public evidence. If the probe is not faithful enough to inform the
-premise, say so plainly.
+premise, say so plainly. A result produced by candidate code reading the gold
+label is a failed probe, not weak supporting evidence.
 
 ## Handoff
 
