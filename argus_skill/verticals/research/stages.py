@@ -54,6 +54,35 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             ),
         ),
         ChecklistItem(
+            id="research.idea_portfolio",
+            statement=(
+                "An open-ended publishable or doctoral paper mission explored a "
+                "12-route candidate portfolio through the existing Agent team pool "
+                "before locking an idea. Routes are materially different, retain "
+                "their raw reports and source trails, and include nearest-work risk, "
+                "a kill argument, and a faithful evidence path. One model call or "
+                "parallel searches inside one context do not count as independent "
+                "routes."
+            ),
+            evidence_hint=(
+                "research/ideation/routes/ plus the completed team task board and "
+                "result shards; not required for an operator-locked hypothesis"
+            ),
+        ),
+        ChecklistItem(
+            id="research.adversarial_selection",
+            statement=(
+                "Each serious shortlisted idea was reviewed by fresh independent "
+                "proponent and prior-art-assassin roles with live source access, "
+                "followed by written cross-examination and a meta-reviewer that read "
+                "both complete arguments and closest sources. The final selection "
+                "separates novelty, importance, mechanism specificity, "
+                "falsifiability, benchmark validity, and feasibility instead of "
+                "letting local ease rescue an incremental thesis."
+            ),
+            evidence_hint="research/ideation/debates/<candidate-id>/",
+        ),
+        ChecklistItem(
             id="research.brief",
             statement=(
                 "A research brief frames the problem, the gap in prior work, and "

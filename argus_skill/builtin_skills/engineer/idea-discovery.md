@@ -21,6 +21,33 @@ boundary finding may close that gap.
 
 ## Workflow
 
+### Step 0 — fan out before an open-ended paper chooses a direction
+
+For a `publishable` or `doctoral` paper mission that starts from a broad
+direction rather than an operator-locked hypothesis, use `agent-team-lead` to
+form a 12-route ideation portfolio before ranking anything:
+
+1. Give each route a materially different mechanism/domain slice, its own
+   `research/ideation/routes/<route-id>.md` output, and a separately checkable
+   source trail. Each route must identify the closest work, a non-obvious gap,
+   the strongest kill argument, and a faithful public-benchmark or real-trace
+   probe.
+2. Form all 12 tasks, then set the team pool with
+   `pool-set --root <team_root> --width 12 --state running`. The lead continues
+   venue and source verification while the Curator supervises the portfolio.
+3. Search primary papers and official artifacts for novelty. Also inspect
+   credible practitioner reports, technical blogs, benchmark issue trackers,
+   and incident reports when they reveal deployment failures or unmet needs;
+   these may motivate a gap but never replace primary evidence for a novelty
+   claim.
+4. Preserve every route report and failed route. A single model call, several
+   parallel search queries inside one context, or twelve variants of one
+   mechanism do not satisfy the portfolio.
+
+If provider capacity cannot sustain width 12, remain in research and surface
+the capacity blocker. Do not silently collapse the portfolio into a single
+author's candidate list.
+
 ### Step 1 — bound the direction
 
 Engineer provides 1–2 sentence broad direction. Convert into 3–5
@@ -159,7 +186,22 @@ reviewer would write; this skill must articulate it so kill-argument
 later can stress-test it for real>
 ```
 
-### Step 5 — hand off to idea-creator
+### Step 5 — adversarially select the shortlist
+
+For each serious survivor, start fresh independent proponent and prior-art
+assassin roles with live source access and disjoint report paths under
+`research/ideation/debates/<candidate-id>/`. The assassin must search for the
+nearest implementation, benchmark, negative result, and simpler explanation;
+the proponent must answer that exact evidence rather than a generic objection.
+Give each side one written cross-examination response, then give a fresh
+meta-reviewer both complete arguments, route reports, and closest sources.
+
+The meta-reviewer ranks novelty, importance, mechanism specificity,
+falsifiability, benchmark validity, and local feasibility separately. Local
+ease cannot compensate for an incremental or unimportant thesis. Persist the
+full exchange and the reasons each candidate survives or is killed.
+
+### Step 6 — hand off to idea-creator
 
 `IDEA_CANDIDATES.md` is the input for `idea-creator`, which ranks
 candidates against pilot budgets and selects 1–3 to pilot in parallel.
@@ -179,7 +221,9 @@ candidates against pilot budgets and selects 1–3 to pilot in parallel.
 
 ## Output contract
 
-Writes `research/IDEA_CANDIDATES.md` ranked by novelty × research value ×
-falsifiability × feasibility within the operator's actual budget. This is the
-source of truth for the next skill
-(`idea-creator`) and must be present before any experiment plan is written.
+For open-ended publishable/doctoral paper ideation, preserves the 12 raw route
+reports under `research/ideation/routes/` and the adversarial exchanges under
+`research/ideation/debates/`. Writes `research/IDEA_CANDIDATES.md` ranked by
+novelty × research value × falsifiability × feasibility within the operator's
+actual budget. This is the source of truth for the next skill (`idea-creator`)
+and must be present before any experiment plan is written.

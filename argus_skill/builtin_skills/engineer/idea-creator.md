@@ -81,8 +81,11 @@ distinguish hypothesis from null>
 
 ### Step 3 — execute pilots in parallel
 
-Run probes via `research-experiment-runner`. Parallelism is optional; use it only
-when probes are independent and resources allow it.
+Run probes via `research-experiment-runner`. For paper selection, launch all
+independent `run`-recommended probes concurrently when resources allow. If a
+shared scarce resource requires waves, record that constraint and keep the lead
+doing source verification or analysis while the probes run; do not select an
+idea from whichever serial probe happened to finish first.
 
 ### Step 4 — record verdicts
 
