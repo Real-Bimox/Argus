@@ -91,6 +91,16 @@ def test_no_audit_section_when_log_path_empty(monkeypatch) -> None:
     assert "events.jsonl" not in p
 
 
+def test_reviewer_rejects_retroactive_audit_reconstruction(monkeypatch) -> None:
+    p = _build("", monkeypatch=monkeypatch)
+
+    assert "operator mutation freeze or append-only requirement" in p
+    assert "compare directive order with file-write, install, and command events" in p
+    assert "cannot make an overwritten or reconstructed ledger contemporaneous" in p
+    assert "unless the cited objective text states it" in p
+    assert "missing byte-faithful command" in p
+
+
 def test_audit_recipes_scope_searches_to_current_engineer_call(monkeypatch) -> None:
     p = _build(
         _LOG_PATH,
