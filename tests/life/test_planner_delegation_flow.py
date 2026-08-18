@@ -195,7 +195,9 @@ def test_manager_intent_survives_generation_only_daemon_restart(
             "execution_task": "optimize MLX inference",
             "continuous_generation": 2,
             "vertical": "apple_mlx_inference",
+            "workflow_mode": "staged",
             "learned_vertical_status": "candidate",
+            "reason": "The repository uses one measured MLX hot path.",
         }) + "\n",
         encoding="utf-8",
     )
@@ -211,11 +213,25 @@ def test_manager_intent_survives_generation_only_daemon_restart(
     assert Harness()._manager_intent_context() == {
         "execution_task": "optimize MLX inference",
         "vertical": "apple_mlx_inference",
+        "workflow_mode": "staged",
         "learned_vertical_status": "candidate",
+        "reason": "The repository uses one measured MLX hot path.",
         "continuous_generation": 2,
         "stage": "hotpath_profile",
         "current_stage": "hotpath_profile",
     }
+
+    prompt_block = Harness._manager_intent_prompt_block(
+        Harness()._manager_intent_context(),
+        "optimize MLX inference",
+    )
+    assert prompt_block.startswith("## Manager routing boundary (authoritative)")
+    assert "VERTICAL=apple_mlx_inference" in prompt_block
+    assert "WORKFLOW=staged" in prompt_block
+    assert "AUTHORITY=technical" in prompt_block
+    assert "## Manager strategic context" in prompt_block
+    assert "one measured MLX hot path" in prompt_block
+    assert "intent_id" not in prompt_block
 
 
 def test_continuous_reload_updates_lifetime_and_final_gate() -> None:

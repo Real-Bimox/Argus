@@ -66,7 +66,12 @@ Manager owns:
 - vertical selection or project-local vertical creation;
 - direct versus staged workflow;
 - bounded versus standing lifetime;
-- a clean standalone `execution_task`.
+- a clean standalone `execution_task`, used directly as the shared prose
+  mission brief.
+
+Manager may investigate any relevant repository evidence needed to control
+overall direction and risk. Its tool boundary is read-only; it does not
+implement the task or replace Planner's concrete file-level plan.
 
 Manager never treats transcript wrappers as the Engineer objective. A short
 contextual request is reduced to its current operator message if a model copies
@@ -78,7 +83,9 @@ Planner is read-only and delegates work.
 
 For bounded work it produces a small dependency DAG. One coherent deliverable
 normally stays in one node. For staged or standing work it chooses one
-decision-sized next mission from current evidence.
+decision-sized next mission from current evidence. Planner owns the technical
+repository grounding; Manager routing does not precompute call chains,
+analogues, or test plans.
 
 Planner outcomes are:
 
@@ -424,9 +431,10 @@ Prompt-isolation rules:
   the vertical or rewrite the execution plan. TEAM handoff
   separately receives at most four recent turns, capped at 300 characters each,
   so a long correction keeps necessary context without polluting route control.
-- Manager must emit a standalone `execution_task`. If it copies bounded
-  conversation markers, the Host rejects the handoff instead of authoring or
-  guessing a replacement.
+- Manager must emit a standalone `execution_task`. The Host presents that prose
+  to Planner as the authoritative mission brief instead of creating a second
+  context file. If it copies bounded conversation markers, the Host rejects the
+  handoff instead of authoring or guessing a replacement.
 - Manager selects a vertical from the requested action. Quoted commit subjects,
   logs, filenames, and errors remain evidence and are never expanded into new
   implementation work.

@@ -360,6 +360,9 @@ class LifeWorkerRunMixin:
                         )
                         break
                 except Exception:  # noqa: BLE001
+                    if self._stop.is_set():
+                        log.info("daemon: drain pass interrupted by stop request")
+                        break
                     log.exception("daemon: drain pass raised; sleeping and retrying")
                 # Reset per-run counters so future drain passes work.
                 rf_state.sup._missions_started = 0

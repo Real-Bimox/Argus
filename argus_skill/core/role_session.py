@@ -335,7 +335,7 @@ class RoleSessionCapsule:
         self.save()
 
     def prompt_block(self) -> str:
-        if self.path is None:
+        if self.path is None or not self.mission_context_path:
             return ""
         mission_lines = ""
         if self.mission_context_path:
@@ -349,10 +349,11 @@ class RoleSessionCapsule:
             "## Your role-session capsule\n"
             f"Path: `{self.path}`"
             f"{mission_lines}\n"
-            "These runtime-owned files contain only compact shared state, not another "
-            "role's private reasoning. Read the mission contract, frontier, and "
-            "capsule before broad exploration after a fresh or rotated session. "
-            "Current artifacts and evidence remain authoritative; do not edit the "
+            "The Host already applied this capsule and injected the current mission "
+            "state into this prompt. Do not read the capsule or handoff files merely "
+            "for ceremony. Read a referenced mission or frontier only to resolve a "
+            "specific contradiction or after a rotated continuation lost required "
+            "state. Current project artifacts remain authoritative; do not edit the "
             "capsule or frontier directly."
         )
 

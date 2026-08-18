@@ -68,6 +68,7 @@ class _RunForeverState:
         self.init_objective: str = ""
         self.init_source_state: Any = None
         self.resume_has_manager_handoff: bool = False
+        self.manager_handoff_resolved: bool = False
         self.handoff_failure: str = ""
 
         # Set by ``_rf_build_supervisor``.
@@ -287,6 +288,7 @@ class LifeWorkerBootMixin:
             )
         )
         if rf_state.resume_has_manager_handoff:
+            rf_state.manager_handoff_resolved = True
             log.info(
                 "daemon boot: adopting persisted Manager handoff for continuous generation %d",
                 rf_state.init_source_state.generation,
@@ -452,6 +454,9 @@ class LifeWorkerBootMixin:
                             "",
                         ),
                         "stages": list(getattr(division, "stages", []) or []),
+                        "reason": str(
+                            getattr(decision, "adaptation_reason", "") or ""
+                        ).strip(),
                         "text": "manager completed daemon objective handoff",
                     }
                     try:
@@ -461,6 +466,7 @@ class LifeWorkerBootMixin:
                     if live_stage:
                         completed_event["current_stage"] = live_stage
                     rf_state.sink.append(completed_event)
+                    rf_state.manager_handoff_resolved = True
                     for item_id in committed.get("superseded_ids", ()):
                         rf_state.sink.append(
                             {
@@ -589,3 +595,5 @@ class LifeWorkerBootMixin:
             planner_runner=getattr(rf_state.runner, "planner_backend", None)
             or getattr(rf_state.runner, "backend", None),
         )
+        if rf_state.manager_handoff_resolved:
+            rf_state.sup._vertical_resolved = True

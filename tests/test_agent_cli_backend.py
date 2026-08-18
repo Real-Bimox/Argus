@@ -33,12 +33,67 @@ from argus_skill.adapters.agent_cli_backend import (
     _sum_token_counts,
     build_agent_cli_backend_from_env,
 )
+from argus_skill.adapters.agent_cli_backend._core import _RepeatedToolCallGuard
 from argus_skill.core.models import RunnerOptions
 from argus_skill.core.token_usage import extract_token_usage
 from argus_skill.provider_integrations.copilot_usage import (
     CopilotCallUsage,
     CopilotModelUsage,
 )
+
+
+def test_repeated_tool_guard_only_interrupts_consecutive_identical_calls() -> None:
+    guard = _RepeatedToolCallGuard(limit=3)
+
+    def tool(call_id: str, path: str) -> None:
+        guard.observe(
+            "stdout",
+            json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [{
+                        "type": "tool_use",
+                        "id": call_id,
+                        "name": "Read",
+                        "input": {"file_path": path},
+                    }]
+                },
+            }),
+        )
+
+    def result(call_id: str, *, failed: bool) -> None:
+        guard.observe(
+            "stdout",
+            json.dumps({
+                "type": "user",
+                "message": {
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": call_id,
+                        "is_error": failed,
+                    }]
+                },
+            }),
+        )
+
+    tool("one", "/missing-a")
+    result("one", failed=True)
+    tool("two", "/missing-b")
+    result("two", failed=True)
+    tool("three", "/missing-a")
+    result("three", failed=True)
+    assert guard.interrupt_reason() == ""
+
+    for call_id in ("four", "five"):
+        tool(call_id, "/missing-a")
+        result(call_id, failed=True)
+
+    assert "requested 3 consecutive times" in guard.interrupt_reason()
+
+    guard.reset()
+    tool("six", "/missing-a")
+    result("six", failed=False)
+    assert guard.interrupt_reason() == ""
 
 
 @dataclass

@@ -19,8 +19,12 @@ from ..skills.vertical_select import (
     persist_vertical,
 )
 from ._helpers import (
+    _DEFAULT_FAST_ROUTE_MAX_PROMPT_CHARS,
+    _DEFAULT_FAST_ROUTE_MAX_TASK_CHARS,
     _DEFAULT_GROUNDED_ROUTE_MAX_PROMPT_CHARS,
     _manager_backend_failure,
+    _manager_fast_route_enabled,
+    _manager_fast_route_min_confidence,
     _manager_model,
     _manager_reasoning_effort,
     _manager_route_positive_int,
@@ -71,18 +75,6 @@ def _software_grounding_required(workflow_mode: str) -> bool:
 
 _CURRENT_OPERATOR_MARKER = "[CURRENT OPERATOR MESSAGE]"
 _ROUTING_RUNTIME_ENTRIES = frozenset({".argus", ".autors"})
-_REPOSITORY_SENSITIVE_VERTICALS = frozenset({
-    "software",
-    "argus_maintenance",
-    "digital_circuit",
-    "digital_circuit_benchmark",
-    "chip_design",
-    "speedrun",
-    "kernel_engineering",
-    "nanochat",
-    "nanogpt_speedrun",
-    "kernelbench",
-})
 _ROUTING_PROJECT_MARKERS = frozenset({
     ".git",
     "AGENTS.md",
@@ -134,6 +126,9 @@ def _render_routing_workspace_snapshot(snapshot: dict[str, Any]) -> str:
     markers = list(snapshot.get("project_markers") or [])
     return (
         "\n\n## Host workspace snapshot (authoritative bounded routing evidence)\n"
+        f"manager_tool_root={snapshot.get('root') or ''}\n"
+        "container_path_mapping=/app -> manager_tool_root (Manager tools must use "
+        "the Host path; preserve /app only inside commands handed to Engineer)\n"
         f"accessible={str(bool(snapshot.get('accessible'))).lower()}\n"
         f"workspace_empty={str(bool(snapshot.get('workspace_empty'))).lower()}\n"
         f"project_markers={'; '.join(str(value) for value in markers) or 'none'}\n"
@@ -159,9 +154,7 @@ def _decision_requires_agent_grounding(
         return True
     if decision.adapted_stages:
         return True
-    if bool(snapshot.get("workspace_empty")):
-        return False
-    return decision.vertical in _REPOSITORY_SENSITIVE_VERTICALS
+    return False
 
 
 class _VerticalDecisionMixin:
@@ -340,12 +333,18 @@ class _VerticalDecisionMixin:
             )
         from ..core.models import RunnerOptions
         from ..domains import BUILTIN_DOMAINS, DOMAIN_PURPOSES
-        from ..roles.prompts.manager import build_vertical_decision_prompt
+        from ..roles.prompts.manager import (
+            build_fast_vertical_decision_prompt,
+            build_vertical_decision_prompt,
+        )
         from ..verticals._data_domain import (
             list_all_data_domain_names,
             list_selectable_data_domain_summaries,
         )
-        from .domain_author import parse_vertical_decision
+        from .domain_author import (
+            parse_fast_vertical_decision,
+            parse_vertical_decision,
+        )
         from .stage_decider import extract_answer
 
         existing_summaries = list_selectable_data_domain_summaries(
@@ -381,6 +380,110 @@ class _VerticalDecisionMixin:
             or getattr(self.runner, "_backend_name", "")
             or ""
         ).strip().lower()
+        known_verticals = list(vertical_select.available_verticals())
+
+        def finalize(decision: VerticalDecision) -> VerticalDecision:
+            if decision.choice == "existing":
+                from ..verticals._base import load_vertical_contract
+                from ..verticals._data_domain import materialize_learned_data_domain
+
+                materialize_learned_data_domain(
+                    self.learned_vertical_root,
+                    self.project_root,
+                    decision.vertical,
+                )
+                contract = load_vertical_contract(
+                    decision.vertical,
+                    project_root=self.project_root,
+                )
+                if contract.mission_kind == "software":
+                    decision.workflow_mode = _repository_workflow_mode(
+                        decision.workflow_mode
+                    )
+                if (
+                    contract.ground_before_handoff
+                    and _software_grounding_required(decision.workflow_mode)
+                ):
+                    decision.execution_task = self._ground_execution_task(
+                        decision.execution_task,
+                        workflow_mode=decision.workflow_mode,
+                        root_task_id=root_task_id,
+                    )
+            if contextual_task and (
+                "[RECENT CONVERSATION CONTEXT" in decision.execution_task
+                or "[BOUNDED TASK CONTEXT" in decision.execution_task
+                or _CURRENT_OPERATOR_MARKER in decision.execution_task
+            ):
+                raise VerticalDecisionError(
+                    "Manager execution_task copied bounded conversation context "
+                    "instead of producing a standalone handoff"
+                )
+            return decision
+
+        if (
+            not contextual_task
+            and _manager_fast_route_enabled()
+            and len(task.strip())
+            <= _manager_route_positive_int(
+                "ARGUS_SKILL_MANAGER_FAST_ROUTE_MAX_TASK_CHARS",
+                _DEFAULT_FAST_ROUTE_MAX_TASK_CHARS,
+            )
+        ):
+            fast_prompt = build_fast_vertical_decision_prompt(
+                task,
+                verticals_with_purpose=vertical_select.available_vertical_purposes(),
+                domains_with_purpose=DOMAIN_PURPOSES,
+                existing_data_domains=existing,
+                research_target_verticals=research_target_verticals,
+            )
+            if len(fast_prompt) <= _manager_route_positive_int(
+                "ARGUS_SKILL_MANAGER_FAST_ROUTE_MAX_PROMPT_CHARS",
+                _DEFAULT_FAST_ROUTE_MAX_PROMPT_CHARS,
+            ):
+                with self._task_usage_scope(root_task_id):
+                    fast_result = gateway_run_exec(
+                        backend,
+                        prompt=fast_prompt,
+                        options=RunnerOptions(
+                            model=_manager_model(),
+                            reasoning_effort=_manager_vertical_reasoning_effort(),
+                            working_dir=str(self.execution_workdir),
+                            sandbox_mode="read-only",
+                            force_safe_mode=True,
+                            skip_git_repo_check=True,
+                        ),
+                        run_label="manager-classify-fast",
+                    )
+                failed, detail = _manager_backend_failure(fast_result)
+                if failed:
+                    raise VerticalDecisionError(
+                        "Manager fast-route backend failed"
+                        + (f": {detail}" if detail else "")
+                    )
+                fast_route = parse_fast_vertical_decision(
+                    extract_answer(fast_result),
+                    known_verticals=known_verticals,
+                    known_domains=list(BUILTIN_DOMAINS),
+                    existing_data_domains=all_domain_names,
+                    research_target_verticals=research_target_verticals,
+                )
+                if (
+                    fast_route is not None
+                    and not fast_route.needs_grounding
+                    and fast_route.confidence >= _manager_fast_route_min_confidence()
+                ):
+                    return finalize(_normalize_exploratory_research_workflow(
+                        VerticalDecision(
+                            choice="existing",
+                            vertical=fast_route.vertical,
+                            domain=fast_route.domain,
+                            workflow_mode=fast_route.workflow_mode,
+                            adaptation_reason=fast_route.rationale,
+                            execution_task=task.strip(),
+                            research_target_level=fast_route.research_target_level,
+                            target_venue=fast_route.target_venue,
+                        )
+                    ))
 
         workspace_snapshot = _routing_workspace_snapshot(self.execution_workdir)
         prompt = build_vertical_decision_prompt(
@@ -419,7 +522,6 @@ class _VerticalDecisionMixin:
             skip_git_repo_check=True,
             extra_args=grounded_extra_args,
         )
-        known_verticals = list(vertical_select.available_verticals())
 
         def invoke_grounded_route(
             route_prompt: str,
@@ -456,10 +558,23 @@ class _VerticalDecisionMixin:
                 route_decision
             )
 
-        result, decision = invoke_grounded_route(
-            prompt,
-            run_label="manager-classify-grounded",
-        )
+        try:
+            result, decision = invoke_grounded_route(
+                prompt,
+                run_label="manager-classify-grounded",
+            )
+        except VerticalDecisionError as exc:
+            if "repeated tool call detected" not in str(exc):
+                raise
+            result, decision = invoke_grounded_route(
+                prompt
+                + "\n\n## Tool-loop correction\n"
+                "The prior turn repeated one failed tool call. Do not repeat it. "
+                "Use manager_tool_root for any further repository inspection, or "
+                "return the routing decision now if the Host snapshot and Task are "
+                "already sufficient.",
+                run_label="manager-classify-tool-loop-retry",
+            )
         tool_activity = bool(getattr(result, "tool_activity_observed", False))
         grounding_required = _decision_requires_agent_grounding(
             decision,
@@ -489,42 +604,7 @@ class _VerticalDecisionMixin:
                     "Manager grounded vertical decision did not inspect repository "
                     "tools after one automatic retry"
                 )
-        if decision.choice == "existing":
-            from ..verticals._base import load_vertical_contract
-            from ..verticals._data_domain import materialize_learned_data_domain
-
-            materialize_learned_data_domain(
-                self.learned_vertical_root,
-                self.project_root,
-                decision.vertical,
-            )
-            contract = load_vertical_contract(
-                decision.vertical,
-                project_root=self.project_root,
-            )
-            if contract.mission_kind == "software":
-                decision.workflow_mode = _repository_workflow_mode(
-                    decision.workflow_mode
-                )
-            if (
-                contract.ground_before_handoff
-                and _software_grounding_required(decision.workflow_mode)
-            ):
-                decision.execution_task = self._ground_execution_task(
-                    decision.execution_task,
-                    workflow_mode=decision.workflow_mode,
-                    root_task_id=root_task_id,
-                )
-        if contextual_task and (
-            "[RECENT CONVERSATION CONTEXT" in decision.execution_task
-            or "[BOUNDED TASK CONTEXT" in decision.execution_task
-            or _CURRENT_OPERATOR_MARKER in decision.execution_task
-        ):
-            raise VerticalDecisionError(
-                "Manager execution_task copied bounded conversation context "
-                "instead of producing a standalone handoff"
-            )
-        return decision
+        return finalize(decision)
 
     def _apply_vertical_decision_rendering(
         self,

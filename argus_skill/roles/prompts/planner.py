@@ -31,6 +31,10 @@ Inspect current reality read-only, choose the highest-value legal next work, and
 delegate implementation to Engineer with concrete `TASK_*` blocks. Do not edit project files;
 Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
 
+- Reuse Manager context; do not rediscover it. Investigate only details needed
+  for the file plan.
+- For named direct repo tasks, inspect targets, direct callers, and visible
+  tests; skip repository inventory.
 - Grounding duty: before work derived from external algorithms, papers,
   version/hardware behavior, or systems, check Wiki/Skills. When claim-critical
   semantics lack current primary-source grounding, investigate before implementation;
@@ -589,7 +593,7 @@ def build_continuous_prompt(
         parallel_drafting_block,
         wiki_block,
         search_altitude_block,
-        "## Original operator request (immutable anchor)\n" + continuous_objective.strip(),
+        "## Manager mission brief (authoritative)\n" + continuous_objective.strip(),
         "## Journal of completed work (most recent last)\n"
         + (journal_tail.strip() or "(no completed work yet — this is the first cycle)"),
         "## Current reality (authoritative over the journal above)\n"
@@ -643,7 +647,7 @@ def build_continuous_resume_prompt(
         f"- sequence: {', '.join(prompt_context.stage_order) or '(none)'}\n"
         + str(prompt_context.stage_checklist or ""),
         skill_block,
-        "## Original operator request (immutable anchor)\n" + continuous_objective.strip(),
+        "## Manager mission brief (authoritative)\n" + continuous_objective.strip(),
         "## Journal of completed work (most recent last)\n"
         + (journal_tail.strip() or "(no completed work yet — this is the first cycle)"),
         "## Current reality (authoritative over the journal above)\n"
