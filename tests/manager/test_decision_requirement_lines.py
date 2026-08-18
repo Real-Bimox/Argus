@@ -135,8 +135,8 @@ def test_an_unanswered_line_is_absent_rather_than_empty() -> None:
 def test_a_semicolon_separates_but_a_comma_does_not() -> None:
     """A constraint contains commas far more often than semicolons.
 
-    ``read_list`` splits on ``;`` and ``|`` only; this pins that a constraint
-    written with commas arrives in one piece rather than cut in half.
+    These three lines split on ``;`` alone; this pins that a constraint written
+    with commas arrives in one piece rather than cut in half.
     """
     decision = _decide(
         RUN_16_SHAPED.replace(
@@ -148,6 +148,48 @@ def test_a_semicolon_separates_but_a_comma_does_not() -> None:
     assert decision.precise_constraints == (
         "at least 1.5x faster, measured on B200, over PyTorch",
     )
+
+
+def test_a_pipe_is_absolute_value_and_does_not_separate() -> None:
+    """Run 17 stated ``sum_{i=1}^5 |z_i|^2 = 5`` and the contract cut it up.
+
+    ``read_list`` splits on ``;`` and ``|``, which is right for the paths and
+    identifiers its other callers name and wrong for a line that carries the
+    operator's own words back. The recorded clauses read ``constraint
+    sum_{i=1}^5``, ``z_i`` and ``^2 = 5`` — three fragments, none of them a
+    constraint, and the mathematical content deleted at exactly the character
+    that carried it.
+    """
+    verbatim = "constraint sum_{i=1}^5 |z_i|^2 = 5"
+    decision = _decide(
+        RUN_16_SHAPED.replace(
+            "PRECISE_CONSTRAINTS=must compile under Lean 4; no sorry; no new axioms",
+            f"PRECISE_CONSTRAINTS={verbatim}",
+        )
+    )
+
+    assert decision.precise_constraints == (verbatim,)
+
+
+@pytest.mark.parametrize(
+    ("key", "existing"),
+    [
+        (
+            "PRECISE_CONSTRAINTS",
+            "PRECISE_CONSTRAINTS=must compile under Lean 4; no sorry; no new axioms",
+        ),
+        ("EXCLUSIONS", "EXCLUSIONS=do not modify mathlib; no numerical experiments"),
+        (
+            "AMBIGUITIES",
+            "AMBIGUITIES=which universe cardinality bound the operator means",
+        ),
+    ],
+)
+def test_no_requirement_line_splits_on_a_pipe(key: str, existing: str) -> None:
+    """All three carry operator wording, so all three take the same reader."""
+    decision = _decide(RUN_16_SHAPED.replace(existing, f"{key}=|x| <= |y|"))
+
+    assert getattr(decision, key.lower()) == ("|x| <= |y|",)
 
 
 def test_the_operators_wording_is_not_reworded() -> None:

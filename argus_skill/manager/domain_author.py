@@ -92,6 +92,7 @@ def _decision_fields(raw_text: str) -> dict[str, Any] | None:
         legacy_json_object,
         read_key_values,
         read_list,
+        read_list_semicolon,
         read_optional,
     )
 
@@ -121,9 +122,14 @@ def _decision_fields(raw_text: str) -> dict[str, Any] | None:
     # supplies, so one reader serves both doors. Absent stays absent: "the
     # Manager did not answer" and "the Manager answered none" reach the
     # contract differently, and only the second may clear a standing clause.
+    #
+    # `;` only, not `read_list`'s `;|`. These lines carry the operator's own
+    # words, and `|` is absolute value: run 17 stated the constraint
+    # `sum_{i=1}^5 |z_i|^2 = 5` and the contract recorded three clauses reading
+    # `constraint sum_{i=1}^5`, `z_i` and `^2 = 5`.
     for key in ("PRECISE_CONSTRAINTS", "EXCLUSIONS", "AMBIGUITIES"):
         if key in values:
-            fields[key.lower()] = list(read_list(values, key))
+            fields[key.lower()] = list(read_list_semicolon(values, key))
     paths = read_list(values, "LIVE_VIEW_PATHS")
     if paths:
         fields["live_view"] = {
