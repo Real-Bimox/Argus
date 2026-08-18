@@ -131,6 +131,26 @@ def test_event_journal_projects_canonical_lifecycle_events(tmp_path: Path) -> No
     ]
 
 
+def test_event_journal_projects_legacy_team_waiting_as_planner_waiting(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_text(
+        json.dumps({
+            "type": "life.team.waiting",
+            "ts": 1.0,
+            "reason": "await external worker",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+    entries = EventJournal(path).all()
+
+    assert len(entries) == 1
+    assert entries[0].kind == "planner_waiting"
+
+
 def test_event_journal_tail_prefilters_non_journal_json_before_decoding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

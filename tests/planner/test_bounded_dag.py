@@ -184,6 +184,24 @@ def test_bounded_planner_rejects_unicode_equivalent_duplicate_keys(tmp_path) -> 
     assert "duplicate" in plan.error
 
 
+def test_bounded_planner_rejects_casefold_equivalent_duplicate_keys(
+    tmp_path,
+) -> None:
+    runner = _Runner(
+        {
+            "reason": "bad graph",
+            "tasks": [
+                {"key": "Build", "deps": [], "title": "A", "objective": "do A"},
+                {"key": "build", "deps": [], "title": "B", "objective": "do B"},
+            ],
+        }
+    )
+
+    plan = plan_bounded_dag(runner, "x", workdir=tmp_path)
+
+    assert "duplicate" in plan.error
+
+
 def test_bounded_planner_accepts_minimal_task_without_control_fields(tmp_path) -> None:
     plan = plan_bounded_dag(
         _RawRunner(

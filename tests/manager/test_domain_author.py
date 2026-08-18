@@ -256,6 +256,97 @@ def test_vertical_parser_rejects_legacy_direct_alias_with_staged_workflow() -> N
     assert decision is None
 
 
+def test_vertical_parser_rejects_direct_alias_conflicting_with_persisted_staged() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "direct",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
+        persisted_vertical="software",
+        persisted_workflow_mode="staged",
+    )
+
+    assert decision is None
+
+
+def test_vertical_parser_recovers_direct_mode_from_legacy_persisted_alias() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "software",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
+        persisted_vertical="direct",
+    )
+
+    assert decision is not None
+    assert decision.vertical == "software"
+    assert decision.workflow_mode == "direct"
+
+
+def test_vertical_parser_recovers_required_persisted_research_target() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "execution_task": "continue the paper",
+        }),
+        known_verticals=VERTICALS,
+        known_domains=BUILTIN_DOMAINS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_domain="chemistry",
+        persisted_research_target_level="publishable",
+    )
+
+    assert decision is not None
+    assert decision.domain == "chemistry"
+    assert decision.research_target_level == "publishable"
+
+
+def test_vertical_parser_rejects_changed_persisted_research_domain() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "domain": "physics",
+            "workflow_mode": "staged",
+            "execution_task": "continue the paper",
+        }),
+        known_verticals=VERTICALS,
+        known_domains=BUILTIN_DOMAINS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_domain="chemistry",
+        persisted_research_target_level="publishable",
+    )
+
+    assert decision is None
+
+
+def test_fast_vertical_parser_rejects_explicit_workflow_conflict_with_persisted() -> None:
+    route = parse_fast_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "software",
+            "workflow_mode": "direct",
+            "confidence": 0.94,
+            "rationale": "conflicting persisted identity",
+        }),
+        known_verticals=VERTICALS,
+        persisted_vertical="software",
+        persisted_workflow_mode="staged",
+    )
+
+    assert route is None
+
+
 def test_vertical_parser_accepts_in_place_data_domain_adaptation() -> None:
     decision = parse_vertical_decision(
         json.dumps({

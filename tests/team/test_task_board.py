@@ -146,6 +146,37 @@ def test_form_rejects_unicode_equivalent_task_ids(tmp_path: Path) -> None:
         )
 
 
+def test_form_rejects_repeated_exact_task_id_before_writing(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="duplicate task_id"):
+        tb.form(
+            tmp_path,
+            [
+                {"task_id": "same", "objective": "first"},
+                {"task_id": "same", "objective": "second"},
+            ],
+        )
+
+    assert tb.snapshot(tmp_path) == []
+
+
+def test_form_validates_complete_batch_before_mutating_existing_board(
+    tmp_path: Path,
+) -> None:
+    tb.form(tmp_path, [{"task_id": "old", "objective": "unchanged"}])
+
+    with pytest.raises(ValueError, match="normalized identity"):
+        tb.form(
+            tmp_path,
+            [
+                {"task_id": "new", "objective": "must not be written"},
+                {"task_id": "café", "objective": "first"},
+                {"task_id": "cafe\u0301", "objective": "conflict"},
+            ],
+        )
+
+    assert [task["task_id"] for task in tb.snapshot(tmp_path)] == ["old"]
+
+
 def test_form_rejects_resumed_normalized_task_id_conflict(tmp_path: Path) -> None:
     tb.form(tmp_path, [{"task_id": "café", "objective": "first"}])
 
@@ -259,17 +290,44 @@ def test_form_does_not_interpret_the_acceptance_check(tmp_path: Path) -> None:
     assert task["target"] == "a" and task["state"] == "pending"
 
 
-def test_form_refreshes_the_acceptance_check_without_de_owning(tmp_path: Path) -> None:
+def test_form_rejects_changed_acceptance_check_for_live_task(tmp_path: Path) -> None:
     tb.form(tmp_path, [{"task_id": "a", "objective": "v1", "acceptance_check": "old"}])
     tb.claim_top(tmp_path, "w1", now=1.0)
     tb.heartbeat(tmp_path, "a", now=2.0)
 
-    tb.form(tmp_path, [{"task_id": "a", "objective": "v1", "acceptance_check": "new"}])
+    with pytest.raises(ValueError, match="materially changed spec"):
+        tb.form(
+            tmp_path,
+            [{"task_id": "a", "objective": "v1", "acceptance_check": "new"}],
+        )
+
     task = {t["task_id"]: t for t in tb.snapshot(tmp_path)}["a"]
-    # A static spec field like any other: refreshed on re-form, and refreshing it
-    # does not hand a live task back to the pool.
-    assert task["acceptance_check"] == "new"
+    assert task["acceptance_check"] == "old"
     assert task["state"] == "running" and task["owner"] == "w1"
+
+
+def test_form_rejects_changed_role_and_owned_roots_for_live_task(
+    tmp_path: Path,
+) -> None:
+    original = {
+        "task_id": "a",
+        "objective": "v1",
+        "role": "implementer",
+        "owns_paths": ["src/**"],
+        "non_goals": ["docs"],
+    }
+    tb.form(tmp_path, [original])
+    tb.claim_top(tmp_path, "w1", now=1.0)
+
+    with pytest.raises(ValueError, match="materially changed spec"):
+        tb.form(
+            tmp_path,
+            [{
+                **original,
+                "role": "reviewer",
+                "owns_paths": ["tests/**"],
+            }],
+        )
 
 
 def test_form_never_takes_lifecycle_fields_from_a_spec(tmp_path: Path) -> None:

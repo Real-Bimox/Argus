@@ -7,8 +7,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from ..core.portable_filename import normalized_logical_identifier
 from ..core.models import RunnerOptions
+from ..core.portable_filename import normalized_logical_identifier
 from ..core.run_gateway import run_exec as gateway_run_exec
 
 
