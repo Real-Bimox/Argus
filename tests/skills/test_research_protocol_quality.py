@@ -184,7 +184,7 @@ def test_research_smokes_require_discriminative_power_before_rejection() -> None
     assert "predeclared power and headroom" in research["research.signal_derisk"]
 
 
-def test_idea_selection_precedes_probe_inside_one_milestone() -> None:
+def test_route_review_precedes_probe_without_global_barrier() -> None:
     creator = _skill("engineer/idea-creator.md")
     probe = _skill("engineer/idea-feasibility-derisk.md")
     pipeline = _skill("engineer/auto-research-pipeline.md")
@@ -198,7 +198,7 @@ def test_idea_selection_precedes_probe_inside_one_milestone() -> None:
         / "planner.py"
     ).read_text(encoding="utf-8")
 
-    assert "Complete this selection" in creator
+    assert "Complete this route-local selection" in creator
     assert "Only after Step 1 has selected" in creator
     assert "After an idea has passed method-reasonableness selection" in probe
     assert "selection-before-probe" in pipeline
@@ -209,8 +209,12 @@ def test_idea_selection_precedes_probe_inside_one_milestone() -> None:
     normalized_planner = " ".join(planner.split())
     assert "selection must precede probe design and execution" in normalized_planner
     assert "Author the frozen evidence question" in normalized_planner
-    assert "does not yet choose the single final paper thesis" in creator
+    assert "does not yet choose the final thesis" in creator
     assert "must not silently change the frozen premise" in creator
+    assert "first independently reviewed probe with an `advance` verdict wins" in (
+        " ".join(creator.split())
+    )
+    assert "unfinished routes are not a stage blocker" in " ".join(pipeline.split())
 
 
 def test_experiment_review_does_not_repeat_idea_selection() -> None:
