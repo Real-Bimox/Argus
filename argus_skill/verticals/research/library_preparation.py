@@ -58,7 +58,7 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
         _enabled("ARGUS_SKILL_VENUE_RESEARCH")
         and context.stage in _VENUE_STAGES
     ):
-        from ...skills.venue_research import (
+        from .venue_research import (
             needs_venue_research,
             research_venue_profile,
         )
@@ -83,7 +83,7 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
                 ),
             })
     if _enabled("ARGUS_SKILL_IDEA_SEARCH") and context.stage == "research":
-        from ...skills.idea_search import _already_seeded, augment_idea_candidates
+        from .idea_search import _already_seeded, augment_idea_candidates
 
         if not _already_seeded(context.workdir):
             context.emit({

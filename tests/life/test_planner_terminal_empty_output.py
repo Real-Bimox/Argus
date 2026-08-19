@@ -181,8 +181,10 @@ def _write_software_state(project: Path, *, done: bool) -> None:
     """
     research = project / "research"
     research.mkdir(parents=True, exist_ok=True)
+    state_path = project / ".argus" / "PIPELINE_STATE.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
     record: dict = {"status": "done" if done else "in_progress"}
-    (research / "PIPELINE_STATE.json").write_text(
+    state_path.write_text(
         json.dumps(
             {
                 "vertical": "software",
@@ -209,7 +211,7 @@ def _write_software_state(project: Path, *, done: bool) -> None:
     record["completion_contract_sha256"] = completion_contract_fingerprint(
         project, "delivery", version=version
     )
-    (research / "PIPELINE_STATE.json").write_text(
+    state_path.write_text(
         json.dumps(
             {
                 "vertical": "software",
@@ -224,7 +226,9 @@ def _write_software_state(project: Path, *, done: bool) -> None:
 def _write_reviewed_math_scope_state(project: Path) -> None:
     research = project / "research"
     research.mkdir(parents=True, exist_ok=True)
-    (research / "PIPELINE_STATE.json").write_text(
+    state_path = project / ".argus" / "PIPELINE_STATE.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(
         json.dumps(
             {
                 "vertical": "math",
@@ -573,7 +577,7 @@ def test_nonterminal_planning_replays_unassessed_current_stage_review_first(
 
     assert backend.planner_calls == 0
     assert backend.manager_calls == 1
-    state = json.loads((project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
+    state = json.loads((project / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
     assert state["current_stage"] == "solve"
     assert state["research_target_level"] == "doctoral"
     assert _candidate_artifact_paths(project) == []
@@ -683,7 +687,7 @@ def test_newer_replan_review_blocks_older_stage_replay(
 
     assert backend.planner_calls == 2
     assert backend.manager_calls == 0
-    state = json.loads((project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
+    state = json.loads((project / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
     assert state["current_stage"] == "scope"
 
 
@@ -750,7 +754,7 @@ def test_bounded_continuous_campaign_replays_deferred_stage_review(
 
     assert supervisor._plan_next_work() == PLAN_RETRY
 
-    state = json.loads((project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
+    state = json.loads((project / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8"))
     assert state["current_stage"] == "solve"
     stored = next(row for row in supervisor.memory.backlog.all() if row.id == item.id)
     assert stored.outcome["stage_certification"] == "certified"
@@ -819,7 +823,7 @@ def test_review_only_item_is_never_replayed_into_stage_writer(
 
     assert supervisor._latest_unassessed_review_for_current_stage() is None
     state = json.loads(
-        (project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (project / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert state["current_stage"] == "scope"
 

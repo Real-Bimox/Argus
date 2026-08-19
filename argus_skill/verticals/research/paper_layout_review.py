@@ -25,7 +25,6 @@ from argus_skill.tools.image_api import (
     _require_route,
 )
 
-from ...skills.venue_profiles import VenueProfile, resolve_venue_profile
 from ._review_contract_constants import (
     LAYOUT_REVIEW_GENERATED_BY,
     LAYOUT_REVIEW_HISTORY_PATH,
@@ -35,6 +34,7 @@ from ._review_contract_constants import (
     review_sha256_json,
     review_sha256_text,
 )
+from .venue_profiles import VenueProfile, resolve_venue_profile
 
 PAPER_MAIN_PDF_PATH = Path("paper/main.pdf")
 PAPER_MAIN_TEX_PATH = Path("paper/main.tex")

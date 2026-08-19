@@ -14,7 +14,7 @@ import os
 import tempfile
 
 from argus_skill.core.models import RunnerResult
-from argus_skill.skills.idea_search import (
+from argus_skill.verticals.research.idea_search import (
     SOURCE_MARKER,
     _already_seeded,
     _build_prompt,
@@ -172,8 +172,8 @@ def test_loop_emits_idea_search_events(tmp_path):
     from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
 
     # Force the research stage so the hook fires.
-    (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir()
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "research", "current_stage": "research"}),
         encoding="utf-8",
     )
@@ -241,11 +241,12 @@ def test_loop_idea_search_run_once_no_reemit(tmp_path):
     from argus_skill import SkillLoop, SkillLoopConfig
     from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
 
-    (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir()
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"current_stage": "research"}), encoding="utf-8",
     )
     # pre-seed the marker -> _already_seeded is True
+    (tmp_path / "research").mkdir()
     (tmp_path / "research" / "IDEA_CANDIDATES.md").write_text(
         f"{SOURCE_MARKER}\n## Candidate WS-1: prior\n", encoding="utf-8",
     )
@@ -287,8 +288,8 @@ def test_loop_skips_idea_search_for_a_non_research_vertical_sharing_the_stage_na
     from argus_skill import SkillLoop, SkillLoopConfig
     from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
 
-    (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir()
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "kernelbench", "current_stage": "research"}),
         encoding="utf-8",
     )
@@ -326,8 +327,8 @@ def test_loop_skips_idea_search_when_paper_mode_is_not_explicit(tmp_path):
     from argus_skill import SkillLoop, SkillLoopConfig
     from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
 
-    (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir()
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "research", "current_stage": "research"}),
         encoding="utf-8",
     )
@@ -362,8 +363,8 @@ def test_loop_skips_academic_bootstraps_for_exploratory_research(tmp_path):
     from argus_skill import SkillLoop, SkillLoopConfig
     from argus_skill.adapters.memory_backend import CannedResponse, MemoryBackend
 
-    (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir()
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({
             "vertical": "research",
             "current_stage": "research",

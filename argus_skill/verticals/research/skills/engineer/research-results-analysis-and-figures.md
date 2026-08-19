@@ -171,4 +171,4 @@ provenance artifacts—not manuscript prose.
 
 Run the analysis from a clean shell. Confirm every table and figure exists and
 is current against the claim graph and manuscript.
-Only then advance analysis/narrative state in `research/PIPELINE_STATE.json`.
+Only then advance analysis/narrative state in `.argus/PIPELINE_STATE.json`.

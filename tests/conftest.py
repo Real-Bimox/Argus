@@ -145,7 +145,7 @@ def _forbid_project_state_in_the_checkout() -> Iterator[None]:
     which test left them.
     """
     root = _repo_root()
-    markers = ("research/PIPELINE_STATE.json", "research/CHECKLISTS.json", ".autors")
+    markers = (".argus/PIPELINE_STATE.json", "research/CHECKLISTS.json", ".autors")
     before = {name for name in markers if (root / name).exists()}
     yield
     leaked = sorted(

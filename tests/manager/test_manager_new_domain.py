@@ -328,7 +328,7 @@ def test_vertical_env_cannot_replace_manager_authored_domain(
     ]
     assert (tmp_path / "research" / "DOMAINS" / "math_conjecture.json").exists()
     state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert state["vertical"] == "math_conjecture"
 
@@ -358,7 +358,7 @@ def test_vertical_env_does_not_override_manager_reclassification(
         "manager-classify-grounded",
     ]
     state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert state["vertical"] == "math_conjecture_2"
     assert vs.resolve_vertical(tmp_path) == "math_conjecture_2"

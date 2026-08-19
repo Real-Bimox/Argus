@@ -2197,7 +2197,7 @@ def test_terminal_workspace_without_prior_handoff_reopens_for_new_daemon_intent(
     from argus_skill.skills.vertical_select import persist_vertical
 
     persist_vertical(tmp_path, "software")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["current_stage"] = "delivery"
     state["stages"] = {"delivery": {"status": "done"}}

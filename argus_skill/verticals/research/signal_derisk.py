@@ -31,7 +31,7 @@ checklist, which may replace this workflow entirely for another research shape.
 
 CLI::
 
-    python -m argus_skill.skills.signal_derisk validate --project-root . \\
+    python -m argus_skill.verticals.research.signal_derisk validate --project-root . \\
         --derisk research/SIGNAL_DERISK.json
 """
 from __future__ import annotations

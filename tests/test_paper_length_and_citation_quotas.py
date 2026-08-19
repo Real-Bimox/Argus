@@ -14,9 +14,15 @@ from pathlib import Path
 
 import pytest
 
-from argus_skill.skills import venue_profiles
+from argus_skill.verticals.research import venue_profiles
 
-SKILLS = Path(__file__).resolve().parents[1] / "argus_skill" / "builtin_skills"
+SKILLS = (
+    Path(__file__).resolve().parents[1]
+    / "argus_skill"
+    / "verticals"
+    / "research"
+    / "skills"
+)
 
 
 def _read(relative: str) -> str:

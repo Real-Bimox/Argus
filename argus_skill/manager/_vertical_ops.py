@@ -824,7 +824,15 @@ class _VerticalDecisionMixin:
             self.project_root,
             vertical,
         )
-        pipeline_state = self.project_root / "research" / "PIPELINE_STATE.json"
+        from ..core.pipeline_state import (
+            legacy_pipeline_state_path,
+            primary_pipeline_state_path,
+        )
+
+        pipeline_states = [
+            primary_pipeline_state_path(self.project_root),
+            legacy_pipeline_state_path(self.project_root),
+        ]
         domain_path = (
             self.project_root / "research" / "DOMAINS" / f"{vertical}.json"
         )
@@ -833,7 +841,7 @@ class _VerticalDecisionMixin:
             decision.adapted_stages
             and load_data_domain(vertical, self.project_root) is not None
         )
-        restore_paths = [pipeline_state]
+        restore_paths = list(pipeline_states)
         if adapted:
             restore_paths.extend((domain_path, index_path))
         with _restore_files_on_error(restore_paths):
@@ -989,14 +997,22 @@ class _VerticalDecisionMixin:
         if _old_vertical is None:
             _old_vertical = vertical_select._persisted_vertical(self.project_root)
 
-        pipeline_state = self.project_root / "research" / "PIPELINE_STATE.json"
+        from ..core.pipeline_state import (
+            legacy_pipeline_state_path,
+            primary_pipeline_state_path,
+        )
+
+        pipeline_states = [
+            primary_pipeline_state_path(self.project_root),
+            legacy_pipeline_state_path(self.project_root),
+        ]
         domain_path = (
             self.project_root
             / "research"
             / "DOMAINS"
             / f"{proposal.name}.json"
         )
-        with _restore_files_on_error([pipeline_state, domain_path]):
+        with _restore_files_on_error([*pipeline_states, domain_path]):
             write_data_domain(
                 self.project_root,
                 proposal.name,

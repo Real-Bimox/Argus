@@ -13,7 +13,7 @@ from ...skills.stage_machine import ChecklistItem
 STAGE_ORDER = ["ingest", "study", "curate", "review"]
 completion_gate = "none"
 PROTECTED_SKILL_TAGS: frozenset[str] = frozenset()
-_PIPELINE_CHECK = ("Pipeline state present", "test -f research/PIPELINE_STATE.json")
+_PIPELINE_CHECK = ("Pipeline state present", "test -f .argus/PIPELINE_STATE.json")
 _CURATION_CHECK = (
     "Learning curation contract validates",
     "{python} -m argus_skill.verticals.learning.curation check --project-root .",

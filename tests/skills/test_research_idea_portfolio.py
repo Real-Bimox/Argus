@@ -17,7 +17,7 @@ from argus_skill.verticals.research.stages import stage_completion_issues
 
 
 def _pipeline(root: Path, *, direction: str = "broad") -> None:
-    path = root / "research" / "PIPELINE_STATE.json"
+    path = root / ".argus" / "PIPELINE_STATE.json"
     path.parent.mkdir(parents=True)
     path.write_text(
         json.dumps({

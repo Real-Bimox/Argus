@@ -1472,7 +1472,7 @@ def test_manager_decided_math_vertical_web_enqueue_enters_backlog(
     assert len(backlog) == 1
     assert backlog[0].objective == objective
     state = json.loads(
-        (life / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (life / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert state["vertical"] == "math"
     assert state["research_target_level"] == "exploratory"

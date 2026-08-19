@@ -52,7 +52,7 @@ def test_worker_without_stage_authority_never_reaches_the_stage_writer() -> None
     task, not a Planner node), a vertical that does not require independent
     review, and a Reviewer verdict — which is exactly the combination the
     legacy tail of the guard lets through. N of them run concurrently against
-    one ``research/PIPELINE_STATE.json``.
+    one ``.argus/PIPELINE_STATE.json``.
     """
     kwargs = dict(
         mission_scope="",

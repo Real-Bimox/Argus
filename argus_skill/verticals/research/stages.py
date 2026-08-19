@@ -14,8 +14,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from ...skills.stage_machine import ChecklistItem
-from ...skills.venue_profiles import VenueProfile, resolve_venue_profile
 from . import library_preparation
+from .prompt_policy import render_role_prompt_fragment
+from .venue_profiles import VenueProfile, resolve_venue_profile
 
 LIBRARY_PREPARER = library_preparation.prepare_skill_libraries
 
@@ -114,7 +115,8 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "mechanical routing decision: infrastructure/implementation failures, "
                 "baseline ceiling/floor saturation, and missing predeclared power and "
                 "headroom are limitations. Later stages own decisive benchmarks. "
-                "`argus_skill.skills.signal_derisk validate` is available only for "
+                "`argus_skill.verticals.research.signal_derisk validate` is available "
+                "only for "
                 "the default scalar-comparison shape and never decides quality."
             ),
             evidence_hint=(
@@ -520,7 +522,7 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "form. Submission readiness is not a way to retro-fix missing evidence."
             ),
             evidence_hint=(
-                "research/PIPELINE_STATE.json shows each stage status=done or "
+                ".argus/PIPELINE_STATE.json shows each stage status=done or "
                 "status=skipped with skip_reason/skipped_by and stage_history evidence"
             ),
         ),
@@ -842,6 +844,16 @@ PAPER_MISSION = True
 # reopens it. This keeps scientific integrity without repeatedly rebuilding the
 # same provenance tree.
 WORKFLOW_MODE = "proportional"
+VERIFICATION_STAGE_PROFILES = {
+    "research": "explore",
+    "plan": "explore",
+    "benchmark": "develop",
+    "run": "develop",
+    "analysis": "develop",
+    "draft": "develop",
+    "review": "certify",
+    "submission": "certify",
+}
 
 # Scientific implementation and experiment claims always require a fresh,
 # independent Reviewer; an Engineer verifier cannot waive this review.
@@ -867,7 +879,9 @@ _PLANNER_RESEARCH_ORCHESTRATION = (
     "normally below ten minutes; never use a full benchmark, training run, broad "
     "sweep, or publication-scale multi-seed study as a research probe. The smoke "
     "result cannot kill or block the selected idea. Keep the resulting critical path "
-    "below one hour when default resources allow it.\n"
+    "below one hour when default resources allow it. A failed hypothesis or rejected "
+    "direction is project memory, not automatic completion or a forced next action; "
+    "only the independently reviewed research target closes the project.\n"
 )
 
 _ENGINEER_RESEARCH_EXECUTION = (
@@ -899,8 +913,10 @@ __all__ = [
     "CHECKLIST_STAGE_ORDER",
     "CHECKLIST_ITEMS",
     "WORKFLOW_MODE",
+    "VERIFICATION_STAGE_PROFILES",
     "REQUIRE_INDEPENDENT_REVIEW",
     "role_banner",
+    "render_role_prompt_fragment",
     "stage_completion_issues",
     "completion_gate",
     "PAPER_MISSION",

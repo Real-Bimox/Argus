@@ -474,13 +474,11 @@ def _carries_stage_state(root: Path) -> bool:
     no ``current_stage``, no ``stages`` — so reading a stage out of it means
     reading the default vertical's first stage and calling it fact.
     """
+    from ..core.pipeline_state import read_pipeline_state
+
     try:
-        payload = json.loads(
-            (root / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
-        )
+        payload = read_pipeline_state(root)
     except (OSError, json.JSONDecodeError, ValueError):
-        return False
-    if not isinstance(payload, dict):
         return False
     return bool(
         str(payload.get("current_stage") or "").strip()
@@ -509,6 +507,7 @@ def current_stage_for_session(
     before the workdir. The old existence-only order is kept as a fallback,
     which is what still answers for a fresh project whose state file is empty.
     """
+    from ..core.pipeline_state import pipeline_state_exists
     from ..skills.stage_machine import current_stage
 
     authoritative = [life_dir, session.get("workdir"), session.get("cwd")]
@@ -518,7 +517,7 @@ def current_stage_for_session(
             if not raw:
                 continue
             root = Path(str(raw)).expanduser()
-            if not (root / "research" / "PIPELINE_STATE.json").exists():
+            if not pipeline_state_exists(root):
                 continue
             if require_stage_state and not _carries_stage_state(root):
                 continue

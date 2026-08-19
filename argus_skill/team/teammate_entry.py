@@ -198,7 +198,7 @@ def run_one_engineer_mission(
                 objective=objective, sink=sink, prelude_context=prelude_context,
                 # A teammate is not the project's stage authority. Left at the
                 # default, ``execute`` runs the Manager's stage-transition pass
-                # and that pass WRITES ``<cwd>/research/PIPELINE_STATE.json``
+                # and that pass WRITES ``<cwd>/.argus/PIPELINE_STATE.json``
                 # — and a teammate's ``cwd`` is the project root, because that
                 # is what keeps it reading the one shared ledger instead of a
                 # private one nobody reads. So the two facts compose into N

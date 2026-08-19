@@ -123,7 +123,9 @@ class SkillLoopExecuteMixin:
         cls,
         workdir: Path,
     ) -> tuple[Path, bool, bytes | None, str]:
-        path = workdir.expanduser().resolve(strict=False) / "research" / "PIPELINE_STATE.json"
+        from ..core.pipeline_state import pipeline_state_path
+
+        path = pipeline_state_path(workdir.expanduser().resolve(strict=False))
         try:
             if os.path.lexists(path.parent) and (
                 cls._is_link_or_reparse_point(path.parent)

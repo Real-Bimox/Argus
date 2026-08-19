@@ -1101,7 +1101,7 @@ def build_stage_decision_prompt(
         "observations, not live stage invariants. A legal pipeline transition "
         "naturally makes that observation historical; NEVER roll back solely "
         "because its recorded stage differs from the current "
-        "`research/PIPELINE_STATE.json` stage.\n"
+        "`.argus/PIPELINE_STATE.json` stage.\n"
         "- When in doubt, HOLD. Never advance on weak evidence.\n\n"
         "Explain your reasoning however is clearest, then state the verdict on "
         "these lines at the end. Only these lines are read:\n"

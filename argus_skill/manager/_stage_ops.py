@@ -701,13 +701,10 @@ class _StageDecisionMixin:
     # ---- progress view ----
     def current_stage(self) -> str:
         """Which Stage the engine is on now (read from PIPELINE_STATE.json)."""
-        import json as _json
+        from ..core.pipeline_state import read_pipeline_state
 
         try:
-            state = _json.loads(
-                (self.project_root / "research" / "PIPELINE_STATE.json")
-                .read_text(encoding="utf-8")
-            )
+            state = read_pipeline_state(self.project_root)
             return str(state.get("current_stage") or "") or self.plan_stages(
                 self._resolve_vertical_for_current_stage()
             )[0]

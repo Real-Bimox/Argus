@@ -178,7 +178,7 @@ def test_post_task_preserves_active_continuous_campaign_governance(
     assert response is not None
     assert response["objective"] == "verify the migrated scope artifact"
     assert commits == []
-    pipeline = json.loads((workspace / "research" / "PIPELINE_STATE.json").read_text())
+    pipeline = json.loads((workspace / ".argus" / "PIPELINE_STATE.json").read_text())
     assert pipeline["vertical"] == "math"
     assert pipeline["workflow_mode"] == "staged"
     assert pipeline["research_target_level"] == "doctoral"

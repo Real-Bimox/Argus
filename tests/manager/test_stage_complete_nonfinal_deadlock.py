@@ -72,7 +72,7 @@ def _decide(tmp_path, *, mission_scope: str, review: ReviewDecision | None = Non
             )
         ),
     )
-    state = json.loads((state_root / "research" / "PIPELINE_STATE.json").read_text())
+    state = json.loads((state_root / ".argus" / "PIPELINE_STATE.json").read_text())
     return decision, state
 
 

@@ -164,7 +164,7 @@ def test_research_owns_workflow_when_chemistry_is_active(tmp_path: Path) -> None
     persist_vertical(tmp_path, "research", domain="chemistry")
 
     payload = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     research = load_vertical("research", project_root=tmp_path)
 
@@ -196,7 +196,7 @@ def test_switching_to_non_research_clears_domain(tmp_path: Path) -> None:
     persist_vertical(tmp_path, "software")
 
     payload = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert payload["vertical"] == "software"
     assert "domain" not in payload

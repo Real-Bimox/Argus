@@ -7,11 +7,15 @@ things that must NOT move with it.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
 
+from argus_skill.core.pipeline_state import (
+    primary_pipeline_state_path,
+    read_pipeline_state,
+    write_pipeline_state,
+)
 from argus_skill.core.verification_policy import (
     DEFAULT_POSTURE,
     DEFAULT_PROFILE,
@@ -28,25 +32,32 @@ from argus_skill.core.verification_policy import (
     set_policy,
     stored_policy,
 )
+from argus_skill.verticals._base import load_vertical_contract
 
 
 @pytest.fixture
 def project(tmp_path: Path) -> Path:
-    (tmp_path / "research").mkdir()
     return tmp_path
 
 
 def write_state(root: Path, **fields) -> None:
-    path = root / "research" / "PIPELINE_STATE.json"
-    payload = json.loads(path.read_text()) if path.exists() else {}
+    payload = read_pipeline_state(root)
     payload.update(fields)
-    path.write_text(json.dumps(payload), encoding="utf-8")
+    write_pipeline_state(root, payload)
+
+
+def _profiles(vertical: str) -> dict[str, str]:
+    return dict(load_vertical_contract(vertical).verification_stage_profiles or {})
 
 
 # -- defaults ---------------------------------------------------------------
 
 def test_defaults_are_balanced_and_adaptive(project: Path) -> None:
-    policy = resolve_policy(project, stage="research")
+    policy = resolve_policy(
+        project,
+        stage="research",
+        stage_profiles=_profiles("research"),
+    )
 
     assert policy.posture == DEFAULT_POSTURE == "balanced"
     assert policy.configured_profile == DEFAULT_PROFILE == "adaptive"
@@ -54,13 +65,29 @@ def test_defaults_are_balanced_and_adaptive(project: Path) -> None:
 
 def test_a_missing_state_file_is_not_an_error(tmp_path: Path) -> None:
     assert stored_policy(tmp_path) == {}
-    assert resolve_policy(tmp_path, stage="research").profile == "explore"
+    assert (
+        resolve_policy(
+            tmp_path,
+            stage="research",
+            stage_profiles=_profiles("research"),
+        ).profile
+        == "explore"
+    )
 
 
 def test_a_corrupt_state_file_falls_back_to_defaults(project: Path) -> None:
-    (project / "research" / "PIPELINE_STATE.json").write_text("{not json", encoding="utf-8")
+    path = primary_pipeline_state_path(project)
+    path.parent.mkdir(parents=True)
+    path.write_text("{not json", encoding="utf-8")
 
-    assert resolve_policy(project, stage="research").posture == "balanced"
+    assert (
+        resolve_policy(
+            project,
+            stage="research",
+            stage_profiles=_profiles("research"),
+        ).posture
+        == "balanced"
+    )
 
 
 # -- the fix: early stages stop being judged as submissions ----------------
@@ -68,7 +95,12 @@ def test_a_corrupt_state_file_falls_back_to_defaults(project: Path) -> None:
 def test_a_publishable_project_explores_during_the_research_stage(project: Path) -> None:
     write_state(project, research_target_level="publishable")
 
-    policy = resolve_policy(project, stage="research", target_level="publishable")
+    policy = resolve_policy(
+        project,
+        stage="research",
+        target_level="publishable",
+        stage_profiles=_profiles("research"),
+    )
 
     # The whole point: the project still aims at publishable, but this round
     # is judged as exploration.
@@ -87,19 +119,14 @@ def test_a_publishable_project_explores_during_the_research_stage(project: Path)
     ],
 )
 def test_research_stage_mapping(stage, expected) -> None:
-    assert profile_for_stage(stage, "research") == expected
+    assert profile_for_stage(stage, _profiles("research")) == expected
 
 
-@pytest.mark.parametrize(
-    "stage,expected",
-    [
-        ("scope", "explore"), ("discover", "explore"), ("environment", "explore"),
-        ("baseline", "develop"), ("optimize", "develop"),
-        ("validate", "certify"), ("report", "certify"), ("deliver", "certify"),
-    ],
-)
-def test_kernel_stage_mapping(stage, expected) -> None:
-    assert profile_for_stage(stage, "kernel_engineering") == expected
+def test_kernel_stage_mapping_is_vertical_owned() -> None:
+    assert profile_for_stage(
+        "optimize",
+        _profiles("kernel_engineering"),
+    ) == "develop"
 
 
 # -- what must not move -----------------------------------------------------
@@ -125,7 +152,11 @@ def test_final_scope_outranks_an_operator_override(project: Path) -> None:
 def test_an_operator_profile_outranks_the_stage_default(project: Path) -> None:
     write_state(project, verification_profile="certify")
 
-    policy = resolve_policy(project, stage="research")
+    policy = resolve_policy(
+        project,
+        stage="research",
+        stage_profiles=_profiles("research"),
+    )
 
     assert policy.profile == "certify"
     assert policy.source == "operator"
@@ -134,7 +165,14 @@ def test_an_operator_profile_outranks_the_stage_default(project: Path) -> None:
 def test_adaptive_defers_to_the_stage(project: Path) -> None:
     write_state(project, verification_profile="adaptive")
 
-    assert resolve_policy(project, stage="review").source == "stage"
+    assert (
+        resolve_policy(
+            project,
+            stage="review",
+            stage_profiles=_profiles("research"),
+        ).source
+        == "stage"
+    )
 
 
 def test_an_unknown_stage_is_reported_not_guessed(project: Path) -> None:
@@ -193,7 +231,7 @@ def test_setting_policy_preserves_other_state_fields(project: Path) -> None:
     write_state(project, research_target_level="publishable", other="keep me")
 
     set_policy(project, posture="frontier", stage="research")
-    payload = json.loads((project / "research" / "PIPELINE_STATE.json").read_text())
+    payload = read_pipeline_state(project)
 
     assert payload["research_target_level"] == "publishable"
     assert payload["other"] == "keep me"
@@ -239,7 +277,13 @@ def test_garbage_normalizes_to_none() -> None:
 
 def test_policy_line_is_short_enough_for_a_budgeted_prompt(project: Path) -> None:
     for stage in ("research", "run", "review"):
-        line = policy_line(resolve_policy(project, stage=stage))
+        line = policy_line(
+            resolve_policy(
+                project,
+                stage=stage,
+                stage_profiles=_profiles("research"),
+            )
+        )
         assert len(line) < 90, line
 
 
@@ -281,7 +325,11 @@ def test_planner_injects_the_resolved_profile_too() -> None:
 
 def test_the_injected_block_is_shorter_than_what_it_replaced() -> None:
     """The old block was 386 chars and carried less information."""
-    policy = resolve_policy(Path("/nonexistent"), stage="research")
+    policy = resolve_policy(
+        Path("/nonexistent"),
+        stage="research",
+        stage_profiles=_profiles("research"),
+    )
     block = (
         "Project target `publishable` defines project completion, not this "
         f"round's bar. This round: {policy_line(policy)}. The integrity floor is "
@@ -301,7 +349,12 @@ def test_math_stages_each_resolve_to_a_declared_profile(tmp_path) -> None:
 
     expected = {"scope": "explore", "solve": "develop", "review": "certify"}
     for stage, profile in expected.items():
-        policy = resolve_policy(tmp_path, stage=stage, vertical="math")
+        policy = resolve_policy(
+            tmp_path,
+            stage=stage,
+            vertical="math",
+            stage_profiles=_profiles("math"),
+        )
         assert policy.resolved, f"math/{stage} still unresolved"
         assert policy.source == "stage"
         assert policy.profile == profile
@@ -318,16 +371,18 @@ def test_math_review_stage_requires_the_proof_graph() -> None:
     assert not graph_required_for("certify", "exploratory")
 
 
-def test_every_vertical_stage_order_is_covered_by_its_profile_table() -> None:
-    """The defect was a missing table, not a wrong entry — so assert coverage
-    rather than the one vertical that happened to be caught."""
-    from argus_skill.core.verification_policy import STAGE_PROFILES, VERIFICATION_PROFILES
-    from argus_skill.verticals._base import load_vertical
+def test_vertical_owned_profile_tables_cover_declared_stages() -> None:
+    from argus_skill.core.verification_policy import VERIFICATION_PROFILES
 
-    for vertical, table in STAGE_PROFILES.items():
-        order = getattr(load_vertical(vertical), "STAGE_ORDER", None)
-        if order is None:
-            continue
-        missing = [s for s in order if s not in table]
-        assert not missing, f"{vertical} stages absent from STAGE_PROFILES: {missing}"
+    for vertical in ("research", "math", "kernel_engineering"):
+        contract = load_vertical_contract(vertical)
+        table = dict(contract.verification_stage_profiles or {})
+        assert table
+        assert set(table) <= set(contract.stage_order)
         assert set(table.values()) <= set(VERIFICATION_PROFILES)
+
+
+def test_core_has_no_concrete_vertical_profile_registry() -> None:
+    import argus_skill.core.verification_policy as policy
+
+    assert not hasattr(policy, "STAGE_PROFILES")

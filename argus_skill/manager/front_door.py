@@ -150,7 +150,7 @@ def _ensure_manager_runner(chat_state: dict[str, Any], mem: Any) -> Any:
         # ``daemon/life_worker.py:_runner_namespace``) — otherwise this
         # front-door Manager (built once per cockpit session, used for
         # SELF/TEAM routing + ``divide()``) reads/writes
-        # ``research/PIPELINE_STATE.json`` and ``research/DOMAINS/*.json``
+        # ``.argus/PIPELINE_STATE.json`` and ``research/DOMAINS/*.json``
         # against a DIFFERENT root than the daemon that actually executes
         # the mission. That mismatch silently drops a Manager-authored
         # custom domain (e.g. an operator task that doesn't match any

@@ -50,8 +50,8 @@ MATH_STAGES = ("scope", "solve", "review")
 
 def _project(tmp_path: Path, *, stage: str, mode: str = "staged") -> Path:
     root = tmp_path / "project"
-    (root / "research").mkdir(parents=True)
-    (root / "research" / "PIPELINE_STATE.json").write_text(
+    (root / ".argus").mkdir(parents=True)
+    (root / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps(
             {
                 "current_stage": stage,
@@ -99,7 +99,7 @@ def test_the_refusal_names_what_is_still_ahead(tmp_path: Path) -> None:
 def test_the_refusal_happens_before_any_write(tmp_path: Path) -> None:
     """A refused completion must leave the pipeline exactly as it was."""
     root = _project(tmp_path, stage="scope")
-    state = root / "research" / "PIPELINE_STATE.json"
+    state = root / ".argus" / "PIPELINE_STATE.json"
     before = state.read_text(encoding="utf-8")
 
     with pytest.raises(ValueError):
@@ -167,7 +167,7 @@ def _forge(root: Path, *, mode: str) -> None:
 
     version = vertical_completion_contract_version(load_vertical("math", project_root=root))
     fingerprint = completion_contract_fingerprint(root, "scope", version=version)
-    state = root / "research" / "PIPELINE_STATE.json"
+    state = root / ".argus" / "PIPELINE_STATE.json"
     payload = json.loads(state.read_text(encoding="utf-8"))
     payload["workflow_mode"] = mode
     payload["stages"] = {

@@ -112,22 +112,6 @@ def _direct_memory_edit_block(
     )
 
 
-def _format_academic_paper_review_skill_block(*, include: bool) -> str:
-    if not include:
-        return ""
-    return (
-        "## Near-complete paper review\n"
-        "Be a skeptical program-committee reviewer: require a clear contribution, "
-        "credible comparisons, sufficient evidence/statistics, accurate citations, "
-        "readable writing, and clean figures/layout. `done` requires the applicable "
-        "final checklist with no critical blocker; do not reward polish without "
-        "substantive evidence. Rebuild the manuscript and inspect the generated "
-        "artifact: reject undefined citations, bibliography warnings, significant "
-        "overfull boxes or clipped pages, and missing PDF title/author metadata. "
-        "Render the relevant pages when layout matters.\n\n"
-    )
-
-
 def _verification_directive() -> str:
     """Compact trust-first verification stance."""
     return (
@@ -367,7 +351,7 @@ def render_reviewer_prompt(
             # ``solve`` that is ~2k characters of the acceptance criteria it is
             # supposed to be judging against, while the Engineer's own prompt
             # still carries them. ``_persisted`` is non-None exactly when
-            # ``research/PIPELINE_STATE.json`` records a vertical, which is the
+            # ``.argus/PIPELINE_STATE.json`` records a vertical, which is the
             # condition actually being asked about.
             checklist_mode=(
                 ChecklistMode.NONE
@@ -403,13 +387,8 @@ def render_reviewer_prompt(
     _measured = not _requires_engineering_audit and os.environ.get(
         "ARGUS_SKILL_MEASURED_MODE", ""
     ).strip().lower() in ("1", "true", "yes", "on")
-    # Vertical-native prompt framing: resolve the active vertical and let it
-    # supply the top-of-prompt role banner. The rollback / final-submission
-    # framing below applies ONLY to a paper vertical (completion_gate ==
-    # final certification; for any other vertical (e.g. speedrun) those blocks are
-    # suppressed and the vertical's banner is prepended so the reviewer judges
-    # only that vertical's metric instead of paper-pipeline artifacts.
-    _final_certification = prompt_context.requires_final_certification
+    # Vertical-owned policy arrives through the prompt catalog; this module
+    # contributes only role-wide review behavior.
     optimize_banner = prompt_context.role_banner
     if prompt_context.requires_independent_review and not _requires_engineering_audit:
         optimize_banner = ""
@@ -428,8 +407,11 @@ def render_reviewer_prompt(
         except Exception:  # noqa: BLE001 - stage is advisory here
             _stage = ""
         _policy = resolve_policy(
-            _proot, stage=_stage, vertical=_persisted_vertical(_proot),
+            _proot,
+            stage=_stage,
+            vertical=_persisted_vertical(_proot),
             target_level=_research_target_level,
+            stage_profiles=prompt_context.verification_stage_profiles,
         )
         research_target_instruction = (
             f"Project target `{_research_target_level}` defines project completion, "
@@ -454,12 +436,6 @@ def render_reviewer_prompt(
     # nibble at a floor that has not moved in N attempts". Empty for
     # verticals that do not surface it.
     search_altitude_block = prompt_context.search_altitude
-    # Structured scope only. The planner threads scope=final_submission as
-    # a backlog tag all the way here; we no longer sniff the objective
-    # prose for "scope: final_submission" markers. Normalize the same way
-    # the planner does (lower + hyphen→underscore) so callers that pass
-    # "final-submission" still match.
-    is_final_submission = scope_normalized == "final_submission"
     if _measured:
         stage_checklist = (
             "## MEASURED-BENCHMARK MODE — TRUST the scorer, judge the IDEA\n"
@@ -496,18 +472,6 @@ def render_reviewer_prompt(
     else:
         stage_checklist = prompt_context.stage_checklist
 
-    # Academic peer-review benchmark skill: advisory rubric for reviewing
-    # a near-complete manuscript. Gate it on the structured stage/scope
-    # signal — final_submission, or the paper-writing stages (review /
-    # submission) — instead of keyword-sniffing the objective/evidence
-    # for tokens like "main.pdf". `draft` is excluded so mid-production
-    # drafting isn't held to final peer-review standards prematurely.
-    paper_review_skill_block = _format_academic_paper_review_skill_block(
-        include=(
-            is_final_submission
-            or (_final_certification and stage in {"review", "submission"})
-        ),
-    )
     wiki_curator_skill_block = ""
     direct_memory_edit_block = ""
 
@@ -533,7 +497,7 @@ def render_reviewer_prompt(
         "within its own scope, return `replan_requested` (never `continue`) and "
         "name the earliest broken stage and concrete evidence in `reason`; the "
         "Manager owns rollback. "
-        "Never edit `research/PIPELINE_STATE.json`."
+        "Never edit `.argus/PIPELINE_STATE.json`."
     )
     operator_text = (
         "\n".join(f"- {line}" for line in operator_messages) if operator_messages else "- none"
@@ -630,24 +594,8 @@ def render_reviewer_prompt(
         measured=_measured,
         compact=not bool((main_error or "").strip()),
     )
-    # Final-submission missions ask the Reviewer to judge the whole project,
-    # rather than treating a manuscript-shaped artifact as completion.
-    final_submission_block = ""
-    if is_final_submission:
-        final_submission_block = (
-            "## Final paper review\n"
-            "Read the current manuscript, rendered PDF, and claim-critical sources "
-            "as an independent venue reviewer. Use `done` only when the research "
-            "objective and selected venue bar are genuinely met; otherwise return "
-            "`continue` with the few highest-leverage scientific or writing changes. "
-            "Do not require or manufacture an assurance memo, reviewer-question "
-            "bundle, or other certification packet.\n\n"
-        )
-    if not _final_certification:
-        # non-paper vertical: no paper stages to roll back to, and no
-        # final-submission certification — judge only the vertical's metric.
+    if prompt_context.workflow_mode == "direct":
         rollback_block = ""
-        final_submission_block = ""
     # Byte-stable static policy; every fresh Reviewer receives it in full.
     shell_contract = native_shell_summary()
     audit_integrity_block = _audit_integrity_directive(
@@ -712,13 +660,11 @@ def render_reviewer_prompt(
         "whether this bounded implementation is correctly done.\n"
         "Do not inspect or edit checkpoint/context-packet/handoff bookkeeping; it is "
         "not review evidence. Put the next Engineer instruction only in NEXT_ACTION.\n\n"
-        + paper_review_skill_block
         + wiki_curator_skill_block
         + direct_memory_edit_block
         + matched_review_skill_block
         + stage_checklist
         + "\n\n"
-        + final_submission_block
         + rollback_block
         + "\n\n"
         + venv_skill_block
@@ -780,9 +726,7 @@ def render_reviewer_prompt(
             "matched_skill": matched_review_skill_block,
             "direct_memory": direct_memory_edit_block,
             "wiki_curator": wiki_curator_skill_block,
-            "paper_review": paper_review_skill_block,
             "research_target": research_target_instruction,
-            "final_submission": final_submission_block,
             "objective_context": objective_context,
             "checkpoint": checkpoint_block,
             "execution_log_audit": engineer_log_audit_block,

@@ -4,7 +4,13 @@ from pathlib import Path
 
 from argus_skill.verticals.research.stages import STAGE_CHECKLISTS
 
-_SKILLS = Path(__file__).parents[2] / "argus_skill" / "builtin_skills"
+_SKILLS = (
+    Path(__file__).parents[2]
+    / "argus_skill"
+    / "verticals"
+    / "research"
+    / "skills"
+)
 _AMBITION_SKILLS = (
     "engineer/research-ideation.md",
     "engineer/idea-discovery.md",
@@ -269,6 +275,30 @@ def test_research_prompt_policy_does_not_leak_to_other_verticals() -> None:
         banner = vertical_role_banner(software, role)
         assert "80% review quorum" not in banner
         assert "Research-stage smoke probes" not in banner
+
+
+def test_dynamic_paper_policy_is_owned_by_research_vertical() -> None:
+    generic_root = Path(__file__).parents[2] / "argus_skill" / "roles" / "prompts"
+    generic = (
+        (generic_root / "planner.py").read_text(encoding="utf-8")
+        + (generic_root / "reviewer.py").read_text(encoding="utf-8")
+    )
+    research = (
+        Path(__file__).parents[2]
+        / "argus_skill"
+        / "verticals"
+        / "research"
+        / "prompt_policy.py"
+    ).read_text(encoding="utf-8")
+
+    for phrase in (
+        "Parallel paper-drafting track",
+        "Near-complete paper review",
+        "Final paper review",
+        "PAPER_INFRASTRUCTURE_REVIEW.json",
+    ):
+        assert phrase in research
+        assert phrase not in generic
 
 
 def test_experiment_review_does_not_repeat_idea_selection() -> None:

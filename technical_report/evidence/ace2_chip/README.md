@@ -45,6 +45,6 @@ new operator direction and fresh evidence.
 Project tree `ace-2` on the `argustest` jump host, with the authoritative records at:
 
 - `research/FINAL_PRODUCT_CERTIFICATE.json`
-- `research/PIPELINE_STATE.json`, `research/PUBLIC_STATUS.json`
+- `.argus/PIPELINE_STATE.json`, `research/PUBLIC_STATUS.json`
 - `evidence/canonical_sky130/rtl-final-sumsq-repaired-tree-canonical-sky130-ppa-v1/INDEPENDENT_METRICS.json`
 - `evidence/verification/repair-full-qwen-final-lm-head-tile-boundary-v1/runtime_validation.json`

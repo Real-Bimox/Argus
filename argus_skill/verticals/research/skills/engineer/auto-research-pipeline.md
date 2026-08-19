@@ -88,7 +88,7 @@ silently default to a conference.
 
 ## Pipeline state contract
 
-`research/PIPELINE_STATE.json` is the mission ledger. The Engineer may update
+`.argus/PIPELINE_STATE.json` is the mission ledger. The Engineer may update
 descriptive fields such as objective, target venue, and artifact paths. Stage
 fields (`current_stage` and per-stage statuses) are Manager-owned.
 

@@ -1,11 +1,11 @@
 """Vertical-agnostic research target and reviewer-assessment contract."""
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
+
+from .pipeline_state import read_pipeline_state
 
 RESEARCH_TARGET_LEVELS = ("exploratory", "publishable", "doctoral")
 RESEARCH_DIRECTION_MODES = ("broad", "locked")
@@ -76,9 +76,6 @@ _EXPLORATORY_TERMINAL_CLASSES = frozenset({
     "exact_counterexample",
     "lean_local_verification",
 })
-_STATE_RELPATH = ("research", "PIPELINE_STATE.json")
-
-
 @dataclass(frozen=True)
 class ResearchTargetContract:
     supported_levels: tuple[str, ...]
@@ -95,12 +92,9 @@ def normalize_research_target_level(value: Any) -> str | None:
 
 
 def resolve_research_target_level(project_root: object) -> str | None:
-    path = Path(str(project_root)).joinpath(*_STATE_RELPATH)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
+        payload = read_pipeline_state(project_root)
+    except (OSError, ValueError):
         return None
     return normalize_research_target_level(payload.get("research_target_level"))
 
@@ -111,12 +105,9 @@ def normalize_research_direction_mode(value: Any) -> str | None:
 
 
 def resolve_research_direction_mode(project_root: object) -> str | None:
-    path = Path(str(project_root)).joinpath(*_STATE_RELPATH)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
+        payload = read_pipeline_state(project_root)
+    except (OSError, ValueError):
         return None
     return normalize_research_direction_mode(payload.get("research_direction_mode"))
 
@@ -153,12 +144,9 @@ def research_target_env_override() -> str | None:
 
 
 def resolve_research_target_set_at(project_root: object) -> float | None:
-    path = Path(str(project_root)).joinpath(*_STATE_RELPATH)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
+        payload = read_pipeline_state(project_root)
+    except (OSError, ValueError):
         return None
     raw_value = payload.get("research_target_set_at")
     if raw_value is None:

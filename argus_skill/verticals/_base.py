@@ -121,6 +121,12 @@ def vertical_is_paper_mission(mod: VerticalDefinition) -> bool:
     return _contract(mod).paper_mission
 
 
+def vertical_verification_stage_profiles(
+    mod: VerticalDefinition,
+) -> dict[str, str]:
+    return dict(_contract(mod).verification_stage_profiles or {})
+
+
 def vertical_completion_contract_version(mod: VerticalDefinition) -> int:
     """Return the optional versioned final-stage completion contract."""
     return _contract(mod).completion_contract_version
@@ -259,6 +265,7 @@ __all__ = [
     "vertical_completion_gate",
     "vertical_mission_kind",
     "vertical_is_paper_mission",
+    "vertical_verification_stage_profiles",
     "vertical_mission_prelude",
     "vertical_research_target_levels",
     "vertical_prepare_mission",

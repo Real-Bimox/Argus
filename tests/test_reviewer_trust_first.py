@@ -20,7 +20,7 @@ import json
 
 from argus_skill.reviewer import Reviewer
 from argus_skill.reviewer._core import _verification_directive
-from argus_skill.roles.prompts.reviewer import _format_academic_paper_review_skill_block
+from argus_skill.verticals.research.prompt_policy import academic_paper_review_block
 
 
 def _prompt(*, measured: bool, monkeypatch) -> str:
@@ -56,7 +56,7 @@ def test_directive_trusts_and_drops_reflexive_rerun():
 
 
 def test_paper_review_requires_built_artifact_quality_checks():
-    block = _format_academic_paper_review_skill_block(include=True)
+    block = academic_paper_review_block()
 
     assert "undefined citations" in block
     assert "bibliography warnings" in block
@@ -69,7 +69,7 @@ def _persist_review_stage(tmp_path, vertical: str) -> None:
     from argus_skill.skills.vertical_select import persist_vertical
 
     persist_vertical(tmp_path, vertical)
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["current_stage"] = "review"
     state_path.write_text(json.dumps(state), encoding="utf-8")
@@ -98,7 +98,7 @@ def test_math_review_omits_paper_review_rubric(tmp_path) -> None:
     prompt, reviewer = _project_reviewer_prompt(tmp_path)
 
     assert "## Near-complete paper review" not in prompt
-    assert reviewer.last_prompt_block_stats["paper_review"]["chars"] == 0
+    assert reviewer.last_prompt_block_stats["static_total"]["chars"] > 0
 
 
 def test_final_certification_review_keeps_paper_review_rubric(tmp_path) -> None:
@@ -107,19 +107,31 @@ def test_final_certification_review_keeps_paper_review_rubric(tmp_path) -> None:
     prompt, reviewer = _project_reviewer_prompt(tmp_path)
 
     assert "## Near-complete paper review" in prompt
-    assert reviewer.last_prompt_block_stats["paper_review"]["chars"] > 0
+    assert reviewer.last_prompt_block_stats["static_total"]["chars"] > 0
 
 
-def test_final_submission_keeps_paper_review_rubric_for_any_vertical(tmp_path) -> None:
+def test_final_submission_does_not_make_math_a_paper_vertical(tmp_path) -> None:
     _persist_review_stage(tmp_path, "math")
 
-    prompt, reviewer = _project_reviewer_prompt(
+    prompt, _reviewer = _project_reviewer_prompt(
         tmp_path,
         scope="final_submission",
     )
 
-    assert "## Near-complete paper review" in prompt
-    assert reviewer.last_prompt_block_stats["paper_review"]["chars"] > 0
+    assert "## Near-complete paper review" not in prompt
+    assert "## Final paper review" not in prompt
+
+
+def test_certified_medical_review_does_not_inherit_paper_policy(tmp_path) -> None:
+    _persist_review_stage(tmp_path, "medical")
+
+    prompt, _reviewer = _project_reviewer_prompt(
+        tmp_path,
+        scope="final_submission",
+    )
+
+    assert "## Near-complete paper review" not in prompt
+    assert "## Final paper review" not in prompt
 
 
 def test_build_prompt_uses_trust_first_not_old_rerun(monkeypatch):

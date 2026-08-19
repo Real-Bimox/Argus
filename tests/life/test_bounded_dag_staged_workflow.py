@@ -123,7 +123,7 @@ def test_bounded_dag_node_keeps_vertical_stage_workflow(tmp_path) -> None:
             non_goals=["do not implement the benchmark"],
             context_refs=[{
                 "kind": "artifact",
-                "ref": "research/PIPELINE_STATE.json",
+                "ref": ".argus/PIPELINE_STATE.json",
                 "why": "current stage",
                 "content_hash": "",
             }],
@@ -154,7 +154,7 @@ def test_bounded_dag_node_keeps_vertical_stage_workflow(tmp_path) -> None:
     assert packet["scope"] == "bounded"
     assert packet["acceptance_check"].endswith("reviewer-ready")
     assert packet["non_goals"] == ["do not implement the benchmark"]
-    assert packet["context_refs"][0]["ref"] == "research/PIPELINE_STATE.json"
+    assert packet["context_refs"][0]["ref"] == ".argus/PIPELINE_STATE.json"
     assert outcome is not None
     assert outcome["context_packet"] == str(Path(packet_path).parent / "latest.json")
 

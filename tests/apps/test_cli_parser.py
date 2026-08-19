@@ -396,9 +396,11 @@ def test_main_exports_builtin_skills(
     out = capsys.readouterr().out
 
     assert rc == 0
-    assert (target / "engineer/auto-research-pipeline.md").exists()
-    assert (target / "engineer/emnlp-paper-drafting.md").exists()
-    assert (target / "engineer/arxiv-paper-search.md").exists()
+    assert (target / "engineer/argus-engineer-role.md").exists()
+    assert (target / "engineer/semantic-scholar-search.md").exists()
+    assert not (target / "engineer/auto-research-pipeline.md").exists()
+    assert not (target / "engineer/emnlp-paper-drafting.md").exists()
+    assert not (target / "engineer/arxiv-paper-search.md").exists()
     assert not (target / "engineer/research-visualization-router.md").exists()
     assert "exported built-in skills" in out
     assert "vertical: none (common skills only)" in out
@@ -420,6 +422,7 @@ def test_main_exports_decided_vertical_skills(
     assert rc == 0
     assert "vertical: research" in out
     assert (target / "engineer/research-visualization-router.md").exists()
+    assert (target / "engineer/auto-research-pipeline.md").exists()
 
 
 def test_export_target_does_not_inherit_unrelated_cwd_vertical(
@@ -447,7 +450,10 @@ def test_export_prunes_legacy_unmodified_research_fallback(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from argus_skill.skills.builtins import seed_vertical_skills
+    from argus_skill.skills.builtins import (
+        iter_vertical_skill_texts,
+        seed_vertical_skills,
+    )
 
     target = tmp_path / "legacy-project" / "argus_builtin_skills"
     seed_vertical_skills(target, "research")
@@ -461,7 +467,8 @@ def test_export_prunes_legacy_unmodified_research_fallback(
     assert not (
         target / "engineer/research_visual_scripts/browser_render.py"
     ).exists()
-    assert "pruned : 2 inactive unmodified context seed(s)" in out
+    expected = len(dict(iter_vertical_skill_texts("research")))
+    assert f"pruned : {expected} inactive unmodified context seed(s)" in out
 
 
 def test_export_preserves_edited_legacy_research_fallback(

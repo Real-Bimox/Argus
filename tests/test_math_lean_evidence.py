@@ -76,11 +76,12 @@ requires_lean = pytest.mark.skipif(
 
 def _project(tmp_path: Path, *, profile: str = "develop") -> Path:
     set_objective(tmp_path, mode="targeted", goal="G")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["verification_profile"] = profile
     state_path.write_text(json.dumps(state), encoding="utf-8")
     # A satisfied proof graph, so anything left is attributable to Lean.
+    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
     (tmp_path / "research" / "PROOF_GRAPH.json").write_text(
         json.dumps({
             "goal": "G",

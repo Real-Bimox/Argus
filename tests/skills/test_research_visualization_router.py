@@ -9,7 +9,13 @@ from argus_skill.skills.builtins import (
 )
 from argus_skill.skills.layered import LayeredSkillStore
 
-ROOT = Path(__file__).resolve().parents[2] / "argus_skill" / "builtin_skills"
+ROOT = (
+    Path(__file__).resolve().parents[2]
+    / "argus_skill"
+    / "verticals"
+    / "research"
+    / "skills"
+)
 
 
 def _front_and_body(text: str) -> tuple[dict, str]:

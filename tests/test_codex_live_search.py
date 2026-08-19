@@ -88,7 +88,7 @@ def _resolved_stages(vertical: str, project_root: object = None) -> frozenset[st
 
 def _math_project(tmp_path: Path, stage: str) -> Path:
     persist_vertical(tmp_path, "math")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     payload = json.loads(state_path.read_text(encoding="utf-8"))
     payload["current_stage"] = stage
     state_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -123,7 +123,7 @@ def test_research_vertical_live_search_is_unchanged(tmp_path: Path) -> None:
     assert stages == DEFAULT_LIVE_SEARCH_STAGES == frozenset({"research"})
 
     persist_vertical(tmp_path, "research")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
 
     def _at(stage: str) -> bool:
         payload = json.loads(state_path.read_text(encoding="utf-8"))
@@ -224,7 +224,7 @@ def test_skill_loop_hands_math_engineer_live_search_in_solve(tmp_path: Path) -> 
 
 def test_skill_loop_keeps_research_engineer_behaviour(tmp_path: Path) -> None:
     persist_vertical(tmp_path, "research")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     payload = json.loads(state_path.read_text(encoding="utf-8"))
     payload["current_stage"] = "research"
     state_path.write_text(json.dumps(payload), encoding="utf-8")

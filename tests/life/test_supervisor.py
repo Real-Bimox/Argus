@@ -568,7 +568,7 @@ def test_kernel_baseline_mission_receives_clean_reference_without_revert(
     (project / "kernel.py").write_text("baseline\n", encoding="utf-8")
     subprocess.run(["git", "add", "kernel.py"], cwd=project, check=True)
     subprocess.run(["git", "commit", "-qm", "baseline"], cwd=project, check=True)
-    pipeline = project / "research" / "PIPELINE_STATE.json"
+    pipeline = project / ".argus" / "PIPELINE_STATE.json"
     pipeline.parent.mkdir()
     pipeline.write_text(
         json.dumps({

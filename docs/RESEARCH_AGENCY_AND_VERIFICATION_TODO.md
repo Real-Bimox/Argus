@@ -243,12 +243,12 @@
 
 - [ ] 以 `verticals/research/stages.py` 的“claim-proportional、无 universal quota”原则为上位规则，
   审计并统一以下文件：
-  - `skills/venue_profiles.py`；
-  - `builtin_skills/engineer/aaai-format-preflight.md`；
-  - `builtin_skills/reviewer/aaai-academic-language-review.md`；
-  - `builtin_skills/reviewer/academic-paper-peer-review-benchmark.md`；
+  - `verticals/research/venue_profiles.py`；
+  - `verticals/research/skills/engineer/aaai-format-preflight.md`；
+  - `verticals/research/skills/reviewer/aaai-academic-language-review.md`；
+  - `verticals/research/skills/reviewer/academic-paper-peer-review-benchmark.md`；
   - EMNLP 对应 drafting/preflight/reviewer skills；
-  - `paper_structural_minimums.py`、academic/language/layout review prompts。
+  - `verticals/research/paper_structural_minimums.py`、academic/language/layout review prompts。
 - [ ] 删除或降级为 advisory 的通用硬阈值：
   - 35 verified BibTeX entries；
   - 30 unique cited keys；
