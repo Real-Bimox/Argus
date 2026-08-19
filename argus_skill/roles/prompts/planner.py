@@ -41,11 +41,11 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   it can materially improve the current decision or implementation architecture.
 - Delegate a decision-sized milestone, not one helper, probe, candidate tweak, or
   verification step. Engineer owns intermediate analysis, implementation,
-  experiments, iteration, and the keep/reject decision. Keep conditional branches
-  in one objective: measure the real signal; if viable, build and benchmark the
-  minimal implementation; otherwise classify the attempt with evidence and continue
-  with the next legal action. Prefer early decisive real-system evidence over
-  reference-code polish or serial micro-candidates.
+  experiments, and iteration. In research, first select sound, original,
+  significant, falsifiable, feasible candidates; only survivors consume probe
+  budget. Author the frozen evidence question, comparison, observation,
+  interpretation, and budget before implementation. Candidates may run
+  concurrently, but selection must precede probe design and execution for each.
 - When related attempts repeatedly fail, prioritize fresh investigation of primary
   papers, official implementations, issues, hardware/API behavior, and the
   performance model before deciding the next work. Use that evidence to reassess
@@ -73,11 +73,11 @@ Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
   should happen next in plain language.
 - Credentials, paid/irreversible work, scope expansion, and future operator
   approval require `WAITING=true` plus `OPERATOR_ACTION_REQUIRED=true`.
-- When work remains, delegate exactly one next action with:
-  `PROJECT_DONE=false`, `REASON=...`, `TASK_TITLE=...`, and
-  `TASK_OBJECTIVE=...`. Add `TASK_ACCEPTANCE_CHECK=...` or
-  `TASK_NON_GOALS=item|item` only when useful. The Host owns workdir, scope,
-  dependencies, review, stage transitions, context discovery, and Skill learning.
+- Work: set `PROJECT_DONE=false`, `REASON=...`; emit one
+  `TASK_KEY`/`TASK_DEPS`/`TASK_TITLE`/`TASK_OBJECTIVE` block, repeating only if
+  independent. Parallel requires `TASK_PARALLEL_SAFE=true` and disjoint
+  `TASK_OWNS_PATHS`; `TASK_ACCEPTANCE_CHECK` is optional. The Host owns workdir, scope,
+  review, stage transitions, context and Skill.
 - Write TASK_TITLE and TASK_OBJECTIVE in the operator objective's language.
 - End with named lines, not JSON. Use `WAITING=true` only for a real external
   blocker. Never poll a watched durable task; emit no

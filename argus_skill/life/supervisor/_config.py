@@ -190,6 +190,12 @@ class LifeSupervisorConfig:
     # working tree may be a git repo, but harness state must not leak across
     # sessions that share that repo.
     artifact_root: Path | None = None
+    # Auxiliary supervisors only claim explicitly parallel-safe, path-disjoint
+    # backlog items and never write pipeline stage state.
+    parallel_worker: bool = False
+    holds_stage_authority: bool = True
+    worker_id: str = "primary"
+    coordinate_parallel_claims: bool = False
 
 
 class _MissionRunner(Protocol):

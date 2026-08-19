@@ -713,6 +713,7 @@ def test_build_snapshot_marks_failsoft_sections_partial(
     assert snap["daemon"]["read_status"] == "error"
     assert snap["daemon"]["read_error"] == "status sidecar is unreadable"
     assert "global_daily_cap_usd" in snap["daemon"]
+    assert "mission_width" in snap["daemon"]
     assert snap["diagnostics"] == [
         {
             "section": "daemon",

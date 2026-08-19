@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import unicodedata
 
 _LEGACY_HASHED_COMPONENT = re.compile(r"(?:argus-)?id-[0-9a-f]{64}\Z", re.IGNORECASE)
 _WINDOWS_RESERVED = frozenset({
@@ -13,6 +14,11 @@ _WINDOWS_RESERVED = frozenset({
     *(f"com{i}" for i in range(1, 10)),
     *(f"lpt{i}" for i in range(1, 10)),
 })
+
+
+def normalized_logical_identifier(value: object) -> str:
+    """Canonical identity for durable logical ids across host boundaries."""
+    return unicodedata.normalize("NFKC", str(value or "")).strip().casefold()
 
 
 def portable_filename_component(
@@ -60,5 +66,8 @@ def legacy_hashed_filename_components(value: str) -> tuple[str, ...]:
         components.append(text)
     return tuple(components)
 
-
-__all__ = ["legacy_hashed_filename_components", "portable_filename_component"]
+__all__ = [
+    "legacy_hashed_filename_components",
+    "normalized_logical_identifier",
+    "portable_filename_component",
+]

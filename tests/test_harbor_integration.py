@@ -41,9 +41,15 @@ def test_latest_project_root_selects_latest_completed_state(tmp_path: Path) -> N
     newer = tmp_path / "projects" / "newer"
     older.mkdir(parents=True)
     newer.mkdir(parents=True)
-    (older / "continuous.json").write_text("{}", encoding="utf-8")
-    (newer / "continuous.json").write_text("{}", encoding="utf-8")
-    (newer / "continuous.json").touch()
+    older_state = older / "continuous.json"
+    newer_state = newer / "continuous.json"
+    older_state.write_text("{}", encoding="utf-8")
+    newer_state.write_text("{}", encoding="utf-8")
+    # Some filesystems give back-to-back writes the same timestamp. Pin the
+    # ordering explicitly so this test checks selection rather than clock
+    # granularity.
+    os.utime(older_state, (1, 1))
+    os.utime(newer_state, (2, 2))
 
     assert _latest_project_root(tmp_path) == newer
 

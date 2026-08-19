@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -36,6 +37,29 @@ _TEST_ALLOW_MEMORY_CONTINUOUS_ENV = "ARGUS_SKILL_DAEMON_TEST_ALLOW_MEMORY_CONTIN
 _DRAIN_REQUEST_FILE = "daemon.drain-request.json"
 _STOP_REQUEST_FILE = "daemon.stop-request.json"
 DAEMON_UPGRADE_REQUEST_FILE = "daemon.upgrade-request.json"
+_WINDOWS_LOCK_POLL_SECONDS = 0.05
+_CONTINUOUS_RESERVE_NAMES = (
+    ".continuous.reserve",
+    ".continuous.reserve.spare",
+)
+_CONTINUOUS_RESERVE_MIN_BYTES = 64 * 1024
+_CONTINUOUS_RESERVE_MAX_BYTES = 1024 * 1024
+
+
+class ContinuousConfigWriteAfterReplaceError(RuntimeError):
+    """Raised when continuous.json was replaced but durability failed."""
+
+
+class ContinuousConfigCommitError(RuntimeError):
+    """Raised when a durable pre-replace callback prevents a false CAS result."""
+
+
+class _AtomicWritePostReplaceError(OSError):
+    """Internal marker for an error observed after the target was replaced."""
+
+
+class _AtomicWriteAfterCallbackError(OSError):
+    """Internal marker for a replace failure after the callback committed."""
 
 
 def _truthy_env(name: str, default: str = "1") -> bool:
@@ -219,13 +243,183 @@ def clear_daemon_drain_request(life_dir: Path, *, pid: int) -> None:
 def _continuous_config_lock(life_dir: Path):
     life_dir.mkdir(parents=True, exist_ok=True)
     with (life_dir / ".continuous.lock").open("a+b") as handle:
-        if fcntl is not None:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        fd = handle.fileno()
+        if os.name == "nt":
+            if msvcrt is None:  # pragma: no cover - broken Windows runtime
+                raise RuntimeError(
+                    "continuous config locking requires msvcrt on Windows"
+                )
+            try:
+                if handle.seek(0, os.SEEK_END) == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+            except OSError:
+                pass
+        if os.name == "nt":
+            while True:
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                    break
+                except OSError:
+                    time.sleep(_WINDOWS_LOCK_POLL_SECONDS)
+        elif fcntl is not None:
+            fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             yield
         finally:
-            if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            if os.name == "nt":
+                try:
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+                except OSError:
+                    pass
+            elif fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _is_quota_error(exc: OSError) -> bool:
+    return getattr(exc, "errno", None) in {errno.ENOSPC, errno.EDQUOT}
+
+
+def _fsync_directory(path: Path) -> None:
+    try:
+        directory_fd = os.open(str(path), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(directory_fd)
+    finally:
+        os.close(directory_fd)
+
+
+def _read_existing_bytes(path: Path) -> bytes | None:
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return b""
+    except OSError:
+        return None
+
+
+def _atomic_write_bytes(
+    path: Path,
+    data: bytes,
+    *,
+    before_replace: Callable[[], None] | None = None,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        with tmp.open("wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        before_bytes = _read_existing_bytes(path)
+        callback_committed = False
+        if before_replace is not None:
+            try:
+                before_replace()
+            except OSError as exc:
+                raise ContinuousConfigCommitError(
+                    f"continuous config precommit failed for {path}"
+                ) from exc
+            callback_committed = True
+        try:
+            os.replace(str(tmp), str(path))
+        except OSError as exc:
+            after_replace = _read_existing_bytes(path)
+            if after_replace == data or (
+                before_bytes is not None and after_replace != before_bytes
+            ):
+                raise _AtomicWritePostReplaceError(str(exc)) from exc
+            if callback_committed:
+                raise _AtomicWriteAfterCallbackError(str(exc)) from exc
+            raise
+        try:
+            _fsync_directory(path.parent)
+        except OSError as exc:
+            raise _AtomicWritePostReplaceError(str(exc)) from exc
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+
+
+def _atomic_write_text(
+    path: Path,
+    text: str,
+    *,
+    before_replace: Callable[[], None] | None = None,
+) -> None:
+    _atomic_write_bytes(
+        path,
+        text.encode("utf-8"),
+        before_replace=before_replace,
+    )
+
+
+def _continuous_reserve_paths(life_dir: Path) -> tuple[Path, ...]:
+    return tuple(life_dir / name for name in _CONTINUOUS_RESERVE_NAMES)
+
+
+def _continuous_reserve_size(text: str) -> int:
+    needed = len(text.encode("utf-8")) + 4096
+    return max(
+        _CONTINUOUS_RESERVE_MIN_BYTES,
+        min(_CONTINUOUS_RESERVE_MAX_BYTES, needed),
+    )
+
+
+def _continuous_state_reserve_text(state: ContinuousConfigState) -> str:
+    data = {
+        "enabled": state.enabled,
+        "objective": state.objective,
+        "open_ended": state.open_ended,
+        "generation": state.generation,
+    }
+    if state.done_reason:
+        data["done_reason"] = state.done_reason
+        data["done_at"] = state.done_at
+    return json.dumps(data, ensure_ascii=False, indent=2)
+
+
+def _ensure_continuous_reserve_unlocked(life_dir: Path, text: str) -> None:
+    size = _continuous_reserve_size(text)
+    payload = b"\0" * size
+    for reserve in _continuous_reserve_paths(life_dir):
+        try:
+            if reserve.stat().st_size >= size:
+                continue
+        except OSError:
+            pass
+        try:
+            _atomic_write_bytes(reserve, payload)
+        except _AtomicWritePostReplaceError:
+            pass
+        except OSError:
+            log.debug("failed to refresh continuous config reserve %s", reserve)
+
+
+def _release_one_continuous_reserve_unlocked(life_dir: Path) -> bool:
+    reserves = []
+    for reserve in _continuous_reserve_paths(life_dir):
+        try:
+            reserves.append((reserve.stat().st_size, reserve))
+        except OSError:
+            continue
+    for _size, reserve in sorted(reserves, key=lambda item: item[0], reverse=True):
+        try:
+            reserve.unlink()
+        except OSError:
+            continue
+        try:
+            _fsync_directory(life_dir)
+        except OSError:
+            pass
+        return True
+    return False
 
 
 def _read_continuous_state_unlocked(life_dir: Path) -> ContinuousConfigState:
@@ -252,7 +446,13 @@ def _read_continuous_state_unlocked(life_dir: Path) -> ContinuousConfigState:
 
 def read_continuous_state(life_dir: Path) -> ContinuousConfigState:
     with _continuous_config_lock(life_dir):
-        return _read_continuous_state_unlocked(life_dir)
+        state = _read_continuous_state_unlocked(life_dir)
+        if _continuous_config_path(life_dir).exists():
+            _ensure_continuous_reserve_unlocked(
+                life_dir,
+                _continuous_state_reserve_text(state),
+            )
+        return state
 
 
 def read_continuous_config(life_dir: Path) -> tuple[bool, str]:
@@ -293,10 +493,10 @@ def _write_continuous_config_unlocked(
     done_reason: str = "",
     done_at: str = "",
     generation: int,
+    before_replace: Callable[[], None] | None = None,
 ) -> bool:
     life_dir.mkdir(parents=True, exist_ok=True)
     path = _continuous_config_path(life_dir)
-    tmp = path.with_suffix(f".{os.getpid()}.tmp")
     data = {
         "enabled": enabled,
         "objective": objective,
@@ -306,16 +506,52 @@ def _write_continuous_config_unlocked(
     if done_reason:
         data["done_reason"] = done_reason
         data["done_at"] = done_at or datetime.now(timezone.utc).isoformat()
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    if path.exists():
+        _ensure_continuous_reserve_unlocked(life_dir, text)
+
+    def _write_once() -> None:
+        if before_replace is None:
+            _atomic_write_text(path, text)
+        else:
+            _atomic_write_text(
+                path,
+                text,
+                before_replace=before_replace,
+            )
+
     try:
-        tmp.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(str(tmp), str(path))
-        return True
-    except OSError:
+        _write_once()
+    except _AtomicWritePostReplaceError as exc:
+        raise ContinuousConfigWriteAfterReplaceError(
+            f"continuous config was replaced but durability failed for {path}"
+        ) from exc
+    except _AtomicWriteAfterCallbackError as exc:
+        raise ContinuousConfigCommitError(
+            f"continuous config replace failed after precommit for {path}"
+        ) from exc
+    except OSError as exc:
+        if _is_quota_error(exc) and _release_one_continuous_reserve_unlocked(life_dir):
+            try:
+                _write_once()
+            except _AtomicWritePostReplaceError as retry_exc:
+                raise ContinuousConfigWriteAfterReplaceError(
+                    f"continuous config was replaced but durability failed for {path}"
+                ) from retry_exc
+            except _AtomicWriteAfterCallbackError as retry_exc:
+                raise ContinuousConfigCommitError(
+                    f"continuous config replace failed after precommit for {path}"
+                ) from retry_exc
+            except OSError:
+                log.warning("failed to write continuous config to %s", path)
+                return False
+            _ensure_continuous_reserve_unlocked(life_dir, text)
+            return True
         log.warning("failed to write continuous config to %s", path)
         return False
+    else:
+        _ensure_continuous_reserve_unlocked(life_dir, text)
+        return True
 
 
 def compare_and_swap_continuous_config(
@@ -336,8 +572,6 @@ def compare_and_swap_continuous_config(
         current = _read_continuous_state_unlocked(life_dir)
         if not _same_continuous_state(current, expected):
             return False
-        if before_write is not None:
-            before_write()
         return _write_continuous_config_unlocked(
             life_dir,
             enabled=enabled,
@@ -345,6 +579,7 @@ def compare_and_swap_continuous_config(
             open_ended=(current.open_ended if open_ended is None else open_ended),
             done_reason=done_reason,
             generation=current.generation + 1,
+            before_replace=before_write,
         )
 
 
@@ -546,6 +781,7 @@ def _daemon_status_payload(config: Any, *, started_at_iso: str) -> dict[str, Any
             else ""
         ),
         "global_daily_cap_usd": config.global_daily_cap_usd,
+        "mission_width": int(getattr(config, "mission_width", 1)),
         **daemon_protocol_metadata(),
     }
 
@@ -561,6 +797,7 @@ class DaemonStatus:
     backend: str | None = None
     life_backend: str | None = None
     global_daily_cap_usd: float | None = None
+    mission_width: int | None = None
     protocol_name: str = ""
     protocol_major: int | None = None
     protocol_minor: int | None = None
@@ -693,6 +930,7 @@ def read_daemon_status(life_dir: Path | None = None) -> DaemonStatus:
     life_backend: str | None = None
     project_workdir = ""
     global_daily_cap_usd: float | None = None
+    mission_width: int | None = None
     protocol_name = ""
     protocol_major: int | None = None
     protocol_minor: int | None = None
@@ -716,6 +954,9 @@ def read_daemon_status(life_dir: Path | None = None) -> DaemonStatus:
             raw_global_daily = data.get("global_daily_cap_usd")
             if raw_global_daily is not None:
                 global_daily_cap_usd = float(raw_global_daily)
+            raw_mission_width = data.get("mission_width")
+            if raw_mission_width is not None:
+                mission_width = int(raw_mission_width)
             protocol = data.get("protocol")
             if isinstance(protocol, dict):
                 protocol_name = str(protocol.get("name") or "")
@@ -751,6 +992,7 @@ def read_daemon_status(life_dir: Path | None = None) -> DaemonStatus:
         backend=backend,
         life_backend=life_backend,
         global_daily_cap_usd=global_daily_cap_usd,
+        mission_width=mission_width,
         protocol_name=protocol_name,
         protocol_major=protocol_major,
         protocol_minor=protocol_minor,
@@ -1357,7 +1599,8 @@ def stop_daemon(
 
 __all__ = [
     "DAEMON_UPGRADE_REQUEST_FILE",
-    "ContinuousConfigState", "DaemonStatus", "DaemonStopRequest",
+    "ContinuousConfigState", "ContinuousConfigWriteAfterReplaceError",
+    "DaemonStatus", "DaemonStopRequest",
     "clear_daemon_control_stop",
     "continuous_mode_error", "format_budget_status",
     "read_daemon_control_stop",

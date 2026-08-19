@@ -44,6 +44,7 @@ export interface Daemon {
   backend: string | null;
   backend_label?: string | null;
   global_daily_cap_usd: number | null;
+  mission_width?: number | null;
   read_status?: 'ok' | 'error';
   read_error?: string;
   protocol?: { name: string; major: number | null; minor: number | null };

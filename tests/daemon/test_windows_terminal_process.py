@@ -35,6 +35,8 @@ def test_frozen_windows_worker_reenters_same_binary(monkeypatch, tmp_path: Path)
         "session-1",
         "--backend",
         "codex",
+        "--mission-width",
+        "2",
     ]
 
 
@@ -45,7 +47,14 @@ def test_source_windows_worker_uses_python_module(monkeypatch, tmp_path: Path) -
 
     command = process._windows_daemon_command(config)
     assert command[:3] == ["python.exe", "-m", "argus_skill"]
-    assert command[-4:] == ["--resume", "session-1", "--backend", "codex"]
+    assert command[-6:] == [
+        "--resume",
+        "session-1",
+        "--backend",
+        "codex",
+        "--mission-width",
+        "2",
+    ]
 
 
 def test_windows_background_worker_forces_utf8_environment(

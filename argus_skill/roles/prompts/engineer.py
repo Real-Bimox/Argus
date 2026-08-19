@@ -33,6 +33,29 @@ _PERFORMANCE_DIAGNOSTIC_TASK = re.compile(
     r"吞吐|性能|瓶颈|延迟|剖析",
     re.IGNORECASE,
 )
+_AUDIT_FIDELITY_TASK = re.compile(
+    r"\b(?:audit|ledger|command[ _-]?log|process[ _-]?trace|append[ _-]?only|"
+    r"provenance)\b|审计|账本|问题记录|命令日志|过程记录|只追加|来源归因",
+    re.IGNORECASE,
+)
+
+
+def _audit_fidelity_section(task: str) -> str:
+    if not _AUDIT_FIDELITY_TASK.search(task):
+        return ""
+    return (
+        "## Audit fidelity\n"
+        "An objective or inherited summary is a requirement, not observed evidence. "
+        "Attribute a fact to it only when the cited text actually says that fact; "
+        "otherwise label the claim unverified until a command or immutable artifact "
+        "establishes it. If the operator freezes mutation or names a ledger append-only, "
+        "stop installs and repairs immediately: never replace that file, even after "
+        "copying or archiving it; add a correction only through a verified append path. "
+        "Capture each result-bearing shell command byte-faithfully in a sidecar before "
+        "summarizing it. Do not embed Markdown backticks in an unquoted heredoc: use a "
+        "single-quoted delimiter or a literal file API, and judge inner stderr/status "
+        "rather than trusting an outer shell exit 0."
+    )
 
 
 def _performance_diagnostic_section(task: str) -> str:
@@ -200,6 +223,9 @@ def build_mission_prompt(
     diagnostic_block = _performance_diagnostic_section(task)
     if diagnostic_block:
         sections.append(diagnostic_block)
+    audit_fidelity_block = _audit_fidelity_section(task)
+    if audit_fidelity_block:
+        sections.append(audit_fidelity_block)
     # The Engineer is the role that can most easily satisfy a task while
     # missing the requirement the task exists to serve — the mission text
     # describes this increment, not what the operator agreed "done" means.
@@ -235,7 +261,9 @@ def build_mission_prompt(
         "reading without an artifact or measurement is not progress. Work in the "
         "current directory; unless required, do not write planning/spec/brief "
         "documents, initialize Git, branch/worktree, commit, spawn subagents, or "
-        "invoke meta-workflows.\n"
+        "invoke meta-workflows. Use subagents for operator-requested parallelism or "
+        "independent long experiments, monitoring, research, or writing that shortens "
+        "the critical path; keep coupled implementation local.\n"
         "Never repeat unchanged checks/reads; batch tools and cap results at 200 "
         "lines. At 18 tool calls, synthesize or checkpoint/yield; never exceed 24.\n"
         "Wiki is context, not a boundary: independently inspect papers, upstream "
@@ -286,6 +314,8 @@ def build_mission_prompt(
     )
     if diagnostic_block:
         compact = diagnostic_block + "\n\n" + compact
+    if audit_fidelity_block:
+        compact = audit_fidelity_block + "\n\n" + compact
     if shell_contract:
         compact = shell_contract + "\n\n" + compact
     if learning_block:

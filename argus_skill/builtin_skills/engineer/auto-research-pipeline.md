@@ -49,6 +49,12 @@ experiment or honest failure report is not automatically a paper.
 - Evidence breadth and scale follow the claim. There is no universal benchmark
   count, task count, model count, seed count, effect-size threshold, or
   wall-clock cutoff.
+- Do not invent project-specific round-number improvement or error thresholds
+  merely to obtain a binary keep/reject rule. A numeric cutoff needs a basis in
+  utility, risk, domain standards, prior evidence, theory, or prospective
+  sensitivity. Otherwise report the effect, uncertainty, regimes, and
+  cost-quality frontier continuously; a modest credible effect may justify
+  targeted improvement or a narrower claim.
 
 ## Venue selection
 
@@ -170,13 +176,28 @@ that would overturn the claim.
   observations in the existing project history.
 - Do not lock an idea until the ambition standard survives independent
   prior-art attack and adversarial review.
-- Reuse a completed independent route portfolio; do not start another breadth
+- Stream discovery into validation: each completed route receives a fresh
+  independent review immediately, and every qualified route starts its cheapest
+  faithful probe without waiting for the rest of the portfolio. Select the first
+  probe that earns an `advance` verdict; unfinished routes are not a stage
+  blocker.
+- For a broad publishable/doctoral Agent paper, at least four portfolio routes
+  must independently search for load-bearing mathematical or physical
+  foundations. Cover distinct relevant lenses rather than variants of one
+  analogy, and require each route to derive an algorithm, bound, impossibility
+  result, scaling law, threshold, or quantitative prediction tied to measurable
+  Agent behavior.
+- Reuse the active independent route pipeline; do not start another breadth
   sweep under new route names.
-- Validate each finalist in one decision-sized milestone that owns the nearest
-  source grounding, prior-art attack, minimal mechanism, cheapest faithful probe,
-  and keep/reject comparison. Run independent finalist probes concurrently.
-  Do not serialize "repair research canon," "build smoke harness," and "judge
-  smoke" into separate missions when one coherent milestone can do them.
+- Validate each finalist in one decision-sized milestone, but preserve the
+  dependency inside that milestone: first complete the nearest-source grounding,
+  prior-art attack, technical/formal validity check, and independent selection
+  decision; only a selected survivor may proceed to probe design and execution.
+  A rejected or still-unresolved idea must not consume model, API, or GPU calls.
+  Run independent finalists concurrently, while keeping selection-before-probe
+  ordering within each finalist. Do not serialize "repair research canon,"
+  "build smoke harness," and "judge smoke" into separate Planner missions when
+  one coherent milestone can own the ordered conditional branch.
 - Before using a comparative probe for keep/reject, verify that it can distinguish
   the candidate from the baseline: the tasks exercise the proposed mechanism,
   the baseline has metric headroom, and the cases/repeats can resolve the
@@ -185,7 +206,9 @@ that would overturn the claim.
 - Before paid/model-backed execution, verify that candidate predictions cannot
   read gold labels or scorer-derived fields and that baselines receive the same
   decision-time information.
-- Store the probe without a routing verdict; the Planner decides what it changes.
+- Store measurements separately from the routing verdict. A fresh Reviewer
+  authors `advance`, `reject`, or `inconclusive`; the harness never derives that
+  verdict mechanically from a metric threshold.
 
 ### 2. Plan
 

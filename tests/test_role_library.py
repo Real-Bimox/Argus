@@ -103,3 +103,25 @@ def test_role_library_event_exposes_precedence_without_skill_content(
     assert events[0]["precedence"] == "project,vertical,global"
     assert events[0]["discovery"] == "native-or-path-fallback"
     assert "Skill body" not in str(events[0])
+
+
+def test_required_skill_path_is_resolved_and_emitted_without_body(
+    tmp_path: Path,
+) -> None:
+    store = SkillStore(tmp_path / "skills")
+    required = store.skills_dir / "engineer" / "idea-discovery.md"
+    required.parent.mkdir()
+    required.write_text("PRIVATE REQUIRED BODY", encoding="utf-8")
+    events: list[dict] = []
+
+    result = role_skill_libraries(
+        store,
+        role="engineer",
+        on_event=events.append,
+        required_relative_paths=("engineer/idea-discovery.md",),
+    )
+
+    assert result.required_paths == [required.resolve()]
+    assert events[0]["required_paths"] == [str(required.resolve())]
+    assert str(required.resolve()) in result.block
+    assert "PRIVATE REQUIRED BODY" not in result.block

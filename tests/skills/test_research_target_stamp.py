@@ -71,6 +71,23 @@ def test_raising_the_target_does_move_the_cutoff(tmp_path: Path) -> None:
     )
 
 
+def test_broad_research_direction_cannot_be_downgraded(tmp_path: Path) -> None:
+    persist_vertical(
+        tmp_path,
+        "research",
+        research_target_level="publishable",
+        research_direction_mode="broad",
+    )
+
+    with pytest.raises(ValueError, match="cannot be downgraded"):
+        persist_vertical(
+            tmp_path,
+            "research",
+            research_target_level="publishable",
+            research_direction_mode="locked",
+        )
+
+
 def test_a_certified_mission_survives_later_planning_cycles(
     tmp_path: Path,
 ) -> None:

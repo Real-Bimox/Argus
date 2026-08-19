@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from threading import Barrier
 from types import SimpleNamespace
 from typing import Any
 
@@ -114,6 +116,117 @@ class _MaintenanceRunner:
         outcome = _Outcome()
         outcome.final_review_status = "done"
         return outcome
+
+
+class _ParallelRunner:
+    def __init__(self, barrier: Barrier) -> None:
+        self.barrier = barrier
+        self.kwargs: dict[str, Any] = {}
+
+    def execute(self, **kwargs) -> _Outcome:
+        self.kwargs = kwargs
+        self.barrier.wait(timeout=5)
+        return _Outcome()
+
+
+def test_primary_and_auxiliary_supervisors_run_disjoint_tasks_together(
+    tmp_path,
+) -> None:
+    memory = LifeMemory.open(tmp_path / "life")
+    memory.init()
+    for name in ("a", "b"):
+        memory.backlog.add(BacklogItem.new(
+            title=name,
+            objective=f"write {name}",
+            tags=["scope:bounded"],
+            manager_decision={
+                "routed": True,
+                "vertical": "software",
+                "workflow_mode": "direct",
+            },
+            parallel_safe=True,
+            owns_paths=[f"outputs/{name}.txt"],
+        ))
+    barrier = Barrier(2)
+    primary_runner = _ParallelRunner(barrier)
+    helper_runner = _ParallelRunner(barrier)
+    primary = LifeSupervisor(
+        memory=memory,
+        runner=primary_runner,
+        sink=_RecordingSink(memory.root),
+        config=LifeSupervisorConfig(
+            project_worktree=tmp_path,
+            worker_id="primary",
+            coordinate_parallel_claims=True,
+        ),
+    )
+    helper = LifeSupervisor(
+        memory=memory,
+        runner=helper_runner,
+        sink=_RecordingSink(memory.root),
+        config=LifeSupervisorConfig(
+            project_worktree=tmp_path,
+            parallel_worker=True,
+            holds_stage_authority=False,
+            worker_id="parallel-1",
+        ),
+    )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        primary_future = executor.submit(primary.tick)
+        deadline = time.time() + 2
+        while (
+            not any(item.status == "running" for item in memory.backlog.all())
+            and time.time() < deadline
+        ):
+            time.sleep(0.01)
+        futures = [primary_future, executor.submit(helper.tick)]
+        results = [future.result() for future in futures]
+
+    assert all(result and result["status"] == "done" for result in results)
+    assert primary_runner.kwargs["holds_stage_authority"] is True
+    assert helper_runner.kwargs["holds_stage_authority"] is False
+
+
+def test_crash_after_mission_claim_requeues_audit_and_reemits_started(
+    tmp_path,
+) -> None:
+    memory = LifeMemory.open(tmp_path / "life")
+    item = memory.backlog.add(BacklogItem.new(
+        title="recover claimed mission",
+        objective="finish after restart",
+        tags=["scope:bounded"],
+        manager_decision={
+            "routed": True,
+            "vertical": "software",
+            "workflow_mode": "direct",
+        },
+    ))
+    claimed = memory.backlog.claim_next()
+    assert claimed is not None and claimed.id == item.id
+    assert claimed.status == "running"
+
+    sink = _RecordingSink(memory.root)
+    restarted = LifeSupervisor(
+        memory=memory,
+        runner=_MaintenanceRunner(),
+        sink=sink,
+        config=LifeSupervisorConfig(
+            project_worktree=tmp_path,
+            artifact_root=tmp_path,
+        ),
+    )
+
+    assert sink.events[0]["type"] == "life.mission.requeued"
+    assert sink.events[0]["item_id"] == item.id
+    restarted._vertical_resolved = True
+    restarted.tick()
+    started = [
+        event for event in sink.events
+        if event["type"] == EventType.LIFE_MISSION_STARTED
+    ]
+    assert len(started) == 1
+    assert started[0]["item_id"] == item.id
 
 
 def test_framework_maintenance_uses_private_worktree_and_review(

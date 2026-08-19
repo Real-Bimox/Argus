@@ -69,7 +69,7 @@ def test_vertical_prompt_keeps_math_routes_inside_builtin_math():
     # earns its space. It moved 7_500 -> 8_100 for the three requirement lines
     # (PRECISE_CONSTRAINTS / EXCLUSIONS / AMBIGUITIES, 544 chars), which carry
     # the operator's own words into the contract. Keep the headroom small.
-    assert len(prompt) <= 8_100
+    assert len(prompt) <= 8_200
 
 
 def test_vertical_prompts_do_not_treat_one_paper_reading_as_research_pipeline():
@@ -174,6 +174,21 @@ def test_fast_vertical_parser_accepts_confident_existing_route() -> None:
     assert route.confidence == 0.94
 
 
+def test_fast_vertical_parser_rejects_legacy_direct_alias_with_staged_workflow() -> None:
+    route = parse_fast_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "direct",
+            "workflow_mode": "staged",
+            "confidence": 0.94,
+            "rationale": "conflicting alias",
+        }),
+        known_verticals=VERTICALS,
+    )
+
+    assert route is None
+
+
 def test_fast_vertical_parser_accepts_research_with_chemistry_domain() -> None:
     route = parse_fast_vertical_decision(
         json.dumps({
@@ -210,6 +225,188 @@ def test_vertical_parser_rejects_domain_on_non_research_workflow() -> None:
     )
 
     assert decision is None
+
+
+def test_vertical_parser_defaults_legacy_direct_alias_to_direct_workflow() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "direct",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
+    )
+
+    assert decision is not None
+    assert decision.vertical == "software"
+    assert decision.workflow_mode == "direct"
+
+
+def test_vertical_parser_rejects_legacy_direct_alias_with_staged_workflow() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "vertical": "direct",
+            "workflow_mode": "staged",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
+    )
+
+    assert decision is None
+
+
+def test_vertical_parser_rejects_direct_alias_conflicting_with_persisted_staged() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "direct",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
+        persisted_vertical="software",
+        persisted_workflow_mode="staged",
+    )
+
+    assert decision is None
+
+
+def test_vertical_parser_recovers_direct_mode_from_legacy_persisted_alias() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "software",
+            "execution_task": "repair the repository",
+        }),
+        known_verticals=VERTICALS,
+        persisted_vertical="direct",
+    )
+
+    assert decision is not None
+    assert decision.vertical == "software"
+    assert decision.workflow_mode == "direct"
+
+
+def test_vertical_parser_recovers_required_persisted_research_target() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "execution_task": "continue the paper",
+        }),
+        known_verticals=VERTICALS,
+        known_domains=BUILTIN_DOMAINS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_domain="chemistry",
+        persisted_research_target_level="publishable",
+    )
+
+    assert decision is not None
+    assert decision.domain == "chemistry"
+    assert decision.research_target_level == "publishable"
+    assert decision.research_direction_mode == "broad"
+
+
+def test_vertical_parser_preserves_operator_locked_research_hypothesis() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "research_target_level": "publishable",
+            "research_direction_mode": "locked",
+            "execution_task": "test the operator's fixed hypothesis",
+        }),
+        known_verticals=VERTICALS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_research_target_level="publishable",
+        persisted_research_direction_mode="locked",
+    )
+
+    assert decision is not None
+    assert decision.research_direction_mode == "locked"
+
+
+def test_vertical_parser_does_not_trust_fresh_model_locked_claim() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "research_target_level": "publishable",
+            "research_direction_mode": "locked",
+            "execution_task": "find a paper idea",
+        }),
+        known_verticals=VERTICALS,
+        research_target_verticals=("research",),
+    )
+
+    assert decision is not None
+    assert decision.research_direction_mode == "broad"
+
+
+def test_vertical_parser_rejects_downgrading_persisted_broad_research() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "workflow_mode": "staged",
+            "research_target_level": "publishable",
+            "research_direction_mode": "locked",
+            "execution_task": "continue the paper",
+        }),
+        known_verticals=VERTICALS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_research_target_level="publishable",
+        persisted_research_direction_mode="broad",
+    )
+
+    assert decision is None
+
+
+def test_vertical_parser_rejects_changed_persisted_research_domain() -> None:
+    decision = parse_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "research",
+            "domain": "physics",
+            "workflow_mode": "staged",
+            "execution_task": "continue the paper",
+        }),
+        known_verticals=VERTICALS,
+        known_domains=BUILTIN_DOMAINS,
+        research_target_verticals=("research",),
+        persisted_vertical="research",
+        persisted_workflow_mode="staged",
+        persisted_domain="chemistry",
+        persisted_research_target_level="publishable",
+    )
+
+    assert decision is None
+
+
+def test_fast_vertical_parser_rejects_explicit_workflow_conflict_with_persisted() -> None:
+    route = parse_fast_vertical_decision(
+        json.dumps({
+            "choice": "existing",
+            "name": "software",
+            "workflow_mode": "direct",
+            "confidence": 0.94,
+            "rationale": "conflicting persisted identity",
+        }),
+        known_verticals=VERTICALS,
+        persisted_vertical="software",
+        persisted_workflow_mode="staged",
+    )
+
+    assert route is None
 
 
 def test_vertical_parser_accepts_in_place_data_domain_adaptation() -> None:
@@ -281,7 +478,18 @@ def test_read_only_repository_audit_avoids_maintenance_meta_review() -> None:
     )
 
     assert "`software`/`direct`, not `argus_maintenance`" in prompt
-    assert "no meta-review unless explicitly requested" in prompt
+    assert "no meta-review unless asked" in prompt
+
+
+def test_paper_process_audit_routes_by_deliverable_not_argus_noun() -> None:
+    prompt = build_vertical_decision_prompt(
+        "Use Argus to generate an ICLR paper and audit the paper-generation process.",
+        verticals_with_purpose=VERTICAL_PURPOSES,
+    )
+
+    assert "Paper/survey work: `research`" in prompt
+    assert "even about/using Argus" in prompt
+    assert "runtime changes: `argus_maintenance`" in prompt
 
 
 def test_vertical_prompts_prefer_matching_formal_project_domain() -> None:

@@ -5,17 +5,20 @@ description: "Review experiment results for scientific validity before writing t
 
 # Experiment Results Review
 
-Review experiment results as a senior ML researcher would before allowing the team to write the paper. The goal is to catch misleading or unconvincing evidence before it gets baked into claims.
+Review whether the experiment was engineered correctly and whether its evidence
+supports the selected idea's frozen premise. The goal is to catch invalid runs
+and unsupported interpretations before they enter downstream claims.
 
 ## Reviewer stance
-- You are deciding whether these results are worth writing up, not whether the paper is well-written.
+- You are validating an experiment, not repeating upstream idea selection.
 - Weak results honestly presented are better than strong results from flawed methodology.
-- If the results wouldn't survive peer review scrutiny, say so now — not after the paper is written.
-- A complete experiment history is not a paper. Require one defensible thesis and
-  the strongest valid evidence needed to establish it.
-- Results may support a paper only when the contribution retains a nontrivial
-  technical core, verified originality, claim-relevant formal/causal grounding,
-  and field-level consequence. A benchmark win does not create ambition.
+- Treat method reasonableness, originality, and significance as frozen upstream
+  decisions. Do not re-rank or re-litigate them from experimental outcomes.
+- Check only (1) engineering and protocol validity and (2) whether the valid
+  evidence supports, refutes, or leaves unresolved the frozen premise.
+- If execution changed the method, premise, comparator, or claim boundary,
+  report a fidelity failure and return it upstream; do not repair idea selection
+  inside the experiment review.
 
 ## When the method did NOT beat the baseline
 
@@ -32,13 +35,12 @@ A loss is a root-cause and research-value decision point.
    mechanism, the baseline had metric headroom, and the cases/repeats could
    resolve the predeclared contrast. A ceilinged/floored or underpowered tie is
    inconclusive, not a negative method result.
-3. **Choose the next action by evidence and information gain:**
+3. **Recommend the next experimental action by evidence and information gain:**
    - repair or optimize when a concrete credible change could give the idea a
      fairer test;
-   - pivot when the original thesis is unsupported and a stronger direction is
-     available;
-   - recommend publication only when the negative/boundary result supports a
-     surprising, robust, independently valuable thesis beyond "the method failed."
+   - classify the frozen premise as supported, refuted, or inconclusive;
+   - return upstream when the method or premise needs revision. Do not choose a
+     replacement idea or decide publication value in this review.
 
 There is no fixed number of optimization passes. Stop when credible fixes are
 exhausted or no longer worth their cost, not because a retry counter fired.
@@ -55,7 +57,10 @@ that would alter the headline conclusion.
 
 ## Six review dimensions
 
-Score each 1–5. Score 3+ on all dimensions = pass.
+Score each 1–5. Score 3+ on all dimensions = pass. Here `pass` means the
+experiment is engineering-valid and its interpretation is reviewable; it does
+not mean the frozen premise was supported. Report that separately as
+`idea_status`.
 
 1. **Statistical and evidential support**
    - Is uncertainty handled appropriately for the data-generating process and claim?
@@ -72,12 +77,18 @@ Score each 1–5. Score 3+ on all dimensions = pass.
 3. **Effect size and practical significance**
    - Is the observed effect, null, diagnostic pattern, or boundary meaningful for
      the stated research question?
+   - Was each numeric pass/fail cutoff justified by utility, risk, a domain
+     standard, prior evidence, theory, or prospective sensitivity rather than an
+     unsupported round-number target? If no justified cutoff exists, assess the
+     continuous estimate, uncertainty, regimes, and cost-quality frontier; merely
+     missing an arbitrary target cannot establish method failure.
    - Are there regimes where the contribution helps, fails, or changes interpretation?
    - Are claim-critical null results honestly represented without turning the
      paper into an exhaustive failure log?
 
 4. **Claim support**
-   - Do the numbers actually support the intended paper claims?
+   - Do the numbers support the stated evidence conclusion about the frozen
+     premise, whether that conclusion is supported, refuted, or inconclusive?
    - Are there overclaims (claiming "significant improvement" for marginal gains)?
    - Are there underclaims (missing an interesting finding in the data)?
    - Is the headline result the strongest honest claim, or is it cherry-picked?
@@ -102,6 +113,7 @@ Return JSON:
 {
   "score": 1-5,
   "pass": true/false,
+  "idea_status": "untested|inconclusive|supported|refuted",
   "dimension_scores": {
     "statistical_significance": 1-5,
     "ablation_fairness": 1-5,
@@ -111,7 +123,7 @@ Return JSON:
     "completeness": 1-5
   },
   "issues": ["specific issue 1", "specific issue 2"],
-  "verdict": "one sentence overall judgment",
+  "verdict": "one sentence on engineering validity and evidence status",
   "claim_recommendations": [
     "Claim X is supported — keep",
     "Claim Y is overclaimed — soften to Z",
@@ -132,8 +144,8 @@ Return JSON:
 - Drafting a selected method's weak result before a credible diagnosis and
   targeted repair, unless the negative finding itself already supports a
   surprising and independently useful thesis
-- Results are used to promote a shallow prompt/schema/wrapper/scale variant,
-  decorative theory, or finding with no field-level consequence
+- Results are interpreted against a method, premise, comparator, or claim
+  boundary that differs from the frozen selection
 
 ## Infrastructure validity
 Flag infrastructure only when it invalidates the comparison, measurement, or

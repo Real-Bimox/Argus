@@ -14,8 +14,6 @@ _AMBITION_SKILLS = (
     "engineer/research-brief-to-experiment-plan.md",
     "engineer/idea-feasibility-derisk.md",
     "engineer/final-paper-review.md",
-    "reviewer/experiment-plan-review.md",
-    "reviewer/experiment-results-review.md",
     "reviewer/academic-paper-peer-review-benchmark.md",
 )
 
@@ -78,17 +76,37 @@ def test_live_checklist_requires_thesis_and_implementation_adequacy() -> None:
     assert "weak result cannot be rescued" in review["review.publication_value"]
 
 
-def test_open_ended_paper_ideation_reuses_twelve_route_team() -> None:
+def test_broad_paper_ideation_streams_review_and_probes() -> None:
     discovery = _skill("engineer/idea-discovery.md")
+    creator = _skill("engineer/idea-creator.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
+    normalized_discovery = " ".join(discovery.split())
+    normalized_creator = " ".join(creator.split())
+    normalized_pipeline = " ".join(pipeline.split())
     research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
 
     assert "pool-set --root <team_root> --width 12 --state running" in discovery
     assert "spawn only the missing routes" in discovery
     assert "Never restart a second" in discovery
     assert "A single model call" in discovery
-    assert "written cross-examination" in discovery
-    assert "12-route portfolio" in research["research.thesis"]
-    assert "adversarial meta-review" in research["research.thesis"]
+    assert "fresh independent reviewer" in discovery
+    assert "starts its probe immediately" in discovery
+    assert "first route whose independent probe records `advance`" in discovery
+    assert "at least four routes" in discovery
+    assert "network/statistical physics" in normalized_discovery
+    assert "canonical 12-route team pipeline" in research["research.idea_portfolio"].lower()
+    assert "without waiting" in research["research.idea_portfolio"]
+    assert "earliest independently reviewed candidate" in (
+        research["research.adversarial_selection"]
+    )
+    assert "does not wait for every route or probe" in (
+        research["research.adversarial_selection"]
+    )
+    assert "first independently reviewed probe with an `advance` verdict wins" in (
+        normalized_creator
+    )
+    assert "Do not wait for every candidate" in normalized_creator
+    assert "unfinished routes are not a stage blocker" in normalized_pipeline
 
 
 def test_research_idea_selection_requires_ambition_without_decorative_math() -> None:
@@ -100,11 +118,13 @@ def test_research_idea_selection_requires_ambition_without_decorative_math() -> 
     assert "Hard technical core" in discovery
     assert "Frontier significance" in discovery
     assert "decorative equations" in discovery
+    assert "scaling law" in discovery
+    assert "measurable quantities" in discovery
     assert "technical_depth" in creator
     assert "theoretical_foundation" in creator
     thesis = research["research.thesis"]
     assert "nontrivial technical core" in thesis
-    assert "formal/causal predictions" in thesis
+    assert "formal or causal predictions" in thesis
     assert "decorative math" in thesis
     assert "feasibility rescue" in thesis
     assert "shallow prompt/schema/wrapper/scale" in peer_review
@@ -162,3 +182,69 @@ def test_research_smokes_require_discriminative_power_before_rejection() -> None
         assert "inconclusive" in text
     assert "baseline ceiling/floor saturation" in research["research.signal_derisk"]
     assert "predeclared power and headroom" in research["research.signal_derisk"]
+
+
+def test_route_review_precedes_probe_without_global_barrier() -> None:
+    creator = _skill("engineer/idea-creator.md")
+    probe = _skill("engineer/idea-feasibility-derisk.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
+    brief = _skill("engineer/research-brief-to-experiment-plan.md")
+    research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
+    planner = (
+        Path(__file__).parents[2]
+        / "argus_skill"
+        / "roles"
+        / "prompts"
+        / "planner.py"
+    ).read_text(encoding="utf-8")
+
+    assert "Complete this route-local selection" in creator
+    assert "Only after Step 1 has selected" in creator
+    assert "After an idea has passed method-reasonableness selection" in probe
+    assert "selection-before-probe" in pipeline
+    assert "earlier dependency" in brief
+    assert "Before any probe is designed or executed" in research["research.thesis"]
+    assert "final single thesis" in research["research.thesis"]
+    assert "Only after research.thesis" in research["research.signal_derisk"]
+    normalized_planner = " ".join(planner.split())
+    assert "selection must precede probe design and execution" in normalized_planner
+    assert "Author the frozen evidence question" in normalized_planner
+    assert "does not yet choose the final thesis" in creator
+    assert "must not silently change the frozen premise" in creator
+    assert "first independently reviewed probe with an `advance` verdict wins" in (
+        " ".join(creator.split())
+    )
+    assert "unfinished routes are not a stage blocker" in " ".join(pipeline.split())
+
+
+def test_experiment_review_does_not_repeat_idea_selection() -> None:
+    plan_review = _skill("reviewer/experiment-plan-review.md")
+    results_review = _skill("reviewer/experiment-results-review.md")
+
+    assert "Do not re-rank its novelty" in plan_review
+    assert "not repeating upstream idea selection" in results_review
+    assert "Do not re-rank or re-litigate" in results_review
+    assert "engineering and protocol validity" in results_review
+    assert "decide publication value" in results_review
+    assert "`pass` means the experiment is engineering-valid" in " ".join(
+        results_review.split()
+    )
+    assert '"idea_status": "untested|inconclusive|supported|refuted"' in results_review
+    assert "research/ideas/<id>/EVIDENCE.json" in _skill(
+        "engineer/idea-creator.md"
+    )
+
+
+def test_research_protocol_rejects_unsupported_magic_thresholds() -> None:
+    brief = _skill("engineer/research-brief-to-experiment-plan.md")
+    pipeline = _skill("engineer/auto-research-pipeline.md")
+    plan_review = _skill("reviewer/experiment-plan-review.md")
+    results_review = _skill("reviewer/experiment-results-review.md")
+    plan = {item.id: item.statement for item in STAGE_CHECKLISTS["plan"]}
+
+    for text in (brief, pipeline, plan_review, results_review):
+        assert "round-number" in text
+        assert "utility" in text
+    assert "unsupported round-number gains" in plan["plan.experiment"]
+    assert "continuous evidence" in brief
+    assert "cost-quality frontier" in results_review

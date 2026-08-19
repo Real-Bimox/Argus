@@ -405,6 +405,37 @@ def test_prewarm_starts_lean_process_and_session_without_model_turn(
     ]
 
 
+def test_prewarm_authenticates_when_agent_advertises_auth_method(monkeypatch) -> None:
+    def _script(req, _proc):
+        method = req.get("method")
+        if method == "initialize":
+            response = _init_ok(req)
+            response["result"]["authMethods"] = [
+                {"id": "copilot-login", "name": "Log in with Copilot CLI"}
+            ]
+            return [response]
+        if method == "authenticate":
+            return [{"jsonrpc": "2.0", "id": req["id"], "result": {}}]
+        if method == "session/new":
+            return [_session_ok(req)]
+        return []
+
+    proc = _FakeAcpProc(_script)
+    monkeypatch.setattr(copilot_acp.subprocess, "Popen", lambda *args, **kwargs: proc)
+
+    CopilotAcpClient("copilot-bin").prewarm(
+        "/workspace", front_door_session=True
+    )
+
+    requests = [item for item in proc.written if item.get("method")]
+    assert [item["method"] for item in requests] == [
+        "initialize",
+        "authenticate",
+        "session/new",
+    ]
+    assert requests[1]["params"] == {"methodId": "copilot-login"}
+
+
 def test_the_lean_allowlist_names_something_rather_than_nothing(monkeypatch) -> None:
     """The lean flag's whole promise is that a classifier cannot act.
 

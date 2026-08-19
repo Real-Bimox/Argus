@@ -52,6 +52,7 @@ def test_turn_discipline_present_even_for_nonpaper_task():
     assert "initialize git" in out.lower()
     assert "commit" in out.lower()
     assert "spawn subagents" in out.lower()
+    assert "operator-requested parallelism" in out.lower()
 
 
 def test_long_experiment_protocol_is_in_every_engineer_turn():

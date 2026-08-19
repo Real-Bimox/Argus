@@ -7,9 +7,10 @@ description: "Run the cheapest faithful observation that informs a research idea
 
 ## Purpose
 
-Before committing substantial compute, obtain one real observation about the
-idea's binding premise on available models, data, or systems. This is a source of
-information, not a routing gate.
+After an idea has passed method-reasonableness selection, and before committing
+substantial compute, obtain one real observation about its binding premise on
+available models, data, or systems. This is a source of information, not a
+routing gate and not a substitute for idea selection.
 
 For publishable/doctoral work, a successful probe does not waive the ambition
 standard: nontrivial technical core, verified originality, claim-relevant
@@ -18,8 +19,11 @@ feasibility cannot promote a shallow idea.
 
 ## How to work
 
-1. Read the research brief and identify the uncertain premise whose answer would
-   most change the plan.
+1. Read the research brief and the completed selection reasoning. If technical
+   validity, prior-art reduction, originality, significance, falsifiability, or
+   resource feasibility is still unresolved, stop before model/API/GPU execution
+   and finish selection first. Otherwise identify the selected idea's uncertain
+   empirical premise whose answer would most change the plan.
 2. Choose the cheapest faithful probe that can inform it. Use real public data or
    the actual system when the claim depends on them; do not replace the premise
    with an easy toy proxy. For a comparative claim, require discriminative

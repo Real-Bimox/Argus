@@ -224,6 +224,8 @@ def _describe_event(event: dict[str, Any]) -> tuple[str, str]:
         verdict = str(event.get("verdict") or event.get("decision") or "")
         if etype.endswith("start"):
             return "planning new work", "running"
+        if etype.endswith("waiting"):
+            return "waiting on external work", "waiting"
         return (f"plan verdict {verdict}" if verdict else "planning done"), verdict or "done"
     if etype.startswith("manager") or etype.startswith("life.manager"):
         # Front-door decisions must read as a TERSE state token, never the raw
@@ -337,7 +339,7 @@ def role_activity(
             if role in inflight_roles
             else active_window_s
         )
-        active = status not in {"done", "blocked", "idle"} and (
+        active = status not in {"done", "blocked", "idle", "waiting"} and (
             age is None or age <= effective_active_window
         )
         if not active and (age is None or age > stale_window_s):

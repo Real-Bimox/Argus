@@ -131,6 +131,26 @@ def test_event_journal_projects_canonical_lifecycle_events(tmp_path: Path) -> No
     ]
 
 
+def test_event_journal_projects_legacy_team_waiting_as_planner_waiting(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_text(
+        json.dumps({
+            "type": "life.team.waiting",
+            "ts": 1.0,
+            "reason": "await external worker",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+    entries = EventJournal(path).all()
+
+    assert len(entries) == 1
+    assert entries[0].kind == "planner_waiting"
+
+
 def test_event_journal_tail_prefilters_non_journal_json_before_decoding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -192,6 +212,60 @@ def test_backlog_status_transitions(tmp_path: Path) -> None:
     assert final.status == "done"
     assert final.finished_ts is not None
     assert b.next_pending() is None
+
+
+def test_parallel_claims_require_disjoint_explicit_ownership(tmp_path: Path) -> None:
+    backlog = Backlog(tmp_path / "backlog.jsonl")
+    first = backlog.add(BacklogItem.new(
+        title="first",
+        objective="first",
+        parallel_safe=True,
+        owns_paths=["research/routes/a.md"],
+    ))
+    overlap = backlog.add(BacklogItem.new(
+        title="overlap",
+        objective="overlap",
+        parallel_safe=True,
+        owns_paths=["research/routes"],
+    ))
+    case_alias = backlog.add(BacklogItem.new(
+        title="case alias",
+        objective="case alias",
+        parallel_safe=True,
+        owns_paths=["RESEARCH/ROUTES/A.MD"],
+    ))
+    glob_alias = backlog.add(BacklogItem.new(
+        title="glob alias",
+        objective="glob alias",
+        parallel_safe=True,
+        owns_paths=["research/**"],
+    ))
+    disjoint = backlog.add(BacklogItem.new(
+        title="disjoint",
+        objective="disjoint",
+        parallel_safe=True,
+        owns_paths=["research/debates/b.md"],
+    ))
+    backlog.add(BacklogItem.new(title="serial", objective="serial"))
+
+    assert backlog.claim_next(expected_id=first.id) is not None
+    assert backlog.next_pending(parallel_only=True).id == disjoint.id
+    assert backlog.claim_next(
+        parallel_only=True,
+        expected_id=overlap.id,
+    ) is None
+    assert backlog.claim_next(
+        parallel_only=True,
+        expected_id=case_alias.id,
+    ) is None
+    assert backlog.claim_next(
+        parallel_only=True,
+        expected_id=glob_alias.id,
+    ) is None
+    assert backlog.claim_next(
+        parallel_only=True,
+        expected_id=disjoint.id,
+    ) is not None
 
 
 def test_backlog_failed_carries_error(tmp_path: Path) -> None:

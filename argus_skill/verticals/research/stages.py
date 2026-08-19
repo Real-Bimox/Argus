@@ -54,6 +54,31 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             ),
         ),
         ChecklistItem(
+            id="research.idea_portfolio",
+            statement=(
+                "A canonical 12-route team pipeline explores ideas concurrently. "
+                "Every completed route enters its own fresh independent review and, "
+                "when qualified, its cheapest faithful probe without waiting for "
+                "slower routes."
+            ),
+            evidence_hint=(
+                "research/IDEA_PORTFOLIO.json + research/ideation/portfolios/**/"
+                "{routes,reviews,probes} + team tasks/shards"
+            ),
+        ),
+        ChecklistItem(
+            id="research.adversarial_selection",
+            statement=(
+                "The selected thesis is the earliest independently reviewed candidate "
+                "whose faithful probe earns an ADVANCE verdict. Selection is greedy "
+                "and does not wait for every route or probe; route, review, and probe "
+                "must use fresh workers with deterministic provenance."
+            ),
+            evidence_hint=(
+                "research/IDEA_SELECTION.json + selected route/review/EVIDENCE.json"
+            ),
+        ),
+        ChecklistItem(
             id="research.brief",
             statement=(
                 "A research brief frames the problem, the gap in prior work, and "
@@ -64,12 +89,14 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.thesis",
             statement=(
-                "Broad paper idea lock follows a 12-route "
-                "portfolio and adversarial meta-review. The thesis has a nontrivial "
-                "technical core, verified originality, claim-relevant formal/causal "
-                "predictions, field-level consequence, falsifier, and justified "
-                "budget; reject prompt/schema/wrapper/scale variants, decorative math, "
-                "or feasibility rescue."
+                "The selected thesis has a nontrivial technical core, verified "
+                "originality, claim-relevant formal or causal predictions, field-level "
+                "consequence, falsifier, and justified budget. Reject prompt/schema/"
+                "wrapper/scale variants, decorative math, or feasibility rescue. "
+                "Before any probe is designed or executed, lock the method-reasonableness "
+                "case for every candidate admitted to probing. The final single thesis "
+                "may be chosen among those candidates after their probe evidence is "
+                "reviewed."
             ),
             evidence_hint=(
                 "research/RESEARCH_BRIEF.md and research/ideation/{routes,debates}/"
@@ -78,8 +105,9 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
         ChecklistItem(
             id="research.signal_derisk",
             statement=(
-                "Before leaving research, the locked idea survives the cheapest REAL "
-                "falsification probe that tests its binding premise on this machine. "
+                "Only after research.thesis has locked a candidate's "
+                "method-reasonableness case, run the cheapest REAL falsification probe "
+                "that tests its binding premise on this machine. "
                 "The Planner authors the evidence contract for the research shape: a "
                 "comparative method may use measured baseline/proposed deltas; a "
                 "systems or architecture idea may test fidelity plus the claimed "
@@ -87,9 +115,10 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
                 "decisive counterexample/coverage test. Prefer <=10 minutes / <=$1 "
                 "when faithful, but do not substitute a toy proxy merely to meet that "
                 "budget. Preserve commands and raw outputs. Store the outcome without "
-                "turning it into a mechanical routing decision; the Planner reads it "
-                "and decides what it changes. A passed wiring-only smoke does not prove "
-                "the thesis. "
+                "turning a metric threshold into a mechanical routing decision; a "
+                "fresh Reviewer authors the explicit advance/reject/inconclusive "
+                "verdict, and the greedy pipeline routes only on that reviewed verdict. "
+                "A passed wiring-only smoke does not prove the thesis. "
                 "Record what the probe established — untested / inconclusive / "
                 "supported / refuted — separately from whether it ran; infrastructure "
                 "failures, baseline ceiling/floor saturation, tasks that do not "
@@ -113,8 +142,11 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             statement=(
                 "Experiment plan states the hypothesis, the proposed method, the "
                 "baselines (including the strongest feasible prior work), the "
-                "ablations, the metrics, the success threshold, and the compute / "
-                "API budget."
+                "ablations, the metrics, the interpretation and stopping criteria, "
+                "and the compute / API budget. Numeric keep/reject cutoffs require "
+                "an external utility, risk, domain-standard, prior-evidence, theory, "
+                "or prospective-sensitivity basis; unsupported round-number gains "
+                "must not become binary gates."
             ),
             evidence_hint="research/EXPERIMENT_PLAN.md",
         ),
@@ -544,6 +576,14 @@ def get_stage_checklist(stage: str) -> tuple[ChecklistItem, ...]:
     return STAGE_CHECKLISTS.get(str(stage).strip().lower(), ())
 
 
+def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
+    if str(stage or "").strip().lower() != "research":
+        return ()
+    from .idea_portfolio import idea_portfolio_completion_issues
+
+    return idea_portfolio_completion_issues(project_root)
+
+
 
 RESEARCH_TARGET_LEVELS = ("exploratory", "publishable", "doctoral")
 
@@ -635,14 +675,14 @@ def _apply_venue_to_checklist_body(body: str, venue: VenueProfile) -> str:
         replacements = {
             (
                 "paper/main.tex uses the official Frontiers in Sleep journal-article "
-                "sections and tells one coherent argument."
+                "sections and tells one coherent argument"
             ): (
                 "paper/main.tex uses the Frontiers in Sleep Hypothesis and "
                 "Theory sections in a coherent order: one-paragraph Abstract, "
                 "Introduction, subject-relevant evidence and theory subsections, "
                 "discriminating tests or proposed study, Discussion, Conclusion, "
                 "required declarations, and References. The article tells one "
-                "coherent argument."
+                "coherent argument"
             ),
             (
                 "Every BibTeX entry is verified through a scholarly source (arXiv, "
@@ -698,6 +738,10 @@ def _apply_venue_to_checklist_body(body: str, venue: VenueProfile) -> str:
         }
         for old, new in replacements.items():
             body = body.replace(old, new)
+        body = body.replace(
+            "irrelevant cross-benchmark matrix",
+            "irrelevant omnibus benchmark matrix",
+        )
         body = body.replace(
             "Academic prose reads like a real EMNLP paper, not generic agent output:",
             "Academic prose reads like a real Frontiers in Sleep Hypothesis and "
@@ -840,5 +884,6 @@ __all__ = [
     "WORKFLOW_MODE",
     "REQUIRE_INDEPENDENT_REVIEW",
     "role_banner",
+    "stage_completion_issues",
     "completion_gate",
 ]

@@ -52,6 +52,7 @@ _PYTHON_PRE_ACTION_VALUE_OPTIONS = frozenset(
         "--life-dir",
         "--gc-days",
         "--objective",
+        "--mission-width",
         "--web-host",
         "--host",
         "--web-port",

@@ -56,9 +56,15 @@ serious candidate ask:
 Record rejected alternatives only when they affected the decision; do not create
 a rejection quota.
 
-## 3. De-risk the binding premise
+Do not continue to probe design until this method-reasonableness case has been
+completed and the candidate has been selected. Selection may share one
+decision-sized milestone with the later probe, but it is an earlier dependency,
+not a parallel branch.
 
-Run the cheapest faithful real probe that can invalidate the central assumption.
+## 3. De-risk the selected idea's binding premise
+
+Only after selection, run the cheapest faithful real probe that can invalidate
+the central empirical assumption.
 A smoke test proves wiring, not the idea. If the premise fails, decide whether
 the failure comes from:
 
@@ -103,6 +109,15 @@ evaluation projects should not fill one another's schemas.
 Scale follows the claim. Do not impose universal benchmark, task, model, seed,
 duration, or effect-size counts. Every empirical paper claim needs authentic
 public evidence; synthetic diagnostics may supplement but not replace it.
+
+A numeric success/failure cutoff needs a defensible external basis: user
+utility or risk, an accepted domain standard, prior evidence, a theoretical
+prediction, or a prospective power/sensitivity target. Preregistration alone
+does not justify an unsupported round-number improvement or error cap. When no
+such cutoff exists, predeclare the estimand, expected direction, matched
+budgets, uncertainty analysis, and effect-cost tradeoff; interpret the
+continuous evidence rather than turning it into an automatic keep/kill gate.
+Missing an arbitrary target is not evidence that an idea failed.
 
 ## 6. Advise the Planner
 

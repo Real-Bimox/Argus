@@ -57,6 +57,7 @@ _DECISION_KEYS = (
     "WORKFLOW_MODE",
     "CONFIDENCE",
     "RESEARCH_TARGET_LEVEL",
+    "RESEARCH_DIRECTION_MODE",
     "TARGET_VENUE",
     "RATIONALE",
     "EXECUTION_TASK",
@@ -95,7 +96,14 @@ def _decision_fields(raw_text: str) -> dict[str, Any] | None:
         return legacy_json_object(raw_text)
 
     fields: dict[str, Any] = {}
-    for key in ("CHOICE", "VERTICAL", "NAME", "WORKFLOW_MODE", "RESEARCH_TARGET_LEVEL"):
+    for key in (
+        "CHOICE",
+        "VERTICAL",
+        "NAME",
+        "WORKFLOW_MODE",
+        "RESEARCH_TARGET_LEVEL",
+        "RESEARCH_DIRECTION_MODE",
+    ):
         if key in values:
             fields[key.lower()] = read_optional(values, key)
     for key in ("DOMAIN", "TARGET_VENUE", "RATIONALE", "EXECUTION_TASK"):
@@ -142,6 +150,129 @@ def _sluggify_name(raw: object) -> str:
     s = str(raw or "").strip().lower().replace("-", "_").replace(" ", "_")
     s = _NAME_SANITIZE_RE.sub("_", s).strip("_")
     return s
+
+
+def _canonical_existing_vertical(value: object) -> tuple[str, bool]:
+    raw_name = _sluggify_name(value)
+    legacy_direct = raw_name == "direct"
+    return ("software" if legacy_direct else raw_name, legacy_direct)
+
+
+def _resolve_existing_identity(
+    obj: dict,
+    *,
+    persisted_vertical: str = "",
+    persisted_workflow_mode: str = "",
+) -> tuple[str, str, bool] | None:
+    name, legacy_direct = _canonical_existing_vertical(
+        obj.get("vertical") or obj.get("name")
+    )
+    prior_name, prior_legacy_direct = _canonical_existing_vertical(
+        persisted_vertical
+    )
+    same_identity = bool(name and prior_name and name == prior_name)
+    prior_mode = str(persisted_workflow_mode or "").strip().lower()
+    if not prior_mode and prior_legacy_direct:
+        prior_mode = "direct"
+    if prior_mode not in {"", "direct", "staged"}:
+        prior_mode = ""
+
+    raw_mode = str(obj.get("workflow_mode") or "").strip().lower()
+    if raw_mode and raw_mode not in {"direct", "staged"}:
+        return None
+    if legacy_direct:
+        if raw_mode and raw_mode != "direct":
+            return None
+        workflow_mode = "direct"
+    elif raw_mode:
+        workflow_mode = raw_mode
+    elif same_identity and prior_mode:
+        workflow_mode = prior_mode
+    else:
+        workflow_mode = "staged"
+    if same_identity and prior_mode and workflow_mode != prior_mode:
+        return None
+    return name, workflow_mode, same_identity
+
+
+def _resolve_research_target(
+    obj: dict,
+    *,
+    name: str,
+    targeted: set[str],
+    same_persisted_identity: bool,
+    persisted_research_target_level: str,
+) -> str | None:
+    target_level = str(obj.get("research_target_level") or "").strip().lower()
+    prior_target = str(persisted_research_target_level or "").strip().lower()
+    if name not in targeted:
+        return ""
+    if not target_level and same_persisted_identity:
+        target_level = prior_target
+    if target_level not in {"exploratory", "publishable", "doctoral"}:
+        return None
+    if (
+        same_persisted_identity
+        and prior_target
+        and target_level != prior_target
+    ):
+        return None
+    return target_level
+
+
+def _resolve_research_direction(
+    obj: dict,
+    *,
+    name: str,
+    target_level: str,
+    same_persisted_identity: bool,
+    persisted_research_direction_mode: str,
+) -> str | None:
+    from ..core.research_contract import normalize_research_direction_mode
+
+    if name != "research":
+        return ""
+    prior_direction = normalize_research_direction_mode(
+        persisted_research_direction_mode
+    )
+    direction = normalize_research_direction_mode(
+        obj.get("research_direction_mode")
+    )
+    if (
+        same_persisted_identity
+        and prior_direction == "broad"
+        and direction == "locked"
+    ):
+        return None
+    if direction is None and same_persisted_identity:
+        direction = prior_direction
+    if direction == "locked" and not prior_direction:
+        direction = "broad"
+    if direction is None:
+        direction = "broad" if target_level in {"publishable", "doctoral"} else "locked"
+    return direction
+
+
+def _resolve_existing_domain(
+    obj: dict,
+    *,
+    name: str,
+    same_persisted_identity: bool,
+    persisted_domain: str,
+) -> str | None:
+    domain = _sluggify_name(obj.get("domain"))
+    prior_domain = _sluggify_name(persisted_domain)
+    if name != "research":
+        return None if domain else ""
+    if not domain and same_persisted_identity:
+        domain = prior_domain
+    if (
+        same_persisted_identity
+        and prior_domain
+        and domain != prior_domain
+    ):
+        return None
+    return domain
 
 
 def _dedupe_name(name: str, taken: set[str]) -> str | None:
@@ -264,6 +395,7 @@ class VerticalDecision:
     # Optional research success bar, decided from the operator's requested
     # outcome rather than re-inferred by Planner/Reviewer/Life independently.
     research_target_level: str = ""
+    research_direction_mode: str = ""
     # Publication venue explicitly named by the operator for research work.
     # Empty means "not explicitly selected"; venue discovery remains a separate
     # bounded research operation rather than a keyword guess in the harness.
@@ -300,6 +432,7 @@ class FastVerticalRoute:
     confidence: float = 0.0
     rationale: str = ""
     research_target_level: str = ""
+    research_direction_mode: str = ""
     target_venue: str = ""
 
 
@@ -310,6 +443,11 @@ def parse_fast_vertical_decision(
     known_domains: Sequence[str] = (),
     existing_data_domains: Sequence[str] = (),
     research_target_verticals: Sequence[str] = (),
+    persisted_vertical: str = "",
+    persisted_workflow_mode: str = "",
+    persisted_domain: str = "",
+    persisted_research_target_level: str = "",
+    persisted_research_direction_mode: str = "",
 ) -> FastVerticalRoute | None:
     """Parse a tool-free route; invalid output fails closed to grounding."""
     obj = _decision_fields(raw_text)
@@ -331,14 +469,26 @@ def parse_fast_vertical_decision(
         )
     if choice != "existing":
         return None
-    raw_name = _sluggify_name(obj.get("vertical") or obj.get("name"))
-    legacy_direct = raw_name == "direct"
-    name = "software" if legacy_direct else raw_name
+    identity = _resolve_existing_identity(
+        obj,
+        persisted_vertical=persisted_vertical,
+        persisted_workflow_mode=persisted_workflow_mode,
+    )
+    if identity is None:
+        return None
+    name, workflow_mode, same_persisted_identity = identity
     known = {str(v).strip().lower() for v in known_verticals}
     known |= {str(v).strip().lower() for v in existing_data_domains}
     if not name or name not in known:
         return None
-    domain = _sluggify_name(obj.get("domain"))
+    domain = _resolve_existing_domain(
+        obj,
+        name=name,
+        same_persisted_identity=same_persisted_identity,
+        persisted_domain=persisted_domain,
+    )
+    if domain is None:
+        return None
     allowed_domains = {
         str(value or "").strip().lower() for value in known_domains
     }
@@ -347,24 +497,28 @@ def parse_fast_vertical_decision(
             return None
     elif domain:
         return None
-    workflow_mode = str(obj.get("workflow_mode") or "").strip().lower()
-    if not workflow_mode:
-        workflow_mode = "direct" if legacy_direct else "staged"
-    if workflow_mode not in {"direct", "staged"}:
-        return None
     targeted = {
         str(value or "").strip().lower()
         for value in research_target_verticals
     }
-    target_level = str(obj.get("research_target_level") or "").strip().lower()
-    if name in targeted and target_level not in {
-        "exploratory",
-        "publishable",
-        "doctoral",
-    }:
+    target_level = _resolve_research_target(
+        obj,
+        name=name,
+        targeted=targeted,
+        same_persisted_identity=same_persisted_identity,
+        persisted_research_target_level=persisted_research_target_level,
+    )
+    if target_level is None:
         return None
-    if name not in targeted:
-        target_level = ""
+    direction_mode = _resolve_research_direction(
+        obj,
+        name=name,
+        target_level=target_level,
+        same_persisted_identity=same_persisted_identity,
+        persisted_research_direction_mode=persisted_research_direction_mode,
+    )
+    if direction_mode is None:
+        return None
     target_venue = " ".join(
         str(obj.get("target_venue") or "").strip().split()
     )[:100]
@@ -378,6 +532,7 @@ def parse_fast_vertical_decision(
         confidence=confidence,
         rationale=rationale,
         research_target_level=target_level,
+        research_direction_mode=direction_mode,
         target_venue=target_venue,
     )
 
@@ -433,6 +588,11 @@ def parse_vertical_decision(
     existing_data_domains: Sequence[str] = (),
     research_target_verticals: Sequence[str] = (),
     default_execution_task: str = "",
+    persisted_vertical: str = "",
+    persisted_workflow_mode: str = "",
+    persisted_domain: str = "",
+    persisted_research_target_level: str = "",
+    persisted_research_direction_mode: str = "",
 ) -> VerticalDecision | None:
     """Validate the Manager's vertical-decision JSON; fail-closed to ``None``.
 
@@ -458,17 +618,23 @@ def parse_vertical_decision(
         obj.get("live_view") is None or parsed_live_view is not None
     )
     choice = str(obj.get("choice") or "").strip().lower()
-    raw_vertical_name = _sluggify_name(obj.get("vertical") or obj.get("name"))
-    legacy_direct = raw_vertical_name == "direct"
-    workflow_mode = str(obj.get("workflow_mode") or "").strip().lower()
-    if not workflow_mode:
-        workflow_mode = "direct" if legacy_direct else "staged"
-    if workflow_mode not in {"direct", "staged"}:
-        return None
     if choice == "existing":
-        name = "software" if legacy_direct else raw_vertical_name
-        domain = _sluggify_name(obj.get("domain"))
-        target_level = str(obj.get("research_target_level") or "").strip().lower()
+        identity = _resolve_existing_identity(
+            obj,
+            persisted_vertical=persisted_vertical,
+            persisted_workflow_mode=persisted_workflow_mode,
+        )
+        if identity is None:
+            return None
+        name, workflow_mode, same_persisted_identity = identity
+        domain = _resolve_existing_domain(
+            obj,
+            name=name,
+            same_persisted_identity=same_persisted_identity,
+            persisted_domain=persisted_domain,
+        )
+        if domain is None:
+            return None
         known = {str(v).strip().lower() for v in known_verticals}
         known |= {str(v).strip().lower() for v in existing_data_domains}
         allowed_domains = {
@@ -483,14 +649,24 @@ def parse_vertical_decision(
             str(value or "").strip().lower()
             for value in research_target_verticals
         }
-        if name in targeted and target_level not in {
-            "exploratory",
-            "publishable",
-            "doctoral",
-        }:
+        target_level = _resolve_research_target(
+            obj,
+            name=name,
+            targeted=targeted,
+            same_persisted_identity=same_persisted_identity,
+            persisted_research_target_level=persisted_research_target_level,
+        )
+        if target_level is None:
             return None
-        if name not in targeted:
-            target_level = ""
+        direction_mode = _resolve_research_direction(
+            obj,
+            name=name,
+            target_level=target_level,
+            same_persisted_identity=same_persisted_identity,
+            persisted_research_direction_mode=persisted_research_direction_mode,
+        )
+        if direction_mode is None:
+            return None
         target_venue = " ".join(
             str(obj.get("target_venue") or "").strip().split()
         )[:100]
@@ -533,6 +709,7 @@ def parse_vertical_decision(
                 live_view_decided=live_view_decided,
                 execution_task=execution_task,
                 research_target_level=target_level,
+                research_direction_mode=direction_mode,
                 target_venue=target_venue,
                 precise_constraints=stated,
                 exclusions=exclusions,
@@ -540,6 +717,11 @@ def parse_vertical_decision(
             )
         return None
     if choice == "new":
+        workflow_mode = str(obj.get("workflow_mode") or "").strip().lower()
+        if not workflow_mode:
+            workflow_mode = "staged"
+        if workflow_mode not in {"direct", "staged"}:
+            return None
         proposal = parse_domain_proposal(
             raw_text,
             known_verticals=known_verticals,

@@ -389,6 +389,10 @@ class MissionExecutionRuntimeMixin:
                     execute_kwargs["stage_closing"] = (
                         self._item_is_stage_closing(item)
                     )
+                if "holds_stage_authority" in params or _accepts_kw:
+                    execute_kwargs["holds_stage_authority"] = bool(
+                        getattr(self.config, "holds_stage_authority", True)
+                    )
                 if "mission_id" in params or _accepts_kw:
                     execute_kwargs["mission_id"] = item.id
                 if "usage_mission_id" in params or _accepts_kw:
@@ -429,6 +433,9 @@ class MissionExecutionRuntimeMixin:
                     self._item_skips_stage_transition(item)
                 )
                 execute_kwargs["stage_closing"] = self._item_is_stage_closing(item)
+                execute_kwargs["holds_stage_authority"] = bool(
+                    getattr(self.config, "holds_stage_authority", True)
+                )
                 execute_kwargs["allow_skill_changes"] = (
                     "skill_changes:allowed" in state.item_tags
                 )
@@ -458,7 +465,17 @@ class MissionExecutionRuntimeMixin:
                     stage_transition={},
                 )
             else:
-                state.outcome = self.runner.execute(**execute_kwargs)
+                tracks_active_mission = hasattr(
+                    self.runner,
+                    "_active_mission_id",
+                )
+                if tracks_active_mission:
+                    self.runner._active_mission_id = item.id
+                try:
+                    state.outcome = self.runner.execute(**execute_kwargs)
+                finally:
+                    if tracks_active_mission:
+                        self.runner._active_mission_id = ""
         except Exception as exc:  # noqa: BLE001
             state.exc_str = f"{type(exc).__name__}: {exc}"
             log.exception("life supervisor: mission raised")

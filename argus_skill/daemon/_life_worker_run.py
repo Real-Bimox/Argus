@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
@@ -248,7 +249,30 @@ class LifeWorkerRunMixin:
                     lock_factory = getattr(manager, "pipeline_lock", None)
                     pipeline_lock = lock_factory() if callable(lock_factory) else nullcontext()
                     with pipeline_lock:
-                        summary = rf_state.sup.run()
+                        supervisors = getattr(
+                            rf_state,
+                            "supervisors",
+                            [rf_state.sup],
+                        )
+                        if not supervisors:
+                            summary = {
+                                "stopped_by": "paused_workers",
+                                "suggested_sleep": rf_state.cfg.poll_interval,
+                            }
+                        elif len(supervisors) == 1:
+                            summary = rf_state.sup.run()
+                        else:
+                            with ThreadPoolExecutor(
+                                max_workers=len(supervisors),
+                                thread_name_prefix="argus-mission",
+                            ) as executor:
+                                futures = [
+                                    executor.submit(supervisor.run)
+                                    for supervisor in supervisors
+                                ]
+                                summary = futures[0].result()
+                                for future in futures[1:]:
+                                    future.result()
                         # Persist the planner's terminal decision before any
                         # optional self-maintenance. A maintenance handoff may
                         # rewrite stopped_by or raise; neither may resurrect a
@@ -365,8 +389,11 @@ class LifeWorkerRunMixin:
                         break
                     log.exception("daemon: drain pass raised; sleeping and retrying")
                 # Reset per-run counters so future drain passes work.
-                rf_state.sup._missions_started = 0
-                rf_state.sup._planning_cycles = 0
+                for supervisor in (
+                    getattr(rf_state, "supervisors", None) or [rf_state.sup]
+                ):
+                    supervisor._missions_started = 0
+                    supervisor._planning_cycles = 0
                 if self._stop.is_set():
                     break
                 # Honor the supervisor's suggested backoff (escalating while it is

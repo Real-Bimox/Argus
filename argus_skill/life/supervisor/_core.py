@@ -612,6 +612,14 @@ class LifeSupervisor(
                 stopped_by = "supervisor_error"
                 break
             if outcome is None:
+                running_items = [
+                    item
+                    for item in self.memory.backlog.all()
+                    if str(getattr(item, "status", "") or "") == "running"
+                ]
+                if running_items:
+                    self._wait_idle()
+                    continue
                 # Backlog empty — continuous mode: ask planner for more
                 if self.config.continuous and self.config.continuous_objective:
                     pending_questions = [
@@ -708,7 +716,25 @@ class LifeSupervisor(
                     break
                 # Re-check: if backlog still empty, exit cleanly so
                 # `life run --once` semantics work in tests.
-                if self.memory.backlog.next_pending() is None:
+                parallel_worker = getattr(
+                    self.config,
+                    "parallel_worker",
+                    False,
+                )
+                coordinate_claims = getattr(
+                    self.config,
+                    "coordinate_parallel_claims",
+                    False,
+                )
+                next_item = (
+                    self.memory.backlog.next_pending(
+                        parallel_only=parallel_worker,
+                        respect_running=coordinate_claims,
+                    )
+                    if parallel_worker or coordinate_claims
+                    else self.memory.backlog.next_pending()
+                )
+                if next_item is None:
                     self._emit_status("backlog empty; exiting")
                     stopped_by = "backlog_empty"
                     break
@@ -864,6 +890,12 @@ class LifeSupervisor(
         for item in items:
             if getattr(item, "status", "") != "running":
                 continue
+            owner = str(getattr(item, "running_owner", "") or "")
+            worker_id = str(getattr(self.config, "worker_id", "primary") or "primary")
+            if owner and owner != worker_id:
+                continue
+            if getattr(self.config, "parallel_worker", False) and owner != worker_id:
+                continue
             item_id = str(getattr(item, "id", "") or "")
             if not item_id:
                 continue
@@ -909,7 +941,20 @@ class LifeSupervisor(
     def tick(self) -> dict[str, Any] | None:
         """Process at most one backlog item. Returns its result dict or
         ``None`` if nothing was eligible to run."""
-        item = self.memory.backlog.next_pending()
+        parallel_worker = getattr(self.config, "parallel_worker", False)
+        coordinate_claims = getattr(
+            self.config,
+            "coordinate_parallel_claims",
+            False,
+        )
+        item = (
+            self.memory.backlog.next_pending(
+                parallel_only=parallel_worker,
+                respect_running=coordinate_claims,
+            )
+            if parallel_worker or coordinate_claims
+            else self.memory.backlog.next_pending()
+        )
         if item is None:
             return None
 

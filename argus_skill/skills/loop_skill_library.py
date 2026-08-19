@@ -16,17 +16,20 @@ log = logging.getLogger(__name__)
 
 class SkillLibraryMixin:
     def _prepare_skill_libraries(self, mission: MissionContext) -> SkillLibraryState:
-        self._prepare_vertical_libraries(mission)
+        required_skill_paths = self._prepare_vertical_libraries(mission)
         state = SkillLibraryState()
-        state.skill_libraries = self.engineer_mission.libraries()
+        state.skill_libraries = self.engineer_mission.libraries(
+            required_relative_paths=required_skill_paths,
+        )
         # Paths and discovery instructions only: no runtime matching, adaptation,
         # copying, or Skill-body injection.
         state.skill_text = state.skill_libraries.block
         state.reviewer_skill_block = self.reviewer.mission.libraries().block
         return state
 
-    def _prepare_vertical_libraries(self, mission: MissionContext) -> None:
+    def _prepare_vertical_libraries(self, mission: MissionContext) -> tuple[str, ...]:
         """Let the provider run optional domain setup with explicit inputs."""
+        required_skill_paths: list[str] = []
         try:
             from ..verticals._base import load_vertical_contract
             from .stage_machine import current_stage
@@ -49,9 +52,11 @@ class SkillLibraryMixin:
                 runner=self.engineer_runner,
                 model=self.config.engineer_model,
                 emit=self._emit,
+                required_skill_paths=required_skill_paths,
             ))
         except Exception:  # noqa: BLE001 — optional domain preparation is non-blocking
             log.debug("vertical Skill-library preparation skipped", exc_info=True)
+        return tuple(dict.fromkeys(required_skill_paths))
 
     def _adapt_after_rejections(
         self,

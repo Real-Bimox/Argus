@@ -98,6 +98,7 @@ class _RunnerConstructionMixin:
         # currently-installed sink so codex's stream-json events become
         # ``engineer.progress`` items in whichever sink owns this call.
         self._current_sink: EventSink | None = None
+        self._active_mission_id = ""
         # Per-mission ledger of failed tool/command beats. Reset on every
         # execute() so warnings don't bleed across missions.
         self._current_failure_ledger: object | None = None
@@ -182,7 +183,8 @@ class _RunnerConstructionMixin:
                 from ..life.memory import consume_running_item_abort
 
                 abort_reason = consume_running_item_abort(
-                    getattr(self, "_manager_session_root", None)
+                    getattr(self, "_manager_session_root", None),
+                    target_item_id=self._active_mission_id,
                 )
                 if abort_reason:
                     return f"operator abort requested: {abort_reason}"

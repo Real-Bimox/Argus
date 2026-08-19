@@ -47,7 +47,12 @@ class EventConsumerMixin:
         """
 
         event_type = str(event.get("type") or "").strip().casefold()
-        if any(
+        capability_event = (
+            event_type.startswith("session.mcp_")
+            or event_type.startswith("mcp.tools.")
+            or event_type in {"session.tools_updated", "session.skills_loaded"}
+        )
+        if not capability_event and any(
             marker in event_type
             for marker in (
                 "tool",

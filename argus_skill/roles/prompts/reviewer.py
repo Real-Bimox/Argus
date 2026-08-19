@@ -140,6 +140,36 @@ def _verification_directive() -> str:
     )
 
 
+def _audit_integrity_directive(context: str) -> str:
+    lowered = str(context or "").lower()
+    if not any(
+        marker in lowered
+        for marker in (
+            "audit",
+            "ledger",
+            "append-only",
+            "command_log",
+            "process_trace",
+            "审计",
+            "账本",
+            "只追加",
+            "命令日志",
+        )
+    ):
+        return ""
+    return (
+        "## Audit integrity\n"
+        "Treat an operator mutation freeze or append-only requirement as a hard temporal "
+        "boundary. When audit continuity matters, compare directive order with file-write, "
+        "install, and command events. A later archive, correction, or successful rerun "
+        "cannot make an overwritten or reconstructed ledger contemporaneous. Reject any "
+        "fact attributed to the objective unless the cited objective text states it, and "
+        "do not accept a summarized command log as the missing byte-faithful command. "
+        "Preserve useful corrections, but return `continue`, `replan_requested`, or "
+        "`blocked` when the required historical integrity is irrecoverable.\n\n"
+    )
+
+
 def _prompt_block_stats(blocks: Mapping[str, str]) -> dict[str, dict[str, int]]:
     stats: dict[str, dict[str, int]] = {}
     for name, text in blocks.items():
@@ -620,6 +650,16 @@ def render_reviewer_prompt(
         final_submission_block = ""
     # Byte-stable static policy; every fresh Reviewer receives it in full.
     shell_contract = native_shell_summary()
+    audit_integrity_block = _audit_integrity_directive(
+        "\n".join(
+            (
+                objective,
+                original_objective,
+                planner_review_instruction,
+                *operator_messages,
+            )
+        )
+    )
     static = (
         optimize_banner
         + research_target_instruction
@@ -628,21 +668,19 @@ def render_reviewer_prompt(
         + (shell_contract + "\n\n" if shell_contract else "")
         + MODEL_INTEGRITY_BOUNDARY
         + "\n\n## Reviewer role\n"
-        "Judge the objective against real evidence. Bounded work may finish before "
-        "the project. Use `done` only for checkable evidence satisfying the current "
-        "scope, `continue` for an agent-fixable in-scope gap, `replan_requested` for a "
-        "new mission, replacement route, or boundary change, and `blocked` only for "
-        "operator/external dependencies. You do not change the work under review: not "
-        "its sources, not its artifacts, not its build. Recording your own verdict "
-        "through a command your vertical gives you for that purpose is the review, not "
-        "a change to it. "
-        "Use tools only in proportion to unresolved uncertainty and stop when the "
-        "verdict is determined. Externally derived work needs primary-source "
-        "grounding and its project implication. Community implementations alone are "
-        "insufficient for claim-critical semantics. Return `replan_requested` when missing "
-        "grounding may change the mechanism; do not demand new research for local-only work "
-        "or already-grounded work.\n\n"
+        "Judge the objective against real evidence; bounded work may finish early. Use "
+        "`continue` for an agent-fixable in-scope gap, `replan_requested` "
+        "for a new mission, replacement route, or boundary change, and `blocked` only "
+        "for external blockers. You do not change the work under review: not its "
+        "sources, not its artifacts, not its build. Recording your own verdict through "
+        "a command your vertical gives you is review. "
+        "Use tools only in proportion to unresolved uncertainty. Externally derived work "
+        "needs primary-source grounding and its project implication; Community "
+        "implementations alone are insufficient for claim-critical semantics. Return "
+        "`replan_requested` when missing grounding may change the mechanism; do not demand "
+        "new research for local-only work or already-grounded work.\n\n"
         + ("" if _requires_engineering_audit else _verification_directive())
+        + audit_integrity_block
         + "## Output protocol\n"
         "Reason and use tools normally, and write your review however is "
         "clearest. End the final message with these lines; only they are read, "
@@ -691,24 +729,20 @@ def render_reviewer_prompt(
         "- Preserve useful negative evidence, but integrity is a hard constraint, not scientific value by itself. "
         "Do not automatically turn an honest result into completion. An agent-designed weak proxy is not evidence for the claimed system; otherwise return `replan_requested`.\n"
         "REASON states the strongest supported finding; NEXT_ACTION names only "
-        "missing evidence or the next decision. State surprises once in REASON; do not "
-        "write them into project or checkpoint files. "
-        "Keep factual outcome, claim boundary, and retry condition distinct: timeout, "
+        "missing evidence or the next decision. Keep factual outcome, claim boundary, "
+        "and retry condition distinct: timeout, "
         "incomplete coverage, or one failed mechanism is not impossibility.\n"
         "An end-to-end threshold miss only shows that this run missed its target. Reject any "
         "root-cause, dominant/bottleneck-stage, or replacement-architecture claim "
         "unless code-hot-path and live resource/wait evidence plus phase "
         "timing/profiling or a controlled counterfactual explain a material share of "
         "elapsed time; otherwise request the missing diagnostics.\n"
-        "A timeout, failed test, oversized benchmark, unavailable optional "
-        "backend, or choice among reversible diagnostics is technical: provide a concrete "
-        "NEXT_ACTION with AUTHORITY_IMPACT=technical and do NOT ask the operator. Local "
-        "work may be done while PLAN_SIGNAL=reconsider.\n"
+        "A timeout, failed test, oversized benchmark, unavailable optional backend, or "
+        "choice among reversible diagnostics is technical: give a concrete NEXT_ACTION "
+        "with AUTHORITY_IMPACT=technical and do NOT ask the operator.\n"
         "FORWARD_PROGRESS tracks artifact/risk/uncertainty change, not activity or one "
-        "proxy. Bounded regressions need all envelope parts. SESSION_SIGNAL needs "
-        "explicit cross-turn evidence. For operator authority, write the question and up "
-        "to five complete options in the operator's language; stop explicitly stops. "
-        "No generic choices. Final-submission "
+        "proxy. For operator authority, ask one question with up to five complete options "
+        "in the operator's language. Final-submission "
         "done certifies the project; bounded done "
         "certifies only the mission.\n\n"
         + objective_block
