@@ -13,6 +13,7 @@ from argus_skill.life.memory import BacklogItem, LifeMemory
 from argus_skill.life.mission_outcome import (
     mission_outcome_class,
     mission_outcome_dimensions,
+    review_keeps_mission_resumable,
 )
 from argus_skill.life.supervisor import LifeBudget, LifeSupervisor, LifeSupervisorConfig
 
@@ -494,3 +495,101 @@ def test_supervisor_error_recovery_event_includes_outcome_class(tmp_path) -> Non
 
     assert recovered == [item.id]
     assert _completed_event(sink)["outcome_class"] == "failed"
+
+
+def test_review_continue_keeps_a_stalled_mission_resumable() -> None:
+    """Run 17's settled mission, verbatim from its event log.
+
+    The Reviewer answered ``continue`` and the round accounting said
+    ``no_progress``; the status won, the mission was recorded terminal and
+    non-resumable, and the project idled for five hours against an unfinished
+    goal with nothing queued.
+    """
+    outcome = mission_outcome_dimensions(
+        status="no_progress",
+        success=False,
+        review_status="continue",
+        stage_transition_deferred=True,
+    )
+
+    assert outcome["execution_status"] == "paused"
+    assert outcome["resumable"] is True
+    assert outcome["review_status"] == "continue"
+    # The stage verdict is a separate question and must not move with it.
+    assert outcome["stage_certification"] == "deferred"
+
+
+def test_max_rounds_with_review_continue_is_resumable() -> None:
+    outcome = mission_outcome_dimensions(
+        status="max_rounds", success=False, review_status="continue"
+    )
+
+    assert outcome["execution_status"] == "paused"
+    assert outcome["resumable"] is True
+
+
+@pytest.mark.parametrize(
+    ("status", "success", "review_status", "stop_kind"),
+    [
+        # An operator stop outranks any verdict.
+        ("no_progress", False, "continue", "operator_abort"),
+        ("aborted", False, "continue", None),
+        # Blocked means a pending operator question; failed means a crash.
+        ("blocked", False, "continue", None),
+        ("error", False, "continue", None),
+        # A stall the Reviewer did not answer with "continue" stays a stall.
+        ("no_progress", False, "done", None),
+        ("no_progress", False, "", None),
+        # Success needs no resumption.
+        ("done", True, "continue", None),
+    ],
+)
+def test_review_continue_does_not_resume_other_terminal_states(
+    status: str, success: bool, review_status: str, stop_kind: object
+) -> None:
+    assert not review_keeps_mission_resumable(
+        status=status,
+        success=success,
+        review_status=review_status,
+        stop_kind=stop_kind,
+    )
+    assert mission_outcome_dimensions(
+        status=status,
+        success=success,
+        review_status=review_status,
+        stop_kind=stop_kind,
+    )["resumable"] is False
+
+
+def test_resumable_mission_is_not_quarantined_from_replanning() -> None:
+    """A stall the Reviewer told to continue must stay replannable.
+
+    ``_is_recent_no_progress_failure`` keyed only on ``terminal_status``, so the
+    mission's own settlement event quarantined its task signature out of the
+    next planning cycle — the mechanism that left the queue empty.
+    """
+    from argus_skill.life.memory import JournalEntry
+    from argus_skill.life.supervisor import _is_recent_no_progress_failure
+
+    def _entry(extra: dict[str, Any]) -> JournalEntry:
+        return JournalEntry.new(
+            kind="mission_failed", title="t", summary="s", extra=extra
+        )
+
+    unrecoverable = _entry({"terminal_status": "no_progress", "resumable": False})
+    assert _is_recent_no_progress_failure(unrecoverable) is True
+
+    reviewer_said_continue = _entry({
+        "terminal_status": "no_progress",
+        "resumable": True,
+        "outcome": {"execution_status": "paused", "resumable": True},
+    })
+    assert _is_recent_no_progress_failure(reviewer_said_continue) is False
+
+    # The flag is read from the outcome dimensions too: the settlement event
+    # carries it in both places and either one settles the question.
+    outcome_only = _entry({
+        "terminal_status": "no_progress",
+        "outcome": {"execution_status": "paused", "resumable": True},
+    })
+    assert _is_recent_no_progress_failure(outcome_only) is False

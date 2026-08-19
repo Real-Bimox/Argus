@@ -246,4 +246,16 @@ def _is_recent_no_progress_failure(entry: JournalEntry) -> bool:
         or extra.get("failure_status")
         or ""
     ).strip().casefold()
-    return terminal_status == PLANNER_RECENT_FAILURE_STATUS
+    if terminal_status != PLANNER_RECENT_FAILURE_STATUS:
+        return False
+    # Quarantine is for a task signature that has proved unrecoverable. A
+    # mission recorded as resumable — a Reviewer answered the stall with
+    # ``continue``, or the stop kind was recoverable — has not: skipping it
+    # leaves the Planner with nothing to enqueue and the project idle against
+    # an unfinished goal. Both fields are read because the settlement event
+    # carries the flag at top level and inside the outcome dimensions.
+    outcome = extra.get("outcome")
+    outcome_resumable = (
+        outcome.get("resumable") if isinstance(outcome, dict) else False
+    )
+    return not bool(extra.get("resumable") or outcome_resumable)

@@ -522,7 +522,44 @@ def test_activity_does_not_put_assistant_prose_in_role_bar(tmp_path):
         "agent_layer": "reviewer", "text": "a very long private review paragraph",
         "ts": now - 1,
     }])
-    assert role_activity(tmp_path, now=now)["reviewer"].label == "reporting progress"
+    # Every role streams under the one ``engineer.progress`` type, so the label
+    # comes from ``agent_layer``: a Reviewer turn reads "reviewing", not the
+    # Engineer's generic "reporting progress". The property this test exists for
+    # is the second assertion — the prose itself never reaches the role bar.
+    label = role_activity(tmp_path, now=now)["reviewer"].label
+    assert label == "reviewing"
+    assert "private review paragraph" not in label
+
+
+def test_activity_labels_progress_by_agent_layer(tmp_path):
+    now = time.time()
+    _write_events(tmp_path, [
+        {"type": "engineer.progress", "kind": "tool_call",
+         "agent_layer": "planner", "text": "/bin/bash -lc 'pytest -q'",
+         "ts": now - 3},
+        {"type": "engineer.progress", "kind": "tool_call",
+         "agent_layer": "engineer", "text": "/bin/bash -lc 'pytest -q'",
+         "ts": now - 2},
+    ])
+
+    acts = role_activity(tmp_path, now=now)
+    # Same event type, same text: only the layer differs. A planning turn must
+    # not be described as an Engineer shell step.
+    assert acts["planner"].label == "planning"
+    assert acts["engineer"].label == "run · pytest -q"
+
+
+def test_activity_keeps_action_summary_for_non_engineer_layers(tmp_path):
+    now = time.time()
+    _write_events(tmp_path, [{
+        "type": "engineer.progress", "kind": "reasoning",
+        "agent_layer": "planner", "action_summary": "ranking three candidate routes",
+        "ts": now - 1,
+    }])
+
+    assert role_activity(tmp_path, now=now)["planner"].label == (
+        "ranking three candidate routes"
+    )
 
 
 def test_completed_manager_reply_is_idle_immediately(tmp_path):

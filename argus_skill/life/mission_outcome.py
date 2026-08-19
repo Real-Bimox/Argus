@@ -19,6 +19,9 @@ _REVIEW_STATUSES = frozenset({
     "paused_no_breakthrough",
     "exhausted_current_methods",
 })
+#: Reviewer verdicts asserting the work itself is unfinished rather than
+#: settled. See ``review_keeps_mission_resumable``.
+_RESUMING_REVIEW_STATUSES = frozenset({"continue"})
 
 
 def mission_outcome_class(status: str, success: bool) -> str:
@@ -38,6 +41,40 @@ def mission_outcome_class(status: str, success: bool) -> str:
     return "ended"
 
 
+def review_keeps_mission_resumable(
+    *,
+    status: str,
+    success: bool,
+    review_status: str,
+    stop_kind: object = None,
+) -> bool:
+    """Return whether a Reviewer verdict outranks a stall status.
+
+    ``no_progress`` and ``max_rounds`` are facts about *this mission's rounds*:
+    a round added nothing, or the round budget ran out. ``continue`` is the
+    Reviewer's finding about *the work*: it is unfinished and should go on.
+    These are independent, and letting the round-level fact win discards the
+    verdict — the project then records a terminal stall for a goal a Reviewer
+    explicitly asked to continue, and the task signature is quarantined out of
+    replanning, so the run sits idle with an unfinished objective and an empty
+    queue.
+
+    Deliberately narrow. A success needs no resumption, and ``blocked``,
+    ``failed`` and an operator abort stop for reasons no review verdict may
+    override: a pending operator question, a crash, and an explicit stop.
+    """
+    if success:
+        return False
+    normalized_status = str(status or "").strip().lower()
+    if normalized_status == "aborted":
+        return False
+    if str(stop_kind or "").strip().lower() == "operator_abort":
+        return False
+    if mission_outcome_class(normalized_status, False) != "stalled":
+        return False
+    return str(review_status or "").strip().lower() in _RESUMING_REVIEW_STATUSES
+
+
 def mission_outcome_dimensions(
     *,
     status: str,
@@ -53,16 +90,27 @@ def mission_outcome_dimensions(
     normalized_status = str(status or "").strip().lower()
     normalized_stop = str(stop_kind or "").strip().lower()
     outcome_class = mission_outcome_class(normalized_status, bool(success))
-    if normalized_status.startswith("paused_") or bool(resumable):
+
+    normalized_review = str(review_status or "").strip().lower()
+    if normalized_review not in _REVIEW_STATUSES:
+        normalized_review = "not_assessed"
+
+    # Applied here rather than only at the settlement call site: this function
+    # is also the projection that rebuilds a mission view from its recorded
+    # event, where the only ``resumable`` available is whatever was written.
+    resumable = bool(resumable) or review_keeps_mission_resumable(
+        status=normalized_status,
+        success=bool(success),
+        review_status=normalized_review,
+        stop_kind=normalized_stop,
+    )
+
+    if normalized_status.startswith("paused_") or resumable:
         execution_status = "paused"
     elif normalized_status == "aborted" or normalized_stop == "operator_abort":
         execution_status = "aborted"
     else:
         execution_status = outcome_class
-
-    normalized_review = str(review_status or "").strip().lower()
-    if normalized_review not in _REVIEW_STATUSES:
-        normalized_review = "not_assessed"
 
     stage_action = ""
     if isinstance(stage_transition, dict):
@@ -123,4 +171,5 @@ __all__ = [
     "mission_outcome_class",
     "mission_outcome_dimensions",
     "outcome_dimension_summary",
+    "review_keeps_mission_resumable",
 ]

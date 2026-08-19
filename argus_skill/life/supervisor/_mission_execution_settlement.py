@@ -17,7 +17,11 @@ from typing import Any
 from ...core.event_catalog import EventType
 from ...core.stop_kinds import stop_kind_is_recoverable
 from ..memory import BacklogItem
-from ..mission_outcome import mission_outcome_class, mission_outcome_dimensions
+from ..mission_outcome import (
+    mission_outcome_class,
+    mission_outcome_dimensions,
+    review_keeps_mission_resumable,
+)
 from ._constants import (
     _REPLAN_STREAK_JOURNAL_WINDOW,
     PLANNER_RECENT_FAILURE_STATUS,
@@ -467,15 +471,25 @@ class MissionExecutionSettlementMixin:
             replan_requested and stage_action in {"advance", "rollback"}
         )
         err = state.exc_str or state.stop_reason or "unspecified failure"
+        final_review_status = str(getattr(outcome, "final_review_status", "") or "")
         resumable = bool(
-            research_pause or stop_kind_is_recoverable(state.stop_kind)
+            research_pause
+            or stop_kind_is_recoverable(state.stop_kind)
+            # A stall the Reviewer answered with ``continue`` is unfinished
+            # work, not a dead task. Without this the mission is journaled with
+            # ``terminal_status=no_progress`` and ``resumable=False``, which
+            # quarantines its own signature out of the next planning cycle.
+            or review_keeps_mission_resumable(
+                status=status,
+                success=success,
+                review_status=final_review_status,
+                stop_kind=state.stop_kind,
+            )
         )
         outcome_dimensions = mission_outcome_dimensions(
             status=status,
             success=success,
-            review_status=str(
-                getattr(outcome, "final_review_status", "") or ""
-            ),
+            review_status=final_review_status,
             stage_transition=stage_transition,
             stage_transition_skipped=(
                 self._item_skips_stage_transition(item)

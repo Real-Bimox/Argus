@@ -133,6 +133,31 @@ def _describe_engineer_progress(event: dict[str, Any]) -> str:
     return "thinking" + (f" · {t[:60]}" if t else "")
 
 
+#: What a non-Engineer role is doing when it streams progress. Every role
+#: streams under the single ``engineer.progress`` type (see
+#: ``adapters/stream_progress.py``), so this map is keyed by ``agent_layer``.
+_PROGRESS_VERB_BY_LAYER = {
+    "planner": "planning",
+    "reviewer": "reviewing",
+    "manager": "handling your message",
+}
+
+
+def _describe_layer_progress(event: dict[str, Any], layer: str) -> str:
+    """Describe streamed progress belonging to a role other than Engineer.
+
+    ``agent_layer`` is the only discriminator on a progress event, so running
+    every role through ``_describe_engineer_progress`` rendered a Planner turn
+    as an Engineer shell step ("run · …") in the role panel. The action summary
+    is role-neutral and kept when the emitter supplied one; otherwise fall back
+    to the role's own verb rather than the Engineer's.
+    """
+    summary = " ".join(str(event.get("action_summary") or "").split())
+    if summary:
+        return summary[:72]
+    return _PROGRESS_VERB_BY_LAYER[layer]
+
+
 def _describe_event(event: dict[str, Any]) -> tuple[str, str]:
     """Return ``(label, status)`` for a role-activity event."""
     etype = canonical_event_type(event.get("canonical_type") or event.get("type"))
@@ -169,6 +194,9 @@ def _describe_event(event: dict[str, Any]) -> tuple[str, str]:
             return (f"{label} failed", "blocked") if failed else (f"{label} done", "done")
         return label, "running"
     if etype == "engineer.progress":
+        layer = str(event.get("agent_layer") or "").strip().lower()
+        if layer in _PROGRESS_VERB_BY_LAYER:
+            return _describe_layer_progress(event, layer), "running"
         return _describe_engineer_progress(event), "running"
     if etype == "venue.research.started":
         return "researching target venue", "running"
