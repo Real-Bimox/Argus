@@ -44,7 +44,7 @@ def _paper_mission_for_project_root(project_root: Path | str) -> bool:
     """
     try:
         from ..skills.vertical_select import _persisted_vertical, resolve_workflow_mode
-        from ..verticals._base import load_vertical, vertical_completion_gate
+        from ..verticals._base import load_vertical, vertical_is_paper_mission
 
         root = Path(project_root).expanduser()
         persisted = _persisted_vertical(root)
@@ -57,7 +57,29 @@ def _paper_mission_for_project_root(project_root: Path | str) -> bool:
         if resolve_workflow_mode(root) == "direct":
             return False
         vertical = persisted
-        return vertical_completion_gate(load_vertical(vertical, project_root=root)) == "certified"
+        return vertical_is_paper_mission(
+            load_vertical(vertical, project_root=root)
+        )
+    except Exception:  # noqa: BLE001 — mission typing must fail safe
+        return False
+
+
+def _final_certification_for_project_root(project_root: Path | str) -> bool:
+    """Return whether the persisted non-direct vertical has a certified gate."""
+    try:
+        from ..skills.vertical_select import _persisted_vertical, resolve_workflow_mode
+        from ..verticals._base import load_vertical, vertical_completion_gate
+
+        root = Path(project_root).expanduser()
+        persisted = _persisted_vertical(root)
+        if persisted is None or resolve_workflow_mode(root) == "direct":
+            return False
+        return (
+            vertical_completion_gate(
+                load_vertical(persisted, project_root=root)
+            )
+            == "certified"
+        )
     except Exception:  # noqa: BLE001 — mission typing must fail safe
         return False
 
@@ -128,7 +150,9 @@ def _build_supervisor_config(
     # Mission type follows a positive Manager-authored vertical decision.  An
     # undecided or malformed project is bounded/non-paper, never implicitly an
     # EMNLP campaign.
-    paper_mission = _paper_mission_for_project_root(artifact_root or project_root)
+    runtime_root = artifact_root or project_root
+    paper_mission = _paper_mission_for_project_root(runtime_root)
+    final_certification = _final_certification_for_project_root(runtime_root)
     from ..skills.role_memory import role_skill_maintenance_enabled
 
     return LifeSupervisorConfig(
@@ -151,7 +175,7 @@ def _build_supervisor_config(
         continuous=continuous,
         continuous_objective=continuous_objective,
         open_ended=open_ended,
-        final_certification_gate=paper_mission and open_ended,
+        final_certification_gate=final_certification and open_ended,
         paper_mission=paper_mission,
         project_state_dir=project_root,
         artifact_root=artifact_root or project_root,

@@ -170,6 +170,7 @@ def _build_supervisor_config(
     post_mission_hook: Any,
 ) -> LifeSupervisorConfig:
     from ..apps._runtime import (
+        _final_certification_for_project_root,
         _inbox_drainer_for,
         _paper_mission_for_project_root,
         _pending_question_resolver_for,
@@ -177,6 +178,7 @@ def _build_supervisor_config(
     from ..manager._session_ops import manager_pipeline_yield_requested
 
     paper_mission = _paper_mission_for_project_root(runtime_root)
+    final_certification = _final_certification_for_project_root(runtime_root)
 
     return LifeSupervisorConfig(
         budget=LifeBudget(
@@ -199,7 +201,9 @@ def _build_supervisor_config(
         continuous_objective=init_objective,
         open_ended=cfg.continuous_open_ended,
         paper_mission=paper_mission,
-        final_certification_gate=paper_mission and cfg.continuous_open_ended,
+        final_certification_gate=(
+            final_certification and cfg.continuous_open_ended
+        ),
         continuous_config_provider=continuous_provider,
         manager_pipeline_yield_provider=(lambda: manager_pipeline_yield_requested(runtime_root)),
         post_mission_hook=post_mission_hook,

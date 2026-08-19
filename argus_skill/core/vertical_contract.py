@@ -69,6 +69,7 @@ class VerticalContract:
     checklist_items: dict[str, Any]
     completion_gate: str
     mission_kind: str = "custom"
+    paper_mission: bool = False
     ground_before_handoff: bool = False
     role_guidance: Callable[[str], str] | None = None
     evidence_schema: Any = None
@@ -448,6 +449,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
         checklist_items=checklist_items,
         completion_gate=gate,
         mission_kind=mission_kind,
+        paper_mission=bool(getattr(provider, "PAPER_MISSION", False)),
         ground_before_handoff=bool(
             getattr(provider, "GROUND_BEFORE_HANDOFF", False)
         ),

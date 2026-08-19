@@ -834,6 +834,7 @@ CHECKLIST_ITEMS = STAGE_CHECKLISTS
 #: Research missions complete on the selected venue's full-paper submission gate.
 completion_gate = "certified"
 MISSION_KIND = "research"
+PAPER_MISSION = True
 
 # Research proceeds through strict stage gates, but evidence reuse within those
 # stages is proportional: once a Reviewer certifies a source or artifact, later
@@ -902,4 +903,5 @@ __all__ = [
     "role_banner",
     "stage_completion_issues",
     "completion_gate",
+    "PAPER_MISSION",
 ]
