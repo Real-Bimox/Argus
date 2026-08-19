@@ -52,6 +52,35 @@ def test_main_inprocess_success_marks_done(tmp_path: Path, monkeypatch) -> None:
     assert {t["task_id"]: t for t in tb.snapshot(root)}["t1::a"]["state"] == "done"
 
 
+def test_main_marks_runtime_as_inside_one_team_task(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    monkeypatch.setenv("ARGUS_SKILL_TEAM_TASK_ID", "outer-task")
+    seen: dict[str, str] = {}
+
+    def run(*_args, **_kwargs):
+        seen["task_id"] = os.environ.get("ARGUS_SKILL_TEAM_TASK_ID", "")
+        return True
+
+    monkeypatch.setattr(te, "run_one_engineer_mission", run)
+
+    assert te.main([
+        "--root",
+        str(root),
+        "--member-id",
+        "t1::w1",
+        "--task-id",
+        "t1::a",
+        "--cwd",
+        str(tmp_path),
+    ]) == 0
+    assert seen["task_id"] == "t1::a"
+    assert os.environ["ARGUS_SKILL_TEAM_TASK_ID"] == "outer-task"
+
+
 def test_main_passes_task_timeout_to_mission(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / ".argus_team" / "t1"
     tb.form(root, [{

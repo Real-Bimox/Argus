@@ -71,6 +71,7 @@ class VerticalLibraryContext:
     direction: str
     workflow_mode: str
     paper_mission: bool
+    team_task_id: str | None
     runner: Any
     model: str | None
     emit: Callable[[dict], None]

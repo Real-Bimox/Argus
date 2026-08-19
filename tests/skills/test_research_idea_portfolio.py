@@ -4,6 +4,8 @@ import json
 import time
 from pathlib import Path
 
+import pytest
+
 from argus_skill.core.vertical_contract import VerticalLibraryContext
 from argus_skill.team import pool, task_board
 from argus_skill.verticals.research.idea_portfolio import (
@@ -260,6 +262,12 @@ def test_selection_waits_for_eighty_percent_review_quorum(tmp_path: Path) -> Non
     assert "ACL/EMNLP/NAACL" in route_task["objective"]
     assert "guidance, not a quota" in route_task["objective"]
     assert "never reject or stall solely" in review_task["objective"]
+    assert "Do not create, ensure, launch, or delegate another Team" in (
+        route_task["objective"]
+    )
+    assert "Do not create, ensure, launch, or delegate another Team" in (
+        review_task["objective"]
+    )
     for index in range(QUORUM_COUNT - 1):
         _complete_reviewed_route(
             tmp_path,
@@ -289,6 +297,9 @@ def test_quorum_selector_can_choose_best_not_earliest(tmp_path: Path) -> None:
         if task["role"] == "idea-selector"
     )
     assert "balanced AI-frontier and foundation grounding" in selector_task["objective"]
+    assert "Do not create, ensure, launch, or delegate another Team" in (
+        selector_task["objective"]
+    )
     selected_route, selected_review = reviewed[-1]
     _complete_selection(
         tmp_path,
@@ -445,6 +456,7 @@ def test_research_library_hook_forms_quorum_pipeline(
             direction="agent reliability",
             workflow_mode="staged",
             paper_mission=True,
+            team_task_id=None,
             runner=None,
             model=None,
             emit=events.append,
@@ -462,3 +474,54 @@ def test_research_library_hook_forms_quorum_pipeline(
     assert events[0]["review_quorum"] == 10
     assert events[0]["task_count"] == 24
     assert len(task_board.snapshot(Path(events[0]["team_root"]))) == 24
+
+
+def test_research_library_hook_never_recurses_inside_team_task(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _pipeline(tmp_path)
+    monkeypatch.setenv("ARGUS_SKILL_VENUE_RESEARCH", "1")
+    monkeypatch.setenv("ARGUS_SKILL_IDEA_SEARCH", "1")
+    events: list[dict] = []
+    required: list[str] = []
+
+    prepare_skill_libraries(
+        VerticalLibraryContext(
+            workdir=tmp_path,
+            stage="research",
+            objective="investigate one assigned route",
+            direction="route-01 mechanism",
+            workflow_mode="staged",
+            paper_mission=True,
+            team_task_id="parent-route-01",
+            runner=None,
+            model=None,
+            emit=events.append,
+            required_skill_paths=required,
+        )
+    )
+
+    assert required == [
+        "engineer/idea-discovery.md",
+        "engineer/idea-creator.md",
+    ]
+    assert events == [{
+        "type": "idea.portfolio.nested_skipped",
+        "team_task_id": "parent-route-01",
+        "text": "team worker reused the parent portfolio without recursive fanout",
+    }]
+    assert not (tmp_path / ".argus" / "teams").exists()
+
+
+def test_direct_nested_portfolio_formation_fails_before_writing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    _pipeline(tmp_path)
+    monkeypatch.setenv("ARGUS_SKILL_TEAM_TASK_ID", "parent-route-01")
+
+    with pytest.raises(RuntimeError, match="nested idea portfolio formation"):
+        ensure_idea_portfolio(tmp_path, direction="route-local direction")
+
+    assert not (tmp_path / ".argus" / "teams").exists()

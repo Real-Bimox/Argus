@@ -386,15 +386,16 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=_heartbeat_loop, args=(root, task_id, stop), daemon=True).start()
 
     life_dir = root / "life" / member_safe
-    mission = _coerce_mission_result(
-        run_one_engineer_mission(
-            objective,
-            cwd=cwd,
-            life_dir=life_dir,
-            timeout_s=float(task.get("timeout_s", 0) or 0) or None,
-            prelude_context=_vertical_prelude(task, cwd=cwd, state_root=life_dir),
+    with _temporary_env("ARGUS_SKILL_TEAM_TASK_ID", task_id):
+        mission = _coerce_mission_result(
+            run_one_engineer_mission(
+                objective,
+                cwd=cwd,
+                life_dir=life_dir,
+                timeout_s=float(task.get("timeout_s", 0) or 0) or None,
+                prelude_context=_vertical_prelude(task, cwd=cwd, state_root=life_dir),
+            )
         )
-    )
 
     stop.set()
     _result = _read_optional_result(expected_target=task.get("target") or task_id)

@@ -29,6 +29,11 @@ _ROUTE_TIMEOUT_S = 20 * 60
 _REVIEW_TIMEOUT_S = 10 * 60
 _SELECTION_TIMEOUT_S = 10 * 60
 _PROBE_TIMEOUT_S = 10 * 60
+_TEAM_TASK_ENV = "ARGUS_SKILL_TEAM_TASK_ID"
+_NO_NESTED_TEAM = (
+    "This task is already one worker in the parent idea portfolio. Do not create, "
+    "ensure, launch, or delegate another Team or idea portfolio."
+)
 _ROUTE_THEMES = (
     ("mechanism", "method mechanisms and algorithmic interventions"),
     ("systems", "systems architecture, runtime, and deployment failures"),
@@ -76,7 +81,8 @@ def _route_task(
             "they bear on the claim. This is guidance, not a quota: if one side has no "
             "direct neighbor, record the limitation and continue. Inspect official "
             "code/benchmarks and practitioner signals when useful. Stop once the "
-            "novelty boundary is credible; do not search merely to fill categories."
+            "novelty boundary is credible; do not search merely to fill categories. "
+            f"{_NO_NESTED_TEAM}"
         ),
         "acceptance_check": (
             f"`{output}` exists and contains the mechanism, sources, closest work, "
@@ -116,7 +122,8 @@ def _review_task(
             "top_conference_case, local_feasibility, fatal_concerns (array), and probe "
             "(object). Flag an AI-frontier-only or theory-only source mix as an advisory "
             "risk and briefly inspect the missing side when relevant, but never reject "
-            "or stall solely for bucket completeness. A qualified probe object contains "
+            "or stall solely for bucket completeness. "
+            f"{_NO_NESTED_TEAM} A qualified probe object contains "
             "premise, evaluator_identity, comparison_identity, minimum_signal, and "
             "stop_rules."
         ),
@@ -189,7 +196,8 @@ def _selection_tasks(
                 "route_task_id, review_task_id, route_artifact, review_artifact, "
                 "rationale, theory_strength, novelty, generality, top_conference_case, "
                 "and unresolved_risks (array). Select only a route whose review verdict "
-                "is qualified. This is a qualitative paper decision, not a metric rank."
+                "is qualified. This is a qualitative paper decision, not a metric rank. "
+                f"{_NO_NESTED_TEAM}"
             ),
             "acceptance_check": (
                 "`research/IDEA_SELECTION.json` selects one qualified quorum route "
@@ -213,7 +221,8 @@ def _selection_tasks(
                 f"`{probe_root}/EVIDENCE.json` as valid research idea evidence with "
                 "decision=`continue`. Record supported/refuted/inconclusive/untested "
                 "honestly, but never use the smoke result to kill or block the selected "
-                "idea; weak evidence becomes a later implementation/design note."
+                "idea; weak evidence becomes a later implementation/design note. "
+                f"{_NO_NESTED_TEAM}"
             ),
             "acceptance_check": (
                 f"`{probe_root}/EVIDENCE.json` records one bounded honest observation "
@@ -567,6 +576,12 @@ def _ensure_selection_team(
 
 
 def ensure_idea_portfolio(project_root: Path, *, direction: str) -> Path:
+    nested_task_id = os.environ.get(_TEAM_TASK_ENV, "").strip()
+    if nested_task_id:
+        raise RuntimeError(
+            "nested idea portfolio formation is disabled inside team task "
+            f"{nested_task_id!r}"
+        )
     project_root = Path(project_root).expanduser().resolve()
     team_id, artifact_root, direction_digest = _portfolio_identity(direction)
     root = project_root / TEAM_ROOT / team_id
