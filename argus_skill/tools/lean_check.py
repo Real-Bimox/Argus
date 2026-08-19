@@ -37,6 +37,20 @@ _SYNTAX_PATTERNS = (
 )
 _AXIOM_AUDIT_MARKER = "ARGUS_AXIOM_AUDIT_FOUND:"
 _AXIOM_AUDIT_PATH = Path(__file__).with_name("lean_axiom_audit.lean")
+#: ``foo --version`` execs a binary and prints a banner; three seconds is
+#: already generous for that.
+_VERSION_PROBE_TIMEOUT = 3.0
+#: ``lake env lean --version`` is not that. It resolves the Lake workspace and
+#: elan toolchain first, so its cost is dominated by reading the manifest and,
+#: when the workspace pins a toolchain other than the default, switching to it.
+#: Measured against the Mathlib workspace that ships with this skill it takes
+#: ~0.6s warm, which left the shared budget only a five-fold margin — and page
+#: cache is exactly what a long test run or a busy Engineer evicts. Timing out
+#: here is not loud: the probe is caught below and degrades the version to the
+#: empty string, which ``math_state._lean_producer`` used to turn into a
+#: kernel name with no version in it. A separate, much larger budget so that
+#: a cold cache costs a wait rather than a mis-attributed proof.
+_WORKSPACE_PROBE_TIMEOUT = 30.0
 CANONICAL_LEAN_SOURCE = "Main.lean"
 COMPILE_LOG = "compile.log"
 LEAN_CHECK_RESULT = "lean_check.json"
@@ -87,6 +101,7 @@ def run_lean_check(
             cwd=working_dir,
             version_command=[executable, "env", "lean", "--version"],
             path_label=f"{executable} env lean",
+            timeout=_WORKSPACE_PROBE_TIMEOUT,
         )
     elif executable:
         tools["lean"] = _tool_info(
@@ -390,6 +405,7 @@ def _tool_info(
     cwd: Path | str | None = None,
     version_command: Sequence[str] | None = None,
     path_label: str | None = None,
+    timeout: float = _VERSION_PROBE_TIMEOUT,
 ) -> dict[str, Any]:
     if version_command is None:
         path = _resolve_executable(name, path_override)
@@ -406,7 +422,7 @@ def _tool_info(
             command,
             capture_output=True,
             text=True,
-            timeout=3.0,
+            timeout=timeout,
             check=False,
             cwd=cwd,
         )

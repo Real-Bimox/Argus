@@ -467,6 +467,15 @@ def record_lean_evidence(
             "of this proof is not pinned to anything; re-run "
             "`lean_evidence verify`"
         )
+    produced_by = _lean_producer(result)
+    if produced_by is None:
+        refusals.append(
+            "the recorded result does not name a Lean version, so the kernel "
+            "that answered cannot be identified and this evidence cannot be "
+            "told apart from a run of a different kernel; the version probe "
+            "usually comes back empty because the host was too loaded to "
+            "answer in time, so re-run `lean_evidence verify`"
+        )
     if refusals:
         return LeanRecording(
             refusals=tuple(refusals), statement_fidelity=fidelity
@@ -501,7 +510,6 @@ def record_lean_evidence(
             if evidence.verified
             else Verdict.INCONCLUSIVE
         )
-        produced_by = _lean_producer(result)
         subject = claim.ref()
         artifact_dir = source_path.parent
         name = _certificate_name(
@@ -687,8 +695,8 @@ def _archive_certificate(
     return target
 
 
-def _lean_producer(result: dict[str, Any]) -> str:
-    """Name the proof kernel that answered, and nothing that varies per host.
+def _lean_producer(result: dict[str, Any]) -> str | None:
+    """Name the proof kernel that answered, or ``None`` if it cannot be named.
 
     Always the ``lean`` entry, never ``tool`` — ``tool`` is ``lake`` whenever
     the compile went through a Lake workspace, and Lake is a build driver, not
@@ -701,12 +709,22 @@ def _lean_producer(result: dict[str, Any]) -> str:
     For the same reason the commit hash and build triple in the banner are
     dropped and the version is kept whole: ``4.34.0-rc1`` and ``4.34.0`` are
     different kernels and must not collapse together.
+
+    *And for the same reason an unreadable banner returns ``None`` rather than
+    a bare ``lean_evidence/lean``.* The version probe is a subprocess with a
+    timeout (``lean_check._tool_info``); on a loaded host it can come back
+    empty while the compile itself succeeds. Falling back to the name without
+    the version produced the very collision the paragraph above forbids, only
+    from the other direction — the same kernel recorded twice, once fast and
+    once slow, sorts into two entries under one tier and reads as two
+    independent confirmations. A kernel that cannot be named cannot be counted,
+    so the caller refuses instead.
     """
     tools = result.get("tools")
     info = tools.get("lean") if isinstance(tools, dict) else None
     banner = str(info.get("version") or "") if isinstance(info, dict) else ""
     match = _VERSION.search(banner)
-    return f"lean_evidence/lean {match.group(1)}" if match else "lean_evidence/lean"
+    return f"lean_evidence/lean {match.group(1)}" if match else None
 
 
 def _project_relative(path: Path, project_root: Path) -> str:

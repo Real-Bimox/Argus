@@ -680,6 +680,43 @@ def test_the_producer_names_the_proof_kernel_and_not_the_build_driver(
     assert recording.record.produced_by == "lean_evidence/lean 4.34.0-rc1"
 
 
+def test_a_kernel_whose_version_probe_came_back_empty_is_refused(
+    tmp_path: Path,
+) -> None:
+    """A timed-out version probe must not become a second producer.
+
+    ``lean_check`` probes the kernel with a subprocess that has a timeout, and
+    on a loaded host that probe returns ``available`` with an empty version
+    while the compile itself succeeded. Naming the record ``lean_evidence/lean``
+    without the version made the same kernel sort into two entries under one
+    tier — fast runs versioned, slow runs not — which ``_producers_by_tier``
+    groups verbatim and reads as two independent confirmations.
+    """
+    source = _proved_project(tmp_path)
+    _result(
+        tmp_path,
+        tool="lake",
+        tools={
+            "lean": {
+                "available": True,
+                "path": "/x/lake env lean",
+                "version": "",
+            },
+            "lake": {
+                "available": True,
+                "path": "/x/lake",
+                "version": "Lake version 5.0.0-src+3447a66 (Lean version 4.34.0-rc1)",
+            },
+        },
+    )
+    recording = record_lean_evidence(tmp_path, claim_id="C1", source=source)
+
+    assert recording.record is None
+    assert any("does not name a Lean version" in item for item in recording.refusals)
+    _, payload = _run(tmp_path, "show", "--claim", "C1")
+    assert payload["claim"]["status"] != ClaimStatus.CLOSED_KERNEL.value
+
+
 def test_a_failed_compile_is_inconclusive_and_never_refutes(
     tmp_path: Path,
 ) -> None:
