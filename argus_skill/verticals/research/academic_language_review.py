@@ -20,7 +20,6 @@ from argus_skill.tools.image_api import (
     _require_route,
 )
 
-from ...skills.venue_profiles import VenueProfile, resolve_venue_profile
 from ._review_contract_constants import (
     ACADEMIC_LANGUAGE_REVIEW_GENERATED_BY,
     ACADEMIC_LANGUAGE_REVIEW_HISTORY_PATH,
@@ -35,6 +34,7 @@ from ._reviewer_runner_fallback import (
     run_reviewer_prompt_via_runner,
     runner_fallback_enabled,
 )
+from .venue_profiles import VenueProfile, resolve_venue_profile
 
 PAPER_MAIN_TEX_PATH = Path("paper/main.tex")
 ACADEMIC_LANGUAGE_REVIEW_JSON_PATH = Path("paper/ACADEMIC_LANGUAGE_REVIEW.json")

@@ -48,12 +48,13 @@ LEMMA = "L1: a counting bound for prime pairs"
 
 
 def _project(tmp_path: Path, *, mode: str, nodes: dict, goal: str = GOAL) -> Path:
-    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "math", "current_stage": "review"}) + "\n",
         encoding="utf-8",
     )
     set_objective(tmp_path, mode=mode, goal=goal if mode == "targeted" else "")
+    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
     (tmp_path / "research" / "PROOF_GRAPH.json").write_text(
         json.dumps({"goal": goal, "nodes": nodes}, indent=2) + "\n",
         encoding="utf-8",

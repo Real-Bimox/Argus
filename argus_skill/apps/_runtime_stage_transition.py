@@ -76,10 +76,10 @@ class StageTransitionMixin:
                     identity = control.campaign_identity(
                         objective=continuous_objective,
                     )
-                    pipeline_path = (
+                    from ..core.pipeline_state import pipeline_state_path
+
+                    pipeline_path = pipeline_state_path(
                         Path(getattr(self, "_artifact_root", workdir))
-                        / "research"
-                        / "PIPELINE_STATE.json"
                     )
                     try:
                         pipeline_bytes = pipeline_path.read_bytes()

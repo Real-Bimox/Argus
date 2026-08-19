@@ -60,9 +60,8 @@ def test_vertical_prompt_keeps_math_routes_inside_builtin_math():
     )
 
     assert "stable reusable staged capability" in prompt
-    assert "do not replace them with task-specific aliases" in prompt
-    assert "Planner literature/proof/experiment tasks stay inside `math`" in prompt
-    assert "not new verticals" in prompt
+    assert "Pick the closest existing capability" in prompt
+    assert "original mathematical work is `math`" in prompt
     # A ratchet, not a model limit. 56a02152 simplified this prompt and pinned a
     # ceiling so it would not quietly regrow; the number is "a little above
     # whatever it costs today", and it should be raised only for content that
@@ -79,7 +78,7 @@ def test_vertical_prompts_do_not_treat_one_paper_reading_as_research_pipeline():
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "belongs on SELF" in grounded
+    assert "This is a read-only routing decision" in grounded
 
 
 def test_serious_survey_is_staged_without_implied_publication() -> None:
@@ -89,9 +88,9 @@ def test_serious_survey_is_staged_without_implied_publication() -> None:
         research_target_verticals=("research",),
     )
 
-    assert "a broad survey plus synthesis" in prompt
-    assert "a serious survey, or a PDF alone does not imply publication intent" in prompt
-    assert "never infer a venue or submission search from the topic" in prompt
+    assert "papers and surveys are `research`" in prompt
+    assert "publishable only when publication-level original work is requested" in prompt
+    assert "Never infer a venue" in prompt
 
 
 def test_vertical_prompt_composes_chemistry_with_research() -> None:
@@ -101,11 +100,9 @@ def test_vertical_prompt_composes_chemistry_with_research() -> None:
         domains_with_purpose=DOMAIN_PURPOSES,
     )
 
-    assert "`domain=chemistry`" in prompt
-    # The reply convention is named lines, not a JSON schema: no role is forced
-    # to serialise its answer (operator directive 2026-07-26).
-    assert "DOMAIN=<built-in research domain, or none>" in prompt
-    assert "JSON" not in prompt
+    assert "`chemistry`" in prompt
+    assert "`domain`" in prompt
+    assert "ARGUS_ROLE_DECISION=" in prompt
 
 
 def test_vertical_prompt_does_not_escalate_bounded_repo_fix_to_new_domain() -> None:
@@ -115,7 +112,7 @@ def test_vertical_prompt_does_not_escalate_bounded_repo_fix_to_new_domain() -> N
     )
 
     assert "capability VERTICAL" in prompt
-    assert "WORKFLOW_MODE=<direct|staged>" in prompt
+    assert '"workflow_mode":"direct"' in prompt
     assert "software" in prompt
 
 
@@ -125,8 +122,8 @@ def test_new_domain_starts_with_real_work_not_process_ceremony() -> None:
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "Do not encode a one-off deliverable/DAG" in prompt
-    assert "first stage implements or measures work" in prompt
+    assert "not a one-off task list" in prompt
+    assert "action stages" in prompt
 
 
 def test_vertical_prompt_preserves_explicit_operator_actions() -> None:
@@ -135,12 +132,9 @@ def test_vertical_prompt_preserves_explicit_operator_actions() -> None:
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "preserve every requested action" in prompt
-    assert "Do not replace the goal with cleanup" in prompt
-    assert "authorizes a real attempt" in prompt
-    assert "Match the requested ACTION" in prompt
-    assert "quoted filenames, logs, or commit titles" in prompt
-    assert "repository maintenance is `software`" in prompt
+    assert "Preserve stated paths, commands, order, and stopping conditions" in prompt
+    assert "requested action, not incidental words" in prompt
+    assert "Repository work is usually `software`" in prompt
 
 
 def test_vertical_prompts_do_not_use_software_as_performance_catch_all() -> None:
@@ -150,8 +144,8 @@ def test_vertical_prompts_do_not_use_software_as_performance_catch_all() -> None
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "`new` only when no listed capability fits" in grounded
-    assert "not specialized hardware/runtime performance research" in grounded
+    assert "Use `new` only when none fits" in grounded
+    assert "Pick the closest existing capability" in grounded
 
 
 def test_fast_vertical_parser_accepts_confident_existing_route() -> None:
@@ -463,12 +457,11 @@ def test_grounded_vertical_prompt_preserves_manager_agency_and_planner_boundary(
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "Investigate freely as needed" in prompt
-    assert "need no implementation/test inspection solely to route" in prompt
-    assert "Manager owns direction, Planner the file plan" in prompt
+    assert "inspect only when the fit is unclear" in prompt
+    assert "no task work or Live View" in prompt
     assert "presentations" not in prompt
-    assert "Omit EXECUTION_TASK for a standalone existing route" in prompt
-    assert "Include it only for contextual shorthand or a new capability" in prompt
+    assert "Omit `execution_task` for a standalone existing route" in prompt
+    assert "include it only when bounded context must be rewritten" in prompt
 
 
 def test_read_only_repository_audit_avoids_maintenance_meta_review() -> None:
@@ -477,8 +470,8 @@ def test_read_only_repository_audit_avoids_maintenance_meta_review() -> None:
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "`software`/`direct`, not `argus_maintenance`" in prompt
-    assert "no meta-review unless asked" in prompt
+    assert "Repository work is usually `software`" in prompt
+    assert "Argus runtime changes are `argus_maintenance`" in prompt
 
 
 def test_paper_process_audit_routes_by_deliverable_not_argus_noun() -> None:
@@ -487,9 +480,8 @@ def test_paper_process_audit_routes_by_deliverable_not_argus_noun() -> None:
         verticals_with_purpose=VERTICAL_PURPOSES,
     )
 
-    assert "Paper/survey work: `research`" in prompt
-    assert "even about/using Argus" in prompt
-    assert "runtime changes: `argus_maintenance`" in prompt
+    assert "papers and surveys are `research`" in prompt
+    assert "Argus runtime changes are `argus_maintenance`" in prompt
 
 
 def test_vertical_prompts_prefer_matching_formal_project_domain() -> None:
@@ -507,7 +499,7 @@ def test_vertical_prompts_prefer_matching_formal_project_domain() -> None:
 
     assert "status=formal" in grounded
     assert "Apple Silicon MLX/Metal deployment" in grounded
-    assert "Prefer an exact `status=formal` project domain" in grounded
+    assert "Prefer a matching formal project domain" in grounded
 
 
 def test_a_string_of_earlier_stages_is_not_rendered_letter_by_letter() -> None:

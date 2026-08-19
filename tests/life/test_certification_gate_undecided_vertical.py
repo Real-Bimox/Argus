@@ -17,7 +17,7 @@ was written to avoid was the one actually taken.
 Nothing burned, because the wrong answer was masked twice: every production
 caller passes ``self._artifact_root()`` (the session state root, which does
 carry the Manager's decision), and ``config.final_certification_gate`` is
-itself computed by ``_paper_mission_for_project_root`` from a *persisted*
+itself computed by ``_final_certification_for_project_root`` from a *persisted*
 certified vertical, so it is already ``False`` for math and materials. Two
 independent guards, and the predicate between them said the opposite of what
 its own docstring claimed. These tests pin the claim directly, on the

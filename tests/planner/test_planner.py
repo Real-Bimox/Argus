@@ -619,7 +619,7 @@ def test_plan_next_ignores_malformed_context_ref_metadata(monkeypatch) -> None:
                 "TASK_TITLE=Summarize paper",
                 "TASK_OBJECTIVE=Read the supplied paper and summarize it.",
                 (
-                    "TASK_CONTEXT_REFS=research/PIPELINE_STATE.json; "
+                    "TASK_CONTEXT_REFS=.argus/PIPELINE_STATE.json; "
                     "/tmp/runtime/events.jsonl"
                 ),
             ]
@@ -636,7 +636,7 @@ def test_plan_next_ignores_malformed_context_ref_metadata(monkeypatch) -> None:
                 "TASK_EXPECTED_REGRESSIONS=None expected; this is read-only synthesis.",
                 "TASK_DECISION_RULE=Stop and ask for sources if the referenced paper is absent.",
                 (
-                    "TASK_CONTEXT_REFS=artifact::research/PIPELINE_STATE.json::"
+                    "TASK_CONTEXT_REFS=artifact::.argus/PIPELINE_STATE.json::"
                     "current stage"
                 ),
             ]

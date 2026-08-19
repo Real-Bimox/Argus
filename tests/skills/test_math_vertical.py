@@ -207,12 +207,13 @@ def test_math_completion_hook_requires_objective_and_policy_graph(tmp_path: Path
     assert "objective mode" in " ".join(stage_completion_issues("scope", tmp_path))
 
     objective_mode.set_objective(tmp_path, mode="targeted", goal="G")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["verification_profile"] = "develop"
     state_path.write_text(json.dumps(state), encoding="utf-8")
     assert "PROOF_GRAPH.json" in " ".join(stage_completion_issues("solve", tmp_path))
 
+    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
     (tmp_path / "research" / "PROOF_GRAPH.json").write_text(
         json.dumps({
             "goal": "G",
@@ -644,7 +645,7 @@ def test_math_stage_completion_enforces_persisted_target() -> None:
 
 def test_research_target_persists_and_non_target_vertical_clears_it(tmp_path) -> None:
     persist_vertical(tmp_path, "math", research_target_level="doctoral")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
 
     assert resolve_research_target_level(tmp_path) == "doctoral"
@@ -674,8 +675,8 @@ def test_reviewer_keeps_its_stage_checklist_when_the_daemon_names_the_vertical(
 
     skills = tmp_path / "skills"
     skills.mkdir()
-    (tmp_path / "research").mkdir(exist_ok=True)
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir(exist_ok=True)
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "math", "current_stage": "solve"}), encoding="utf-8"
     )
     set_objective(tmp_path, mode="targeted", goal="G")

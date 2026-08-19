@@ -114,7 +114,7 @@ def test_research_survey_can_advance_directly_to_draft(tmp_path) -> None:
     )
 
     state = json.loads(
-        (state_root / "research" / "PIPELINE_STATE.json").read_text()
+        (state_root / ".argus" / "PIPELINE_STATE.json").read_text()
     )
     assert decision.action == "advance"
     assert decision.target_stage == "draft"
@@ -168,7 +168,7 @@ def test_finite_research_can_complete_and_skip_all_later_stages(tmp_path) -> Non
     )
 
     state = json.loads(
-        (state_root / "research" / "PIPELINE_STATE.json").read_text()
+        (state_root / ".argus" / "PIPELINE_STATE.json").read_text()
     )
     assert decision.action == "complete"
     assert decision.source == "manager_llm"
@@ -208,7 +208,7 @@ def test_bounded_stage_mission_cannot_complete_staged_research_project(
 
     assert decision.action == "hold"
     state = json.loads(
-        (state_root / "research" / "PIPELINE_STATE.json").read_text()
+        (state_root / ".argus" / "PIPELINE_STATE.json").read_text()
     )
     assert state["current_stage"] == "research"
     assert state.get("stages", {}).get("research", {}).get("status") != "done"
@@ -345,7 +345,7 @@ def test_reviewer_certified_intermediate_stage_still_uses_manager_judgment(
     )
 
     state = json.loads(
-        (state_root / "research" / "PIPELINE_STATE.json").read_text()
+        (state_root / ".argus" / "PIPELINE_STATE.json").read_text()
     )
     assert decision.action == "advance"
     assert decision.target_stage == "measure"
@@ -395,7 +395,7 @@ def test_final_stage_completion_requires_manager_decision(
     )
 
     persist_vertical(tmp_path, "software", workflow_mode="staged")
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["current_stage"] = "delivery"
     state["stages"] = {"delivery": {"status": "in_progress"}}

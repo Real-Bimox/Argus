@@ -50,7 +50,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ...skills.venue_profiles import resolve_venue_profile
+from .venue_profiles import resolve_venue_profile
 
 MIN_QUESTIONS = 10
 ALLOWED_SEVERITIES = frozenset({"critical", "major", "minor"})

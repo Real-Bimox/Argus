@@ -57,8 +57,8 @@ STATE_ROOT_PIPELINE = {
 
 
 def _write(root, payload) -> None:
-    (root / "research").mkdir(parents=True, exist_ok=True)
-    (root / "research" / "PIPELINE_STATE.json").write_text(
+    (root / ".argus").mkdir(parents=True, exist_ok=True)
+    (root / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps(payload), encoding="utf-8"
     )
 
@@ -121,8 +121,8 @@ def test_an_unreadable_state_file_does_not_win_the_authoritative_pass(tmp_path) 
     """Corrupt JSON records no stage, so it must not be treated as recording one."""
     state_root = tmp_path / "state"
     workdir = tmp_path / "work"
-    (state_root / "research").mkdir(parents=True)
-    (state_root / "research" / "PIPELINE_STATE.json").write_text("{not json", encoding="utf-8")
+    (state_root / ".argus").mkdir(parents=True)
+    (state_root / ".argus" / "PIPELINE_STATE.json").write_text("{not json", encoding="utf-8")
     _write(workdir, {"current_stage": "solve", "vertical": "math"})
 
     assert current_stage_for_session({"workdir": str(workdir)}, state_root) == "solve"

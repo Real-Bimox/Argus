@@ -33,7 +33,7 @@ completion_gate = "metric"
 
 STAGE_ORDER = ["setup", "optimize", "measure", "report"]
 
-_PIPELINE_CHECK = ("Pipeline state present", "test -f research/PIPELINE_STATE.json")
+_PIPELINE_CHECK = ("Pipeline state present", "test -f .argus/PIPELINE_STATE.json")
 
 
 #: The productive, mechanism-CHANGING axes for raising the pass-gap, biggest-

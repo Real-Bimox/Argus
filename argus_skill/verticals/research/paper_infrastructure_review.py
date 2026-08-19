@@ -18,7 +18,6 @@ from argus_skill.tools.image_api import (
     _require_route,
 )
 
-from ...skills.venue_profiles import VenueProfile, resolve_venue_profile
 from ._review_contract_constants import (
     PAPER_INFRASTRUCTURE_REVIEW_GENERATED_BY,
     PAPER_INFRASTRUCTURE_REVIEW_HISTORY_PATH,
@@ -43,6 +42,7 @@ from .academic_language_review import (
     collect_latex_source_paths,
     describe_reviewer_route_unavailable,
 )
+from .venue_profiles import VenueProfile, resolve_venue_profile
 
 PAPER_INFRASTRUCTURE_REVIEW_JSON_PATH = Path("paper/PAPER_INFRASTRUCTURE_REVIEW.json")
 PAPER_INFRASTRUCTURE_REVIEW_MD_PATH = Path("paper/PAPER_INFRASTRUCTURE_REVIEW.md")

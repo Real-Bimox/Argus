@@ -74,14 +74,13 @@ class PlannerOrchestrationMixin:
 
     def _planner_current_reality_note(self) -> str:
         """Render host-read state so Planner does not rediscover bookkeeping."""
+        from ...core.pipeline_state import read_pipeline_state
+
         artifact_root = self._artifact_root()
         project_root = self._project_workdir()
-        pipeline_path = artifact_root / "research" / "PIPELINE_STATE.json"
         try:
-            pipeline = json.loads(pipeline_path.read_text(encoding="utf-8"))
-            if not isinstance(pipeline, dict):
-                pipeline = {}
-        except (OSError, UnicodeError, json.JSONDecodeError):
+            pipeline = read_pipeline_state(artifact_root)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError):
             pipeline = {}
 
         stage_rows: list[str] = []

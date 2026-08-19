@@ -7,7 +7,7 @@ from typing import Any
 OPTIMIZATION_STAGE_ORDER = ("setup", "optimize", "measure", "report")
 PIPELINE_CHECK = (
     "Pipeline state present",
-    "test -f research/PIPELINE_STATE.json",
+    "test -f .argus/PIPELINE_STATE.json",
 )
 
 

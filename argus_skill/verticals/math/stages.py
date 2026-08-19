@@ -14,6 +14,11 @@ from ...skills.stage_machine import ChecklistItem
 STAGE_ORDER = ("scope", "solve", "review")
 CHECKLIST_STAGE_ORDER = STAGE_ORDER
 WORKFLOW_MODE = "proportional"
+VERIFICATION_STAGE_PROFILES = {
+    "scope": "explore",
+    "solve": "develop",
+    "review": "certify",
+}
 RESEARCH_TARGET_LEVELS = ("exploratory", "publishable", "doctoral")
 
 # A proof is the one deliverable whose author cannot certify it. Every sibling
@@ -106,6 +111,7 @@ def stage_completion_issues(stage: str, project_root: Path) -> tuple[str, ...]:
         project_root,
         stage=stage_name,
         vertical="math",
+        stage_profiles=VERIFICATION_STAGE_PROFILES,
     )
     # Formalization stays optional: a project with no `.lean` file gets an
     # empty tuple here and never loads the checker. Once one is present it is a
@@ -347,7 +353,7 @@ CHECKLIST_ITEMS: dict[str, tuple[ChecklistItem, ...]] = {
             ),
             evidence_hint=(
                 "the requested outcome and completion bar; math_objective_mode (and "
-                "math_goal when targeted) in research/PIPELINE_STATE.json"
+                "math_goal when targeted) in .argus/PIPELINE_STATE.json"
             ),
         ),
         ChecklistItem(

@@ -123,7 +123,9 @@ class SkillLoopExecuteMixin:
         cls,
         workdir: Path,
     ) -> tuple[Path, bool, bytes | None, str]:
-        path = workdir.expanduser().resolve(strict=False) / "research" / "PIPELINE_STATE.json"
+        from ..core.pipeline_state import pipeline_state_path
+
+        path = pipeline_state_path(workdir.expanduser().resolve(strict=False))
         try:
             if os.path.lexists(path.parent) and (
                 cls._is_link_or_reparse_point(path.parent)
@@ -619,16 +621,17 @@ class SkillLoopExecuteMixin:
         # structured Manager rollback verdict with a bounded completion.
         config_kwargs["open_ended"] = bool(getattr(args, "open_ended", False))
         config_kwargs["continuous_objective"] = str(getattr(args, "continuous_objective", "") or "")
-        # A paper contract is enabled only by a positively resolved
-        # ``certified`` vertical.  An explicit False from a specialized caller
-        # may still opt out; True cannot turn a non-paper vertical into a paper.
+        # A paper contract is enabled only by a vertical that explicitly
+        # declares PAPER_MISSION. Certification strength is a separate contract.
+        # An explicit False may opt out; True cannot turn a non-paper vertical
+        # into a paper.
         _paper_override = getattr(args, "paper_mission", None)
         _paper_allowed = True if _paper_override is None else bool(_paper_override)
         config_kwargs["paper_mission"] = bool(
             not maintenance_mission
             and _paper_allowed
             and (
-                active_contract.completion_gate == "certified"
+                active_contract.paper_mission
                 if active_contract is not None
                 else _paper_mission_for_project_root(_proot)
             )

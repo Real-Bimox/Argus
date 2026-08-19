@@ -1,7 +1,7 @@
 """Vertical selection for the auto-research loop.
 
 The loop runs ONE of several *verticals*, selected by a single ``vertical``
-field in ``research/PIPELINE_STATE.json``:
+field in ``.argus/PIPELINE_STATE.json``:
 
 * ``"research"`` — the full eight-stage research-paper pipeline
   (research → ... → submission). This is the default and the safe fallback
@@ -27,7 +27,7 @@ and ``manager/domain_author.py``):
   a corrupt state file — no swallowed errors.
 
 The resolved vertical has one authority: the Manager-persisted ``vertical`` in
-``research/PIPELINE_STATE.json`` (including a Manager-authored data domain).
+``.argus/PIPELINE_STATE.json`` (including a Manager-authored data domain).
 
 There are NO keyword classifiers and NO fallbacks: an objective is never mapped
 to a vertical by matching words, and a missing/corrupt state is never quietly
@@ -42,6 +42,13 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+
+from ..core.pipeline_state import (
+    pipeline_state_path,
+    primary_pipeline_state_path,
+    read_pipeline_state,
+    write_pipeline_state,
+)
 
 log = logging.getLogger(__name__)
 
@@ -128,14 +135,11 @@ DEFAULT_VERTICAL: str = "research"
 #: Formal task routing does not consult it; Manager owns vertical classification.
 ENV_VERTICAL: str = "ARGUS_SKILL_VERTICAL"
 
-_STATE_RELPATH = ("research", "PIPELINE_STATE.json")
-
-
 class VerticalResolutionError(RuntimeError):
     """Raised by ``resolve_vertical`` when no vertical can be resolved.
 
     The Manager DECIDES and PERSISTS the vertical on the initial task; once it
-    has, ``research/PIPELINE_STATE.json`` names it and this never fires. If it
+    has, ``.argus/PIPELINE_STATE.json`` names it and this never fires. If it
     DOES fire, a read happened before the decision was persisted, or the state
     is corrupt — a real invariant violation, surfaced loudly instead of silently
     defaulting to ``research``.
@@ -249,27 +253,23 @@ def _normalize_stage(stage: object) -> str:
 
 
 def _state_path(project_root: object) -> Path:
-    return Path(str(project_root)).joinpath(*_STATE_RELPATH)
+    return pipeline_state_path(project_root)
 
 
 def _load_state_payload(project_root: object) -> dict:
     """Read Manager-owned pipeline state once with fail-visible corruption."""
-    path = _state_path(project_root)
     try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    try:
-        payload = json.loads(raw)
+        return read_pipeline_state(project_root)
     except json.JSONDecodeError as exc:
+        path = _state_path(project_root)
         raise VerticalResolutionError(
             f"PIPELINE_STATE.json at {path} is not valid JSON: {exc}"
         ) from exc
-    if not isinstance(payload, dict):
+    except ValueError as exc:
+        path = _state_path(project_root)
         raise VerticalResolutionError(
             f"PIPELINE_STATE.json at {path} is not a JSON object"
-        )
-    return payload
+        ) from exc
 
 
 def migrate_legacy_manager_state(
@@ -284,7 +284,7 @@ def migrate_legacy_manager_state(
     fail somewhere less legible than here.
 
     A payload that names NO vertical is a different situation and is imported
-    normally. The workdir copy of ``research/PIPELINE_STATE.json`` is not only a
+    normally. The workdir copy of ``.argus/PIPELINE_STATE.json`` is not only a
     legacy artifact — it is the live evidence root (every Manager stage call
     passes ``evidence_root=self.execution_workdir``), so a project can hold
     Manager-owned keys there, such as the math vertical's objective mode, before
@@ -300,7 +300,7 @@ def migrate_legacy_manager_state(
             return False
     except OSError:
         return False
-    target = _state_path(target_root)
+    target = primary_pipeline_state_path(target_root)
     source = _state_path(source_root)
     if target.exists() or not source.is_file():
         return False
@@ -319,13 +319,7 @@ def migrate_legacy_manager_state(
             f"neither a built-in vertical (available: "
             f"{', '.join(available_verticals())}) nor a project data domain"
         )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_suffix(target.suffix + f".migrate.{os.getpid()}.tmp")
-    temporary.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    os.replace(temporary, target)
+    write_pipeline_state(target_root, payload)
     if names_a_vertical:
         # Warm read that proves the imported decision resolves against the new
         # root. Skipped when undecided: `resolve_vertical` would only log its
@@ -484,7 +478,7 @@ def persist_vertical(
     workflow_mode: str | None = None,
     target_venue: str | None = None,
 ) -> None:
-    """Persist the chosen ``vertical`` into ``research/PIPELINE_STATE.json``.
+    """Persist the chosen ``vertical`` into ``.argus/PIPELINE_STATE.json``.
 
     Validates ``vertical`` against the known built-ins + existing project data
     domains; an unknown name RAISES ``UnknownVerticalError`` (no silent coercion
@@ -506,23 +500,7 @@ def persist_vertical(
     """
     legacy_direct = str(vertical or "").strip().lower() == "direct"
     vert = require_vertical(vertical, project_root)
-    path = _state_path(project_root)
-
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        payload: dict = {}
-    else:
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise VerticalResolutionError(
-                f"PIPELINE_STATE.json at {path} is not valid JSON: {exc}"
-            ) from exc
-        if not isinstance(payload, dict):
-            raise VerticalResolutionError(
-                f"PIPELINE_STATE.json at {path} is not a JSON object"
-            )
+    payload = _load_state_payload(project_root)
 
     payload["vertical"] = vert
     if domain is not None:
@@ -624,11 +602,7 @@ def persist_vertical(
         if first_stage:
             payload["current_stage"] = first_stage
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
-    tmp_path = path.with_name(path.name + ".tmp")
-    tmp_path.write_text(rendered, encoding="utf-8")
-    os.replace(tmp_path, path)
+    write_pipeline_state(project_root, payload)
 
 
 # --- new-intent vs. reclassification triage --------------------------------
@@ -654,11 +628,8 @@ def _vertical_completion_record(
         return None
 
     try:
-        raw = _state_path(project_root).read_text(encoding="utf-8")
-        payload = json.loads(raw)
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
+        payload = _load_state_payload(project_root)
+    except VerticalResolutionError:
         return None
 
     current = _normalize_stage(payload.get("current_stage"))

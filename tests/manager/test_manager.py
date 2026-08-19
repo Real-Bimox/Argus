@@ -265,7 +265,7 @@ def test_manager_rejects_direct_alias_conflicting_with_persisted_staged_mode(
 def test_manager_recovers_direct_mode_from_legacy_persisted_alias(
     tmp_path,
 ) -> None:
-    state = tmp_path / "research" / "PIPELINE_STATE.json"
+    state = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state.parent.mkdir(parents=True)
     state.write_text('{"vertical": "direct"}', encoding="utf-8")
     runner = _DecisionRunner({
@@ -362,7 +362,7 @@ def test_divide_commits_vertical_so_supervisor_trusts_it(tmp_path):
     assert isinstance(d, Division)
     assert d.vertical == "nanochat" and d.kind == "optimize"
     # persisted into PIPELINE_STATE.json — the supervisor reads & trusts this
-    state = json.loads((tmp_path / "research" / "PIPELINE_STATE.json").read_text())
+    state = json.loads((tmp_path / ".argus" / "PIPELINE_STATE.json").read_text())
     assert state["vertical"] == "nanochat"
 
 
@@ -376,7 +376,7 @@ def test_math_divide_persists_manager_owned_research_target(
     division = manager.divide("verify this bounded lemma")
 
     state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text()
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text()
     )
     assert division.vertical == "math"
     assert state["vertical"] == "math"
@@ -402,7 +402,7 @@ def test_research_divide_persists_explicit_target_venue(tmp_path) -> None:
     )
 
     state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text()
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text()
     )
     assert division.vertical == "research"
     assert state["target_venue"] == "AAAI"
@@ -465,7 +465,7 @@ def test_vertical_commit_persists_generic_research_target_contract(
     )
 
     state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text()
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text()
     )
     assert division.vertical == "physics"
     assert state["research_target_level"] == "doctoral"
@@ -484,16 +484,16 @@ def test_vertical_decision_can_be_committed_after_external_revision_check(
 
     decision = mgr.decide_vertical("draft the paper")
 
-    assert not (tmp_path / "research" / "PIPELINE_STATE.json").exists()
+    assert not (tmp_path / ".argus" / "PIPELINE_STATE.json").exists()
     division = mgr.commit_vertical_decision("draft the paper", decision)
     assert division.execution_task == "perform the requested task"
-    state = json.loads((tmp_path / "research" / "PIPELINE_STATE.json").read_text())
+    state = json.loads((tmp_path / ".argus" / "PIPELINE_STATE.json").read_text())
     assert state["vertical"] == "research"
     assert agents_path.read_text(encoding="utf-8") == original_agents
 
 
 def test_replacement_intent_forces_immediate_pipeline_reset(tmp_path):
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state_path.parent.mkdir(parents=True)
     state_path.write_text(
         json.dumps({
@@ -530,7 +530,7 @@ def test_replacement_intent_forces_immediate_pipeline_reset(tmp_path):
 def test_failed_vertical_commit_restores_pipeline_state(tmp_path, monkeypatch):
     manager = Manager(project_root=tmp_path, runner=_existing("research"))
     manager.divide("seed the research pipeline")
-    pipeline_state = tmp_path / "research" / "PIPELINE_STATE.json"
+    pipeline_state = tmp_path / ".argus" / "PIPELINE_STATE.json"
     before = pipeline_state.read_bytes()
     decision = VerticalDecision(
         choice="existing",
@@ -555,7 +555,7 @@ def test_divide_research_persists_and_lists_8_stages(tmp_path):
     assert d.vertical == "research"
     assert d.stages == list(RESEARCH_STAGES)
     assert "research task" in d.headline()
-    state = json.loads((tmp_path / "research" / "PIPELINE_STATE.json").read_text())
+    state = json.loads((tmp_path / ".argus" / "PIPELINE_STATE.json").read_text())
     assert state["vertical"] == "research"
 
 
@@ -622,8 +622,8 @@ def test_root_task_id_scopes_manager_stage_call(tmp_path):
         finally:
             transitions.append(("exit", root_task_id))
 
-    (tmp_path / "research").mkdir()
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir()
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "research", "current_stage": "research"}),
         encoding="utf-8",
     )
@@ -774,10 +774,11 @@ def test_vertical_decision_always_uses_repository_grounded_route(
     assert runner.calls[0]["options"].force_safe_mode is True
     assert runner.calls[0]["options"].dangerous_yolo is False
     assert "--available-tools=" not in runner.calls[0]["options"].extra_args
-    assert "Investigate freely as needed" in runner.calls[0]["prompt"]
-    assert "Manager owns direction, Planner the file plan" in runner.calls[0]["prompt"]
-    assert "preserve every requested action and exact path/command" in runner.calls[0]["prompt"]
-    assert "Planner owns implementation" in runner.calls[0]["prompt"]
+    assert "inspect only when the fit is unclear" in runner.calls[0]["prompt"]
+    assert "Preserve stated paths, commands, order" in runner.calls[0]["prompt"]
+    assert "Omit `execution_task` for a standalone existing route" in (
+        runner.calls[0]["prompt"]
+    )
     assert "at most one targeted" not in runner.calls[0]["prompt"]
 
 
@@ -855,8 +856,8 @@ def test_company_due_diligence_cannot_enter_publication_workflow(
     assert decision.research_target_level == "exploratory"
     assert decision.target_venue == ""
     assert decision.workflow_mode == "direct"
-    assert "Company due diligence" in runner.calls[0]["prompt"]
-    assert "never `research`/`staged`" in runner.calls[0]["prompt"]
+    assert "Choose workflow separately" in runner.calls[0]["prompt"]
+    assert "papers and surveys are `research`" in runner.calls[0]["prompt"]
 
 
 def test_builtin_repository_route_accepts_host_snapshot_without_tool_retry(
@@ -1179,8 +1180,8 @@ def test_divide_resets_stage_when_new_intent_supersedes_finished_prior_vertical(
         stages=list(old_stage_order), checklist_stage_order=list(old_stage_order),
         created_by="manager",
     )
-    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({
             "vertical": "ops_continuity_runbook",
             "current_stage": "review",
@@ -1194,7 +1195,7 @@ def test_divide_resets_stage_when_new_intent_supersedes_finished_prior_vertical(
     d = mgr.divide("write a brand new paper — totally unrelated to the old runbook")
 
     assert d.vertical == "research"
-    state = json.loads((tmp_path / "research" / "PIPELINE_STATE.json").read_text())
+    state = json.loads((tmp_path / ".argus" / "PIPELINE_STATE.json").read_text())
     assert state["vertical"] == "research"
     assert state["current_stage"] == "research"  # reset to the NEW vertical's first stage
     assert current_stage(tmp_path) == "research"
@@ -1204,8 +1205,8 @@ def test_divide_reopens_finished_pipeline_for_new_same_vertical_task(tmp_path):
     """Regression: a second research task must not immediately become planner done."""
     from argus_skill.skills.vertical_select import vertical_reached_own_terminal_stage
 
-    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({
             "vertical": "research",
             "current_stage": "submission",
@@ -1220,7 +1221,7 @@ def test_divide_reopens_finished_pipeline_for_new_same_vertical_task(tmp_path):
         runner=_existing("research"),
     ).divide("start a separate second research task")
 
-    state = json.loads((tmp_path / "research" / "PIPELINE_STATE.json").read_text())
+    state = json.loads((tmp_path / ".argus" / "PIPELINE_STATE.json").read_text())
     assert division.vertical == "research"
     assert state["current_stage"] == "research"
     assert vertical_reached_own_terminal_stage(tmp_path, "research") is False

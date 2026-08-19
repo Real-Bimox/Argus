@@ -70,7 +70,7 @@ def test_exploratory_mode_needs_no_goal(tmp_path: Path) -> None:
 
 
 def test_a_targeted_project_missing_its_goal_is_unresolved(tmp_path: Path) -> None:
-    path = tmp_path / "research" / "PIPELINE_STATE.json"
+    path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"math_objective_mode": "targeted"}), encoding="utf-8")
 
@@ -78,7 +78,7 @@ def test_a_targeted_project_missing_its_goal_is_unresolved(tmp_path: Path) -> No
 
 
 def test_setting_the_mode_preserves_other_state(tmp_path: Path) -> None:
-    path = tmp_path / "research" / "PIPELINE_STATE.json"
+    path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"research_target_level": "publishable"}), encoding="utf-8")
 
@@ -410,7 +410,7 @@ def test_cli_set_then_show_round_trips_through_pipeline_state(tmp_path: Path) ->
     assert main(["--project-root", str(tmp_path), "set",
                  "--mode", "targeted", "--goal", goal]) == 0
     payload = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert payload["math_objective_mode"] == "targeted"
     assert payload["math_goal"] == goal
@@ -429,13 +429,13 @@ def test_cli_refuses_targeted_without_the_goal_it_must_close(tmp_path: Path) -> 
     from argus_skill.verticals.math.objective_mode import main
 
     assert main(["--project-root", str(tmp_path), "set", "--mode", "targeted"]) == 1
-    assert not (tmp_path / "research" / "PIPELINE_STATE.json").exists()
+    assert not (tmp_path / ".argus" / "PIPELINE_STATE.json").exists()
 
 
 def test_setting_the_objective_preserves_the_managers_other_state(tmp_path: Path) -> None:
     """Same file the Manager owns; a read-modify-write that dropped ``vertical``
     or ``current_stage`` would strand the campaign it just configured."""
-    state = tmp_path / "research" / "PIPELINE_STATE.json"
+    state = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state.parent.mkdir(parents=True)
     state.write_text(json.dumps({"vertical": "math", "current_stage": "solve"}))
 
@@ -454,7 +454,7 @@ def test_objective_write_leaves_no_torn_file_for_a_concurrent_reader(
     read this same path, and two of the readers raise on invalid JSON rather
     than falling back, so a truncated window takes down a completion gate."""
     set_objective(tmp_path, mode="targeted", goal="G")
-    state = tmp_path / "research" / "PIPELINE_STATE.json"
+    state = tmp_path / ".argus" / "PIPELINE_STATE.json"
     assert json.loads(state.read_text(encoding="utf-8"))["math_goal"] == "G"
     assert not list(state.parent.glob("*.tmp"))
 

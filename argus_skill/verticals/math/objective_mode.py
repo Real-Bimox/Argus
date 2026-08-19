@@ -51,10 +51,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
+
+from ...core.pipeline_state import read_pipeline_state, write_pipeline_state
 
 __all__ = [
     "MATH_OBJECTIVE_MODES",
@@ -92,9 +93,6 @@ MODE_COMPLETION = {
     ),
 }
 
-_STATE_RELPATH = ("research", "PIPELINE_STATE.json")
-
-
 def normalize_mode(value: Any) -> str | None:
     text = str(value or "").strip().lower()
     return text if text in MATH_OBJECTIVE_MODES else None
@@ -127,12 +125,11 @@ class MathObjective:
 
 
 def _read_state(project_root: object) -> dict[str, Any]:
-    path = Path(str(project_root)).joinpath(*_STATE_RELPATH)
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        payload = read_pipeline_state(project_root)
+    except (OSError, ValueError, json.JSONDecodeError):
         return {}
-    return payload if isinstance(payload, dict) else {}
+    return payload
 
 
 def resolve_objective(project_root: object) -> MathObjective:
@@ -178,7 +175,7 @@ def set_objective(
 
     Written the way ``skills.vertical_select.persist_vertical`` writes the same
     file — temp file plus ``os.replace`` — because that is now not the only
-    writer of ``research/PIPELINE_STATE.json``. A plain ``write_text`` truncates
+    writer of ``.argus/PIPELINE_STATE.json``. A plain ``write_text`` truncates
     before it fills, so a reader arriving in that window (``resolve_objective``,
     ``resolve_vertical``, ``stage_machine.current_stage``, the Manager's own raw
     reader) sees an empty or half-written file. Two of those four RAISE on
@@ -211,12 +208,7 @@ def set_objective(
     )
     if goal.strip():
         payload["math_goal"] = goal.strip()
-    path = root.joinpath(*_STATE_RELPATH)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    rendered = json.dumps(payload, indent=2, sort_keys=True) + "\n"
-    tmp_path = path.with_name(path.name + ".tmp")
-    tmp_path.write_text(rendered, encoding="utf-8")
-    os.replace(tmp_path, path)
+    write_pipeline_state(root, payload)
     return resolve_objective(root)
 
 
@@ -276,7 +268,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--project-root",
         type=Path,
         default=Path("."),
-        help="project root holding research/PIPELINE_STATE.json (default: .)",
+        help="project root holding .argus/PIPELINE_STATE.json (default: .)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

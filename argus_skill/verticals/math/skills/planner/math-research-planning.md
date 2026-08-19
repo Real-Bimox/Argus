@@ -8,7 +8,7 @@ likely to settle a real uncertainty: derive a lemma, seek a counterexample,
 compute examples, read a source, try a different proof idea, or formalize a
 delicate step.
 
-Objective mode in `research/PIPELINE_STATE.json`: `targeted` (one goal — ruling
+Objective mode in `.argus/PIPELINE_STATE.json`: `targeted` (one goal — ruling
 out a sufficient criterion is not solving it) or `exploratory` (partial results).
 If unset, ask. Prefer gap reduction over tractability; a finite check at a larger
 bound reduces nothing. Retired routes and what killed them are projected into

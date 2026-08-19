@@ -222,7 +222,7 @@ def test_research_late_stages_accept_manager_selected_survey_shape() -> None:
 def test_rollback_stage_moves_state_machine_backward(tmp_path: Path) -> None:
     from argus_skill.skills.stage_machine import rollback_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
         "current_stage": "run",
@@ -264,7 +264,7 @@ def test_rollback_stage_rejects_forward_or_same_target(tmp_path: Path) -> None:
 
     from argus_skill.skills.stage_machine import rollback_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
         "current_stage": "plan",
@@ -281,7 +281,7 @@ def test_rollback_stage_rejects_forward_or_same_target(tmp_path: Path) -> None:
 def test_rollback_stage_appends_history_across_calls(tmp_path: Path) -> None:
     from argus_skill.skills.stage_machine import rollback_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
         "current_stage": "draft",
@@ -321,7 +321,7 @@ def test_rollback_onto_completed_stage_reopens_it_no_deadlock(tmp_path: Path) ->
     """
     from argus_skill.skills.stage_machine import rollback_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
         "current_stage": "draft",
@@ -345,7 +345,7 @@ def test_rollback_onto_completed_stage_reopens_it_no_deadlock(tmp_path: Path) ->
 def test_advance_stage_moves_forward_and_marks_previous_done(tmp_path: Path) -> None:
     from argus_skill.skills.stage_machine import advance_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
         "current_stage": "benchmark",
@@ -381,7 +381,7 @@ def test_advance_stage_moves_forward_and_marks_previous_done(tmp_path: Path) -> 
 def test_stage_transition_leaves_noncanonical_status_file_untouched(tmp_path: Path) -> None:
     from argus_skill.skills.stage_machine import advance_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(
         json.dumps({"current_stage": "benchmark"}), encoding="utf-8"
@@ -401,7 +401,7 @@ def test_advance_stage_rejects_backward_but_records_skips(tmp_path: Path) -> Non
 
     from argus_skill.skills.stage_machine import advance_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
         "current_stage": "benchmark",
@@ -429,7 +429,7 @@ def test_advance_stage_is_vertical_aware_speedrun(tmp_path: Path, monkeypatch) -
     from argus_skill.skills.stage_machine import advance_stage
 
     monkeypatch.delenv("ARGUS_SKILL_VERTICAL", raising=False)
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     # speedrun order is setup -> optimize -> measure -> report
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
@@ -475,7 +475,7 @@ def test_manager_early_completion_is_a_current_completion_certificate(
         "math",
         research_target_level="exploratory",
     )
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["workflow_mode"] = "direct"
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -503,7 +503,7 @@ def test_manager_early_completion_is_a_current_completion_certificate(
 def test_rollback_stage_also_writes_unified_stage_history(tmp_path: Path) -> None:
     from argus_skill.skills.stage_machine import rollback_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(json.dumps({
         "current_stage": "run",
@@ -524,7 +524,7 @@ def test_rollback_stage_also_writes_unified_stage_history(tmp_path: Path) -> Non
 def test_rollback_reopens_a_previously_skipped_stage(tmp_path: Path) -> None:
     from argus_skill.skills.stage_machine import rollback_stage
 
-    research_dir = tmp_path / "research"
+    research_dir = tmp_path / ".argus"
     research_dir.mkdir()
     (research_dir / "PIPELINE_STATE.json").write_text(
         json.dumps({

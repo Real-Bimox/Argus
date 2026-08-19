@@ -50,8 +50,8 @@ REQUEST = "Prove that every group of order 24 has a normal Sylow subgroup"
 
 
 def _project(tmp_path: Path) -> Path:
-    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "research" / "PIPELINE_STATE.json").write_text(
+    (tmp_path / ".argus").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "math", "current_stage": "scope"}) + "\n",
         encoding="utf-8",
     )
@@ -60,7 +60,7 @@ def _project(tmp_path: Path) -> Path:
 
 def _state(root: Path) -> dict:
     return json.loads(
-        (root / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (root / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
 
 

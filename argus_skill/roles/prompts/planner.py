@@ -208,18 +208,9 @@ def build_continuous_prompt(
     stage = prompt_context.stage
     stage_checklist = prompt_context.stage_checklist
     workflow_mode = resolve_workflow_mode(_proot)
-    stage_order = prompt_context.stage_order
-    stage_idx = stage_order.index(stage) if stage in stage_order else 0
-    earlier_stages = ", ".join(stage_order[:stage_idx]) or "(none)"
 
-    # Vertical-native prompt framing: resolve the active vertical and let it
-    # supply the top-of-prompt role banner. The paper-pipeline framing below
-    # (research gate, parallel paper-drafting, upstream rollback) applies
-    # ONLY to a vertical requiring final certification; for any
-    # other vertical (e.g. speedrun) those blocks are suppressed and the
-    # vertical's banner is prepended so the planner runs that vertical's loop
-    # instead of demanding/rebuilding a research gate.
-    _final_certification = prompt_context.requires_final_certification
+    # Vertical-owned policy arrives through the prompt catalog; this module
+    # contributes only role-wide planning behavior.
     optimize_banner = prompt_context.role_banner
 
     research_target_block = ""
@@ -236,12 +227,15 @@ def build_continuous_prompt(
         except Exception:  # noqa: BLE001 - stage is advisory here
             _stage = ""
         _policy = resolve_policy(
-            _proot, stage=_stage, target_level=_research_target_level,
+            _proot,
+            stage=_stage,
+            target_level=_research_target_level,
+            stage_profiles=prompt_context.verification_stage_profiles,
         )
         research_target_block = (
             "## Manager-owned research target\n"
             f"Preserve `research_target_level={_research_target_level}` from "
-            "`research/PIPELINE_STATE.json`; it sets `PROJECT_DONE`, not this "
+            "`.argus/PIPELINE_STATE.json`; it sets `PROJECT_DONE`, not this "
             f"round (`{_policy.profile}`/{_policy.posture}). At "
             "`publishable`/`doctoral` original research needs a nontrivial "
             "technical core, verified originality, formal/causal grounding, and "
@@ -250,22 +244,6 @@ def build_continuous_prompt(
             "that level; originality is not required. Known results, finite checks, and honest "
             "negative reports are progress, not done. At `exploratory`, an "
             "independently verified negative report may satisfy the objective."
-        )
-
-    standing_research_block = ""
-    if open_ended and _final_certification:
-        standing_research_block = (
-            "## Standing research objective\n"
-            "A failed hypothesis, negative experiment, or rejected direction is "
-            "project memory, not a forced next action and not completion of the "
-            "standing research goal. Read the stored result and decide for yourself "
-            "what it changes: it may call for a revised explanation, a different "
-            "mechanism, a stronger benchmark, a new framing, or no immediate action. "
-            "The host never maps a failure label to a next action. Report "
-            "`PROJECT_DONE=true` only after the persisted research target itself is "
-            "met and independently reviewed. Do not turn internal stop decisions, "
-            "checklist language, or workflow ceremony into the paper's story unless "
-            "they are scientifically essential.\n\n"
         )
 
     standing_continuous_block = ""
@@ -312,119 +290,6 @@ def build_continuous_prompt(
             "valuable next milestone for the operator objective; Manager updates the "
             "stage after mission results."
         )
-
-    # Parallel paper-drafting track: while a long experiment grinds in the
-    # background during `run`/`analysis`, drafting manuscript prose is not
-    # gated behind run/analysis (the draft/review/submission evidence gates
-    # only fire once current_stage advances). Surface an explicit permission
-    # block + the draft-stage checklist so the planner can keep the loop
-    # productive instead of babysitting the run. Prose-only, never advances
-    # the stage pointer; final-number integrity is preserved via placeholders.
-    parallel_drafting_block = ""
-    if stage in ("run", "analysis") and _final_certification:
-        draft_checklist = resolve_role_prompt(
-            continuous_request(
-                _proot,
-                stage="draft",
-                operation=PARALLEL_DRAFT,
-                include_search_altitude=False,
-            )
-        ).stage_checklist
-        analysis_caveat = (
-            "- You are at `analysis`: the `evidence_chain` gate is already "
-            "STRUCTURAL here, so any claim/evidence artifact a drafting "
-            "pass touches must stay internally consistent or remain "
-            "explicitly placeholder-only — do not introduce unsupported "
-            "quantified claims.\n"
-            if stage == "analysis"
-            else "- You are at `run`: no paper-structural gate fires yet, so "
-            "drafting prose is unblocked; the integrity rules below still "
-            "apply so the draft is not anti-fabrication debt later.\n"
-        )
-        parallel_drafting_block = (
-            "## Parallel paper-drafting track (run/analysis only)\n"
-            f"`current_stage` is `{stage}`. If a long-running experiment is "
-            "already launched and progressing on its own in the background, "
-            "rounds spent ONLY waiting on it are wasted budget. You MAY and "
-            "SHOULD delegate ONE bounded paper-DRAFTING task that asks Engineer "
-            "to write/extend `paper/main.tex` (and section files): "
-            "Introduction, Related Work, Background, Problem Definition, "
-            "Method/Approach narrative, Experimental-Setup description, and "
-            "Results-section SCAFFOLDING. There is no results-dependency "
-            "restriction on WHICH sections may be drafted.\n\n"
-            "Hard rules for a parallel drafting pass:\n"
-            "1. It does NOT advance the pipeline. Do NOT edit "
-            "`research/PIPELINE_STATE.json`; do NOT mark `run`, `analysis`, "
-            "`draft`, `review`, or `submission` ready/done. Leave "
-            "`current_stage` unchanged.\n"
-            "2. INTEGRITY (drafting is allowed, fabricating is not): you may "
-            "draft any section including Results before final numbers exist, "
-            "but every final metric, comparison, significance test, or "
-            "outcome-dependent claim MUST be an explicit `TBD`/`PLACEHOLDER` "
-            "token or clearly-conditional scaffold text. Never invent numbers "
-            "or imply a completed outcome. The draft/review/submission "
-            "evidence + anti-fabrication gates still enforce this later.\n"
-            "3. Maintain a placeholder ledger in "
-            "`paper/RESULT_PLACEHOLDERS.md` listing each placeholder, its "
-            "owning source artifact, and the backfill condition, so a later "
-            "later analysis/draft work can find and fill every TBD.\n"
-            "4. Ground style proportionally: inspect one or two relevant venue "
-            "papers when that would improve the draft, but do not create exemplar-"
-            "conformance schemas or copy another paper's section sequence. The "
-            "project's thesis and evidence determine the structure.\n"
-            "5. Do NOT let drafting starve experiment monitoring: this pass "
-            "(or the next cycle) must still do one lightweight run-health "
-            "check on the live run each cycle.\n"
-            f"{analysis_caveat}"
-            "6. Judge this direct drafting pass by the paper sections written "
-            "and placeholder integrity, not by run/analysis-stage advancement.\n\n"
-            "Draft-stage checklist (for shaping the drafting scope; "
-            "do NOT mark its items done while current_stage is `" + stage + "`):\n"
-            f"{draft_checklist}\n"
-        )
-
-    upstream_rollback_block = (
-        "## Upstream defect detection and rollback\n"
-        f"Current stage according to `research/PIPELINE_STATE.json`: `{stage}`.\n"
-        f"Earlier stages: {earlier_stages}.\n\n"
-        "While executing the project objective you may "
-        "discover that an *upstream* (earlier-stage) artifact is missing, "
-        "stale, or unreliable. Examples:\n"
-        "- you're at `run` but `research/INFRA_CHOICE.md` does not exist,\n"
-        "  even though the project does training/large-scale inference;\n"
-        "- you're at `analysis` but every `scored_rows.jsonl` has uniform\n"
-        "  scores (the benchmark evaluator is a stub);\n"
-        "- you're at `draft` but `research/RESEARCH_BRIEF.md` was never\n"
-        "  filled in with a real thesis.\n\n"
-        "When that happens, do NOT perform forward-progress work that\n"
-        "pretends the gap doesn't exist, and do NOT edit the pipeline state\n"
-        "machine yourself — stage transitions (including rollback) are the\n"
-        "Manager's authority. Instead:\n\n"
-        "1. **Investigate before deciding.** Read at least: the missing\n"
-        "   artifact's expected path, the stage checklist for the\n"
-        "   earlier stage that owns it, the current `PIPELINE_STATE.json`,\n"
-        "   and any nearby evidence that might already cover the gap\n"
-        "   under a different name. Do not flag a rollback on a typo.\n"
-        "2. **Identify the EARLIEST broken stage**, not the latest one.\n"
-        "   Infrastructure comparison and choice belong to `plan`; their "
-        "absence is not a reason to roll back a completed research stage.\n"
-        "3. **REPORT the defect for the Manager.** Name the earliest broken\n"
-        "   stage and the missing artifact in your verdict `reason` (and in\n"
-        "   any structured blocker field) so the Manager can roll the stage\n"
-        "   back. Do NOT call `rollback_stage` and do\n"
-        "   NOT write `research/PIPELINE_STATE.json`; the Manager performs the\n"
-        "   transition.\n"
-        "4. **Do not perform forward-progress work that depends on the broken\n"
-        "   stage.** A reported rollback supersedes everything else this\n"
-        "   cycle; wait for the Manager to move the stage, then work the\n"
-        "   earlier stage's checklist with concrete investigation (read\n"
-        "   referenced papers, clone candidate framework repos, call the\n"
-        "   model APIs to verify scoring backends, …) — NOT a blind\n"
-        "   regenerate or a template fill-in.\n"
-    )
-    if not _final_certification:
-        # non-paper verticals have no upstream paper stages to roll back into.
-        upstream_rollback_block = ""
 
     # The Planner gets the same library paths as other roles and searches them
     # independently. No Skill content is selected or copied into this prompt.
@@ -514,13 +379,6 @@ def build_continuous_prompt(
         "`python -m argus_skill ...` or `ARGUS_SKILL_PYTHON`; do not copy stale "
         "host paths from history."
     )
-    if _final_certification:
-        planner_hygiene_block += (
-            " For paper infrastructure, trust the fresh model-backed "
-            "`paper/PAPER_INFRASTRUCTURE_REVIEW.json`; if missing or stale, "
-            "run its generator rather than using an ad hoc keyword scan."
-        )
-
     # Compile from structured state only: vertical/stage, target contract,
     # open-ended mode and available semantic libraries. Do not keyword-route
     # task prose to decide which policy fragments the Planner receives.
@@ -531,7 +389,6 @@ def build_continuous_prompt(
         ),
         optimize_banner,
         research_target_block,
-        standing_research_block,
         standing_continuous_block,
         _PLANNER_CORE_CONTRACT,
         native_shell_summary(),
@@ -542,8 +399,6 @@ def build_continuous_prompt(
         stage_gate_block,
         matched_planner_skill_block,
         planner_memory_block,
-        upstream_rollback_block,
-        parallel_drafting_block,
         wiki_block,
         search_altitude_block,
         "## Manager mission brief (authoritative)\n" + continuous_objective.strip(),

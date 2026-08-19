@@ -298,7 +298,7 @@ All paths are relative to the project root.
 | --- | --- |
 | `research/MATH_STATE.json` | The append-only claim, evidence, assumption and route store. |
 | `research/PROOF_GRAPH.json` | Strategy graph and proof DAG. |
-| `research/PIPELINE_STATE.json` | Stage, vertical, workflow mode, and the math goal and objective mode. |
+| `.argus/PIPELINE_STATE.json` | Stage, vertical, workflow mode, and the math goal and objective mode. |
 | `research/literature/` | Archived sources, retrieved before any literature record was written. |
 
 ---

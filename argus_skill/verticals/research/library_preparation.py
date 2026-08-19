@@ -22,6 +22,7 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
     if resolve_research_target_level(context.workdir) == "exploratory":
         return
     from .idea_portfolio import (
+        QUORUM_COUNT,
         ensure_idea_portfolio,
         idea_portfolio_selection,
         portfolio_required,
@@ -31,32 +32,42 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
         context.required_skill_paths.extend((
             "engineer/idea-discovery.md",
             "engineer/idea-creator.md",
-            "engineer/agent-team-lead.md",
         ))
-        team_root = ensure_idea_portfolio(
-            context.workdir,
-            direction=context.direction,
-        )
-        selection = idea_portfolio_selection(context.workdir)
-        context.emit({
-            "type": "idea.portfolio.formed",
-            "team_root": str(team_root),
-            "width": 12,
-            "route_count": 12,
-            "task_count": 36,
-            "selection": selection or {},
-            "policy": "greedy_first_qualified",
-            "text": (
-                f"streaming 12-route idea pipeline selected {selection['route_id']}"
-                if selection
-                else "formed streaming 12-route idea review/probe pipeline"
-            ),
-        })
+        if context.team_task_id:
+            context.emit({
+                "type": "idea.portfolio.nested_skipped",
+                "team_task_id": context.team_task_id,
+                "text": "team worker reused the parent portfolio without recursive fanout",
+            })
+        else:
+            context.required_skill_paths.append("engineer/agent-team-lead.md")
+            team_root = ensure_idea_portfolio(
+                context.workdir,
+                direction=context.direction,
+            )
+            selection = idea_portfolio_selection(context.workdir)
+            context.emit({
+                "type": "idea.portfolio.formed",
+                "team_root": str(team_root),
+                "width": 12,
+                "route_count": 12,
+                "review_quorum": QUORUM_COUNT,
+                "task_count": 24,
+                "selection": selection or {},
+                "policy": "quorum_80_agent_judgment",
+                "text": (
+                    f"streaming 12-route idea pipeline selected {selection['route_id']}"
+                    if selection
+                    else "formed streaming 12-route idea review/probe pipeline"
+                ),
+            })
+    if context.team_task_id:
+        return
     if (
         _enabled("ARGUS_SKILL_VENUE_RESEARCH")
         and context.stage in _VENUE_STAGES
     ):
-        from ...skills.venue_research import (
+        from .venue_research import (
             needs_venue_research,
             research_venue_profile,
         )
@@ -81,7 +92,7 @@ def prepare_skill_libraries(context: VerticalLibraryContext) -> None:
                 ),
             })
     if _enabled("ARGUS_SKILL_IDEA_SEARCH") and context.stage == "research":
-        from ...skills.idea_search import _already_seeded, augment_idea_candidates
+        from .idea_search import _already_seeded, augment_idea_candidates
 
         if not _already_seeded(context.workdir):
             context.emit({

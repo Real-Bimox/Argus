@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from ...skills.stage_machine import ChecklistItem
 
@@ -25,6 +24,7 @@ STAGE_ALIASES = {
 WORKFLOW_MODE = "direct"
 completion_gate = "none"
 MISSION_KIND = "optimize"
+VERIFICATION_STAGE_PROFILES = {"optimize": "develop"}
 
 # Kernel work should start from the repository and measured behavior, not from
 # framework-authored document bundles.
@@ -94,10 +94,11 @@ def prepare_mission(  # noqa: ARG001 - baseline isolation is per stage, not per 
     which item claimed it would hand two concurrent missions two baselines.
     """
     raw_stage = str(stage or "").strip().lower()
-    state_path = Path(project_root) / "research" / "PIPELINE_STATE.json"
+    from ...core.pipeline_state import read_pipeline_state
+
     try:
-        payload = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        payload = read_pipeline_state(project_root)
+    except (OSError, ValueError, json.JSONDecodeError):
         payload = {}
     if isinstance(payload, dict):
         raw_stage = str(payload.get("current_stage") or raw_stage).strip().lower()

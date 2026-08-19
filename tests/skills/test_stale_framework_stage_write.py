@@ -168,7 +168,7 @@ def project(tmp_path: Path, monkeypatch) -> Path:
     # write side. Granting both here keeps the subject of these tests the
     # rejection message rather than the stage position. See
     # ``tests/skills/test_stage_completion_authority.py``.
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     state["workflow_mode"] = "direct"
     state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
@@ -177,7 +177,7 @@ def project(tmp_path: Path, monkeypatch) -> Path:
 
 def _state(project: Path) -> dict:
     return json.loads(
-        (project / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (project / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
 
 
@@ -204,7 +204,7 @@ def test_the_rejection_names_the_stage_that_holds_the_disputed_record(project):
     stage_machine.complete_final_stage(
         project, reason="scope is enough", allow_early_completion=True
     )
-    state_path = project / "research" / "PIPELINE_STATE.json"
+    state_path = project / ".argus" / "PIPELINE_STATE.json"
     state = _state(project)
     expected = state["stages"]["scope"]["completion_contract_sha256"]
     state["stages"]["scope"]["completion_contract_sha256"] = "6248efde" + "0" * 56

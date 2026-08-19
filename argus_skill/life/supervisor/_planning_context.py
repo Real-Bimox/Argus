@@ -1059,8 +1059,10 @@ class PlanningContextMixin:
                 Path(self.memory.root) / "operator-authorizations.jsonl"
             )
         if "manager_stage" in wake_sources:
+            from ...core.pipeline_state import pipeline_state_path
+
             revision["manager_stage"] = self._waiting_revision_file(
-                project_root / "research" / "PIPELINE_STATE.json"
+                pipeline_state_path(project_root)
             )
         if "artifact_revision" in wake_sources:
             revision["artifacts"] = [

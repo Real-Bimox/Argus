@@ -14,6 +14,7 @@ VERTICAL_CONTRACT_VERSION = 1
 _COMPLETION_GATES = frozenset({"none", "metric", "certified"})
 _WORKFLOW_MODES = frozenset({"staged", "direct", "proportional"})
 _MISSION_KINDS = frozenset({"custom", "optimize", "research", "software"})
+_VERIFICATION_PROFILES = frozenset({"explore", "develop", "certify"})
 
 
 class VerticalContractError(ValueError):
@@ -46,6 +47,20 @@ class MissionPrelude(Protocol):
     ) -> str: ...
 
 
+class RolePromptFragment(Protocol):
+    """Optional vertical-owned prompt text selected from structured context."""
+
+    def __call__(
+        self,
+        *,
+        role: str,
+        operation: str,
+        stage: str,
+        scope: str,
+        project_root: Path | None,
+    ) -> str: ...
+
+
 @dataclass(frozen=True)
 class VerticalLibraryContext:
     """Core-owned inputs for optional provider-owned Skill preparation."""
@@ -56,6 +71,7 @@ class VerticalLibraryContext:
     direction: str
     workflow_mode: str
     paper_mission: bool
+    team_task_id: str | None
     runner: Any
     model: str | None
     emit: Callable[[dict], None]
@@ -69,13 +85,16 @@ class VerticalContract:
     checklist_items: dict[str, Any]
     completion_gate: str
     mission_kind: str = "custom"
+    paper_mission: bool = False
     ground_before_handoff: bool = False
     role_guidance: Callable[[str], str] | None = None
+    role_prompt_fragment: RolePromptFragment | None = None
     evidence_schema: Any = None
     requires_independent_review: bool = False
     completion_contract_version: int = 0
     research_target_levels: tuple[str, ...] = ()
     workflow_mode: str = "staged"
+    verification_stage_profiles: dict[str, str] | None = None
     checklist_optional_stages: frozenset[str] = frozenset()
     stage_aliases: dict[str, str] | None = None
     search_altitude: Callable[[object], str] | None = None
@@ -107,6 +126,26 @@ class VerticalContract:
         if self.role_guidance is None:
             return ""
         value = self.role_guidance(role)
+        return value if isinstance(value, str) else ""
+
+    def prompt_fragment(
+        self,
+        *,
+        role: str,
+        operation: str,
+        stage: str,
+        scope: str,
+        project_root: Path | None,
+    ) -> str:
+        if self.role_prompt_fragment is None:
+            return ""
+        value = self.role_prompt_fragment(
+            role=role,
+            operation=operation,
+            stage=stage,
+            scope=scope,
+            project_root=project_root,
+        )
         return value if isinstance(value, str) else ""
 
     def altitude(self, project_root: object) -> str:
@@ -442,18 +481,56 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
                 f"vertical {name!r} declares live search for unknown stages: "
                 f"{', '.join(unknown_live_search)}"
             )
+    raw_verification_profiles = (
+        getattr(provider, "VERIFICATION_STAGE_PROFILES", {}) or {}
+    )
+    if not isinstance(raw_verification_profiles, dict):
+        raise VerticalContractError(
+            f"vertical {name!r} verification profiles are not a mapping"
+        )
+    verification_stage_profiles = {
+        str(stage).strip().lower(): str(profile).strip().lower()
+        for stage, profile in raw_verification_profiles.items()
+        if str(stage).strip()
+    }
+    unknown_profile_stages = sorted(
+        set(verification_stage_profiles) - set(stage_order)
+    )
+    if unknown_profile_stages:
+        raise VerticalContractError(
+            f"vertical {name!r} has verification profiles for unknown stages: "
+            f"{', '.join(unknown_profile_stages)}"
+        )
+    invalid_profiles = sorted(
+        {
+            profile
+            for profile in verification_stage_profiles.values()
+            if profile not in _VERIFICATION_PROFILES
+        }
+    )
+    if invalid_profiles:
+        raise VerticalContractError(
+            f"vertical {name!r} has invalid verification profiles: "
+            f"{', '.join(invalid_profiles)}"
+        )
     return VerticalContract(
         name=str(name or "").strip().lower(),
         stage_order=stage_order,
         checklist_items=checklist_items,
         completion_gate=gate,
         mission_kind=mission_kind,
+        paper_mission=bool(getattr(provider, "PAPER_MISSION", False)),
         ground_before_handoff=bool(
             getattr(provider, "GROUND_BEFORE_HANDOFF", False)
         ),
         role_guidance=(
             getattr(provider, "role_banner")
             if callable(getattr(provider, "role_banner", None))
+            else None
+        ),
+        role_prompt_fragment=(
+            getattr(provider, "render_role_prompt_fragment")
+            if callable(getattr(provider, "render_role_prompt_fragment", None))
             else None
         ),
         evidence_schema=getattr(provider, "EVIDENCE_SCHEMA", None),
@@ -469,6 +546,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
             if str(level).strip()
         ),
         workflow_mode=mode,
+        verification_stage_profiles=verification_stage_profiles,
         checklist_optional_stages=optional_stages,
         stage_aliases=aliases,
         search_altitude=(
@@ -498,6 +576,7 @@ def vertical_contract(name: str, provider: Any) -> VerticalContract:
 __all__ = [
     "VERTICAL_CONTRACT_VERSION",
     "MissionPrelude",
+    "RolePromptFragment",
     "VerticalContract",
     "VerticalContractError",
     "VerticalLibraryContext",

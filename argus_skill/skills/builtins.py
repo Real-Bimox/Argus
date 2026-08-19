@@ -1,10 +1,8 @@
-"""Bundled default skills for new argus-skill homes.
+"""Bundled cross-vertical defaults and vertical-aware Skill seeding.
 
-The files under :mod:`argus_skill.builtin_skills` are argus-native
-research/paper playbooks adapted from ARIS workflow concepts. They are
-seeded into ``~/.argus-skill/skills`` on initialization so the agent can
-start research and paper-writing missions before it has distilled its own
-local skills.
+``argus_skill/builtin_skills`` contains only reusable workflow skills.
+Domain/vertical playbooks live under ``verticals/<name>/skills`` and are
+seeded only for the active context.
 """
 from __future__ import annotations
 
@@ -21,39 +19,18 @@ from typing import Iterable
 _BUILTIN_PACKAGE = "argus_skill.builtin_skills"
 DEFAULT_PROJECT_BUILTIN_SKILLS_DIR = "argus_builtin_skills"
 _BUILTIN_SEED_STATE = ".argus-builtin-seeds.json"
+_MOVED_SKILL_MARKER = ".moved-from-global.json"
 _LEGACY_BUILTIN_SEED_HASHES = {
-    "agent-md-new-project-template.md": "bfb74c52a6e440e1a3e6728c039ff39bdbed09649e7b0267a8caa303ff991ed0",
     "agent-md-optimize-project-template.md": "52fbd7e60f85042624a54b563945b26739a590120d21c830c8f2d4eda0b3db7d",
-    "engineer/aaai-format-preflight.md": "51a5d0a6e035472c43bab41823ca9c651abf4f265288d50c1e4d25dc70d9df03",
     "engineer/agent-team-lead.md": "bdaf7b78b57b3fec45bc9108d0c36f2bd0d07e191657cdffd4299c25f9f98722",
     "engineer/argus-engineer-role.md": "8823e0c01e377e1be5293d1529344213e0f1326ebe94a6863dc4ee0e2730dadd",
-    "engineer/auto-research-pipeline.md": "840725b6bd8df6d0e368b933c20ab6d72ebbc5d23a1bf518f2aa56c85944c7a5",
-    "engineer/claims-evidence-audit.md": "08cf42f847b4b63900f3ab832ec6441f4d225cf4765ac401cd3a06514b9b403e",
-    "engineer/emnlp-format-preflight.md": "f700489a6480e04c2c2147090607dcdcb01efbec8f27d1be4403a3b30a727383",
     "engineer/environment-readiness-gate.md": "f8615f2a465cbe7b2ce838179c24a575baf4fbe6370730035c85cd4dd907de9b",
-    "engineer/idea-creator.md": "296bc76fe10857904811b94852d3fcbaa9018ac5bb8d4fd0a8c5f868e7a5b778",
-    "engineer/idea-discovery.md": "e594fae6eadf3bfad229f53d8b78aa8456d2d1dc9b3396e2c2c3f852279743af",
-    "engineer/idea-feasibility-derisk.md": "e474e85b61a08bc359fa5ce41d06655536b4e66ff88933921d022767367c3cf3",
     "engineer/mermaid-graphviz-diagrams.md": "d340f45b0aeb7ee5f239aa79f1c8f3ed94be4a56af036dd7b80a60cd72953542",
-    "engineer/novelty-check.md": "d325add9836257cfc9c0832d267cac7fd5f912e39c3fe4fdfadd943894a8c421",
-    "engineer/paper-infrastructure-review.md": "656dd69cf7b49e6d00e466eb7237cfce66fb96216d4ca443bc9e6063edd1717e",
-    "engineer/paper-review-revision-loop.md": "adc9cf50a372bb530861f17192982b597a98593bd80fb54ed74cd9c080d05f84",
-    "engineer/research-brief-to-experiment-plan.md": "9ff2e37f871d06737690af3dc60b7de8e377c63d0bef59dbe46b0dc9380f84e4",
-    "engineer/research-experiment-runner.md": "e3cf568f21b9e6e0817c09d8adb730d0c636f5e54eb48b3be2060a8227928ad7",
-    "engineer/research-ideation.md": "58879d7f9f388bb5f81344df906ea099b1e39d0d9809237a2b660807c746554d",
-    "engineer/research-results-analysis-and-figures.md": "55e5fd08481332b2b30b0f8508689850cff7608a9af50b7c57927070d694f0f5",
-    "engineer/result-to-claim.md": "f6da90fd9160c0981b84dd03f261c5c9aa21ef3a7686ca301715c0457e1d2d6f",
     "engineer/training-infrastructure-guide.md": "43d1cbc1017173a5376f2a47642ea3ba5bf007b879ba86737514f8aba28f3f39",
-    "engineer/venue-format-research.md": "e49d4e270e53f919ae2e7f64d23958d231be6e6c1e52b0c30644998c8e8ba6a6",
     "manager/argus-manager-role.md": "dc193f31dca3acd3041544745d97b832725c0e37b55a44bd9a93db5f97a631be",
     "manager/evidence-based-stage-decision.md": "75347a834448d8abb92ae04ad486ab06c595d1fb53cbe3cd24e70b37368515ed",
     "planner/argus-planner-role.md": "30d16975503a9b41d97c05d622b4d36117677ff9500e65a4556dd2f8c244fb12",
-    "reviewer/aaai-academic-language-review.md": "7d584d509595f49d7ebe3585987df101ca8552da6c7846afc8e6a9a736dbfc14",
-    "reviewer/academic-paper-peer-review-benchmark.md": "a03717c55ad2405a3f04f8d758ac086e92d09e91b71bd7d621c799df7afdd7bc",
     "reviewer/argus-reviewer-role.md": "bc971a888bfcdc3acaca939b643410f509c328376737377ba8e898f1b4dee925",
-    "reviewer/emnlp-academic-language-review.md": "3e6a28f75867b2cd3f54fe5468d709ea11e0a9441fe069b4bd67b212a0cf8218",
-    "reviewer/experiment-plan-review.md": "6a1d67c2b1c663525dce2bc188576e783217ecbb53c3ca12f601ab34c44a331a",
-    "reviewer/experiment-results-review.md": "cf5c2c7029e3db71a45cb7e322caa3dac19a98b0b4a96e2946371a212b9e10b5",
 }
 _RETIRED_BUILTIN_SEED_HASHES = {
     "engineer/experiment-audit.md": (
@@ -205,19 +182,45 @@ def _is_bundled_script(prefix: str, filename: str) -> bool:
     return any(seg.endswith("_scripts") for seg in segments)
 
 
+def _moved_global_skill_names() -> set[str]:
+    moved: set[str] = set()
+    verticals_root = Path(__file__).resolve().parents[1] / "verticals"
+    for marker in verticals_root.glob(f"*/skills/{_MOVED_SKILL_MARKER}"):
+        try:
+            payload = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        values = payload.get("paths", ()) if isinstance(payload, dict) else payload
+        if isinstance(values, list):
+            moved.update(
+                str(value)
+                for value in values
+                if isinstance(value, str) and value.strip()
+            )
+    return moved
+
+
 def retire_orphaned_builtin_seeds(skills_dir: Path) -> list[str]:
     """Remove retired seeds from matching, archiving any operator-edited copy."""
     skills_dir = Path(skills_dir)
+    state = _seed_state(skills_dir)
+    retired = dict(_RETIRED_BUILTIN_SEED_HASHES)
+    retired.update({
+        relative: state.get(relative)
+        or _LEGACY_BUILTIN_SEED_HASHES.get(relative)
+        or ""
+        for relative in _moved_global_skill_names()
+    })
     removed: list[str] = []
     for relative_name, expected_digest in sorted(
-        _RETIRED_BUILTIN_SEED_HASHES.items()
+        retired.items()
     ):
         path = skills_dir / relative_name
         try:
             body = path.read_bytes()
         except (FileNotFoundError, IsADirectoryError, OSError):
             continue
-        if hashlib.sha256(body).hexdigest() == expected_digest:
+        if expected_digest and hashlib.sha256(body).hexdigest() == expected_digest:
             try:
                 path.unlink()
             except OSError:

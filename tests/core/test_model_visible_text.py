@@ -110,4 +110,4 @@ def test_reviewer_requires_causal_performance_evidence() -> None:
 
     assert "threshold miss only shows that this run missed its target" in prompt
     assert "root-cause, dominant/bottleneck-stage" in prompt
-    assert "phase timing/profiling or a controlled counterfactual" in prompt
+    assert "profiling, timing, or a controlled comparison" in prompt

@@ -32,7 +32,7 @@ official AAAI-26 submission instructions and the ``aaai2026.sty`` LaTeX kit):
 
 This module centralizes those facts as a frozen :class:`VenueProfile`, exposes a
 small registry, and resolves the active profile from
-``research/PIPELINE_STATE.json``'s ``target_venue`` field.
+``.argus/PIPELINE_STATE.json``'s ``target_venue`` field.
 
 There is deliberately NO implicit venue. An unconfigured research project must
 first select a currently open, domain-appropriate venue and persist either a
@@ -493,12 +493,11 @@ def get_venue_profile(key: str | None) -> VenueProfile:
 
 
 def _venue_key_from_pipeline_state(project_root: Path) -> str | None:
-    state_path = project_root / "research" / "PIPELINE_STATE.json"
+    from ...core.pipeline_state import read_pipeline_state
+
     try:
-        data = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(data, dict):
+        data = read_pipeline_state(project_root)
+    except (OSError, ValueError, json.JSONDecodeError):
         return None
     value = data.get("target_venue") or data.get("venue")
     return str(value) if value else None
@@ -511,7 +510,7 @@ def resolve_venue_profile(
 
     Precedence: ``ARGUS_SKILL_VENUE`` env override > a project-local researched
     ``research/VENUE_PROFILE.json`` (dynamic venue) > ``target_venue`` in
-    ``research/PIPELINE_STATE.json`` (built-in registry). Missing selection raises
+    the generic pipeline state (built-in registry). Missing selection raises
     ``KeyError`` so venue-dependent work cannot silently use the wrong template.
 
     Accept ordinary path-like inputs because the documented validation command

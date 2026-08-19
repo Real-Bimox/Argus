@@ -240,3 +240,82 @@ def test_resume_preserves_completed_task_result_shard(tmp_path: Path) -> None:
     }["implement"]
     assert implement["state"] == "done"
     assert implement["result_shard"] == "shards/implement.jsonl"
+
+
+def test_nested_team_formation_is_rejected_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    root = tmp_path / "nested"
+    monkeypatch.setenv("ARGUS_SKILL_TEAM_TASK_ID", "parent::route-01")
+
+    with pytest.raises(RuntimeError, match="nested team formation is disabled"):
+        _form(project, root)
+
+    assert not root.exists()
+    assert formation.registry.list_markers(project) == []
+
+
+def test_explicit_nested_team_override_is_visible_and_bounded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    root = tmp_path / "nested"
+    monkeypatch.setenv("ARGUS_SKILL_TEAM_TASK_ID", "parent::route-01")
+    monkeypatch.setenv("ARGUS_SKILL_ALLOW_NESTED_TEAM", "1")
+
+    assert _form(project, root)["team_id"] == "team-1"
+
+
+def test_project_active_campaign_limit_fails_before_new_team_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("ARGUS_TEAM_MAX_ACTIVE_CAMPAIGNS", "2")
+
+    for index in range(2):
+        formation.form_team(
+            project_root=project,
+            root=tmp_path / f"team-{index}",
+            team_id=f"team-{index}",
+            mission=f"mission-{index}",
+            lead="lead",
+            cwd=project,
+            tasks=[{"task_id": f"task-{index}", "objective": "work"}],
+        )
+
+    rejected_root = tmp_path / "team-2"
+    with pytest.raises(RuntimeError, match="active team campaigns"):
+        formation.form_team(
+            project_root=project,
+            root=rejected_root,
+            team_id="team-2",
+            mission="mission-2",
+            lead="lead",
+            cwd=project,
+            tasks=[{"task_id": "task-2", "objective": "work"}],
+        )
+
+    assert not rejected_root.exists()
+    assert len(formation.registry.list_markers(project)) == 2
+
+
+def test_team_task_count_limit_fails_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    root = tmp_path / "oversized"
+    monkeypatch.setenv("ARGUS_TEAM_MAX_TASKS_PER_FORMATION", "1")
+
+    with pytest.raises(RuntimeError, match="above ARGUS_TEAM_MAX_TASKS_PER_FORMATION"):
+        _form(project, root)
+
+    assert not root.exists()

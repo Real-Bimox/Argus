@@ -72,7 +72,7 @@ def _decide(tmp_path, *, mission_scope: str, review: ReviewDecision | None = Non
             )
         ),
     )
-    state = json.loads((state_root / "research" / "PIPELINE_STATE.json").read_text())
+    state = json.loads((state_root / ".argus" / "PIPELINE_STATE.json").read_text())
     return decision, state
 
 
@@ -171,5 +171,5 @@ def test_the_prompt_no_longer_invites_completion_from_an_earlier_stage() -> None
     with open(manager_prompts.__file__, encoding="utf-8") as handle:
         text = handle.read()
 
-    assert "From any earlier stage, ADVANCE instead" in text
+    assert "COMPLETE only at the final stage of a finite objective" in text
     assert "every later stage " not in text

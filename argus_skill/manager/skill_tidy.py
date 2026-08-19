@@ -27,7 +27,7 @@ _MAX_CANDIDATE_CHARS = 12_000
 #: technique into the cross-project profile library, where every future
 #: Engineer in every future project would have loaded it. The candidate it
 #: promoted said, in as many words, "before calling ``complete_final_stage``,
-#: ensure ``research/PIPELINE_STATE.json`` in the project state root has a
+#: ensure ``.argus/PIPELINE_STATE.json`` in the project state root has a
 #: resolved math objective mode".
 #:
 #: So a candidate naming any of these is withheld from the evidence bundle

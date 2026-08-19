@@ -14,6 +14,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterable
 
+from ..core.pipeline_state import read_pipeline_state, write_pipeline_state
+
 
 @dataclass(frozen=True)
 class ChecklistItem:
@@ -135,10 +137,9 @@ def current_stage(project_root: Path | str = ".") -> str:
     """
 
     root = Path(project_root)
-    state_path = root / "research" / "PIPELINE_STATE.json"
     try:
-        payload = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        payload = read_pipeline_state(root)
+    except (OSError, ValueError, json.JSONDecodeError):
         payload = None
     order, items = _active_vertical_checklist_defs(project_root)
     fallback = _normalize_stage(order[0]) if order else "research"
@@ -185,7 +186,7 @@ _STATUS_STAGE_LINE = re.compile(r"(?m)^Current stage:\s*[^\r\n]*$")
 def _sync_status_stage(project_root: Path | str, stage: str) -> bool:
     """Best-effort projection of authoritative pipeline stage into STATUS.md.
 
-    ``research/PIPELINE_STATE.json`` remains the source of truth. Projects opt
+    ``.argus/PIPELINE_STATE.json`` remains the source of truth. Projects opt
     into this human-readable projection by keeping one canonical
     ``Current stage: ...`` line. Only that line is replaced; missing markers,
     arbitrary status files, and symlinks are left untouched.
@@ -259,7 +260,6 @@ def _set_stage(
     import datetime as _dt
 
     root = Path(project_root)
-    state_path = root / "research" / "PIPELINE_STATE.json"
     raw_order, items = _active_vertical_checklist_defs(project_root)
     order = [_normalize_stage(s) for s in raw_order]
     target = normalize_stage_for_project(project_root, target_stage)
@@ -273,8 +273,8 @@ def _set_stage(
         raise ValueError(f"unknown stage {target_stage!r}")
 
     try:
-        payload = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+        payload = read_pipeline_state(root)
+    except (OSError, ValueError, json.JSONDecodeError):
         payload = {}
     if not isinstance(payload, dict):
         payload = {}
@@ -418,18 +418,7 @@ def _set_stage(
             "rolled_back_by": by,
         })
 
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    # ATOMIC write: render to a sibling temp file then os.replace() (atomic on
-    # POSIX). A crash mid-write (OOM / pod eviction / mission restart) must never
-    # leave PIPELINE_STATE.json empty or half-written — every reader fail-opens
-    # to the floor stage, silently resetting the whole project back to research.
-    import os as _os
-    _tmp = state_path.with_suffix(state_path.suffix + f".tmp.{_os.getpid()}")
-    _tmp.write_text(
-        json.dumps(payload, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-    _os.replace(_tmp, state_path)
+    state_path = write_pipeline_state(root, payload)
     _sync_status_stage(Path(evidence_root or root), target)
     return str(state_path)
 

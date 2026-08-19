@@ -323,6 +323,19 @@ def test_refill_fills_to_width_then_idempotent(tmp_path: Path) -> None:
     assert c._refill(root, width=3, cwd=tmp_path, now=101.0)["spawned"] == []
 
 
+def test_refill_uses_per_task_timeout(tmp_path: Path) -> None:
+    root = tmp_path / "team"
+    task_board.form(root, [
+        {"task_id": "t::bounded", "objective": "x", "timeout_s": 600},
+    ])
+    c = _fake_curator(tmp_path, teammate_timeout_s=5400)
+
+    c._refill(root, width=1, cwd=tmp_path, now=100.0)
+
+    child = next(iter(c._children.values()))
+    assert child.timeout_s == 600.0
+
+
 def test_member_ids_are_namespaced_by_campaign_root(tmp_path: Path) -> None:
     """Every roster starts at w1; two campaigns must retain both processes."""
     root_a = tmp_path / "team-a"
@@ -545,6 +558,35 @@ def test_tick_uses_default_width_when_pool_unset(tmp_path: Path) -> None:
     c = _fake_curator(tmp_path, default_width=3)
     c._tick(now=100.0)  # no pool.json → default width 3
     assert task_board.count_in_flight(root) == 3
+
+
+def test_tick_caps_total_live_workers_across_campaigns(tmp_path: Path) -> None:
+    for team_id in ("a", "b"):
+        root = tmp_path / f"team-{team_id}"
+        registry.write_marker(
+            tmp_path,
+            team_id=team_id,
+            team_root=root,
+            cwd=tmp_path,
+            now=1.0,
+        )
+        pool.update(root, width=3, state="running")
+        task_board.form(
+            root,
+            [
+                {"task_id": f"{team_id}::{index}", "objective": "x"}
+                for index in range(3)
+            ],
+        )
+    curator = _fake_curator(tmp_path, max_total_in_flight=4)
+
+    curator._tick(now=100.0)
+
+    assert len(curator._children) == 4
+    assert sum(
+        task_board.count_in_flight(tmp_path / f"team-{team_id}")
+        for team_id in ("a", "b")
+    ) == 4
 
 
 def test_tick_draining_stops_refill_and_removes_empty_marker(tmp_path: Path) -> None:

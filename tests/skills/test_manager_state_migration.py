@@ -1,4 +1,4 @@
-"""Importing a workdir's ``research/PIPELINE_STATE.json`` into the state root.
+"""Importing a workdir's ``.argus/PIPELINE_STATE.json`` into the state root.
 
 This runs inside ``build_life_runner``, so anything it raises does not surface
 as itself: it kills the front-door runner, and the operator is told the Manager
@@ -22,7 +22,7 @@ from argus_skill.skills.vertical_select import (
 
 
 def _write_state(root: Path, payload: dict) -> Path:
-    path = root / "research" / "PIPELINE_STATE.json"
+    path = root / ".argus" / "PIPELINE_STATE.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload), encoding="utf-8")
     return path
@@ -43,7 +43,7 @@ def test_a_decided_vertical_is_imported(tmp_path: Path) -> None:
     assert migrate_legacy_manager_state(state_root, workdir) is True
 
     payload = json.loads(
-        (state_root / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (state_root / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert payload["vertical"] == "math"
     assert payload["current_stage"] == "solve"
@@ -72,7 +72,7 @@ def test_an_unresolvable_vertical_still_stops_the_build(tmp_path: Path) -> None:
     # Naming the offending value is the whole point: the operator has to know
     # which key to fix, and this message is the only place it appears.
     assert "astrology" in str(caught.value)
-    assert not (state_root / "research" / "PIPELINE_STATE.json").exists()
+    assert not (state_root / ".argus" / "PIPELINE_STATE.json").exists()
 
 
 # -- the undecided project --------------------------------------------------
@@ -98,7 +98,7 @@ def test_state_without_a_vertical_is_imported_not_refused(
     assert migrate_legacy_manager_state(state_root, workdir) is True
 
     imported = json.loads(
-        (state_root / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (state_root / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     for key, value in payload.items():
         assert imported[key] == value
@@ -139,7 +139,7 @@ def test_an_existing_target_is_never_overwritten(tmp_path: Path) -> None:
     assert migrate_legacy_manager_state(state_root, workdir) is False
 
     payload = json.loads(
-        (state_root / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (state_root / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert payload["current_stage"] == "review"
 
@@ -159,7 +159,7 @@ def test_one_root_serving_as_both_is_a_no_op(tmp_path: Path) -> None:
 
 def test_corrupt_source_state_is_reported(tmp_path: Path) -> None:
     state_root, workdir = _roots(tmp_path)
-    path = workdir / "research" / "PIPELINE_STATE.json"
+    path = workdir / ".argus" / "PIPELINE_STATE.json"
     path.parent.mkdir(parents=True)
     path.write_text("{not json", encoding="utf-8")
 

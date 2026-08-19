@@ -25,10 +25,11 @@ from argus_skill.verticals.math.stages import stage_completion_issues
 def _project(tmp_path: Path) -> Path:
     """A math project that passes every gate other than the ledger."""
     set_objective(tmp_path, mode="targeted", goal="G")
-    pipeline = tmp_path / "research" / "PIPELINE_STATE.json"
+    pipeline = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state = json.loads(pipeline.read_text(encoding="utf-8"))
     state["verification_profile"] = "develop"
     pipeline.write_text(json.dumps(state), encoding="utf-8")
+    (tmp_path / "research").mkdir(parents=True, exist_ok=True)
     (tmp_path / "research" / "PROOF_GRAPH.json").write_text(
         json.dumps({
             "goal": "G",

@@ -65,7 +65,7 @@ selected venue profile and official author kit.
 
 | Current blocker / task | Read this skill first | Use it to decide or produce |
 | --- | --- | --- |
-| Stage order, readiness state, pivots, or "what next?" | `argus_builtin_skills/auto-research-pipeline.md` | `research/PIPELINE_STATE.json`, stage gates, when to move backward from paper drafting to experiments |
+| Stage order, readiness state, pivots, or "what next?" | `argus_builtin_skills/auto-research-pipeline.md` | `.argus/PIPELINE_STATE.json`, stage gates, when to move backward from paper drafting to experiments |
 | Experiment implementation, public-benchmark runs, comparisons, controls, progress files | `argus_builtin_skills/engineer/research-experiment-runner.md` | runnable harnesses, manifests, status/progress, raw evidence, cancellation |
 | Results analysis, result tables, and research figures | `argus_builtin_skills/engineer/research-results-analysis-and-figures.md` + research vertical `research-visualization-router.md` | `RESULTS_REPORT.md`, result-to-claim tables, figure source/render/review artifacts, `FIGURE_PROVENANCE.json`; image-2 outputs also retain `IMAGE2_FIGURES.json` |
 | Exemplar PDFs, page rhythm, structure blueprint, conformance | `argus_builtin_skills/paper-exemplar-pdf-learning.md` | exemplar PDFs/text, `STYLE_PROFILE.md`, `PAPER_STRUCTURE_BLUEPRINT.md`, structure conformance artifacts |
@@ -348,7 +348,7 @@ framework plus any decision-critical runner-up; do not clone every search hit.
 
 The project advances through the 8 stages in order
 (research → plan → benchmark → run → analysis → draft → review → submission).
-`research/PIPELINE_STATE.json` records `current_stage` and the per-stage
+`.argus/PIPELINE_STATE.json` records `current_stage` and the per-stage
 status. The L2 reviewer gates each transition by ticking off the
 current stage's checklist items.
 

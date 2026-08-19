@@ -35,7 +35,11 @@ form a 12-route streaming idea pipeline:
    `research/ideation/routes/<route-id>.md` output, and a separately checkable
    source trail. Each route must identify the closest work, a non-obvious gap,
    the strongest kill argument, and a faithful public-benchmark or real-trace
-   probe.
+   probe. Briefly inspect both application-frontier evidence
+   (ACL/EMNLP/NAACL, ICLR/ICML/NeurIPS, AAAI/AAMAS, recent arXiv) and relevant
+   mathematical, physical, statistical, ML, or deep-learning foundations.
+   This is a soft coverage diagnostic, not a quota: explain a missing side and
+   continue rather than spending tokens to fill categories.
    For a broad publishable/doctoral Agent paper, reserve at least four routes for
    independent foundation-first searches across relevant areas such as
    probability and learning theory, information theory, control and dynamical
@@ -50,8 +54,10 @@ form a 12-route streaming idea pipeline:
 4. As soon as one route report lands, give it to a fresh independent reviewer.
    The reviewer verifies primary sources, attacks prior art and ambition, and
    emits `qualified` or `rejected` plus the cheapest faithful probe contract.
-   A qualified route starts its probe immediately in the next free team slot;
-   it never waits for the other eleven routes.
+   Judge primarily from theoretical depth, novelty, mechanism, and professional
+   plausibility. Missing implementation detail or uncertain early evidence is
+   not a rejection reason. Keep reviews streaming while the remaining routes
+   continue.
 5. Search primary papers and official artifacts for novelty. Also inspect
    credible practitioner reports, technical blogs, benchmark issue trackers,
    and incident reports when they reveal deployment failures or unmet needs;
@@ -250,26 +256,30 @@ reviewer would write; this skill must articulate it so kill-argument
 later can stress-test it for real>
 ```
 
-### Step 5 — review and probe each route as it lands
+### Step 5 — review each route as it lands
 
 Every route has its own fresh `idea-review` task. That reviewer searches for the
 nearest implementation, benchmark, negative result, and simpler explanation,
 then judges novelty, technical depth, theoretical/causal foundation, frontier
 significance, falsifiability, benchmark validity, and local feasibility. Local
-ease cannot rescue a shallow or already-occupied idea.
+ease cannot rescue a shallow or already-occupied idea. Flag theory-only or
+AI-frontier-only coverage and inspect the missing side when useful, but do not
+reject or block solely for source-bucket imbalance.
 
-A `qualified` review immediately unlocks that route's `idea-probe` task. The
-probe runs the cheapest faithful public-evidence test and records a structured
-`advance`, `reject`, or `inconclusive` decision. Rejected reviews produce a
-cheap skipped record rather than consuming experiment budget.
+### Step 6 — select at the 80% review quorum, then smoke once
 
-### Step 6 — greedily select the first validated idea
+Wait until at least 80% of the 12 routes have completed independent reviews:
+`ceil(12 × 0.8) = 10`. Do not wait for the final two. Give those ten route and
+review artifacts to one fresh selector Agent, which chooses the strongest idea
+qualitatively by theory, novelty, generality, top-conference shape, and credible
+evidence path. The selector writes `research/IDEA_SELECTION.json`.
 
-The first route whose independent probe records `advance` becomes the default
-thesis in `research/IDEA_SELECTION.json`. Do not wait for slower routes,
-reviews, or probes to finish and do not replace the winner merely because a
-later candidate looks stronger on paper. Drain unstarted work after selection;
-running work may finish and remains part of the audit trail.
+Only the selected route receives one advisory probe, normally within ten
+minutes. It must not run a full benchmark, training job, broad sweep, or
+publication-scale multi-seed evaluation. Its supported/refuted/inconclusive
+evidence cannot reverse the selector's judgment; weak results become later
+implementation or experiment-design notes. The final two routes may finish in
+the background but do not block planning.
 
 ## Anti-patterns
 
@@ -286,7 +296,8 @@ running work may finish and remains part of the audit trail.
 
 ## Output contract
 
-For broad publishable/doctoral paper ideation, preserves route, review, and
-probe artifacts under `research/ideation/portfolios/<direction>/`. Writes the
-greedy winner to `research/IDEA_SELECTION.json`; unfinished routes never block
-the selected idea from entering planning.
+For broad publishable/doctoral paper ideation, preserves route and review
+artifacts under `research/ideation/portfolios/<direction>/`. After ten reviews,
+writes the selector Agent's winner to `research/IDEA_SELECTION.json` and one
+short advisory observation under the same portfolio. The final two routes never
+block the selected idea from entering planning.

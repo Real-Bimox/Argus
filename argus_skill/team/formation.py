@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,12 @@ from . import _store, pool, registry, roster, task_board
 
 _RECEIPT_FILE = "dispatch_receipt.json"
 _LOCK_FILE = ".formation.lock"
+_ADMISSION_LOCK_FILE = ".formation-admission.lock"
+_TEAM_TASK_ENV = "ARGUS_SKILL_TEAM_TASK_ID"
+_ALLOW_NESTED_ENV = "ARGUS_SKILL_ALLOW_NESTED_TEAM"
+_MAX_ACTIVE_ENV = "ARGUS_TEAM_MAX_ACTIVE_CAMPAIGNS"
+_MAX_TASKS_ENV = "ARGUS_TEAM_MAX_TASKS_PER_FORMATION"
+_ACTIVE_TASK_STATES = frozenset({"pending", "claimed", "running"})
 
 
 def _receipt_path(root: Path) -> Path:
@@ -107,7 +114,7 @@ def _validate_marker(
         raise ValueError("persisted team registry marker conflicts with formation")
 
 
-def form_team(
+def _form_team(
     *,
     project_root: Path,
     root: Path,
@@ -230,6 +237,90 @@ def form_team(
                 now=formed_at,
             )
         return dict(receipt)
+
+
+def _env_limit(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if value <= 0:
+        raise ValueError(f"{name} must be positive")
+    return value
+
+
+def _nested_formation_allowed() -> bool:
+    return os.environ.get(_ALLOW_NESTED_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _active_campaigns(project_root: Path) -> list[str]:
+    active: list[str] = []
+    for marker in registry.list_markers(project_root):
+        team_id = str(marker.get("team_id") or "").strip() or "(unknown)"
+        try:
+            root = Path(str(marker["team_root"])).expanduser().resolve()
+            tasks = task_board.snapshot(root)
+        except (KeyError, OSError, TypeError, ValueError):
+            active.append(team_id)
+            continue
+        if any(str(task.get("state") or "") in _ACTIVE_TASK_STATES for task in tasks):
+            active.append(team_id)
+    return active
+
+
+def form_team(
+    *,
+    project_root: Path,
+    root: Path,
+    team_id: str,
+    mission: str,
+    lead: str,
+    cwd: Path | str,
+    tasks: list[dict[str, Any]],
+    now: float | None = None,
+) -> dict[str, Any]:
+    """Admit and durably form one team without unbounded recursive fanout."""
+    project_root = Path(project_root).expanduser().resolve()
+    root = Path(root).expanduser().resolve()
+    nested_task_id = os.environ.get(_TEAM_TASK_ENV, "").strip()
+    if nested_task_id and not _nested_formation_allowed():
+        raise RuntimeError(
+            "nested team formation is disabled inside team task "
+            f"{nested_task_id!r}; the parent lead must own further delegation"
+        )
+    maximum_tasks = _env_limit(_MAX_TASKS_ENV, 256)
+    if len(tasks) > maximum_tasks:
+        raise RuntimeError(
+            f"team formation has {len(tasks)} tasks, above {_MAX_TASKS_ENV}="
+            f"{maximum_tasks}"
+        )
+
+    admission_lock = registry.marker_dir(project_root) / _ADMISSION_LOCK_FILE
+    with _store.locked(admission_lock):
+        if not registry.marker_path(project_root, team_id).exists():
+            maximum_active = _env_limit(_MAX_ACTIVE_ENV, 8)
+            active = _active_campaigns(project_root)
+            if len(active) >= maximum_active:
+                raise RuntimeError(
+                    f"project already has {len(active)} active team campaigns, "
+                    f"reaching {_MAX_ACTIVE_ENV}={maximum_active}: "
+                    + ", ".join(active[:maximum_active])
+                )
+        return _form_team(
+            project_root=project_root,
+            root=root,
+            team_id=team_id,
+            mission=mission,
+            lead=lead,
+            cwd=cwd,
+            tasks=tasks,
+            now=now,
+        )
 
 
 def load_receipt(root: Path) -> dict[str, Any]:

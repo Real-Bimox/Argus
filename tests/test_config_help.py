@@ -99,6 +99,11 @@ def test_registry_covers_the_active_team_knobs() -> None:
         "ARGUS_TEAMMATE_MAX_ROUNDS",
         "ARGUS_TEAMMATE_RESULT_FILE",
         "ARGUS_LEADERBOARD_LOWER_IS_BETTER",
+        "ARGUS_TEAM_MAX_WIDTH",
+        "ARGUS_TEAM_MAX_ACTIVE_CAMPAIGNS",
+        "ARGUS_TEAM_MAX_TASKS_PER_FORMATION",
+        "ARGUS_TEAM_MAX_TOTAL_IN_FLIGHT",
+        "ARGUS_SKILL_ALLOW_NESTED_TEAM",
     ):
         assert must in names, must
     assert "ARGUS_TEAMMATE_FORCE_RESEARCH" not in names

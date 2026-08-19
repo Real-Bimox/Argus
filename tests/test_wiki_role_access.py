@@ -45,11 +45,11 @@ def test_manager_engineer_and_planner_share_direct_wiki_contract(
         assert "sources/" not in prompt
         assert "query_pack.md" not in prompt
 
-    assert "consult primary sources first" in manager
-    assert "independently inspect papers, upstream source" in engineer
-    assert "related attempts repeatedly fail" in engineer
-    assert "primary papers, official implementations" in engineer
-    assert "Record durable findings in the Wiki" in engineer
+    assert "Check primary sources only when an external technical claim matters" in manager
+    assert "Use primary sources when external behavior matters" in engineer
+    assert "If repeated attempts fail" in engineer
+    assert "recheck the underlying assumption" in engineer
+    assert "When durable declarative knowledge changes" in engineer
     assert "support/limitation matrices" in engineer
     assert "Procedures and checklists belong in Skills" in engineer
     assert "route durable project facts" in engineer

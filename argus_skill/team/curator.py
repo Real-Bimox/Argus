@@ -271,6 +271,7 @@ class Curator:
     def __init__(self, *, project_root: Path, default_width: int = 8,
                  tick_s: float = 5.0, teammate_timeout_s: float = 5400.0,
                  hard_grace_s: float = 600.0,
+                 max_total_in_flight: int | None = None,
                  now_fn: Callable[[], float] = time.time,
                  make_proc: Callable[..., Any] | None = None,
                  distill_fn: Callable[[str], str] | None = None,
@@ -282,6 +283,19 @@ class Curator:
         self.tick_s = float(tick_s)
         self.teammate_timeout_s = float(teammate_timeout_s)
         self.hard_grace_s = float(hard_grace_s)
+        environment = getattr(os, "environ", {})
+        configured_total = (
+            max_total_in_flight
+            if max_total_in_flight is not None
+            else int(
+                environment.get("ARGUS_TEAM_MAX_TOTAL_IN_FLIGHT")
+                or environment.get("ARGUS_SKILL_COPILOT_MAX_CONCURRENCY")
+                or "32"
+            )
+        )
+        if int(configured_total) <= 0:
+            raise ValueError("maximum total in-flight teammates must be positive")
+        self.max_total_in_flight = int(configured_total)
         self._now = now_fn
         self._make_proc = make_proc or self._default_make_proc
         self._distill_fn = distill_fn
@@ -322,8 +336,16 @@ class Curator:
             ),
         )
 
-    def _spawn_tracked(self, root: Path, *, member_id: str, task_id: str,
-                       cwd: Path, now: float | None = None) -> int:
+    def _spawn_tracked(
+        self,
+        root: Path,
+        *,
+        member_id: str,
+        task_id: str,
+        cwd: Path,
+        now: float | None = None,
+        timeout_s: float | None = None,
+    ) -> int:
         root = Path(root)
         key = _child_key(root, member_id)
         prior = self._children.get(key)
@@ -333,7 +355,12 @@ class Curator:
         self._children[key] = TrackedTeammate(
             proc, member_id=member_id, task_id=task_id, root=root,
             started_at=(self._now() if now is None else now),
-            timeout_s=self.teammate_timeout_s, hard_grace_s=self.hard_grace_s)
+            timeout_s=(
+                self.teammate_timeout_s
+                if timeout_s is None or timeout_s <= 0
+                else float(timeout_s)
+            ),
+            hard_grace_s=self.hard_grace_s)
         roster.add_member(root, {
             "id": member_id, "pid": proc.pid, "cwd": str(cwd),
             "task_id": task_id, "status": "running",
@@ -398,8 +425,16 @@ class Curator:
         return adopted
 
     # ---- refill: keep ``width`` teammates in flight from the backlog ----
-    def _refill(self, root: Path, *, width: int, cwd: Path,
-                now: float | None = None, ttl: float = 180.0) -> dict[str, Any]:
+    def _refill(
+        self,
+        root: Path,
+        *,
+        width: int,
+        cwd: Path,
+        now: float | None = None,
+        ttl: float = 180.0,
+        spawn_budget: int | None = None,
+    ) -> dict[str, Any]:
         """Top the in-flight count back up to ``width`` from the priority backlog.
 
         Hand stale-owned tasks back ONLY when their owner is not a live child,
@@ -419,6 +454,8 @@ class Curator:
         cap = int(os.environ.get("ARGUS_TEAM_MAX_SPAWN_PER_REFILL", "0") or 0)
         if cap > 0:
             free = min(free, cap)
+        if spawn_budget is not None:
+            free = min(free, max(0, int(spawn_budget)))
         spawned: list[dict[str, Any]] = []
         failed_dead_cwd: list[str] = []
         for _ in range(free):
@@ -448,7 +485,8 @@ class Curator:
                 failed_dead_cwd.append(task["task_id"])
                 continue
             self._spawn_tracked(root, member_id=mid, task_id=task["task_id"],
-                                cwd=task_cwd, now=now)
+                                cwd=task_cwd, now=now,
+                                timeout_s=float(task.get("timeout_s", 0) or 0))
             spawned.append({"member_id": mid, "task_id": task["task_id"]})
         return {"spawned": spawned, "in_flight": in_flight, "live": len(live),
                 "occupied": occupied, "free": free, "reassigned": reassigned,
@@ -524,17 +562,29 @@ class Curator:
         now = self._now() if now is None else now
         self._reap(now=now)
         for marker in registry.list_markers(self.project_root):
+            live_total = sum(tt.alive() for tt in self._children.values())
+            spawn_budget = max(0, self.max_total_in_flight - live_total)
             # Per-campaign isolation: a single poisoned marker (e.g. a working dir
             # that vanished under it, or a corrupt pool file) must NEVER abort the
             # whole tick and starve every OTHER campaign of its refill. Fail loudly
             # — full traceback, with the campaign id — and carry on to the next.
             try:
-                self._tick_marker(marker, now=now)
+                self._tick_marker(
+                    marker,
+                    now=now,
+                    spawn_budget=spawn_budget,
+                )
             except Exception:  # noqa: BLE001 — one campaign must not sink the tick
                 log.exception("curator: tick failed for campaign %s; skipping it "
                               "this tick", (marker or {}).get("team_id", "?"))
 
-    def _tick_marker(self, marker: dict[str, Any], *, now: float) -> None:
+    def _tick_marker(
+        self,
+        marker: dict[str, Any],
+        *,
+        now: float,
+        spawn_budget: int | None = None,
+    ) -> None:
         """Maintain ONE campaign for this tick: adopt prior-daemon orphans, fold
         the leaderboard, then refill the pool (or wind a draining campaign down).
 
@@ -564,7 +614,13 @@ class Curator:
             return
         self._maybe_distill(root, now)
         width = int(doc["width"]) if "width" in doc else self.default_width
-        self._refill(root, width=width, cwd=cwd, now=now)
+        self._refill(
+            root,
+            width=width,
+            cwd=cwd,
+            now=now,
+            spawn_budget=spawn_budget,
+        )
 
     def _maybe_fold(self, root: Path) -> None:
         """Deterministically re-fold the leaderboard when shards have changed.

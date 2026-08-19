@@ -59,12 +59,20 @@ def _decide(text: str):
 
 
 @pytest.mark.parametrize(
-    "key", ["PRECISE_CONSTRAINTS", "EXCLUSIONS", "AMBIGUITIES"]
+    ("legacy_key", "event_key"),
+    [
+        ("PRECISE_CONSTRAINTS", "precise_constraints"),
+        ("EXCLUSIONS", "exclusions"),
+        ("AMBIGUITIES", "ambiguities"),
+    ],
 )
-def test_the_parser_reads_the_key_the_prompt_asks_for(key: str) -> None:
+def test_the_parser_reads_the_key_the_prompt_asks_for(
+    legacy_key: str,
+    event_key: str,
+) -> None:
     """Prompt and reader must name the same lines, or neither works."""
-    assert key in _DECISION_KEYS
-    assert key in build_vertical_decision_prompt(
+    assert legacy_key in _DECISION_KEYS
+    assert f"`{event_key}`" in build_vertical_decision_prompt(
         "prove something", verticals_with_purpose={"math": "mathematics"}
     )
 

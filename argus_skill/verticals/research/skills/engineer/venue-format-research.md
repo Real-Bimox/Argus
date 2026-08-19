@@ -66,7 +66,7 @@ Do not edit `current_stage` or stage statuses.
 ## Verification
 
 ```bash
-python -c "from argus_skill.skills.venue_profiles import resolve_venue_profile as r; p=r('.'); print(p.key, p.display_name, p.page_budget_line())"
+python -c "from argus_skill.verticals.research.venue_profiles import resolve_venue_profile as r; p=r('.'); print(p.key, p.display_name, p.page_budget_line())"
 ```
 
 Fetch the official style files under `paper/` and never modify the venue's

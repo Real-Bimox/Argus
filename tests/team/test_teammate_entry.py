@@ -52,6 +52,62 @@ def test_main_inprocess_success_marks_done(tmp_path: Path, monkeypatch) -> None:
     assert {t["task_id"]: t for t in tb.snapshot(root)}["t1::a"]["state"] == "done"
 
 
+def test_main_marks_runtime_as_inside_one_team_task(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    _form_claim(root)
+    monkeypatch.setenv("ARGUS_SKILL_TEAM_TASK_ID", "outer-task")
+    seen: dict[str, str] = {}
+
+    def run(*_args, **_kwargs):
+        seen["task_id"] = os.environ.get("ARGUS_SKILL_TEAM_TASK_ID", "")
+        return True
+
+    monkeypatch.setattr(te, "run_one_engineer_mission", run)
+
+    assert te.main([
+        "--root",
+        str(root),
+        "--member-id",
+        "t1::w1",
+        "--task-id",
+        "t1::a",
+        "--cwd",
+        str(tmp_path),
+    ]) == 0
+    assert seen["task_id"] == "t1::a"
+    assert os.environ["ARGUS_SKILL_TEAM_TASK_ID"] == "outer-task"
+
+
+def test_main_passes_task_timeout_to_mission(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / ".argus_team" / "t1"
+    tb.form(root, [{
+        "task_id": "t1::a",
+        "objective": "do a",
+        "owns_paths": ["a/**"],
+        "timeout_s": 600,
+    }])
+    assert tb.claim_top(root, "t1::w1", now=1.0) is not None
+    captured: dict[str, object] = {}
+
+    def run(*_args, **kwargs):
+        captured.update(kwargs)
+        return True
+
+    monkeypatch.setattr(te, "run_one_engineer_mission", run)
+    rc = te.main([
+        "--root", str(root),
+        "--member-id", "t1::w1",
+        "--task-id", "t1::a",
+        "--cwd", str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert captured["timeout_s"] == 600.0
+
+
 def test_main_inprocess_failure_marks_failed(tmp_path: Path, monkeypatch) -> None:
     root = tmp_path / ".argus_team" / "t1"
     _form_claim(root)
@@ -105,7 +161,7 @@ def test_run_one_mission_has_no_hard_self_sigkill_timer(tmp_path: Path, monkeypa
     assert ok.success is True
     assert intervals == [10.0]  # ONLY the soft watchdog; no hard self-kill timer
     # A teammate's cwd is the project root, so the Manager's stage-transition
-    # pass would write the campaign's research/PIPELINE_STATE.json from a worker
+    # pass would write the campaign's .argus/PIPELINE_STATE.json from a worker
     # holding one task. ``**kwargs`` above so this stub does not have to track
     # every future execute() keyword, but the one that matters is asserted.
     assert seen_kwargs.get("holds_stage_authority") is False
@@ -501,8 +557,8 @@ def _math_project(tmp_path: Path, *claim_ids: str) -> Path:
     )
 
     cwd = tmp_path / "proj"
-    (cwd / "research").mkdir(parents=True)
-    (cwd / "research" / "PIPELINE_STATE.json").write_text(
+    (cwd / ".argus").mkdir(parents=True)
+    (cwd / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "math", "current_stage": "solve"}), encoding="utf-8")
     state = MathState()
     context = state.add_context(ContextVersion(
@@ -568,8 +624,8 @@ def test_teammate_prelude_never_raises_on_unreadable_project_state(
     # that end the run on purpose; a single subordinate teammate must not die for
     # a briefing it could do without — its parent already reports the same fault.
     cwd = tmp_path / "proj"
-    (cwd / "research").mkdir(parents=True)
-    (cwd / "research" / "PIPELINE_STATE.json").write_text("{not json", encoding="utf-8")
+    (cwd / ".argus").mkdir(parents=True)
+    (cwd / ".argus" / "PIPELINE_STATE.json").write_text("{not json", encoding="utf-8")
 
     seen = _dispatch(tmp_path, monkeypatch, cwd, objective="do a")
 
@@ -666,8 +722,8 @@ def test_the_acceptance_check_changes_nothing_for_a_non_math_team(
     # field at all, must be byte-identical with the field set and unset — the one
     # test that would fail if any of this had leaked into the team layer.
     kernel = tmp_path / "kproj"
-    (kernel / "research").mkdir(parents=True)
-    (kernel / "research" / "PIPELINE_STATE.json").write_text(
+    (kernel / ".argus").mkdir(parents=True)
+    (kernel / ".argus" / "PIPELINE_STATE.json").write_text(
         json.dumps({"vertical": "kernel_engineering", "current_stage": "optimize"}),
         encoding="utf-8")
 

@@ -74,7 +74,7 @@ def test_persisted_bounded_data_domain_disables_emnlp_gate(
         "perf_tuning",
         stages=["profile", "isolate", "optimize", "benchmark", "test", "report"],
     )
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         '{"current_stage": "profile", "vertical": "perf_tuning"}\n',
@@ -127,7 +127,7 @@ def test_tick_skips_inapplicable_final_submission_for_bounded_domain(
         "perf_tuning",
         stages=["profile", "isolate", "optimize", "benchmark", "test", "report"],
     )
-    state_path = tmp_path / "research" / "PIPELINE_STATE.json"
+    state_path = tmp_path / ".argus" / "PIPELINE_STATE.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(
         '{"current_stage": "profile", "vertical": "perf_tuning"}\n',

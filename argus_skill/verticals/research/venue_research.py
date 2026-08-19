@@ -7,7 +7,7 @@ sources, cached so the search runs once. Failure leaves venue selection
 unresolved; venue-dependent gates then fail closed instead of silently choosing
 or using an unrelated default.
 
-Mirrors :mod:`argus_skill.skills.idea_search` (same live-search + run-once +
+Mirrors :mod:`argus_skill.verticals.research.idea_search` (same live-search + run-once +
 fail-open discipline). The detailed field playbook lives in the
 ``engineer/venue-format-research.md`` skill; the prompt here inlines the
 essentials so the one-off ``run_exec`` call is self-contained.
@@ -20,8 +20,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..core.models import RunnerOptions
-from ..core.run_gateway import run_exec as gateway_run_exec
+from ...core.models import RunnerOptions
+from ...core.run_gateway import run_exec as gateway_run_exec
 from .venue_profiles import (
     _normalize_venue_key,
     _venue_key_from_pipeline_state,
@@ -132,10 +132,10 @@ def _build_prompt(venue: str) -> str:
         '  reviewer_persona (venue name), figure_style_persona (same), '
         "abstract_word_floor (int), abstract_word_floor_is_hard (bool).\n\n"
         "Also update only the descriptive `target_venue` field in "
-        "research/PIPELINE_STATE.json to the selected profile key. Do not edit "
+        ".argus/PIPELINE_STATE.json to the selected profile key. Do not edit "
         "`current_stage` or any stage status.\n\n"
         "Validate it loads:\n"
-        "  python -c \"from argus_skill.skills.venue_profiles import "
+        "  python -c \"from argus_skill.verticals.research.venue_profiles import "
         "resolve_venue_profile as r; p=r('.'); print(p.key, p.page_budget_line())\"\n\n"
         "Also write paper/TEMPLATE_SOURCE.md recording the official URLs used, "
         "the extracted values, and `source: official | mirror (unverified)`. If "

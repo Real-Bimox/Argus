@@ -120,7 +120,7 @@ def test_video_research_harness_is_grounded_before_authoring_domain(
         "manager-classify-fast",
         "manager-classify-grounded",
     ]
-    assert "Investigate freely as needed" in runner.calls[1]["prompt"]
+    assert "inspect only when the fit is unclear" in runner.calls[1]["prompt"]
     assert "Host workspace snapshot" in runner.calls[1]["prompt"]
     assert (
         tmp_path / "research" / "DOMAINS" / "video_robotics_research.json"
@@ -328,7 +328,7 @@ def test_vertical_env_cannot_replace_manager_authored_domain(
     ]
     assert (tmp_path / "research" / "DOMAINS" / "math_conjecture.json").exists()
     state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert state["vertical"] == "math_conjecture"
 
@@ -358,7 +358,7 @@ def test_vertical_env_does_not_override_manager_reclassification(
         "manager-classify-grounded",
     ]
     state = json.loads(
-        (tmp_path / "research" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
+        (tmp_path / ".argus" / "PIPELINE_STATE.json").read_text(encoding="utf-8")
     )
     assert state["vertical"] == "math_conjecture_2"
     assert vs.resolve_vertical(tmp_path) == "math_conjecture_2"
@@ -433,7 +433,7 @@ def test_authoring_call_is_grounded_not_a_blind_guess(tmp_path, monkeypatch):
     assert opts.dangerous_yolo is False
     assert opts.full_auto is False
     assert opts.reasoning_effort == "low"
-    assert "investigate freely as needed" in call["prompt"].lower()
+    assert "inspect only when the fit is unclear" in call["prompt"].lower()
     assert "host workspace snapshot" in call["prompt"].lower()
     assert "manager_tool_root" in call["prompt"]
 

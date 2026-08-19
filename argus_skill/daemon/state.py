@@ -1279,9 +1279,39 @@ def _terminate_windows_process_tree(
         return False
 
 
+def _teammate_process_group_ids(pids: Iterable[int]) -> tuple[int, ...]:
+    """Return verified POSIX process groups led by Team teammate entries."""
+    if os.name == "nt":
+        return ()
+    groups: list[int] = []
+    for pid in pids:
+        try:
+            argv = [
+                value.decode("utf-8", "replace")
+                for value in Path(f"/proc/{int(pid)}/cmdline").read_bytes().split(b"\0")
+                if value
+            ]
+            pgid = os.getpgid(int(pid))
+        except (OSError, ProcessLookupError, ValueError):
+            continue
+        if (
+            "argus_skill.team.teammate_entry" in argv
+            and pgid == int(pid)
+            and pgid > 1
+        ):
+            groups.append(pgid)
+    return tuple(dict.fromkeys(groups))
+
+
 def _terminate_captured_descendants(pids: Iterable[int]) -> None:
     """Terminate descendants captured while they still belonged to a daemon."""
     ordered = tuple(dict.fromkeys(int(pid) for pid in pids if int(pid) > 1))
+    teammate_groups = _teammate_process_group_ids(ordered)
+    for group in teammate_groups:
+        try:
+            os.killpg(group, signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            continue
     for child in ordered:
         try:
             os.kill(child, signal.SIGTERM)
@@ -1297,6 +1327,14 @@ def _terminate_captured_descendants(pids: Iterable[int]) -> None:
             continue
         try:
             os.kill(child, getattr(signal, "SIGKILL", signal.SIGTERM))
+        except (ProcessLookupError, PermissionError, OSError):
+            continue
+    for group in teammate_groups:
+        try:
+            os.killpg(
+                group,
+                getattr(signal, "SIGKILL", signal.SIGTERM),
+            )
         except (ProcessLookupError, PermissionError, OSError):
             continue
 
@@ -1564,7 +1602,22 @@ def stop_daemon(
             )
             return 0
         # Capture again at the escalation boundary so children started after
-        # the initial SIGTERM cannot escape by being reparented to PID 1.
+        # the initial SIGTERM cannot escape by being reparented to PID 1. Stop
+        # the daemon first so its Curator cannot spawn between this final
+        # snapshot and root termination.
+        try:
+            os.kill(pid, signal.SIGSTOP)
+        except ProcessLookupError:
+            _clear_control_request()
+            if drain:
+                clear_daemon_drain_request(resolved_dir, pid=pid)
+            return 0
+        except (PermissionError, OSError):
+            sys.stderr.write(
+                f"argus-skill: daemon (pid {pid}) could not be frozen before "
+                "forced descendant cleanup.\n"
+            )
+            return 2
         forced_descendants.update(_descendant_pids(pid))
         _terminate_captured_descendants(forced_descendants)
         try:

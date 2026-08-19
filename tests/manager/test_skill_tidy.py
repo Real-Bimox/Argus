@@ -168,7 +168,7 @@ class _GateRepairBackend:
             "description: Unblock a stalled staged goal\n"
             "---\n\n"
             "Before calling `complete_final_stage`, ensure "
-            "`research/PIPELINE_STATE.json` in the project state root has a "
+            "`.argus/PIPELINE_STATE.json` in the project state root has a "
             "resolved math objective mode.\n",
             encoding="utf-8",
         )
@@ -197,7 +197,7 @@ def test_names_the_verifier_reports_which_name_it_found() -> None:
     assert names_the_verifier("run `complete_final_stage` first") == (
         "complete_final_stage"
     )
-    assert names_the_verifier("edit research/PIPELINE_STATE.json") == (
+    assert names_the_verifier("edit .argus/PIPELINE_STATE.json") == (
         "PIPELINE_STATE.json"
     )
     assert names_the_verifier("reduce the reproducer before editing") == ""
