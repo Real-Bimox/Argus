@@ -560,6 +560,35 @@ def test_tick_uses_default_width_when_pool_unset(tmp_path: Path) -> None:
     assert task_board.count_in_flight(root) == 3
 
 
+def test_tick_caps_total_live_workers_across_campaigns(tmp_path: Path) -> None:
+    for team_id in ("a", "b"):
+        root = tmp_path / f"team-{team_id}"
+        registry.write_marker(
+            tmp_path,
+            team_id=team_id,
+            team_root=root,
+            cwd=tmp_path,
+            now=1.0,
+        )
+        pool.update(root, width=3, state="running")
+        task_board.form(
+            root,
+            [
+                {"task_id": f"{team_id}::{index}", "objective": "x"}
+                for index in range(3)
+            ],
+        )
+    curator = _fake_curator(tmp_path, max_total_in_flight=4)
+
+    curator._tick(now=100.0)
+
+    assert len(curator._children) == 4
+    assert sum(
+        task_board.count_in_flight(tmp_path / f"team-{team_id}")
+        for team_id in ("a", "b")
+    ) == 4
+
+
 def test_tick_draining_stops_refill_and_removes_empty_marker(tmp_path: Path) -> None:
     root = tmp_path / "team"
     registry.write_marker(tmp_path, team_id="t1", team_root=root, cwd=tmp_path, now=1.0)
