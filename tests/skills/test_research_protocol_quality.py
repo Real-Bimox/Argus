@@ -129,7 +129,7 @@ def test_research_idea_selection_requires_ambition_without_decorative_math() -> 
     assert "shallow prompt/schema/wrapper/scale" in peer_review
 
 
-def test_literature_grounding_balances_ai_frontier_and_foundations() -> None:
+def test_literature_grounding_advises_ai_and_foundation_balance() -> None:
     discovery = " ".join(_skill("engineer/idea-discovery.md").split())
     pipeline = " ".join(_skill("engineer/auto-research-pipeline.md").split())
     literature = {
@@ -139,10 +139,11 @@ def test_literature_grounding_balances_ai_frontier_and_foundations() -> None:
     assert "ACL/EMNLP/NAACL" in discovery
     assert "ICLR/ICML/NeurIPS" in discovery
     assert "AAAI/AAMAS" in discovery
-    assert "foundation evidence" in discovery
+    assert "soft coverage diagnostic, not a quota" in discovery
     assert "AI-venue/recent-arXiv" in pipeline
     assert "AI-venue/recent-arXiv frontier" in literature
-    assert "foundational source" in literature
+    assert "advisory risk" in literature
+    assert "not a fixed quota or completion blocker" in literature
 
 
 def test_research_selection_and_review_skills_share_the_ambition_standard() -> None:

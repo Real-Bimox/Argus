@@ -258,8 +258,8 @@ def test_selection_waits_for_eighty_percent_review_quorum(tmp_path: Path) -> Non
         task for task in task_board.snapshot(root) if task["role"] == "idea-review"
     )
     assert "ACL/EMNLP/NAACL" in route_task["objective"]
-    assert "foundational source" in route_task["objective"]
-    assert "Do not qualify a theory-only novelty case" in review_task["objective"]
+    assert "guidance, not a quota" in route_task["objective"]
+    assert "never reject or stall solely" in review_task["objective"]
     for index in range(QUORUM_COUNT - 1):
         _complete_reviewed_route(
             tmp_path,

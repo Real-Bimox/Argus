@@ -171,8 +171,9 @@ that would overturn the claim.
 
 - Build `research/LITERATURE_GROUNDING.json` around claim coverage: nearest
   competitors, foundations, contradictions, negative evidence, and open
-  frontier. Keep separate AI-venue/recent-arXiv and foundation-theory buckets;
-  central novelty claims require both, plus official artifacts when available.
+  frontier. Keep visible AI-venue/recent-arXiv and foundation-theory coverage
+  notes. Imbalance is advisory, not a fixed quota or completion gate; explain
+  missing coverage and proceed.
 - Write `research/RESEARCH_BRIEF.md` and preserve rejected ideas with their real
   observations in the existing project history.
 - Do not lock an idea until the ambition standard survives independent
