@@ -277,6 +277,22 @@ def test_parse_planner_task_rejects_malformed_dependency_controls() -> None:
     assert verdict.new_tasks == []
 
 
+def test_parse_planner_task_treats_none_dependency_as_empty() -> None:
+    verdict = parse_planner_text(
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=queue the next independent route search",
+            "TASK_KEY=route-search",
+            "TASK_DEPS=none",
+            "TASK_TITLE=Search the next route",
+            "TASK_OBJECTIVE=Find a source-grounded candidate.",
+        ])
+    )
+
+    assert verdict.error == ""
+    assert verdict.new_tasks[0].deps == []
+
+
 class _Runner:
     def __init__(self) -> None:
         self.calls: list[dict] = []
