@@ -83,6 +83,7 @@ def test_planner_delegates_to_engineer_and_continues_after_one_increment(
             "PROJECT_DONE=false",
             "REASON=continue the standing campaign with a distinct issue",
             "TASK_KEY=second",
+            "TASK_VERTICAL=argus_maintenance",
             "TASK_TITLE=Deduplicate Manager reply rows",
             "TASK_OBJECTIVE=Use one message identity for live and persisted replies.",
             "TASK_HYPOTHESIS=Identity drift causes duplicate Manager reply rows.",
@@ -103,11 +104,58 @@ def test_planner_delegates_to_engineer_and_continues_after_one_increment(
     assert supervisor._plan_next_work() is True
     pending = supervisor.memory.backlog.pending()
     assert [item.title for item in pending] == ["Deduplicate Manager reply rows"]
+    assert pending[0].manager_decision["vertical"] == "argus_maintenance"
+    assert pending[0].manager_decision["route_source"] == "planner"
 
     assert len(planner.calls) == 3
     assert all(call["options"].sandbox_mode == "read-only" for call in planner.calls)
     assert all(call["options"].dangerous_yolo is False for call in planner.calls)
     assert not list(project.glob("**/*.py")), "Planner must not create implementation files"
+
+
+def test_planner_reuses_front_door_route_without_manager_reclassification(
+    tmp_path: Path,
+) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    life = tmp_path / "life"
+    planner = _PlannerBackend([
+        "\n".join([
+            "PROJECT_DONE=false",
+            "REASON=delegate the next bounded repair",
+            "TASK_KEY=repair",
+            "TASK_TITLE=Repair the lifecycle",
+            "TASK_OBJECTIVE=Fix the lifecycle and run its focused test.",
+        ])
+    ])
+    supervisor = _supervisor(project, life, planner)
+    supervisor._vertical_resolved = False
+    (life / "continuous.json").write_text(
+        json.dumps({
+            "enabled": True,
+            "objective": "keep optimizing Argus",
+            "generation": 1,
+        }),
+        encoding="utf-8",
+    )
+    (life / "events.jsonl").write_text(
+        json.dumps({
+            "type": "life.manager.intent.completed",
+            "execution_task": "keep optimizing Argus",
+            "continuous_generation": 1,
+            "vertical": "software",
+            "workflow_mode": "direct",
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    def fail_reclassification():
+        raise AssertionError("front-door route must not be classified again")
+
+    supervisor._resolve_vertical_once = fail_reclassification  # type: ignore[method-assign]
+
+    assert supervisor._plan_next_work() is True
+    assert supervisor.memory.backlog.pending()[0].manager_decision["vertical"] == "software"
 
 
 def _kernel_supervisor(

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ...core.model_visible_text import sanitize_model_visible_text
+from ...core.role_decision import decision_event_instruction
 from ..task_contract import native_shell_contract, native_shell_summary
 from .types import ChecklistMode, RoleName, RolePromptRequest
 
@@ -25,66 +26,47 @@ OPERATIONS = frozenset(
 )
 
 
+_PLANNER_DECISION_EVENT = decision_event_instruction(
+    "planner",
+    '{"project_done":false,"reason":"why","tasks":[{"key":"task-key",'
+    '"deps":[],"title":"title","objective":"work and decisive check"}]}',
+)
+
 _PLANNER_CORE_CONTRACT = """
 ## Planner read-only delegation contract
-Inspect current reality read-only, choose the highest-value legal next work, and
-delegate implementation to Engineer with concrete `TASK_*` blocks. Do not edit project files;
-Engineer owns edits, commands, tests, evidence, and Wiki maintenance.
+Read the current state, then choose the next useful milestone. Do not implement it;
+delegate implementation to Engineer. Do not edit project files; Engineer owns edits,
+commands, tests, and iteration.
 
-- Reuse Manager context. For named direct repo tasks, inspect only targets,
-  direct callers, and tests; skip inventory.
-- Grounding duty: before work derived from external algorithms, papers,
-  version/hardware behavior, or systems, check Wiki/Skills. When claim-critical
-  semantics lack current primary-source grounding, investigate before implementation;
-  official sources outrank community leads. Wiki/Skills are starting context, not a
-  research boundary: delegate fresh paper/source/issue/hardware investigation whenever
-  it can materially improve the current decision or implementation architecture.
-- Delegate a decision-sized milestone, not one helper, probe, candidate tweak, or
-  verification step. Engineer owns intermediate analysis, implementation,
-  experiments, and iteration. In research, first select sound, original,
-  significant, falsifiable, feasible candidates; only survivors consume probe
-  budget. Author the frozen evidence question, comparison, observation,
-  interpretation, and budget before implementation. Candidates may run
-  concurrently, but selection must precede probe design and execution for each.
-- When related attempts repeatedly fail, prioritize fresh investigation of primary
-  papers, official implementations, issues, hardware/API behavior, and the
-  performance model before deciding the next work. Use that evidence to reassess
-  assumptions and implementation architecture.
-- An end-to-end threshold miss only shows that this run missed its target. Before
-  naming a root cause, dominant/bottleneck stage, or replacement architecture, require code
-  hot-path inspection plus live resource/wait evidence and either phase
-  timing/profiling or a controlled counterfactual explaining a material share of
-  elapsed time. Otherwise delegate diagnosis and state that attribution is
-  inconclusive.
-- `PROJECT_DONE=true` requires the operator goal and hard criteria with no
-  high-impact work left. Empty backlog or one failed thesis is evidence, not a routing command
-  or completion. Integrity and reproducibility are admission constraints, not
-  completion; `replan_requested` requires replacement.
-- Follow the operator's requested actions and order before autonomously derived
-  hardening. Existing artifacts, unfinished cleanup, a dirty worktree, or a usable
-  alternative do not replace the first unmet requested action. Do not delegate
-  cleanup, PR/status work, documentation/Wiki updates, hashes/checksums,
-  manifests/provenance, or duplicate verification unless explicitly requested,
-  required by an external interface, or proven necessary to unblock that action.
-  Optional hardening never keeps a finite objective alive after its requested
-  outcome and acceptance criteria are satisfied. A failed attempt does not complete
-  a broader objective. Never use a bare launch verdict in a reason, task, or
-  acceptance check. Say what happened, why the evidence supports it, and what
-  should happen next in plain language.
-- Credentials, paid/irreversible work, scope expansion, and future operator
-  approval require `WAITING=true` plus `OPERATOR_ACTION_REQUIRED=true`.
-- Work: set `PROJECT_DONE=false`, `REASON=...`; emit one
-  `TASK_KEY`/`TASK_DEPS`/`TASK_TITLE`/`TASK_OBJECTIVE` block, repeating only if
-  independent. Parallel requires `TASK_PARALLEL_SAFE=true` and disjoint
-  `TASK_OWNS_PATHS`; `TASK_ACCEPTANCE_CHECK` is optional. The Host owns workdir, scope,
-  review, stage transitions, context and Skill.
-- Write TASK_TITLE and TASK_OBJECTIVE in the operator objective's language.
-- End with named lines, not JSON. Use `WAITING=true` only for a real external
-  blocker. Never poll a watched durable task; emit no
-  `TASK_*` block and set `BLOCKER_FINGERPRINT`, `RECHECK_CONDITION`,
-  `RECHECK_TOKEN`, `WAIT_MODE=event`, and `WAKE_ON=subagent_state`. If explicit
-  final certification is requested, also use `TASK_SCOPE=final_submission`.
-"""
+- Reuse what Manager and completed tasks already established. Inspect only what the
+  decision needs.
+- Make each task large enough for one Engineer to own end to end. Use several tasks
+  only for real dependencies or independent work.
+- Prefer the simplest sufficient plan. Do not add defensive machinery, abstractions,
+  or future-facing work without evidence that the current task needs them.
+- Follow the operator's requested actions and order. Existing artifacts or a usable
+  alternative do not replace the first unmet requested action. Do not invent cleanup,
+  documentation, provenance, or repeat verification.
+  Optional hardening never keeps a finite objective alive after the requested result passes.
+- For an external algorithm or system, check primary-source grounding. Wiki and Skills
+  are starting context, not a boundary; fresh paper/source/issue/hardware investigation
+  is allowed when it can change the decision. When related attempts repeatedly fail,
+  revisit primary papers and official implementations. A performance diagnosis needs
+  code-path evidence plus timing/profiling or a controlled comparison.
+- `project_done=true` means the operator goal is actually complete, not merely that one
+  attempt ended. Integrity and reproducibility are admission constraints, not a routing command.
+  Never use a bare launch verdict; say what happened and what should happen next.
+- The decision payload contains `project_done`, `reason`, and `tasks`. Each task uses
+  `key`, `deps`, `title`, `objective`, and optional `acceptance_check`,
+  `parallel_safe`, `owns_paths`, and `vertical`. Omit `vertical` to inherit the
+  campaign route; set it only when another existing role clearly fits this node.
+- For a real external blocker, use `waiting` with `blocker_fingerprint`,
+  `recheck_condition`, and `recheck_token`; add `operator_action_required=true`
+  only when the operator must act. Never poll a watched durable task; use
+  `wait_mode=event` and `wake_on=["subagent_state"]`.
+- The Host owns workdir, scope, review, stage transitions, context, and Skill.
+- Use the operator's language.
+""" + _PLANNER_DECISION_EVENT
 
 _EXTERNAL_TARGET_CONTRACT = (
     "## External-target optimization\n"
@@ -142,60 +124,33 @@ def build_bounded_dag_prompt(objective: str) -> str:
     shell_contract = native_shell_contract()
     shell_block = "\n\n" + shell_contract if shell_contract else ""
     return sanitize_model_visible_text(
-        "You are the bounded-task Planner. Decompose the Manager handoff into a "
-        "small executable backlog DAG; do not solve the task and do not create files."
+        "Plan the Manager handoff as a small executable DAG. Do not do the work."
         + shell_block
         + "\n\n"
         "Rules:\n"
-        "- Default to ONE cohesive node for one code or deliverable change. Use "
-        "multiple nodes only for genuinely independent artifacts or hard dependencies.\n"
-        "- Fold prerequisite reading/audit, implementation, its tests, concise "
-        "documentation, and final verification into the SAME node whenever one "
-        "Engineer can do them coherently.\n"
-        "- When primary-source semantics are materially missing for an external "
-        "algorithm, system, or hardware behavior, include focused source grounding "
-        "inside the same implementation node unless it is genuinely independent work. "
-        "Existing grounding never forbids fresh upstream research when it can change "
-        "the implementation decision.\n"
-        "- When related attempts repeatedly fail, investigate primary papers, official "
-        "implementations, issues, hardware/API behavior, and the performance model "
-        "before selecting another mechanism.\n"
-        "- Never create standalone inspect/audit/planning or final-test/verification "
-        "nodes when an implementation node can perform those checks itself.\n"
-        "- Each downstream node must own a distinct durable deliverable that an "
-        "upstream node is unlikely to satisfy incidentally; avoid overlapping or "
-        "repeat-verification objectives.\n"
-        "- Every objective must name exact files it reads/writes and one decisive "
-        "acceptance command or check. The check must fail when its claimed requirement "
-        "is violated: never emit `or True`, `|| true`, unconditional success, or a "
-        "claim that a pre-existing file was unchanged without a real before/after "
-        "baseline. A dependent node explicitly reads upstream artifacts.\n"
-        "- Nodes execute directly. Do not assign planning/spec/brief creation unless "
-        "that document is itself the requested deliverable. Do not initialize Git, "
-        "create worktrees/branches, commit, spawn subagents, or invoke meta-workflow "
-        "playbooks.\n"
-        "- Preserve the operator's acceptance requirements across the DAG; do not add "
-        "unrelated research or ceremony. Preserve explicitly requested actions and "
-        "their order; do not replace them with cleanup, PR/status work, documentation/"
-        "Wiki updates, hashes/checksums, manifests/provenance, or duplicate verification "
-        "unless the operator requested it or it is demonstrably required to execute "
-        "the requested action. A named-output allowlist constrains newly created "
-        "deliverables; it never permits deleting or overwriting pre-existing files. "
-        "Specify one decisive validation for each claim, not equivalent repeated checks.\n"
-        "- For measurable optimization, rank nodes by credible movement toward the "
-        "operator target, not by novelty or secondary speed. Public task-specific "
-        "papers/discussions/source are allowed when operator policy allows them; "
-        "only imported answers, labels, or predictions remain forbidden.\n"
-        "- Omit those fields because the Host owns execution and review policy, workdirs, stage transitions, "
-        "authorization, context discovery, and Skill learning. Do not emit fields "
-        "for those concerns.\n"
-        "- Return plain key-value text, not JSON. Start with `PLAN_REASON=...`, "
-        "then emit one task block per node using `TASK_KEY=...`, "
-        "`TASK_DEPS=...` (same-batch keys only), leaving it empty when none; "
-        "`TASK_TITLE=...`, and `TASK_OBJECTIVE=...`. Add "
-        "`TASK_ACCEPTANCE_CHECK=...` and `TASK_NON_GOALS=item|item` when useful. "
-        "Use the operator objective's language for titles and objectives. Keys must "
-        "be unique and the graph must be acyclic.\n\n"
+        "- Default to one node. Split only for a hard dependency or genuinely "
+        "independent deliverables.\n"
+        "- Keep reading, implementation, tests, and verification in the same node when "
+        "one Engineer can own them.\n"
+        "- Each node should name the work, relevant files, and one decisive check. The "
+        "check must fail when its claimed requirement is violated; never emit `or True`, "
+        "`|| true`, unconditional success, or an unmeasured unchanged-file claim.\n"
+        "- Preserve the requested outcome and order. Do not add planning documents, "
+        "cleanup, Git ceremony, duplicate verification, or unrelated research.\n"
+        "- Reuse existing grounding unless primary-source semantics are materially "
+        "missing. Existing grounding never forbids fresh upstream research when it "
+        "can change the plan. When related attempts repeatedly fail, revisit the "
+        "source assumption.\n"
+        "- Dependencies must reflect real handoffs. Independent nodes may run in parallel.\n"
+        "- the Host owns execution and review policy.\n"
+        "- Put `reason` and `tasks` in the Planner decision event. Each task uses "
+        "`key`, `deps` (same-batch keys only), `title`, and `objective`; add "
+        "`acceptance_check`, `non_goals`, and `vertical` when useful. Omit "
+        "`vertical` to inherit Manager's campaign route; set it only when another "
+        "existing role clearly fits the node. Use the operator objective's "
+        "language. Keys must be unique and the graph acyclic.\n\n"
+        + _PLANNER_DECISION_EVENT
+        + "\n\n"
         "Manager execution handoff:\n" + objective.strip()
     )
 
@@ -210,8 +165,8 @@ def build_bounded_dag_repair_prompt(
     error = sanitize_model_visible_text(str(validation_error or ""))
     return (
         build_bounded_dag_prompt(objective)
-        + "\n\nYour previous answer was rejected by the mechanical DAG contract. "
-        "Return the COMPLETE corrected plan, not a patch or explanation. Keep "
+        + "\n\nYour previous decision event was rejected by the mechanical DAG contract. "
+        "Send one complete corrected decision event. Keep "
         "the intended deliverables and correct only the malformed minimal DAG "
         "fields.\n"
         + f"VALIDATION_ERROR={error}\n"
@@ -385,8 +340,8 @@ def build_continuous_prompt(
         "ordinary Engineer work, not an external operator dependency. If both "
         "archive and delete/overwrite would unblock progress, delegate the safe "
         "archive; require operator approval only for the destructive option.\n"
-        "- The final response may contain prose but must end with the two plain "
-        "key-value completion lines from the delegation contract.\n\n"
+        "- Record the decision event as soon as the plan is clear. Any later prose "
+        "is only a brief explanation for the operator.\n\n"
     )
 
     objective_contract_block = (
@@ -455,7 +410,7 @@ def build_continuous_prompt(
         cycle_line,
         "Use only the focused read/search budget above, delegate the next concrete "
         "work or report a real "
-        "blocker, then finish with the key-value completion footer.",
+        "blocker, then record the Planner decision event.",
     )
 
 
@@ -507,7 +462,7 @@ def build_continuous_resume_prompt(
         + (runtime_change_summary.strip() or "(no additional runtime context)"),
         f"This is planning cycle #{planning_cycle + 1}.",
         "Inspect only what is needed to choose the next concrete task or a real "
-        "blocker, then finish with the existing key-value completion footer.",
+        "blocker, then record the Planner decision event.",
     )
 
 

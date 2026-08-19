@@ -25,8 +25,8 @@ from argus_skill.skills.vertical_select import persist_vertical
 #     "different" is that they fail for different reasons — two routes dying to
 #     the same obstruction were one route.
 # Neither restates existing text. Compress before raising a third time.
-MATH_SCOPE_BUDGET = 10_400
-MATURE_MATH_SCOPE_BUDGET = 16_200
+MATH_SCOPE_BUDGET = 9_000
+MATURE_MATH_SCOPE_BUDGET = 14_800
 
 
 def _build_math_scope_prompt(
@@ -87,7 +87,8 @@ def test_math_scope_prompt_is_compact_and_deduplicated(
     assert "## Original operator request (immutable anchor)" not in prompt
     assert "Argus planner role skill:" not in prompt
     assert "waiting_contract" not in prompt
-    assert prompt.count("PROJECT_DONE=false") == 1
+    assert prompt.count("ARGUS_ROLE_DECISION=") == 1
+    assert '"role":"planner"' in prompt
     assert "not a routing command" in prompt
     assert prompt.count(
         "Integrity and reproducibility are admission constraints"

@@ -171,16 +171,17 @@ def test_missing_completion_marker_is_retryable() -> None:
     assert verdict.error == "planner missing key-value completion marker"
 
 
-def test_planner_prompt_requires_read_only_delegation_and_plain_key_values() -> None:
+def test_planner_prompt_requires_read_only_delegation_and_process_decision() -> None:
     assert "Planner read-only delegation contract" in _PLANNER_CORE_CONTRACT
     assert "Do not edit project files" in _PLANNER_CORE_CONTRACT
     assert "Engineer owns edits" in _PLANNER_CORE_CONTRACT
-    assert "PROJECT_DONE=false" in _PLANNER_CORE_CONTRACT
-    assert "not JSON" in _PLANNER_CORE_CONTRACT
+    assert "ARGUS_ROLE_DECISION=" in _PLANNER_CORE_CONTRACT
+    assert '"role":"planner"' in _PLANNER_CORE_CONTRACT
+    assert "not parsed" in _PLANNER_CORE_CONTRACT
     assert "Never poll a watched durable task" in _PLANNER_CORE_CONTRACT
-    assert "`WAIT_MODE=event`" in _PLANNER_CORE_CONTRACT
-    assert "`WAKE_ON=subagent_state`" in _PLANNER_CORE_CONTRACT
-    for field in ("TASK_TITLE", "TASK_OBJECTIVE", "TASK_ACCEPTANCE_CHECK"):
+    assert "`wait_mode=event`" in _PLANNER_CORE_CONTRACT
+    assert '`wake_on=["subagent_state"]`' in _PLANNER_CORE_CONTRACT
+    for field in ("`title`", "`objective`", "`acceptance_check`"):
         assert field in _PLANNER_CORE_CONTRACT
     for field in (
         "TASK_WORKDIR",
@@ -356,6 +357,65 @@ def test_plan_next_defaults_to_read_only_tool_access(monkeypatch) -> None:
     assert options.sandbox_mode == "read-only"
 
 
+def test_plan_next_uses_process_decision_without_final_message(monkeypatch) -> None:
+    class _DecisionRunner:
+        def run_exec(self, **_kwargs):
+            return RunnerResult(
+                exit_code=0,
+                agent_messages=[],
+                role_decisions=[{
+                    "role": "planner",
+                    "payload": {
+                        "project_done": False,
+                        "reason": "one bounded repair remains",
+                        "tasks": [{
+                            "key": "repair",
+                            "deps": [],
+                            "title": "Repair the parser",
+                            "objective": "Fix the parser and run its focused test.",
+                        }, {
+                            "key": "verify",
+                            "deps": ["repair"],
+                            "title": "Verify the repair",
+                            "objective": "Run the integration check.",
+                            "vertical": "argus_maintenance",
+                        }],
+                    },
+                }],
+                thread_id="planner-thread",
+            )
+
+    monkeypatch.setattr(
+        Planner,
+        "_build_planner_prompt",
+        staticmethod(lambda **kwargs: "direct execution prompt"),
+    )
+
+    verdict = Planner(_DecisionRunner()).plan_next(
+        continuous_objective="fix the issue",
+        config=PlannerConfig(working_dir="/tmp/project"),
+    )
+
+    assert verdict.error == ""
+    assert verdict.new_tasks[0].key == "repair"
+    assert verdict.new_tasks[1].deps == ["repair"]
+    assert verdict.new_tasks[1].vertical == "argus_maintenance"
+
+
+def test_parse_planner_task_vertical() -> None:
+    verdict = parse_planner_text(
+        "PROJECT_DONE=false\n"
+        "REASON=route this node to the maintenance role\n"
+        "TASK_KEY=repair\n"
+        "TASK_TITLE=Repair Argus\n"
+        "TASK_OBJECTIVE=Fix the lifecycle bug.\n"
+        "TASK_VERTICAL=argus_maintenance"
+    )
+
+    assert verdict.error == ""
+    assert verdict.new_tasks[0].vertical == "argus_maintenance"
+
+
 def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:
     runner = _SequenceRunner([
         "PROJECT_DONE=false\nREASON=implementation still needs a concrete follow-up",
@@ -400,13 +460,10 @@ def test_plan_next_repairs_not_done_empty_task_response(monkeypatch) -> None:
     assert "Original Planner prompt" not in runner.calls[1]["prompt"]
     assert "Do not use tools" in runner.calls[1]["prompt"]
     assert NO_CONCRETE_TASKS_ERROR in runner.calls[1]["prompt"]
-    assert (
-        "Never return `PROJECT_DONE=false` without either `WAITING=true`"
-        in runner.calls[1]["prompt"]
-    )
-    assert "TASK_TITLE=..." in runner.calls[1]["prompt"]
-    assert "TASK_OBJECTIVE=..." in runner.calls[1]["prompt"]
-    assert "review, stage, or Skill control fields" in runner.calls[1]["prompt"]
+    assert "ARGUS_ROLE_DECISION=" in runner.calls[1]["prompt"]
+    assert "If work remains, include concrete tasks" in runner.calls[1]["prompt"]
+    assert '"title":"title"' in runner.calls[1]["prompt"]
+    assert '"objective":"work and decisive check"' in runner.calls[1]["prompt"]
     assert runner.calls[1]["options"].working_dir == "/tmp/project"
 
 def test_plan_next_repairs_binary_outcome_label(monkeypatch) -> None:

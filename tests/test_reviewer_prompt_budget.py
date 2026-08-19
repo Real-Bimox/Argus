@@ -30,7 +30,7 @@ from argus_skill.reviewer import Reviewer
 # 9_500 -> 10_050 for the two independent Research ideation gates. The
 # deterministic validator carries the detailed contract; the repeated Reviewer
 # prompt adds only the concise portfolio/adversarial checklist entries.
-NON_MEASURED_BUDGET = 10_050
+NON_MEASURED_BUDGET = 8_000
 
 
 def _build(measured: bool, monkeypatch) -> str:
@@ -189,11 +189,13 @@ def test_research_target_context_stays_compact(tmp_path, monkeypatch):
     assert stats["estimated_tokens"] < 340
 
 
-def test_reviewer_prompt_uses_named_footer_without_schema_language(monkeypatch) -> None:
+def test_reviewer_prompt_records_process_decision_without_final_footer(monkeypatch) -> None:
     prompt = _build(measured=False, monkeypatch=monkeypatch)
 
-    assert "STATUS=done|continue|blocked|replan_requested" in prompt
-    assert "NEXT_ACTION=<the Engineer instruction; empty for done>" in prompt
+    assert "ARGUS_ROLE_DECISION=" in prompt
+    assert '"role":"reviewer"' in prompt
+    assert "Any later response is plain language and is not parsed." in prompt
+    assert "STATUS=done|continue|blocked|replan_requested" not in prompt
     assert "JSON Schema" not in prompt
     assert "OUTPUT CONTRACT (STRICT)" not in prompt
 

@@ -113,9 +113,8 @@ def test_build_quick_reply_prompt_names_the_worker_and_guards_identity() -> None
     assert "identify only as Argus Manager" in out
     assert "我是 Argus Manager。" in out
     assert "I am Argus Manager." in out
-    assert "AI assistant, API assistant" in out
-    assert "do not narrate Skill matching" in out
     assert "Argus's durable runner" in out
+    assert "do not claim inspection" in out
     assert out.endswith("Message:\n你好")
 
 
@@ -144,14 +143,10 @@ def test_build_simple_prompt_is_minimal() -> None:
     from argus_skill.core.role_config import runner_backend_label
 
     assert f"{runner_backend_label()} worker" in out
-    assert "Answer and act as Argus Manager" in out
     assert "identify only as Argus Manager" in out
-    assert "do not narrate Skill matching" in out
-    assert "direct mode for ordinary commands" in out
-    assert "do not invent a vertical" in out
-    assert "additional artifact" in out
-    assert "stop and wait for the operator's reply" in out
-    assert "ask at most one question that checks the key understanding" in out
+    assert "do not invent extra tasks or artifacts" in out
+    assert "ask at most one question" in out
+    assert "then wait" in out
 
 
 def test_build_simple_prompt_includes_identity_when_given() -> None:

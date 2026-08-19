@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from ...core.model_visible_text import sanitize_model_visible_text
+from ...core.role_decision import decision_event_instruction
 from ..task_contract import (
     EFFECTIVE_TASK_CONTRACT,
     native_shell_contract,
@@ -18,14 +19,14 @@ OPERATIONS = frozenset({MISSION})
 _MANAGER_GROUNDING_HEADER = "\n\n## Manager project grounding (advisory evidence)\n"
 
 _POSIX_LONG_EXPERIMENT_RULE = (
-    "For commands over two minutes, submit through Argus's durable runner: "
+    "For commands over two minutes, use Argus's durable runner: "
     "`\"${ARGUS_SKILL_PYTHON:-python3}\" -m "
     "argus_skill.tools.subagent submit --task-id <id> --mode direct "
-    "--timeout <seconds> --command '<command>'`; use `--mode supervised` only for "
-    "semantic monitoring. Never use `task(mode=\"background\")` or session-owned "
-    "background shells. Require receipt fields `state=submitted`, `task_id`, `run_id`, "
-    "`check_with`; persist them only when a later round must observe the run. On "
-    "`state=discussing`, use its exact `reply_with`. Yield; do not poll in the foreground."
+    "--timeout <seconds> --command '<command>'`. Use `--mode supervised` only when "
+    "semantic monitoring is needed. Do not use `task(mode=\"background\")` or a "
+    "session-owned background shell. Keep the "
+    "`state=submitted`, `task_id`, `run_id`, and `check_with` receipt. On "
+    "`state=discussing`, answer with `reply_with`; do not poll in the foreground."
 )
 _PERFORMANCE_DIAGNOSTIC_TASK = re.compile(
     r"\b(?:throughput|latency|performance|bottleneck|profil(?:e|ing|er)?|"
@@ -72,18 +73,14 @@ def _performance_diagnostic_section(task: str) -> str:
     )
 
 _WINDOWS_LONG_EXPERIMENT_RULE = (
-    "For commands expected to run over two minutes on native Windows, use "
-    "Windows PowerShell 5.1 syntax to submit through Argus's durable runner: "
+    "For commands over two minutes on native Windows, use Windows PowerShell 5.1 syntax "
+    "and Argus's durable runner: "
     "`& '.\\.venv\\Scripts\\python.exe' -m argus_skill.tools.subagent submit "
     "--task-id '<id>' --mode direct --timeout '<seconds>' --command '<command>'`. "
-    "Use `--mode supervised` only when an experiment needs semantic monitoring. "
-    "Never use the provider's native `task(mode=\"background\")` tool or a "
-    "session-owned background shell for durable work. Before handoff, require a "
-    "JSON receipt with `state=submitted`, `task_id`, `run_id`, and `check_with`; "
-    "record those in CHECKPOINT.md only when another round must observe the run. "
-    "For supervised runs, if status returns `state=discussing`, read the concern "
-    "and answer through its exact `reply_with` command before relaunching. Then "
-    "yield or do independent work; do not poll in the foreground."
+    "Use `--mode supervised` only for semantic monitoring. Do not use "
+    "`task(mode=\"background\")` or a session-owned background shell. Keep the "
+    "`state=submitted`, `task_id`, `run_id`, and `check_with` receipt. On "
+    "`state=discussing`, answer with `reply_with`; do not poll in the foreground."
 )
 
 
@@ -254,23 +251,18 @@ def build_mission_prompt(
         )
     sections.append(
         "## This turn\n"
-        "Own the milestone end to end. Choose and revise intermediate steps without "
-        "returning to Planner for each probe or candidate; reach its decision point "
-        "or stop on a real blocker. Update CHECKPOINT.md only for another "
-        "round's blocker/next action; pure "
-        "reading without an artifact or measurement is not progress. Work in the "
-        "current directory; unless required, do not write planning/spec/brief "
-        "documents, initialize Git, branch/worktree, commit, spawn subagents, or "
-        "invoke meta-workflows. Use subagents for operator-requested parallelism or "
-        "independent long experiments, monitoring, research, or writing that shortens "
-        "the critical path; keep coupled implementation local.\n"
+        "Own this task end to end. Plan your own steps, use tools, and iterate until "
+        "the task passes its check or reaches a real blocker. Work in the current "
+        "directory; pure reading without an artifact or measurement is not progress. "
+        "Write only the code this task needs; do not add hashes, UUIDs, retries, "
+        "fallbacks, locks, or abstractions without a concrete requirement. "
+        "Unless required, do not write planning/spec/brief documents, initialize Git, "
+        "branch/worktree, commit, or spawn subagents. Use subagents for operator-requested "
+        "parallelism or useful independent work.\n"
         "Never repeat unchanged checks/reads; batch tools and cap results at 200 "
         "lines. At 18 tool calls, synthesize or checkpoint/yield; never exceed 24.\n"
-        "Wiki is context, not a boundary: independently inspect papers, upstream "
-        "source, issues, and hardware/API docs when useful. When related attempts "
-        "repeatedly fail, prioritize fresh investigation of primary papers, official "
-        "implementations, issues, hardware/API behavior, and the performance model "
-        "before deciding the next implementation. Record durable findings in the Wiki.\n"
+        "Use primary sources when external behavior matters. If repeated attempts fail, "
+        "recheck the underlying assumption instead of making another cosmetic tweak.\n"
         + _long_experiment_rule()
     )
     learning_block = _post_task_learning_section(
@@ -283,12 +275,14 @@ def build_mission_prompt(
         "## Handoff\n"
         "CHECKPOINT.md is the only role-maintained cross-round handoff file; do not create "
         "handoff or evidence packets. Host invokes Reviewer only when required; do not "
-        "spawn a Reviewer subagent. End with "
-        "`MILESTONE_STATUS=done|continue`, `NEXT_OWNER=reviewer|engineer|operator`, "
-        "`OPERATOR_QUESTION=<operator-only question|none>`, "
-        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. "
-        "Standard review: owner=reviewer, question=none. A real operator decision: "
-        "owner=operator; its question parks the task. Give at most five choices."
+        "spawn a Reviewer subagent. Normally set next_owner=reviewer. Use operator only "
+        "for a real operator decision; include one operator_question and at most five "
+        "operator_options; that parks the task, so record it and yield.\n\n"
+        + decision_event_instruction(
+            "engineer",
+            '{"status":"done","result":"what changed and the decisive check",'
+            '"next_owner":"reviewer"}',
+        )
     )
     static_text = "\n\n".join(sections)
     delta_text = "\n\n".join(delta_sections)
@@ -298,19 +292,20 @@ def build_mission_prompt(
         )
     compact = (
         "## Continuation turn\n"
-        "Read the shared CHECKPOINT.md first. Execute its current Next Action "
-        "and the Reviewer guidance below. Do not repeat an unchanged failing "
-        "command; reduce it to the cheapest decisive diagnostic. The original "
-        "task, active vertical, and repository instructions remain binding.\n"
+        "Read CHECKPOINT.md, then execute the Reviewer next action. Do not repeat an "
+        "unchanged failure; use the cheapest decisive diagnostic. The original task "
+        "still applies.\n"
         + _long_experiment_rule()
         + "\n\n"
         "## Handoff\n"
-        "Use only CHECKPOINT.md across rounds. End with summary, check, "
-        "`MILESTONE_STATUS=done|continue` and `NEXT_OWNER=reviewer|engineer|operator`. End with "
-        "`OPERATOR_QUESTION=<operator-only question|none>` and "
-        "`OPERATOR_OPTIONS=<id :: label :: description; ...|none>`. Standard review uses "
-        "owner=reviewer and question=none; only a real operator decision parks the task. "
-        "Give brief updates only at meaningful transitions."
+        "Use next_owner=operator only for an operator-owned choice; its question "
+        "parks the task. Include operator_question and operator_options in that "
+        "decision.\n"
+        + decision_event_instruction(
+            "engineer",
+            '{"status":"done","result":"short result and decisive check",'
+            '"next_owner":"reviewer"}',
+        )
     )
     if diagnostic_block:
         compact = diagnostic_block + "\n\n" + compact

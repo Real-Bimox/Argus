@@ -369,9 +369,28 @@ class PlanningCycleEnqueueMixin:
             state_reader = getattr(self, "_artifact_root", None)
             state_root = state_reader() if callable(state_reader) else policy_root
             policy_stage = current_stage(state_root)
-            policy_vertical = resolve_vertical(state_root)
+            campaign_vertical = resolve_vertical(state_root)
+            policy_vertical = (
+                str(getattr(task, "vertical", "") or "").strip()
+                or campaign_vertical
+            )
+            try:
+                policy_definition = load_vertical(
+                    policy_vertical,
+                    project_root=state_root,
+                )
+            except LookupError:
+                self._emit({
+                    "type": EventType.LIFE_PLANNER_TASK_SKIPPED,
+                    "cycle": self._planning_cycles,
+                    "title": task.title,
+                    "objective": task.objective,
+                    "skip_category": "unknown_task_vertical",
+                    "reason": f"unknown Planner task vertical: {policy_vertical}",
+                })
+                continue
             policy_issues = vertical_planner_task_issues(
-                load_vertical(policy_vertical, project_root=state_root),
+                policy_definition,
                 stage=policy_stage,
                 project_root=policy_root,
                 task=task,
@@ -551,7 +570,8 @@ class PlanningCycleEnqueueMixin:
                 )
                 continue
             manager_decision = self._manager_decision_evidence(
-                state.manager_intent
+                state.manager_intent,
+                task_vertical=str(getattr(task, "vertical", "") or ""),
             )
             task_tags = self._planner_task_tags(task)
             from ...verticals._data_domain import list_formal_data_domain_purposes
@@ -617,14 +637,21 @@ class PlanningCycleEnqueueMixin:
         return None
 
     @staticmethod
-    def _manager_decision_evidence(intent: Any) -> dict[str, Any]:
+    def _manager_decision_evidence(
+        intent: Any,
+        *,
+        task_vertical: str = "",
+    ) -> dict[str, Any]:
         # Planner nodes are already subdivisions of the standing
         # Manager-approved campaign. Mark that inherited authority even when
         # the compact intent event has no optional routing fields.
         if not isinstance(intent, dict):
             intent = {}
         evidence = {
-            "vertical": str(intent.get("vertical") or "").strip(),
+            "vertical": (
+                str(task_vertical or "").strip()
+                or str(intent.get("vertical") or "").strip()
+            ),
             "stage": str(
                 intent.get("stage") or intent.get("current_stage") or ""
             ).strip(),
@@ -637,6 +664,8 @@ class PlanningCycleEnqueueMixin:
             ).strip(),
         }
         evidence = {key: value for key, value in evidence.items() if value}
+        if task_vertical:
+            evidence["route_source"] = "planner"
         evidence["routed"] = True
         return evidence
 

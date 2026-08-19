@@ -15,18 +15,24 @@ from argus_skill.life.router import (
 
 
 class _FakeResult:
-    def __init__(self, msg: str, exit_code: int = 0) -> None:
+    def __init__(
+        self,
+        msg: str,
+        exit_code: int = 0,
+        role_decisions: list[dict] | None = None,
+    ) -> None:
         self.exit_code = exit_code
         self.last_agent_message = msg
+        self.role_decisions = list(role_decisions or [])
 
 
 def _exec(answer: str, exit_code: int = 0):
     def run_exec(prompt: str):
         assert all(
-            label in prompt
-            for label in (
-                "CONFIG:", "CONTROL:", "AUTHORIZATION:", "STEER_DIRECTIVE:",
-                "ROUTE:", "SELF_MODE:", "REPLY:", "LIFETIME:", "GREETING:", "NAME:",
+            field in prompt
+            for field in (
+                '"config"', '"control"', '"authorization"', '"steer_directive"',
+                '"route"', '"self_mode"', '"reply"', '"lifetime"', '"greeting"', '"name"',
             )
         )
         return _FakeResult(answer, exit_code)
@@ -46,16 +52,17 @@ def _exec_sequence(*answers: str):
 def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     prompt = build_front_door_prompt("你好", active_mission=True)
 
-    assert len(prompt) <= 4_000
+    assert len(prompt) <= 3_000
     assert "substantive or multi-source research" in prompt
     assert "company due diligence" in prompt
     assert all(
-        label in prompt
-        for label in (
-            "CONFIG:", "CONTROL:", "AUTHORIZATION:", "STEER_DIRECTIVE:",
-            "ROUTE:", "SELF_MODE:", "REPLY:", "LIFETIME:", "GREETING:", "NAME:",
+        field in prompt
+        for field in (
+            '"config"', '"control"', '"authorization"', '"steer_directive"',
+            '"route"', '"self_mode"', '"reply"', '"lifetime"', '"greeting"', '"name"',
         )
     )
+    assert "ARGUS_ROLE_DECISION=" in prompt
     assert "VERTICAL:" not in prompt
     assert "TARGET:" not in prompt
     assert "explicit continue/resume after a pause is not a control token" in prompt
@@ -71,6 +78,37 @@ def test_front_door_prompt_has_a_strict_token_efficiency_budget() -> None:
     assert "BOUNDED" in prompt
     assert "STANDING" in prompt
     assert "default BOUNDED" in prompt
+
+
+def test_front_door_uses_process_decision_without_final_message() -> None:
+    result = _FakeResult(
+        "",
+        role_decisions=[{
+            "role": "manager",
+            "payload": {
+                "config": "NONE",
+                "control": "NONE",
+                "authorization": "NONE",
+                "steer_directive": "NONE",
+                "route": "SELF",
+                "self_mode": "REPLY",
+                "reply": "hello",
+                "lifetime": "NONE",
+                "greeting": "NONE",
+                "name": "Reply",
+            },
+        }],
+    )
+    replies: list[str] = []
+
+    decision = classify_front_door(
+        "say hello",
+        run_exec=lambda _prompt: result,
+        reply_sink=replies.append,
+    )
+
+    assert decision == (None, None, "simple")
+    assert replies == ["hello"]
 
 
 def test_name_axis_reports_concise_title_without_changing_route_contract() -> None:

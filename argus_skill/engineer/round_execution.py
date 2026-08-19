@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Callable
 
 from ..core.event_catalog import EventType
 from ..core.models import RoundRecord
+from ..core.role_decision import latest_role_decision
 from ..core.secret_guard import known_secret_values, redact_secrets_text
 from ..core.stop_kinds import (
     NON_FAILURE_STOP_KINDS,
@@ -56,6 +57,41 @@ if TYPE_CHECKING:
     from .runner import SupervisedConfig
 
 log = logging.getLogger(__name__)
+
+
+def _engineer_decision_message(payload: dict) -> str:
+    """Render a process decision for existing round-control consumers."""
+    status = str(payload.get("status", "") or "").strip().lower()
+    result = str(
+        payload.get("result", payload.get("summary", "")) or ""
+    ).strip()
+    default_owner = "reviewer" if status == "done" else "engineer"
+    lines = [
+        result,
+        f"MILESTONE_STATUS={'done' if status == 'done' else 'continue'}",
+        f"NEXT_OWNER={str(payload.get('next_owner', default_owner) or default_owner)}",
+    ]
+    question = str(payload.get("operator_question", "") or "").strip()
+    if question:
+        lines.append(f"OPERATOR_QUESTION={question}")
+    options = payload.get("operator_options")
+    if isinstance(options, list) and options:
+        rendered_options = []
+        for option in options:
+            if isinstance(option, dict):
+                rendered_options.append(
+                    " :: ".join(
+                        str(option.get(field, "") or "").strip()
+                        for field in ("id", "label", "description")
+                    )
+                )
+            else:
+                rendered_options.append(str(option))
+        lines.append(
+            "OPERATOR_OPTIONS="
+            + " || ".join(rendered_options)
+        )
+    return "\n".join(line for line in lines if line)
 
 
 class RoundExecutionMixin:
@@ -97,7 +133,12 @@ class RoundExecutionMixin:
             getattr(engineer_result, "stop_kind", None)
         ) or stop_kind_from_external_interrupt(fatal_error)
         round_thread_id = new_tid
-        raw_engineer_message = engineer_result.last_agent_message or ""
+        process_decision = latest_role_decision(engineer_result, "engineer")
+        raw_engineer_message = (
+            _engineer_decision_message(process_decision)
+            if process_decision is not None
+            else (engineer_result.last_agent_message or "")
+        )
         engineer_message = redact_secrets_text(
             raw_engineer_message,
             known_values=known_secret_values(),

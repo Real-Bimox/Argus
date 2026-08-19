@@ -12,6 +12,7 @@ Public surface kept identical: ``Reviewer.evaluate(...) -> ReviewDecision``,
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +20,7 @@ from typing import Any
 
 from ..core.models import ReviewDecision, RunnerOptions
 from ..core.ports import RunnerBackend
+from ..core.role_decision import latest_role_decision
 from ..core.run_gateway import run_exec as gateway_run_exec
 from ..core.stop_kinds import normalize_stop_kind
 from ._parsing import _find_decision_in_messages
@@ -259,7 +261,13 @@ class Reviewer:
                 backend_exit_code=result.exit_code,
                 backend_stop_kind=backend_stop_kind,
             )
-        if not result.agent_messages:
+        process_decision = latest_role_decision(result, "reviewer")
+        decision_messages = (
+            [json.dumps(process_decision, ensure_ascii=True)]
+            if process_decision is not None
+            else result.agent_messages
+        )
+        if not decision_messages:
             return ReviewDecision(
                 status="continue",
                 reason=f"Reviewer returned empty output. exit={result.exit_code}",
@@ -272,16 +280,16 @@ class Reviewer:
                 thread_id=rev_tid,
                 static_fingerprint=new_fp,
             )
-        parsed = _find_decision_in_messages(result.agent_messages)
+        parsed = _find_decision_in_messages(decision_messages)
         if parsed is None:
             from ._parsing import describe_unparsed_verdict
 
             return ReviewDecision(
                 status="continue",
-                reason=describe_unparsed_verdict(result.agent_messages),
+                reason=describe_unparsed_verdict(decision_messages),
                 next_action=(
-                    "Continue implementation and end the next review with STATUS, "
-                    "REASON, NEXT_ACTION, and the remaining named verdict fields."
+                    "Continue implementation and record a valid Reviewer decision "
+                    "event on the next review."
                 ),
                 input_tokens=rev_in,
                 cached_input_tokens=rev_cached,
