@@ -124,6 +124,14 @@ def test_retired_builtin_skills_are_not_packaged() -> None:
     assert packaged.isdisjoint(RETIRED_BUILTIN_SKILLS)
 
 
+def test_minimal_coding_agent_skill_is_packaged() -> None:
+    packaged = dict(iter_builtin_skill_texts())
+
+    body = packaged["engineer/minimal-coding-agent.md"]
+    assert "最少且足够的代码" in body
+    assert "答不出来就不要添加" in body
+
+
 def test_machine_specific_nanochat_playbooks_are_retired() -> None:
     packaged = {name for name, _text in iter_vertical_skill_texts("nanochat")}
 

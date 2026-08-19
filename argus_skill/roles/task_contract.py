@@ -8,13 +8,9 @@ from collections.abc import Sequence
 
 EFFECTIVE_TASK_CONTRACT = (
     "## Effective task contract\n"
-    "Current operator > objective > mission > preregistration. Higher overrides lower; memory "
-    "advisory. Do not substitute cleanup, documentation, hashes/checksums, "
-    "manifests/provenance, or speculative hardening unless the operator or an interface "
-    "requires it. Naming outputs never authorizes deleting, moving, or overwriting pre-existing "
-    "files. Validate once; do not repeat the same passing assertion. On same-level conflict, "
-    "report `ambiguous_objective`. Never stop at a bare launch verdict; say what "
-    "failed, why, and what should happen next in plain language."
+    "Current operator > objective > mission > preregistration; memory is advice. Do not "
+    "add unrelated cleanup or hardening. Naming an output does not authorize replacing "
+    "existing files. Validate once. Report same-level conflicts as `ambiguous_objective`."
 )
 
 NATIVE_WINDOWS_SHELL_CONTRACT = (

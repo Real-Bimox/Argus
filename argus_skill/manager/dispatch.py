@@ -484,6 +484,23 @@ def enqueue_mission(
                 hydrated_refs.get(node.key, []),
                 context_refs,
             )
+            node_manager_decision = dict(manager_decision)
+            node_vertical = str(getattr(node, "vertical", "") or "").strip()
+            if node_vertical:
+                from ..skills.vertical_select import (
+                    UnknownVerticalError,
+                    require_vertical,
+                )
+
+                try:
+                    require_vertical(node_vertical, _resolve_manager_workdir(mem))
+                except UnknownVerticalError as exc:
+                    raise front_door.ManagerHandoffError(
+                        f"bounded Planner selected unknown vertical {node_vertical!r}"
+                    ) from exc
+                node_manager_decision["vertical"] = node_vertical
+                node_manager_decision["route_source"] = "planner"
+                node_manager_decision["routed"] = True
             item = BacklogItem.new(
                 item_id=ids[node.key],
                 title=str(node.title).replace("`", ""),
@@ -536,7 +553,7 @@ def enqueue_mission(
                     getattr(node, "execution_workdir", "")
                 ),
                 non_goals=list(getattr(node, "non_goals", ()) or ()),
-                manager_decision=manager_decision,
+                manager_decision=node_manager_decision,
             )
             item.original_objective = execution_body
             items.append(item)

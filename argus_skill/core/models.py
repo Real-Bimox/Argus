@@ -162,6 +162,7 @@ class RunnerResult:
     # private process group; the runner attempted cleanup by that exact PGID.
     orphan_process_group_id: int = 0
     orphan_process_group_cleanup_succeeded: bool = False
+    role_decisions: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def last_agent_message(self) -> str:

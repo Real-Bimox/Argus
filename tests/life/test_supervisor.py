@@ -313,7 +313,7 @@ def test_skill_changes_require_explicit_mission_permission(tmp_path) -> None:
     assert result is not None and result["status"] == "done"
     assert runner.kwargs["allow_skill_changes"] is True
     assert runner.kwargs["vertical_override"] == "device_tuning"
-    assert supervisor._vertical_resolved is False
+    assert supervisor._vertical_resolved is True
 
 
 def test_candidate_vertical_executes_from_session_state_with_separate_worktree(

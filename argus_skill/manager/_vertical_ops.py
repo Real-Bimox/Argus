@@ -8,12 +8,14 @@ to avoid circular imports with ``_core``.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
+from ..core.role_decision import latest_role_decision
 from ..skills import vertical_select
 from ..skills.vertical_select import (
     persist_vertical,
@@ -295,8 +297,13 @@ class _VerticalDecisionMixin:
                 "Manager research-target backend failed"
                 + (f": {detail}" if detail else "")
             )
+        process_decision = latest_role_decision(result, "manager")
         target_level = parse_research_target_level(
-            extract_answer(result),
+            (
+                json.dumps(process_decision, ensure_ascii=True)
+                if process_decision is not None
+                else extract_answer(result)
+            ),
             supported_levels=supported_levels,
         )
         if target_level is None:
@@ -485,8 +492,13 @@ class _VerticalDecisionMixin:
                         "Manager fast-route backend failed"
                         + (f": {detail}" if detail else "")
                     )
+                fast_payload = latest_role_decision(fast_result, "manager")
                 fast_route = parse_fast_vertical_decision(
-                    extract_answer(fast_result),
+                    (
+                        json.dumps(fast_payload, ensure_ascii=True)
+                        if fast_payload is not None
+                        else extract_answer(fast_result)
+                    ),
                     known_verticals=known_verticals,
                     known_domains=list(BUILTIN_DOMAINS),
                     existing_data_domains=all_domain_names,
@@ -577,8 +589,13 @@ class _VerticalDecisionMixin:
                     "Manager grounded-route backend failed"
                     + (f": {detail}" if detail else "")
                 )
+            route_payload = latest_role_decision(route_result, "manager")
             route_decision = parse_vertical_decision(
-                extract_answer(route_result),
+                (
+                    json.dumps(route_payload, ensure_ascii=True)
+                    if route_payload is not None
+                    else extract_answer(route_result)
+                ),
                 known_verticals=known_verticals,
                 known_domains=list(BUILTIN_DOMAINS),
                 existing_data_domains=all_domain_names,
@@ -613,8 +630,8 @@ class _VerticalDecisionMixin:
                 result, decision = invoke_grounded_route(
                     prompt
                     + "\n\n## Context handoff correction\n"
-                    "The prior reply was incomplete or invalid. Return the complete "
-                    "named decision lines again. Because the Task contains bounded "
+                    "The prior decision event was incomplete or invalid. Record one "
+                    "complete Manager decision event again. Because the Task contains bounded "
                     "conversation context, EXECUTION_TASK is required: rewrite only "
                     "the current intended work as a standalone handoff, preserving "
                     "every explicit constraint and excluding the context markers.",
@@ -644,8 +661,8 @@ class _VerticalDecisionMixin:
                 "\n\n## Required grounding retry\n"
                 "The prior structured decision selected a repository-sensitive "
                 "or project-local capability without Agent tool evidence. Use one "
-                "targeted read-only repository tool operation, then return the "
-                "complete named decision lines again. Do not broaden the search."
+                "targeted read-only repository tool operation, then record the "
+                "complete Manager decision event. Do not broaden the search."
             )
             retry_prompt = prompt + correction
             if len(retry_prompt) > grounded_prompt_limit:

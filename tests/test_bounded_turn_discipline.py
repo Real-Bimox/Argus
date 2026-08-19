@@ -121,10 +121,11 @@ def test_engineer_surfaces_operator_only_blockers_to_host():
     )
 
     for out in (full, compact):
-        assert "OPERATOR_QUESTION=" in out
-        assert "OPERATOR_OPTIONS=" in out
+        assert "operator_question" in out
+        assert "operator_options" in out
+        assert "ARGUS_ROLE_DECISION=" in out
         assert "parks the task" in out or "Never keep opening fresh rounds" in out
 
 
 def test_engineer_fixed_prompt_stays_token_efficient():
-    assert len(_prompt("Refactor the data loader and add unit tests.")) < 3_000
+    assert len(_prompt("Refactor the data loader and add unit tests.")) < 2_500

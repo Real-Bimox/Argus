@@ -35,6 +35,7 @@ class _Result:
         stderr_lines: list[str] | None = None,
         thread_id: str = "thread-1",
         tool_activity_observed: bool = True,
+        role_decisions: list[dict] | None = None,
     ) -> None:
         self.exit_code = exit_code
         self.turn_completed = turn_completed
@@ -45,6 +46,7 @@ class _Result:
         self.last_agent_message = message
         self.thread_id = thread_id
         self.tool_activity_observed = tool_activity_observed
+        self.role_decisions = list(role_decisions or [])
 
 
 class _Runner:
@@ -188,3 +190,22 @@ def test_completed_success_does_not_retry_from_stderr_text(tmp_path) -> None:
     assert len(runner.calls) == 1
     assert runner.calls[0]["resume_thread_id"] == "existing-thread"
     assert result.thread_id == "completed-thread"
+
+
+def test_process_decision_succeeds_without_final_manager_message(tmp_path) -> None:
+    runner = _Runner(
+        _Result(
+            message="",
+            role_decisions=[{
+                "role": "manager",
+                "payload": json.loads(_FAST_DECISION),
+            }],
+        )
+    )
+
+    decision = Manager(project_root=tmp_path, runner=runner).decide_vertical(
+        "fix the requested bug"
+    )
+
+    assert decision.vertical == "software"
+    assert len(runner.calls) == 1

@@ -269,7 +269,11 @@ class PlanningCycleIntakeMixin:
         # downstream gate reads see a stable vertical. Placing it AFTER the
         # short-circuits means a blocked/idle cycle never triggers a Manager
         # decision (nor a wasted planner-runner call).
-        manager_intent = self._resolve_vertical_once()
+        if str((state.manager_intent or {}).get("vertical") or "").strip():
+            self._vertical_resolved = True
+            manager_intent = {}
+        else:
+            manager_intent = self._resolve_vertical_once()
         if manager_intent:
             state.manager_intent = manager_intent
 

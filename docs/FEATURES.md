@@ -30,11 +30,12 @@ flowchart TD
     SL -->|No| IDLE[Ready]
     SLR --> IDLE
 
-    F -->|TEAM| M[Manager vertical, workflow, lifetime]
+    F -->|TEAM| M[Manager initial vertical, workflow, lifetime]
     M -->|Bounded direct| BP[Planner bounded DAG]
     M -->|Staged or standing| CP[Continuous Planner cycle]
     BP --> Q[Durable backlog]
-    CP --> Q
+    CP --> PV[Planner selects next mission and optional node vertical]
+    PV --> Q
     Q --> E[Engineer mission]
     E -->|continue| E
     E -->|operator-only blocker| OP[Paused for operator]
@@ -63,7 +64,7 @@ Manager owns:
 
 - SELF versus TEAM routing;
 - pause, abort, steering, and authorization controls;
-- vertical selection or project-local vertical creation;
+- initial campaign vertical selection or project-local vertical creation;
 - direct versus staged workflow;
 - bounded versus standing lifetime;
 - a clean standalone `execution_task`, used directly as the shared prose
@@ -72,6 +73,10 @@ Manager owns:
 Manager may investigate any relevant repository evidence needed to control
 overall direction and risk. Its tool boundary is read-only; it does not
 implement the task or replace Planner's concrete file-level plan.
+
+Manager does not reclassify the original objective after every mission. A
+matching front-door route is reused for the campaign; later mission-level
+vertical choices belong to Planner.
 
 Manager never treats transcript wrappers as the Engineer objective. A short
 contextual request is reduced to its current operator message if a model copies
@@ -83,9 +88,16 @@ Planner is read-only and delegates work.
 
 For bounded work it produces a small dependency DAG. One coherent deliverable
 normally stays in one node. For staged or standing work it chooses one
-decision-sized next mission from current evidence. Planner owns the technical
+decision-sized next mission from current evidence and may assign an existing
+vertical to that node. Omitting the node vertical inherits Manager's campaign
+route. Planner owns the technical
 repository grounding; Manager routing does not precompute call chains,
 analogues, or test plans.
+
+Manager, Planner, Engineer, and Reviewer record primary-flow decisions as
+`ARGUS_ROLE_DECISION` events as soon as each decision is clear. The Host reads
+the whole event stream; a final assistant message may be natural language or
+absent. Legacy named-output parsing remains only for in-flight compatibility.
 
 Planner outcomes are:
 
@@ -102,9 +114,9 @@ Planner outcomes are:
 Engineer owns implementation, commands, tests, evidence, and the requested
 deliverable.
 
-- `MILESTONE_STATUS=done`: the mission reached its decision point.
-- `MILESTONE_STATUS=continue`: another Engineer round is required.
-- `OPERATOR_QUESTION=<question>`: only an operator-owned decision blocks work.
+- `status=done`: the mission reached its decision point.
+- `status=continue`: another Engineer round is required.
+- `operator_question`: only an operator-owned decision blocks work.
 
 Engineer does not create process artifacts merely to prove that work happened.
 Named-output constraints apply to new outputs and never authorize deletion of
@@ -118,7 +130,7 @@ The main Reviewer is read-only.
 | Reviewer verdict | Transition |
 | --- | --- |
 | `done` | Settle mission successfully |
-| `continue` | Return `NEXT_ACTION` to Engineer |
+| `continue` | Return `next_action` to Engineer |
 | `replan_requested` | Return to Planner |
 | `blocked` with operator question | Persist `paused_operator` and wait |
 | `research_incomplete` | Preserve evidence and pause recoverably |

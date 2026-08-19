@@ -83,6 +83,28 @@ def test_empty_clean_output_stays_continue() -> None:
     assert decision.backend_unavailable is False
 
 
+def test_process_decision_succeeds_without_final_reviewer_message() -> None:
+    class _DecisionRunner:
+        def run_exec(self, **_kwargs):
+            return RunnerResult(
+                exit_code=0,
+                agent_messages=[],
+                role_decisions=[{
+                    "role": "reviewer",
+                    "payload": {
+                        "status": "done",
+                        "reason": "The focused check passed.",
+                        "next_action": "",
+                    },
+                }],
+            )
+
+    decision = _evaluate(Reviewer(runner=_DecisionRunner()))
+
+    assert decision.status == "done"
+    assert decision.reason == "The focused check passed."
+
+
 def test_invalid_named_footer_is_not_credited_as_evidence() -> None:
     class _InvalidRunner:
         def run_exec(self, **_kwargs):

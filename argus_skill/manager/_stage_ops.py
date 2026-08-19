@@ -11,12 +11,14 @@ byte-for-byte.
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+from ..core.role_decision import latest_role_decision
 from ._helpers import (
     _manager_model,
     _manager_reasoning_effort,
@@ -202,6 +204,9 @@ class _StageDecisionMixin:
         """Wrap extract_answer so it never raises; returns '' on any failure."""
         from .stage_decider import extract_answer
         try:
+            process_decision = latest_role_decision(result, "manager")
+            if process_decision is not None:
+                return json.dumps(process_decision, ensure_ascii=True)
             return extract_answer(result) or ""
         except Exception:  # noqa: BLE001
             return ""

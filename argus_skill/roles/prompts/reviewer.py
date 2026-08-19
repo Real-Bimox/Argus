@@ -11,6 +11,7 @@ from ...core.model_visible_text import (
     MODEL_INTEGRITY_BOUNDARY,
     sanitize_model_visible_text,
 )
+from ...core.role_decision import decision_event_instruction
 from ..task_contract import (
     EFFECTIVE_TASK_CONTRACT,
     format_native_shell_command,
@@ -131,12 +132,8 @@ def _format_academic_paper_review_skill_block(*, include: bool) -> str:
 def _verification_directive() -> str:
     """Compact trust-first verification stance."""
     return (
-        "Trust consistent shown results. Re-open only for missing, stale, contradictory, "
-        "or implausible facts; otherwise judge work and next step. Empty git diff proves "
-        "nothing for untracked/outside-repo artifacts: inspect content/output. A resource "
-        "violation requires a mutation command attributable to this mission. Identity "
-        "drift alone means external change or unknown provenance; do not fail independent "
-        "verification.\n\n"
+        "Trust clear, consistent evidence. Recheck only what is missing, stale, "
+        "contradictory, or implausible. Judge artifacts by content, not git diff alone.\n\n"
     )
 
 
@@ -668,50 +665,40 @@ def render_reviewer_prompt(
         + (shell_contract + "\n\n" if shell_contract else "")
         + MODEL_INTEGRITY_BOUNDARY
         + "\n\n## Reviewer role\n"
-        "Judge the objective against real evidence; bounded work may finish early. Use "
-        "`continue` for an agent-fixable in-scope gap, `replan_requested` "
-        "for a new mission, replacement route, or boundary change, and `blocked` only "
-        "for external blockers. You do not change the work under review: not its "
-        "sources, not its artifacts, not its build. Recording your own verdict through "
-        "a command your vertical gives you is review. "
-        "Use tools only in proportion to unresolved uncertainty. Externally derived work "
-        "needs primary-source grounding and its project implication; Community "
-        "implementations alone are insufficient for claim-critical semantics. Return "
-        "`replan_requested` when missing grounding may change the mechanism; do not demand "
-        "new research for local-only work or already-grounded work.\n\n"
+        "Check whether the task is actually done and useful. Inspect evidence when needed; "
+        "use tools only in proportion to unresolved uncertainty. You do not change the "
+        "work under review: not its sources, not its artifacts, not its build. Recording "
+        "your own verdict through a command your vertical gives you is review. Use `done` "
+        "when it passes, `continue` for an agent-fixable "
+        "in-scope gap, `replan_requested` for a new mission, replacement route, or boundary "
+        "change, and `blocked` only for an external blocker. External claims need "
+        "primary-source grounding when semantics affect the result; Community "
+        "implementations alone are insufficient. Do not demand research for local-only "
+        "or already-grounded work; do not demand new research for local-only work. "
+        "Do not require extra abstractions, defensive machinery, or future-proofing "
+        "without a demonstrated need. "
+        "Return `replan_requested` when missing grounding could change the mechanism.\n\n"
         + ("" if _requires_engineering_audit else _verification_directive())
         + audit_integrity_block
-        + "## Output protocol\n"
-        "Reason and use tools normally, and write your review however is "
-        "clearest. End the final message with these lines; only they are read, "
-        "and REASON/NEXT_ACTION may run over several lines:\n"
-        "STATUS=done|continue|blocked|replan_requested\n"
-        "REASON=<the verdict rationale>\n"
-        "NEXT_ACTION=<the Engineer instruction; empty for done>\n"
-        "OPERATOR_QUESTION=<operator-only blocker, or none>\n"
-        "OPERATOR_OPTIONS=<id :: label :: description; ...|none>\n"
+        + "## Decision\n"
+        "Record `status`, `reason`, and `next_action`. Add progress, plan, operator, "
+        "research, and frontier fields only when relevant."
         + (
-            "RESEARCH_RESULT=<JSON research-result contract>\n"
+            " Include the inspected `research_result` contract."
             if _research_target_level is not None
             else ""
         )
-        +
-        "FORWARD_PROGRESS=true|false\n"
-        "PLAN_SIGNAL=continue|reconsider\n"
-        "PLAN_CHALLENGE=<invalidated plan assumption, or none>\n"
-        "PLAN_ALTERNATIVE=<better technical route, or none>\n"
-        "AUTHORITY_IMPACT=technical|manager_contract|operator\n"
-        "FRONTIER_CHANGE=artifact_improved|risk_reduced|uncertainty_reduced|information_gain|bounded_regression|recovered|unchanged_failure|expanding_regression\n"
-        "FRONTIER_SUMMARY=<semantic change, not a score>\n"
-        "FRONTIER_OBLIGATIONS=resolved::<a; b>|new::<c>|regressed::<d>|remaining::<e>\n"
-        "FRONTIER_EVIDENCE=hypothesis::<h>|artifacts::<a>|evidence::<e>|proxies::<p>|uncertainty::<u>\n"
-        "NEXT_DECISION_POINT=<next evidence-based decision>\n"
-        "REGRESSION_ENVELOPE=none, or cause::<c>|scope::<s>|budget::<b>|recovery::<r>|exit::<e>\n"
-        "SESSION_SIGNAL=none, or kind::<repeated_contradiction|reviewer_confusion|quality_degradation>|target::<planner|engineer|reviewer>|detail::<evidence>\n"
-        "Judge FORWARD_PROGRESS against the operator objective, separately from "
-        "whether this bounded implementation is correctly done.\n"
-        "Do not inspect or edit checkpoint/context-packet/handoff bookkeeping; it is "
-        "not review evidence. Put the next Engineer instruction only in NEXT_ACTION.\n\n"
+        + "\n"
+        + decision_event_instruction(
+            "reviewer",
+            '{"status":"continue","reason":"why","next_action":"one Engineer '
+            'instruction","forward_progress":true,"plan_signal":"continue"}',
+        )
+        + "\nJudge progress against the operator goal, not activity. `next_action` "
+        "is the sole Engineer instruction. Relevant plan/frontier changes use "
+        "`plan_signal`, `frontier_change`, `frontier_summary`, "
+        "`next_decision_point`, `regression_envelope`, and `session_signal`. "
+        "Bookkeeping is not review evidence.\n\n"
         + paper_review_skill_block
         + wiki_curator_skill_block
         + direct_memory_edit_block
@@ -723,28 +710,12 @@ def render_reviewer_prompt(
         + "\n\n"
         + venv_skill_block
         + "\n\n## Handoff policy\n"
-        "Decision rules:\n"
-        "- `done` requires concrete evidence and exact adherence to material operator constraints.\n"
-        "- Default to `continue` whenever the agent's claims are not backed by shown evidence.\n"
-        "- Preserve useful negative evidence, but integrity is a hard constraint, not scientific value by itself. "
-        "Do not automatically turn an honest result into completion. An agent-designed weak proxy is not evidence for the claimed system; otherwise return `replan_requested`.\n"
-        "REASON states the strongest supported finding; NEXT_ACTION names only "
-        "missing evidence or the next decision. Keep factual outcome, claim boundary, "
-        "and retry condition distinct: timeout, "
-        "incomplete coverage, or one failed mechanism is not impossibility.\n"
-        "An end-to-end threshold miss only shows that this run missed its target. Reject any "
-        "root-cause, dominant/bottleneck-stage, or replacement-architecture claim "
-        "unless code-hot-path and live resource/wait evidence plus phase "
-        "timing/profiling or a controlled counterfactual explain a material share of "
-        "elapsed time; otherwise request the missing diagnostics.\n"
-        "A timeout, failed test, oversized benchmark, unavailable optional backend, or "
-        "choice among reversible diagnostics is technical: give a concrete NEXT_ACTION "
-        "with AUTHORITY_IMPACT=technical and do NOT ask the operator.\n"
-        "FORWARD_PROGRESS tracks artifact/risk/uncertainty change, not activity or one "
-        "proxy. For operator authority, ask one question with up to five complete options "
-        "in the operator's language. Final-submission "
-        "done certifies the project; bounded done "
-        "certifies only the mission.\n\n"
+        "`done` needs evidence; missing evidence means `continue`, and a weak proxy "
+        "means `replan_requested`. One failure proves neither impossibility nor root "
+        "cause; causal claims need code-path and measured comparison evidence. Give "
+        "technical problems a concrete `next_action`; ask the operator only for "
+        "authority or information only they own. Bounded `done` closes this task; "
+        "final-submission `done` may certify the project.\n\n"
         + objective_block
         + "Operator messages:\n"
         f"{operator_text}\n\n"

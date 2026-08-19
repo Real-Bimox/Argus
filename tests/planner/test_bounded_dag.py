@@ -37,6 +37,7 @@ class _Runner:
                 "acceptance_check",
                 "non_goals",
                 "context_refs",
+                "vertical",
             ):
                 if key in task:
                     field = f"TASK_{key.upper()}"
@@ -73,6 +74,7 @@ def test_bounded_planner_parses_real_fanout_fanin_dag(tmp_path) -> None:
                     "deps": [],
                     "title": "Build fixtures",
                     "objective": "write tests/fixtures.json; validate JSON parsing",
+                    "vertical": "argus_maintenance",
                 },
                 {
                     "key": "c",
@@ -99,6 +101,7 @@ def test_bounded_planner_parses_real_fanout_fanin_dag(tmp_path) -> None:
     assert not plan.error
     assert [task.key for task in plan.tasks] == ["a", "b", "c"]
     assert plan.tasks[2].deps == ("a", "b")
+    assert plan.tasks[1].vertical == "argus_maintenance"
     assert plan.tasks[2].acceptance_check == "pytest -q exits zero"
     assert plan.tasks[2].non_goals == ("do not publish", "do not edit pipeline state")
     assert not hasattr(plan.tasks[2], "context_refs")
@@ -106,13 +109,14 @@ def test_bounded_planner_parses_real_fanout_fanin_dag(tmp_path) -> None:
     assert "primary-source semantics are materially missing" in prompt
     assert "Existing grounding never forbids fresh upstream research" in prompt
     assert "When related attempts repeatedly fail" in prompt
-    assert "`TASK_DEPS=...` (same-batch keys only)" in prompt
+    assert "`deps` (same-batch keys only)" in prompt
     assert not hasattr(plan.tasks[2], "require_independent_review")
     call = runner.calls[0]
     assert call["run_label"] == "planner.bounded_dag"
     assert call["options"].working_dir == str(tmp_path.resolve())
     assert not hasattr(call["options"], "output_schema_path")
-    assert "Return plain key-value text, not JSON" in call["prompt"]
+    assert "ARGUS_ROLE_DECISION=" in call["prompt"]
+    assert "Any later response is plain language and is not parsed." in call["prompt"]
     assert "TASK_CONTEXT_REFS" not in call["prompt"]
     assert "TASK_STAGE_CLOSING" not in call["prompt"]
     assert "TASK_REQUIRE_INDEPENDENT_REVIEW" not in call["prompt"]

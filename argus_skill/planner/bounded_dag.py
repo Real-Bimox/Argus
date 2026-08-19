@@ -9,6 +9,7 @@ from typing import Any
 
 from ..core.models import RunnerOptions
 from ..core.portable_filename import normalized_logical_identifier
+from ..core.role_decision import latest_role_decision
 from ..core.run_gateway import run_exec as gateway_run_exec
 
 
@@ -20,6 +21,7 @@ class BoundedDagNode:
     objective: str
     acceptance_check: str = ""
     non_goals: tuple[str, ...] = ()
+    vertical: str = ""
 
 
 @dataclass(frozen=True)
@@ -49,7 +51,7 @@ def _extract(result: Any) -> str:
 
 _PLAN_LINE = re.compile(
     r"^(?P<key>PLAN_REASON|TASK_KEY|TASK_DEPS|TASK_TITLE|TASK_OBJECTIVE|"
-    r"TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS)"
+    r"TASK_ACCEPTANCE_CHECK|TASK_NON_GOALS|TASK_VERTICAL)"
     r"\s*[:=]\s*(?P<value>.*)$",
     re.IGNORECASE,
 )
@@ -64,6 +66,7 @@ def _parse_key_value_plan(text: str) -> dict[str, Any]:
         "TASK_TITLE": "title",
         "TASK_OBJECTIVE": "objective",
         "TASK_ACCEPTANCE_CHECK": "acceptance_check",
+        "TASK_VERTICAL": "vertical",
     }
     for raw_line in text.splitlines():
         line = raw_line.strip().strip("`").strip()
@@ -146,6 +149,7 @@ def _validate(payload: object) -> tuple[str, tuple[BoundedDagNode, ...]]:
                     for item in (row.get("non_goals") or [])
                     if str(item).strip()
                 ),
+                vertical=str(row.get("vertical") or "").strip(),
             )
         )
     nodes = [
@@ -232,9 +236,14 @@ def plan_bounded_dag(
                 ),
                 **usage,
             )
+        process_decision = latest_role_decision(result, "planner")
         output = _extract(result)
         try:
-            payload = _parse_key_value_plan(output)
+            payload = (
+                process_decision
+                if process_decision is not None
+                else _parse_key_value_plan(output)
+            )
             reason, tasks = _validate(payload)
             return BoundedDagPlan(reason=reason, tasks=tasks, **usage)
         except (TypeError, ValueError) as exc:

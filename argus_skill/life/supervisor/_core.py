@@ -225,10 +225,9 @@ class LifeSupervisor(
         self.skill_store = skill_store
         self._missions_started = 0
         self._planning_cycles = 0
-        # One-shot guard: the pipeline mode (paper vs optimize) is classified
-        # from the continuous objective and persisted exactly once, on the
-        # first planner cycle. Set True the moment we attempt resolution so we
-        # never re-classify mid-mission.
+        # One-shot campaign route. Manager classifies the operator's initial
+        # objective; Planner may select a mission-level vertical on later DAG
+        # nodes without sending the original objective back through Manager.
         self._vertical_resolved = False
         # Idle backoff state (await-external / repeated no-work planner cycles).
         # Persists across daemon outer-loop iterations (the supervisor instance
@@ -1018,7 +1017,6 @@ class LifeSupervisor(
             return lifecycle_block
 
         result = self._run_one(item)
-        self._vertical_resolved = False
         return result
 
     def _budget_global_root(self) -> Path:

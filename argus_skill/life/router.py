@@ -6,6 +6,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Callable, Literal
 
+from ..core.role_decision import latest_role_decision
 from ..roles.prompts.manager import (
     _IDENTITY_GUARD as _PROMPT_IDENTITY_GUARD,
 )
@@ -47,6 +48,26 @@ def classify_route(
 
 
 def _extract_answer(result: Any) -> str:
+    decision = latest_role_decision(result, "manager")
+    if decision is not None:
+        lines: list[str] = []
+        for key in (
+            "config",
+            "control",
+            "authorization",
+            "steer_directive",
+            "route",
+            "self_mode",
+            "reply",
+            "lifetime",
+            "greeting",
+            "name",
+        ):
+            value = decision.get(key, "NONE")
+            if key == "reply" and value not in (None, "NONE"):
+                value = json.dumps(str(value), ensure_ascii=False)
+            lines.append(f"{key.upper()}: {value}")
+        return "\n".join(lines)
     msg = getattr(result, "last_agent_message", None)
     if not msg:
         msgs = getattr(result, "agent_messages", None) or []
