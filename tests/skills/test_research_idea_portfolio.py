@@ -251,6 +251,15 @@ def test_selection_waits_for_eighty_percent_review_quorum(tmp_path: Path) -> Non
         task["timeout_s"] == (1200.0 if task["role"] == "idea-route" else 600.0)
         for task in task_board.snapshot(root)
     )
+    route_task = next(
+        task for task in task_board.snapshot(root) if task["role"] == "idea-route"
+    )
+    review_task = next(
+        task for task in task_board.snapshot(root) if task["role"] == "idea-review"
+    )
+    assert "ACL/EMNLP/NAACL" in route_task["objective"]
+    assert "foundational source" in route_task["objective"]
+    assert "Do not qualify a theory-only novelty case" in review_task["objective"]
     for index in range(QUORUM_COUNT - 1):
         _complete_reviewed_route(
             tmp_path,
@@ -274,6 +283,12 @@ def test_quorum_selector_can_choose_best_not_earliest(tmp_path: Path) -> None:
     selection_root = _selection_root(tmp_path)
     assert len(task_board.snapshot(selection_root)) == 2
     assert all(task["timeout_s"] == 600.0 for task in task_board.snapshot(selection_root))
+    selector_task = next(
+        task
+        for task in task_board.snapshot(selection_root)
+        if task["role"] == "idea-selector"
+    )
+    assert "balanced AI-frontier and foundation grounding" in selector_task["objective"]
     selected_route, selected_review = reviewed[-1]
     _complete_selection(
         tmp_path,

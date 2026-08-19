@@ -129,6 +129,22 @@ def test_research_idea_selection_requires_ambition_without_decorative_math() -> 
     assert "shallow prompt/schema/wrapper/scale" in peer_review
 
 
+def test_literature_grounding_balances_ai_frontier_and_foundations() -> None:
+    discovery = " ".join(_skill("engineer/idea-discovery.md").split())
+    pipeline = " ".join(_skill("engineer/auto-research-pipeline.md").split())
+    literature = {
+        item.id: item.statement for item in STAGE_CHECKLISTS["research"]
+    }["research.literature"]
+
+    assert "ACL/EMNLP/NAACL" in discovery
+    assert "ICLR/ICML/NeurIPS" in discovery
+    assert "AAAI/AAMAS" in discovery
+    assert "foundation evidence" in discovery
+    assert "AI-venue/recent-arXiv" in pipeline
+    assert "AI-venue/recent-arXiv frontier" in literature
+    assert "foundational source" in literature
+
+
 def test_research_selection_and_review_skills_share_the_ambition_standard() -> None:
     for path in _AMBITION_SKILLS:
         text = " ".join(_skill(path).split())

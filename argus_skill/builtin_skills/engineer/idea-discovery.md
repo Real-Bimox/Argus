@@ -35,7 +35,10 @@ form a 12-route streaming idea pipeline:
    `research/ideation/routes/<route-id>.md` output, and a separately checkable
    source trail. Each route must identify the closest work, a non-obvious gap,
    the strongest kill argument, and a faithful public-benchmark or real-trace
-   probe.
+   probe. Every route must balance application-frontier and foundation evidence:
+   include at least one recent AI conference or 2024-2026 arXiv neighbor
+   (ACL/EMNLP/NAACL, ICLR/ICML/NeurIPS, AAAI/AAMAS) and at least one relevant
+   mathematical, physical, statistical, ML, or deep-learning foundation.
    For a broad publishable/doctoral Agent paper, reserve at least four routes for
    independent foundation-first searches across relevant areas such as
    probability and learning theory, information theory, control and dynamical
@@ -258,7 +261,9 @@ Every route has its own fresh `idea-review` task. That reviewer searches for the
 nearest implementation, benchmark, negative result, and simpler explanation,
 then judges novelty, technical depth, theoretical/causal foundation, frontier
 significance, falsifiability, benchmark validity, and local feasibility. Local
-ease cannot rescue a shallow or already-occupied idea.
+ease cannot rescue a shallow or already-occupied idea. Theory-only coverage
+cannot certify novelty: verify both the AI venue/recent-arXiv frontier and the
+underlying foundation, plus official code or benchmarks where available.
 
 ### Step 6 — select at the 80% review quorum, then smoke once
 

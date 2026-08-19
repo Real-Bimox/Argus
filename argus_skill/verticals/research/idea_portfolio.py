@@ -70,10 +70,13 @@ def _route_task(
             "primary-source trail; closest work; non-obvious gap; strongest kill "
             "argument; and one tiny advisory observation. Use headings `## Mechanism`, "
             "`## Primary sources`, `## Closest work`, `## Kill argument`, and "
-            "`## Faithful probe`; include primary URLs. Prefer theory from mathematics, "
-            "physics, statistics, machine learning, or deep learning when it changes "
-            "the algorithm or prediction. Stop searching once the novelty boundary is "
-            "credible; do not turn route discovery into an exhaustive survey."
+            "`## Faithful probe`; include primary URLs. Ground novelty on both sides: "
+            "at least one recent AI-venue or 2024-2026 arXiv source (ACL/EMNLP/NAACL, "
+            "ICLR/ICML/NeurIPS, AAAI/AAMAS, or a directly relevant preprint) and at "
+            "least one foundational source from mathematics, physics, statistics, "
+            "machine learning, or deep learning. Inspect official code/benchmarks and "
+            "credible practitioner signals when relevant. Stop once this balanced "
+            "novelty boundary is credible; do not turn discovery into an exhaustive survey."
         ),
         "acceptance_check": (
             f"`{output}` exists and contains the mechanism, sources, closest work, "
@@ -111,8 +114,10 @@ def _review_task(
             "`rejected`), summary, technical_depth, originality, "
             "theoretical_grounding, field_significance, generality, "
             "top_conference_case, local_feasibility, fatal_concerns (array), and probe "
-            "(object). A qualified probe object contains premise, evaluator_identity, "
-            "comparison_identity, minimum_signal, and stop_rules."
+            "(object). Do not qualify a theory-only novelty case: verify at least one "
+            "recent AI-venue/arXiv neighbor and one foundational source, plus official "
+            "artifacts where available. A qualified probe object contains premise, "
+            "evaluator_identity, comparison_identity, minimum_signal, and stop_rules."
         ),
         "acceptance_check": (
             f"`{output}` is valid review JSON with a decisive qualified/rejected "
@@ -173,7 +178,8 @@ def _selection_tasks(
                 f"Read exactly the {QUORUM_COUNT} route/review pairs listed below and "
                 "choose the strongest review-qualified idea by qualitative Agent "
                 "judgment. Prioritize theoretical support, genuine novelty, generality, "
-                "a compelling top-conference thesis, and a credible path to evidence. "
+                "a compelling top-conference thesis, balanced AI-frontier and foundation "
+                "grounding, and a credible path to evidence. "
                 "Do not inspect probe results and do not wait for the final "
                 f"{TEAM_WIDTH - QUORUM_COUNT} routes. Candidate manifest:\n"
                 + json.dumps(candidates, ensure_ascii=True, indent=2)

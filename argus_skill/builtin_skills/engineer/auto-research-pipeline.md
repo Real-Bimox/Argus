@@ -171,7 +171,8 @@ that would overturn the claim.
 
 - Build `research/LITERATURE_GROUNDING.json` around claim coverage: nearest
   competitors, foundations, contradictions, negative evidence, and open
-  frontier.
+  frontier. Keep separate AI-venue/recent-arXiv and foundation-theory buckets;
+  central novelty claims require both, plus official artifacts when available.
 - Write `research/RESEARCH_BRIEF.md` and preserve rejected ideas with their real
   observations in the existing project history.
 - Do not lock an idea until the ambition standard survives independent

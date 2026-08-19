@@ -42,10 +42,12 @@ STAGE_CHECKLISTS: dict[str, tuple[ChecklistItem, ...]] = {
             statement=(
                 "The canonical literature ledger covers the claims the project "
                 "actually depends on: the nearest competing methods, the relevant "
-                "lineage/classic anchors, contradictory or negative evidence, and "
-                "the unresolved frontier. Each retained source has a verifiable "
-                "primary URL and a project-relevant implication. Judge connected "
-                "claim coverage, not a fixed paper or query count."
+                "AI-venue/recent-arXiv frontier, lineage/classic foundations, "
+                "contradictory evidence, and unresolved frontier. Central novelty "
+                "claims require both an AI-facing source and a foundational source, "
+                "plus official artifacts when available. Each retained source has a "
+                "verifiable primary URL and project implication; judge connected "
+                "coverage, not a fixed count."
             ),
             evidence_hint=(
                 "research/LITERATURE_GROUNDING.json (canonical); "
