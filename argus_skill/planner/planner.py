@@ -817,7 +817,11 @@ def parse_planner_text(text: str) -> PlannerVerdict:
             continue
         key = row.get("TASK_KEY", "").strip()
         raw_deps = row.get("TASK_DEPS", "").strip()
-        deps = [dep.strip() for dep in raw_deps.split(",") if dep.strip()]
+        deps = (
+            []
+            if raw_deps.lower() == "none"
+            else [dep.strip() for dep in raw_deps.split(",") if dep.strip()]
+        )
         if (
             key and re.fullmatch(r"[A-Za-z0-9_.:-]+", key) is None
         ) or any(
