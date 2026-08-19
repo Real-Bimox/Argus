@@ -774,10 +774,11 @@ def test_vertical_decision_always_uses_repository_grounded_route(
     assert runner.calls[0]["options"].force_safe_mode is True
     assert runner.calls[0]["options"].dangerous_yolo is False
     assert "--available-tools=" not in runner.calls[0]["options"].extra_args
-    assert "Investigate freely as needed" in runner.calls[0]["prompt"]
-    assert "Manager owns direction, Planner the file plan" in runner.calls[0]["prompt"]
-    assert "preserve every requested action and exact path/command" in runner.calls[0]["prompt"]
-    assert "Planner owns implementation" in runner.calls[0]["prompt"]
+    assert "inspect only when the fit is unclear" in runner.calls[0]["prompt"]
+    assert "Preserve stated paths, commands, order" in runner.calls[0]["prompt"]
+    assert "Omit `execution_task` for a standalone existing route" in (
+        runner.calls[0]["prompt"]
+    )
     assert "at most one targeted" not in runner.calls[0]["prompt"]
 
 
@@ -855,8 +856,8 @@ def test_company_due_diligence_cannot_enter_publication_workflow(
     assert decision.research_target_level == "exploratory"
     assert decision.target_venue == ""
     assert decision.workflow_mode == "direct"
-    assert "Company due diligence" in runner.calls[0]["prompt"]
-    assert "never `research`/`staged`" in runner.calls[0]["prompt"]
+    assert "Choose workflow separately" in runner.calls[0]["prompt"]
+    assert "papers and surveys are `research`" in runner.calls[0]["prompt"]
 
 
 def test_builtin_repository_route_accepts_host_snapshot_without_tool_retry(

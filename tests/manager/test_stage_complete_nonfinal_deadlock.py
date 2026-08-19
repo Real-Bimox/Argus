@@ -171,5 +171,5 @@ def test_the_prompt_no_longer_invites_completion_from_an_earlier_stage() -> None
     with open(manager_prompts.__file__, encoding="utf-8") as handle:
         text = handle.read()
 
-    assert "From any earlier stage, ADVANCE instead" in text
+    assert "COMPLETE only at the final stage of a finite objective" in text
     assert "every later stage " not in text

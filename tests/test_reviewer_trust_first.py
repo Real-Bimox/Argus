@@ -43,12 +43,11 @@ def _prompt(*, measured: bool, monkeypatch) -> str:
 
 def test_directive_trusts_and_drops_reflexive_rerun():
     d = _verification_directive()
-    assert "Trust consistent shown results" in d
+    assert "Trust clear, consistent evidence" in d
     assert "missing" in d
     assert "contradictory" in d
-    assert "next step" in d
-    assert "empty git diff" in d.lower()
-    assert "untracked" in d.lower()
+    assert "identity drift" in d.lower()
+    assert "git diff" in d.lower()
     assert "hashes" not in d.lower()
     assert len(d) < 420
     # the OLD reflexive "use your own output as ground truth" framing is gone
@@ -136,7 +135,7 @@ def test_certified_medical_review_does_not_inherit_paper_policy(tmp_path) -> Non
 
 def test_build_prompt_uses_trust_first_not_old_rerun(monkeypatch):
     p = _prompt(measured=False, monkeypatch=monkeypatch)
-    assert "Trust consistent shown results" in p
+    assert "Trust clear, consistent evidence" in p
     assert "use *your own* output as ground truth" not in p
     assert "## Evidence policy" not in p
 
@@ -156,23 +155,23 @@ def test_non_measured_keeps_anti_fabrication_floor(monkeypatch):
     # Trust-first must NOT remove the floor: the reviewer still defaults to
     # `continue` (not `done`) when a claim is NOT backed by shown evidence.
     p = _prompt(measured=False, monkeypatch=monkeypatch)
-    assert "Default to `continue` whenever the agent's claims are not backed" in p
+    assert "Missing evidence means `continue`" in p
 
 
 def test_done_means_goal_achieved_not_merely_error_free(monkeypatch):
     p = _prompt(measured=False, monkeypatch=monkeypatch)
 
-    assert "`done` requires concrete evidence" in p
-    assert "exact adherence to material operator constraints" in p
-    assert "Do not automatically turn an honest result" in p
+    assert "`done` needs concrete evidence" in p
+    assert "Current operator > objective > mission" in p
+    assert "One timeout or failed attempt does not prove impossibility" in p
 
 
 def test_reviewer_separates_integrity_from_scientific_value(monkeypatch):
     p = _prompt(measured=False, monkeypatch=monkeypatch)
-    assert "integrity is a hard constraint" in p
+    assert "Integrity is mandatory" in p
     assert "not scientific value by itself" in p
-    assert "An agent-designed weak proxy is not evidence" in p
-    assert "otherwise return `replan_requested`" in p
+    assert "a weak proxy" in p
+    assert "`replan_requested`" in p
 
 
 def test_reviewer_reasons_in_prose_structured_only_at_handoff(monkeypatch):
@@ -182,9 +181,6 @@ def test_reviewer_reasons_in_prose_structured_only_at_handoff(monkeypatch):
     # the property stronger, not weaker: the prose and the verdict now live in
     # the same message instead of the verdict replacing it.
     p = _prompt(measured=False, monkeypatch=monkeypatch)
-    assert "reason and use tools normally" in p.lower()
-    assert "STATUS=done|continue|blocked|replan_requested" in p
-    assert "REASON=" in p and "NEXT_ACTION=" in p
-    # no role is forced into a serialisation format
-    assert "JSON" not in p
-    assert "matching the attached schema" not in p
+    assert "Any later response is plain language" in p
+    assert "ARGUS_ROLE_DECISION=" in p
+    assert '"status":"continue"' in p

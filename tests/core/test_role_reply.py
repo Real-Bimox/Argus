@@ -238,7 +238,8 @@ def test_the_routing_prompt_no_longer_demands_json() -> None:
     )
 
     assert "JSON" not in grounded
-    assert "CHOICE=existing" in grounded
+    assert "ARGUS_ROLE_DECISION=" in grounded
+    assert '"choice":"existing"' in grounded
 
 
 # -- values that are genuinely prose -----------------------------------------
@@ -392,7 +393,8 @@ def test_the_stage_prompt_no_longer_demands_json() -> None:
     )
 
     assert "JSON" not in prompt
-    assert "ACTION=advance|hold|rollback|complete" in prompt
+    assert "ARGUS_ROLE_DECISION=" in prompt
+    assert '"action":"hold"' in prompt
 
 
 def test_stage_prompt_exposes_dynamic_later_stage_choices() -> None:
@@ -413,7 +415,7 @@ def test_stage_prompt_exposes_dynamic_later_stage_choices() -> None:
     assert "Legal ADVANCE targets (later stages)" in prompt
     assert "`plan`, `benchmark`, `run`, `analysis`, `draft`" in prompt
     assert "literature-only survey" in prompt
-    assert "harness validates and records" in prompt
+    assert "Manager chooses ADVANCE, HOLD, ROLLBACK, or COMPLETE" in prompt
     assert "## Operator objective" in prompt
     assert "survey with no experiments" in prompt
 

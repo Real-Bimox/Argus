@@ -29,8 +29,8 @@ def test_reviewer_is_not_given_checkpoint_bookkeeping():
 def test_reviewer_never_acts_as_checkpoint_editor():
     p = _prompt()
     assert "You do not change the work under review" in p
-    assert "Put the next Engineer instruction only in NEXT_ACTION" in p
-    assert "only in proportion to unresolved uncertainty" in p
+    assert "Put the next Engineer instruction only in next_action" in p
+    assert "use tools only in proportion to unresolved uncertainty" in p
     assert "six total read/search tool calls" not in p
 
 
@@ -63,12 +63,12 @@ def test_reviewer_final_handoff_requires_explicit_progress_fields():
     p = _prompt()
 
     for field in (
-        "FORWARD_PROGRESS=true|false",
-        "PLAN_SIGNAL=continue|reconsider",
-        "PLAN_CHALLENGE=<invalidated plan assumption, or none>",
-        "PLAN_ALTERNATIVE=<better technical route, or none>",
-        "AUTHORITY_IMPACT=technical|manager_contract|operator",
-        "OPERATOR_OPTIONS=<id :: label :: description; ...|none>",
+        "`forward_progress`",
+        "`plan_signal`",
+        "`plan_challenge`",
+        "`plan_alternative`",
+        "`authority_impact`",
+        "`operator_options`",
     ):
         assert field in p
     assert "Return only STATUS, REASON, NEXT_ACTION and OPERATOR_QUESTION" not in p

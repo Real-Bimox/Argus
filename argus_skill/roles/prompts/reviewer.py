@@ -117,7 +117,9 @@ def _verification_directive() -> str:
     """Compact trust-first verification stance."""
     return (
         "Trust clear, consistent evidence. Recheck only what is missing, stale, "
-        "contradictory, or implausible. Judge artifacts by content, not git diff alone.\n\n"
+        "contradictory, or implausible. Judge artifacts by content, not git diff alone. "
+        "External identity drift without a mission mutation proves neither failure nor "
+        "causation; require a mutation command attributable to this mission.\n\n"
     )
 
 
@@ -662,6 +664,7 @@ def render_reviewer_prompt(
         "does not prove impossibility. A threshold miss only shows that this run missed "
         "its target; a root-cause, dominant/bottleneck-stage, or replacement-architecture "
         "claim needs code-path evidence plus profiling, timing, or a controlled comparison. "
+        "Integrity is mandatory but is not scientific value by itself. "
         "Technical problems get a concrete NEXT_ACTION, not an operator question. Ask the "
         "operator one question only for authority or information only they can provide. "
         "Bounded `done` closes this task; final-submission `done` may certify the project.\n\n"

@@ -100,12 +100,10 @@ def test_engineer_learning_targets_engineer_bucket(tmp_path) -> None:
     )
 
     assert f"Engineer Skill directory (project layer only): {skill_dir}" in prompt
-    assert "Do not substitute cleanup, documentation" in prompt
-    assert "hashes/checksums, manifests/provenance" in prompt
-    assert "never authorizes deleting, moving, or overwriting pre-existing" in prompt
-    assert "do not repeat the same passing assertion" in prompt
-    assert "Do not turn task-specific hypotheses, causal attributions" in prompt
-    assert "controlled comparison verified the causal rule" in prompt
+    assert "Do not add unrelated cleanup or hardening" in prompt
+    assert "Keep only reusable procedures and checklists here" in prompt
+    assert "route durable project facts" in prompt
+    assert "never write shared/global layers" in prompt
 
 
 def test_main_reviewer_never_edits_skills_directly(tmp_path) -> None:
@@ -156,7 +154,7 @@ def test_reviewer_protected_resource_evidence_requires_a_traceable_mutation(
         working_dir=tmp_path,
     )
 
-    assert "Identity drift alone means external change or unknown provenance" in prompt
+    assert "External identity drift without a mission mutation" in prompt
     assert "mutation command attributable to this mission" in prompt
 
 
