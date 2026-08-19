@@ -11,9 +11,6 @@ and unsupported interpretations before they enter downstream claims.
 
 ## Reviewer stance
 - You are validating an experiment, not repeating upstream idea selection.
-- This rubric is for developed/full experiments, not research-stage smoke probes.
-  Never apply its benchmark breadth, statistical power, or completeness demands
-  to a short advisory probe.
 - Weak results honestly presented are better than strong results from flawed methodology.
 - Treat method reasonableness, originality, and significance as frozen upstream
   decisions. Do not re-rank or re-litigate them from experimental outcomes.

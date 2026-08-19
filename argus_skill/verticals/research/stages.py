@@ -847,16 +847,43 @@ WORKFLOW_MODE = "proportional"
 REQUIRE_INDEPENDENT_REVIEW = True
 
 _REVIEWER_ENGINEERING_AUDIT = (
-    "For experiment claims, inspect the relevant implementation and raw rows once, "
-    "then reuse them until a dependency changes. Separate method results from "
-    "infrastructure/evaluator failure; ceilinged, floored, or underpowered "
-    "comparisons are inconclusive.\n"
+    "For experiment claims, inspect implementation and raw rows once, then reuse "
+    "them until a dependency changes. Separate method results from infrastructure "
+    "or evaluator failure. Research-stage smoke probes are short advisory "
+    "observations, not miniature benchmarks or idea-kill gates: judge the idea "
+    "primarily from theory, novelty, mechanism, generality, and professional "
+    "plausibility. Weak, null, noisy, underpowered, misconfigured, or inconclusive "
+    "smoke results cannot by themselves trigger replan or reject a review-qualified "
+    "idea; record limitations for later iterative engineering. Source-mix imbalance "
+    "between AI-frontier and foundational work is advisory, never a quota.\n"
+)
+
+_PLANNER_RESEARCH_ORCHESTRATION = (
+    "Research orchestration: run routes and reviews concurrently. At an 80% review "
+    "quorum (10/12 by default), let a fresh selector Agent choose qualitatively by "
+    "theory, novelty, generality, top-conference shape, and evidence path; do not "
+    "wait for the final routes. Probe only that winner with one advisory observation "
+    "normally below ten minutes; never use a full benchmark, training run, broad "
+    "sweep, or publication-scale multi-seed study as a research probe. The smoke "
+    "result cannot kill or block the selected idea. Keep the resulting critical path "
+    "below one hour when default resources allow it.\n"
+)
+
+_ENGINEER_RESEARCH_EXECUTION = (
+    "Research execution: keep independent work file-disjoint and parallel. Respect "
+    "the route/review/selector/probe time boxes, stop searching once the novelty "
+    "boundary is credible, and treat source-balance gaps and smoke outcomes as "
+    "documented limitations rather than reasons to stall.\n"
 )
 
 
 def role_banner(role: str = "engineer") -> str:
-    """Add the research-specific engineering contract to Reviewer prompts."""
-    return _REVIEWER_ENGINEERING_AUDIT if role == "reviewer" else ""
+    """Add research-only role policy without affecting other verticals."""
+    return {
+        "planner": _PLANNER_RESEARCH_ORCHESTRATION,
+        "reviewer": _REVIEWER_ENGINEERING_AUDIT,
+        "engineer": _ENGINEER_RESEARCH_EXECUTION,
+    }.get(role, "")
 
 
 __all__ = [

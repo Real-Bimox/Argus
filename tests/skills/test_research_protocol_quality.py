@@ -208,13 +208,14 @@ def test_route_review_precedes_quorum_selection_and_advisory_probe() -> None:
     pipeline = _skill("engineer/auto-research-pipeline.md")
     brief = _skill("engineer/research-brief-to-experiment-plan.md")
     research = {item.id: item.statement for item in STAGE_CHECKLISTS["research"]}
-    planner = (
+    generic_planner = (
         Path(__file__).parents[2]
         / "argus_skill"
         / "roles"
         / "prompts"
         / "planner.py"
     ).read_text(encoding="utf-8")
+    from argus_skill.verticals.research.stages import role_banner
 
     assert "Complete this route-local selection" in creator
     assert "Only after Step 1 has selected" in creator
@@ -224,9 +225,10 @@ def test_route_review_precedes_quorum_selection_and_advisory_probe() -> None:
     assert "Before any probe is designed or executed" in research["research.thesis"]
     assert "thesis may evolve later" in research["research.thesis"]
     assert "Only after research.thesis" in research["research.signal_derisk"]
-    normalized_planner = " ".join(planner.split())
-    assert "Wait for an 80% review quorum" in normalized_planner
-    assert "probe only that winner" in normalized_planner
+    normalized_planner = " ".join(role_banner("planner").split())
+    assert "At an 80% review quorum" in normalized_planner
+    assert "Probe only that winner" in normalized_planner
+    assert "80% review quorum" not in generic_planner
     assert "must not silently change the frozen premise" in creator
     assert "Keep route reviews parallel until at least 80%" in " ".join(
         creator.split()
@@ -235,16 +237,38 @@ def test_route_review_precedes_quorum_selection_and_advisory_probe() -> None:
 
 
 def test_reviewer_treats_research_smokes_as_advisory() -> None:
-    verification_policy = (
+    generic_verification_policy = (
         Path(__file__).parents[2]
         / "argus_skill"
         / "core"
         / "verification_policy.py"
     ).read_text(encoding="utf-8")
-    results_review = _skill("reviewer/experiment-results-review.md")
+    generic_results_review = _skill("reviewer/experiment-results-review.md")
+    from argus_skill.verticals.research.stages import role_banner
 
-    assert "smoke is advisory, never a replan trigger" in verification_policy
-    assert "not research-stage smoke probes" in results_review
+    reviewer_banner = role_banner("reviewer")
+    assert "Research-stage smoke probes are short advisory observations" in (
+        reviewer_banner
+    )
+    assert "cannot by themselves trigger replan" in reviewer_banner
+    assert "smoke is advisory" not in generic_verification_policy
+    assert "research-stage smoke probes" not in generic_results_review.lower()
+
+
+def test_research_prompt_policy_does_not_leak_to_other_verticals() -> None:
+    from argus_skill.verticals._base import load_vertical, vertical_role_banner
+
+    research = load_vertical("research")
+    software = load_vertical("software")
+
+    assert "80% review quorum" in vertical_role_banner(research, "planner")
+    assert "Research-stage smoke probes" in vertical_role_banner(
+        research, "reviewer"
+    )
+    for role in ("planner", "engineer", "reviewer"):
+        banner = vertical_role_banner(software, role)
+        assert "80% review quorum" not in banner
+        assert "Research-stage smoke probes" not in banner
 
 
 def test_experiment_review_does_not_repeat_idea_selection() -> None:

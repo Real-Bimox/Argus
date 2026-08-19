@@ -117,7 +117,7 @@ STAGE_PROFILES: dict[str, dict[str, str]] = {
 #: prompt has a hard character budget, and a rule the code enforces does not
 #: need to be restated in prose.
 _PROFILE_MEANING = {
-    "explore": "qualitative theory/novelty gate; smoke is advisory, never a replan trigger",
+    "explore": "is the premise real, testable, and worth the next probe",
     "develop": "does the implementation, comparison, and claim scope hold",
     "certify": "full claim coverage, venue compliance, submission-ready",
 }
